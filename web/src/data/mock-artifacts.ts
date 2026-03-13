@@ -5,6 +5,7 @@ export interface Artifact {
   status: "ready" | "online" | "offline" | "starting" | "generating";
   path: string;
   port?: number;
+  space: string;
   createdAt: string;
 }
 

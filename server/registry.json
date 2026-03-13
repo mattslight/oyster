@@ -1,12 +1,16 @@
 {
   "apps": [
-    { "name": "tokinvest-concept", "label": "New Homepage", "dir": "/Users/Matthew.Slight/Dev/tokinvest-concept", "port": 4100 },
-    { "name": "drc-tokinvest", "label": "DRC x Tokinvest", "dir": "/Users/Matthew.Slight/Dev/drc-tokinvest", "port": 4101 }
+    { "name": "tokinvest-concept", "label": "New Homepage", "dir": "/Users/Matthew.Slight/Dev/tokinvest-concept", "port": 4100, "space": "tokinvest" },
+    { "name": "drc-tokinvest", "label": "DRC x Tokinvest", "dir": "/Users/Matthew.Slight/Dev/drc-tokinvest", "port": 4101, "space": "tokinvest" }
   ],
   "docs": [
-    { "name": "homepage-audit", "label": "Homepage Audit Discussion", "type": "deck", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/homepage-audit-discussion.html" },
-    { "name": "info-architecture", "label": "Information Architecture", "type": "map", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/information-architecture.html" },
-    { "name": "product-surface-map", "label": "Product Surface Map", "type": "map", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/product-surface-map.html" },
-    { "name": "audit-discussion-points", "label": "Audit Discussion Points", "type": "notes", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/homepage-audit-discussion-points.md" }
+    { "name": "homepage-audit", "label": "Homepage Audit Discussion", "type": "deck", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/homepage-audit-discussion.html", "space": "tokinvest" },
+    { "name": "info-architecture", "label": "Information Architecture", "type": "map", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/information-architecture.html", "space": "tokinvest" },
+    { "name": "product-surface-map", "label": "Product Surface Map", "type": "map", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/product-surface-map.html", "space": "tokinvest" },
+    { "name": "audit-discussion-points", "label": "Audit Discussion Points", "type": "notes", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/homepage-audit-discussion-points.md", "space": "tokinvest" },
+    { "name": "kps-sales-dashboard", "label": "Sales Benchmark Dashboard", "type": "diagram", "file": "/Users/Matthew.Slight/Dev/kps-zoho-crm-mcp/output/dashboard.html", "space": "kps" },
+    { "name": "kps-pipeline-stages", "label": "Pipeline Stages", "type": "notes", "file": "/Users/Matthew.Slight/Dev/kps-zoho-crm-mcp/CLAUDE.md", "space": "kps" },
+    { "name": "dreama-push-notes", "label": "Dreama Push Notifications", "type": "notes", "file": "/Users/Matthew.Slight/Dev/dreama-daily-push-notifications/README.md", "space": "personal" },
+    { "name": "blunderfixer-docs", "label": "Blunderfixer", "type": "notes", "file": "/Users/Matthew.Slight/Dev/blunderfixer/CLAUDE.md", "space": "personal" }
   ]
 }

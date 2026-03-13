@@ -8,6 +8,15 @@ const placeholders = [
   "What do you need?",
   "Describe what you're building...",
 ];
+
+const taglines = [
+  { dim: "Go on,", bright: "open the shell." },
+  { dim: "Your next idea", bright: "is waiting." },
+  { dim: "The pearl", bright: "won't find itself." },
+  { dim: "Still thinking?", bright: "Good. Type it." },
+  { dim: "One prompt away", bright: "from something great." },
+  { dim: "Don't be shy.", bright: "The shell listens." },
+];
 import { mockResponses, defaultChunks } from "../data/mock-chat";
 import type { Artifact } from "../data/mock-artifacts";
 
@@ -30,9 +39,13 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [tagline, setTagline] = useState<{ dim: string; bright: string } | null>(null);
+  const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const placeholder = useMemo(() => placeholders[Math.floor(Math.random() * placeholders.length)], []);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isHero = isEmpty && messages.length === 0;
 
   useEffect(() => {
     if (expanded) {
@@ -82,6 +95,23 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
 
   return (
     <div className={`chatbar-wrapper ${isEmpty && messages.length === 0 ? "chatbar-hero" : ""}`}>
+      {/* Hero tagline — fades out on focus, cycles on blur */}
+      {isHero && (
+        <div className={`chatbar-hero-tagline ${focused ? "tagline-hidden" : ""}`}>
+          {tagline ? (
+            <>
+              <span className="tagline-dim">{tagline.dim}</span>{" "}
+              <span className="tagline-bright">{tagline.bright}</span>
+            </>
+          ) : (
+            <>
+              <span className="tagline-dim">Tools are dead.</span>{" "}
+              <span className="tagline-bright">Welcome to the shell.</span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Messages panel — expands upward */}
       {expanded && messages.length > 0 && (
         <div className="chatbar-messages">
@@ -125,8 +155,18 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          onFocus={() => messages.length > 0 && setExpanded(true)}
-          placeholder={placeholder}
+          onFocus={() => {
+            setFocused(true);
+            if (messages.length > 0) setExpanded(true);
+          }}
+          onBlur={() => {
+            if (!input.trim()) {
+              setFocused(false);
+              setTagline(taglines[taglineIndexRef.current % taglines.length]);
+              taglineIndexRef.current++;
+            }
+          }}
+          placeholder={isHero && !focused ? "" : placeholder}
           disabled={streaming}
           className="chatbar-input"
         />

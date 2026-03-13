@@ -232,6 +232,13 @@ git commit -m "feat: initial project scaffold with mock data"
 - [x] Real Tokinvest workspace artifacts replace mock data (2 apps + 4 docs)
 - [x] Status polling (5s) with live app status (online/offline/starting)
 - [x] Hero state chat bar — centered and bold when surface is empty
+- [x] Space-based navigation — hero landing with tokinvest/personal/kps space buttons
+- [x] Hero tagline system — "Tools are dead. Welcome to the shell." with rotating nudges on blur
+- [x] Ultra Hardcore terminal gate — first-time confirmation modal (localStorage gated)
+- [x] Multi-space artifact filtering — `space` field in registry, filtered on frontend
+- [x] Markdown rendering for doc artifacts — `marked` library, styled dark theme
+- [x] Resume session inline button — replaces send button when on hero state with existing artifacts
+- [x] Rotating placeholder text — curated phrases instead of static placeholder
 
 ### Remaining
 - [ ] Wire chat bar input to OpenCode session (send user messages to the running OpenCode process)
@@ -245,9 +252,9 @@ git commit -m "feat: initial project scaffold with mock data"
 
 - Window resize handles
 - Agents as persistent AI workers on the surface
-- Project/workspace switching
+- Smart workspace switching (auto-detect, recent spaces, dynamic space creation)
 - Bar as universal input (search + navigation)
-- Seeded starter artifacts on first use/import
+- Richer starter content for personal/kps spaces
 - Right-click context menus on artifacts
 - Spatial memory (user-arranged icon positions)
 - Data imports (ChatGPT, Claude, documents)

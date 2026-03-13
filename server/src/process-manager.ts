@@ -11,6 +11,7 @@ export interface AppEntry {
   label: string;
   dir: string;
   port: number;
+  space: string;
 }
 
 export interface DocEntry {
@@ -18,6 +19,7 @@ export interface DocEntry {
   label: string;
   type: string;
   file: string;
+  space: string;
 }
 
 export interface Registry {
@@ -32,6 +34,7 @@ export interface Artifact {
   status: "online" | "offline" | "starting" | "ready";
   path: string;
   port?: number;
+  space: string;
   createdAt: string;
 }
 
@@ -183,6 +186,7 @@ export async function getAllArtifacts(): Promise<Artifact[]> {
         status,
         path: `http://localhost:${app.port}`,
         port: app.port,
+        space: app.space,
         createdAt: now,
       };
     })
@@ -194,6 +198,7 @@ export async function getAllArtifacts(): Promise<Artifact[]> {
     type: doc.type,
     status: "ready" as const,
     path: `/docs/${doc.name}`,
+    space: doc.space,
     createdAt: now,
   }));
 

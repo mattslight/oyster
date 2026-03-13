@@ -379,6 +379,11 @@ Each user gets an isolated container with:
 - [x] HTTP+WS hybrid server with app process management API
 - [x] Real Tokinvest workspace artifacts (2 live apps + 4 static docs)
 - [x] App lifecycle: start/stop Vite dev servers, status polling, hero empty state
+- [x] Space-based navigation (tokinvest, personal, kps) with hero landing page
+- [x] Hero tagline ("Tools are dead. Welcome to the shell.") with rotating nudges on blur
+- [x] Ultra Hardcore terminal gate (first-time confirmation modal with localStorage)
+- [x] Multi-space registry with `space` field filtering artifacts per workspace
+- [x] Markdown rendering for doc artifacts (marked library)
 - [ ] Wire chat bar input to OpenCode session
 - [ ] Supabase schema (nodes, edges, artifacts — no RLS for PoC)
 - [ ] Supabase realtime subscriptions replacing JSON registry
@@ -397,9 +402,9 @@ Each user gets an isolated container with:
 - Live connectors
 - Automated imports and live connectors
 - Agents (persistent AI workers on the surface)
-- Project/workspace switching
+- Project/workspace switching (basic space nav done, smart switching deferred)
 - Bar as universal input (search + navigation)
-- Seeded starter artifacts on first use
+- Seeded starter artifacts on first use (sample content for personal/kps spaces added)
 - Advanced graph visualisation
 
 ---

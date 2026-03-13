@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFileSync, existsSync } from "node:fs";
 import { extname } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
+import { marked } from "marked";
 import pty from "node-pty";
 import {
   loadRegistry,
@@ -157,7 +158,24 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
     if (ext === ".md") {
       const content = readFileSync(filePath, "utf8");
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${name}</title><style>body{font-family:monospace;padding:2rem;max-width:80ch;margin:0 auto}</style></head><body><pre>${content}</pre></body></html>`;
+      const rendered = marked(content);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${name}</title><style>
+body { font-family: 'Space Grotesk', -apple-system, sans-serif; padding: 2.5rem; max-width: 72ch; margin: 0 auto; background: #1a1b2e; color: #e8e9f0; line-height: 1.7; }
+h1, h2, h3 { color: #fff; font-weight: 600; letter-spacing: -0.02em; }
+h1 { font-size: 1.8rem; margin-top: 0; }
+h2 { font-size: 1.3rem; margin-top: 2rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.4rem; }
+a { color: #21b981; text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { background: rgba(255,255,255,0.06); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; font-family: 'IBM Plex Mono', monospace; }
+pre { background: rgba(255,255,255,0.04); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+th { color: rgba(232,233,240,0.6); font-weight: 500; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em; }
+blockquote { border-left: 3px solid #21b981; margin: 1rem 0; padding: 0.5rem 1rem; color: rgba(232,233,240,0.7); }
+ul, ol { padding-left: 1.5rem; }
+li { margin: 0.3rem 0; }
+</style></head><body>${rendered}</body></html>`;
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(html);
     } else {

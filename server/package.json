@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
+    "marked": "^17.0.4",
     "node-pty": "1.0.0",
     "ws": "^8.18.0"
   },
