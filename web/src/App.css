@@ -254,7 +254,7 @@ body {
   transform: translateX(-50%);
   width: 560px;
   max-width: calc(100% - 40px);
-  z-index: 200;
+  z-index: 90;
   display: flex;
   flex-direction: column;
   align-items: stretch;
