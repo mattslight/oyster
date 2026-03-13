@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Product Surface Map</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f1923; color: #e0e0e0; padding: 32px; }
+    .map { max-width: 700px; margin: 0 auto; }
+    h1 { text-align: center; font-size: 1.4rem; margin-bottom: 32px; color: #4ade80; }
+    .layer { margin-bottom: 24px; }
+    .layer-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 8px; }
+    .nodes { display: flex; flex-wrap: wrap; gap: 8px; }
+    .node { padding: 8px 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 0.85rem; transition: border-color 0.2s, background 0.2s; cursor: default; }
+    .node:hover { border-color: #4ade80; background: rgba(74, 222, 128, 0.08); }
+    .connector { height: 24px; display: flex; align-items: center; justify-content: center; color: #444; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="map">
+    <h1>Product Surface Map</h1>
+    <div class="layer">
+      <div class="layer-title">Input Channels</div>
+      <div class="nodes">
+        <div class="node">Web Chat</div>
+        <div class="node">Telegram</div>
+        <div class="node">WhatsApp</div>
+        <div class="node">File Upload</div>
+      </div>
+    </div>
+    <div class="connector">↓</div>
+    <div class="layer">
+      <div class="layer-title">Processing</div>
+      <div class="nodes">
+        <div class="node">OpenCode Engine</div>
+        <div class="node">Knowledge Graph</div>
+        <div class="node">Agent Config</div>
+      </div>
+    </div>
+    <div class="connector">↓</div>
+    <div class="layer">
+      <div class="layer-title">Outputs</div>
+      <div class="nodes">
+        <div class="node">Documents</div>
+        <div class="node">Presentations</div>
+        <div class="node">Mind Maps</div>
+        <div class="node">Apps</div>
+        <div class="node">Diagrams</div>
+      </div>
+    </div>
+    <div class="connector">↓</div>
+    <div class="layer">
+      <div class="layer-title">Storage</div>
+      <div class="nodes">
+        <div class="node">Supabase (Central)</div>
+        <div class="node">Local Postgres (App Data)</div>
+        <div class="node">Filesystem (Artifacts)</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

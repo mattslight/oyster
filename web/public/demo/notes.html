@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Discussion Notes</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Georgia', serif; background: #fafaf8; color: #333; padding: 48px; line-height: 1.7; }
+    .doc { max-width: 640px; margin: 0 auto; }
+    h1 { font-size: 1.6rem; margin-bottom: 8px; }
+    .date { font-size: 0.8rem; color: #999; margin-bottom: 32px; }
+    h2 { font-size: 1.1rem; margin: 24px 0 8px; color: #555; }
+    p { margin-bottom: 12px; }
+    ul { margin: 0 0 12px 24px; }
+    li { margin-bottom: 4px; }
+    .tag { display: inline-block; padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-size: 0.75rem; font-family: system-ui, sans-serif; margin-right: 4px; }
+    hr { border: none; border-top: 1px solid #e0e0e0; margin: 24px 0; }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    <h1>Audit Discussion Points</h1>
+    <div class="date">March 13, 2026</div>
+
+    <h2>Key Findings</h2>
+    <ul>
+      <li>Homepage messaging doesn't communicate core value within 5 seconds</li>
+      <li>Mobile experience has significant performance issues (4.2s load)</li>
+      <li>User testing confirms navigation is intuitive — keep current structure</li>
+    </ul>
+
+    <h2>Action Items</h2>
+    <ul>
+      <li><span class="tag">HIGH</span> Rewrite hero copy — focus on user benefit, not features</li>
+      <li><span class="tag">HIGH</span> Optimize mobile: lazy-load images, reduce JS bundle</li>
+      <li><span class="tag">MEDIUM</span> A/B test CTA placement and copy variants</li>
+      <li><span class="tag">LOW</span> Add social proof section below the fold</li>
+    </ul>
+
+    <hr>
+
+    <h2>Next Steps</h2>
+    <p>Bharat to schedule design review for new hero concepts. Matthew to set up performance monitoring baseline before optimization work begins.</p>
+  </div>
+</body>
+</html>

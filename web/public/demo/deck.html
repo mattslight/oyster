@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Audit Presentation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .slide { width: 720px; aspect-ratio: 16/9; background: linear-gradient(135deg, #16213e, #0f3460); border-radius: 12px; padding: 48px; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    h1 { font-size: 2rem; margin-bottom: 16px; background: linear-gradient(90deg, #e94560, #f5a623); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .bullets { list-style: none; padding: 0; }
+    .bullets li { padding: 8px 0; font-size: 1.1rem; opacity: 0.85; }
+    .bullets li::before { content: '→ '; color: #e94560; }
+    .slide-num { margin-top: auto; font-size: 0.75rem; opacity: 0.4; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="slide">
+    <h1>Homepage Audit Results</h1>
+    <ul class="bullets">
+      <li>Above-fold messaging unclear to first-time visitors</li>
+      <li>CTA conversion rate 2.1% — below industry benchmark</li>
+      <li>Mobile load time 4.2s — needs optimization</li>
+      <li>Navigation structure validated by user testing</li>
+      <li>Recommended: A/B test hero copy + simplify form</li>
+    </ul>
+    <div class="slide-num">1 / 8</div>
+  </div>
+</body>
+</html>

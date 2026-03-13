@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Homepage Wireframe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 32px; color: #333; }
+    .frame { max-width: 800px; margin: 0 auto; background: #fff; border: 2px solid #ddd; border-radius: 8px; overflow: hidden; }
+    .nav { height: 48px; background: #e8e8e8; display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+    .nav .logo { width: 80px; height: 20px; background: #bbb; border-radius: 4px; }
+    .nav .link { width: 48px; height: 12px; background: #ccc; border-radius: 3px; }
+    .hero { height: 280px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+    .hero .title { width: 320px; height: 28px; background: rgba(255,255,255,0.3); border-radius: 4px; }
+    .hero .subtitle { width: 200px; height: 16px; background: rgba(255,255,255,0.2); border-radius: 3px; }
+    .hero .cta { width: 120px; height: 36px; background: rgba(255,255,255,0.9); border-radius: 6px; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 32px; }
+    .card { height: 160px; background: #f0f0f0; border-radius: 8px; border: 1px solid #e0e0e0; padding: 16px; }
+    .card .card-img { height: 60px; background: #ddd; border-radius: 4px; margin-bottom: 12px; }
+    .card .card-title { height: 14px; width: 80%; background: #ccc; border-radius: 3px; margin-bottom: 8px; }
+    .card .card-text { height: 10px; width: 60%; background: #ddd; border-radius: 3px; }
+    .footer { height: 64px; background: #e8e8e8; display: flex; align-items: center; justify-content: center; }
+    .footer .foot-text { width: 200px; height: 12px; background: #ccc; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="nav">
+      <div class="logo"></div>
+      <div class="link"></div>
+      <div class="link"></div>
+      <div class="link"></div>
+    </div>
+    <div class="hero">
+      <div class="title"></div>
+      <div class="subtitle"></div>
+      <div class="cta"></div>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="card-img"></div><div class="card-title"></div><div class="card-text"></div></div>
+      <div class="card"><div class="card-img"></div><div class="card-title"></div><div class="card-text"></div></div>
+      <div class="card"><div class="card-img"></div><div class="card-title"></div><div class="card-text"></div></div>
+    </div>
+    <div class="footer"><div class="foot-text"></div></div>
+  </div>
+</body>
+</html>

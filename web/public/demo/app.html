@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>KPS Task Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f8f9fa; color: #333; padding: 32px; }
+    .app { max-width: 500px; margin: 0 auto; }
+    h1 { font-size: 1.3rem; margin-bottom: 20px; }
+    .add-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .add-row input { flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; outline: none; }
+    .add-row input:focus { border-color: #667eea; }
+    .add-row button { padding: 10px 16px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+    .task { display: flex; align-items: center; gap: 12px; padding: 12px; background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; margin-bottom: 8px; }
+    .task input[type="checkbox"] { width: 18px; height: 18px; accent-color: #667eea; }
+    .task span { font-size: 0.9rem; }
+    .task.done span { text-decoration: line-through; opacity: 0.5; }
+    .empty { text-align: center; color: #999; padding: 32px; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>KPS Task Tracker</h1>
+    <div class="add-row">
+      <input id="input" type="text" placeholder="Add a task..." onkeydown="if(event.key==='Enter')addTask()">
+      <button onclick="addTask()">Add</button>
+    </div>
+    <div id="tasks">
+      <div class="task"><input type="checkbox" onchange="toggle(this)"><span>Review audit presentation with Bharat</span></div>
+      <div class="task"><input type="checkbox" onchange="toggle(this)"><span>Set up performance monitoring</span></div>
+      <div class="task done"><input type="checkbox" checked onchange="toggle(this)"><span>Create homepage wireframe</span></div>
+    </div>
+  </div>
+  <script>
+    function addTask() {
+      const input = document.getElementById('input');
+      if (!input.value.trim()) return;
+      const div = document.createElement('div');
+      div.className = 'task';
+      div.innerHTML = `<input type="checkbox" onchange="toggle(this)"><span>${input.value}</span>`;
+      document.getElementById('tasks').prepend(div);
+      input.value = '';
+    }
+    function toggle(cb) {
+      cb.parentElement.classList.toggle('done', cb.checked);
+    }
+  </script>
+</body>
+</html>
