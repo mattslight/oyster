@@ -181,7 +181,7 @@ export async function getAllArtifacts(): Promise<Artifact[]> {
         name: app.label,
         type: "app",
         status,
-        path: app.dir,
+        path: `http://localhost:${app.port}`,
         port: app.port,
         createdAt: now,
       };
@@ -193,7 +193,7 @@ export async function getAllArtifacts(): Promise<Artifact[]> {
     name: doc.label,
     type: doc.type,
     status: "ready" as const,
-    path: doc.file,
+    path: `/docs/${doc.name}`,
     createdAt: now,
   }));
 
