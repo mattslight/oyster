@@ -1,4 +1,13 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+
+const placeholders = [
+  "What are you working on?",
+  "Build something...",
+  "What's on your mind?",
+  "Start with an idea...",
+  "What do you need?",
+  "Describe what you're building...",
+];
 import { mockResponses, defaultChunks } from "../data/mock-chat";
 import type { Artifact } from "../data/mock-artifacts";
 
@@ -22,6 +31,7 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
   const [statusText, setStatusText] = useState("");
   const [expanded, setExpanded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const placeholder = useMemo(() => placeholders[Math.floor(Math.random() * placeholders.length)], []);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -116,7 +126,7 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           onFocus={() => messages.length > 0 && setExpanded(true)}
-          placeholder="Talk to Oyster..."
+          placeholder={placeholder}
           disabled={streaming}
           className="chatbar-input"
         />
