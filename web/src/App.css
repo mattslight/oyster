@@ -225,6 +225,43 @@ body {
   align-items: stretch;
 }
 
+/* Hero state — centered when surface is empty */
+.chatbar-hero {
+  bottom: 50%;
+  transform: translate(-50%, 50%);
+  width: 640px;
+  transition: bottom 0.5s ease, transform 0.5s ease, width 0.5s ease;
+}
+
+.chatbar-hero .chatbar-bar {
+  padding: 12px 14px;
+  gap: 14px;
+}
+
+.chatbar-hero .chatbar-input {
+  font-size: 1.1rem;
+}
+
+.chatbar-hero .chatbar-input::placeholder {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.chatbar-hero .chatbar-oyster {
+  width: 42px;
+  height: 42px;
+}
+
+.chatbar-hero .chatbar-send {
+  width: 40px;
+  height: 40px;
+}
+
+/* Smooth transition back to bottom when artifacts appear */
+.chatbar-wrapper {
+  transition: bottom 0.5s ease, transform 0.5s ease, width 0.5s ease;
+}
+
 .chatbar-bar {
   display: flex;
   align-items: center;

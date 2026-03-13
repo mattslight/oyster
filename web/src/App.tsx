@@ -103,6 +103,7 @@ export default function App() {
       <ChatBar
         onArtifactGenerated={handleArtifactGenerated}
         onOpenTerminal={() => dispatch({ type: "OPEN_TERMINAL" })}
+        isEmpty={artifacts.length === 0}
       />
     </div>
   );

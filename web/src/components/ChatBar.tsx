@@ -10,9 +10,10 @@ interface Message {
 interface Props {
   onArtifactGenerated: (artifact: Artifact) => void;
   onOpenTerminal: () => void;
+  isEmpty?: boolean;
 }
 
-export function ChatBar({ onArtifactGenerated, onOpenTerminal }: Props) {
+export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -68,7 +69,7 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal }: Props) {
   }
 
   return (
-    <div className="chatbar-wrapper">
+    <div className={`chatbar-wrapper ${isEmpty && messages.length === 0 ? "chatbar-hero" : ""}`}>
       {/* Messages panel — expands upward */}
       {expanded && messages.length > 0 && (
         <div className="chatbar-messages">
