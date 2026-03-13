@@ -1,0 +1,12 @@
+{
+  "apps": [
+    { "name": "tokinvest-concept", "label": "New Homepage", "dir": "/Users/Matthew.Slight/Dev/tokinvest-concept", "port": 4100 },
+    { "name": "drc-tokinvest", "label": "DRC x Tokinvest", "dir": "/Users/Matthew.Slight/Dev/drc-tokinvest", "port": 4101 }
+  ],
+  "docs": [
+    { "name": "homepage-audit", "label": "Homepage Audit Discussion", "type": "deck", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/homepage-audit-discussion.html" },
+    { "name": "info-architecture", "label": "Information Architecture", "type": "map", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/information-architecture.html" },
+    { "name": "product-surface-map", "label": "Product Surface Map", "type": "map", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/product-surface-map.html" },
+    { "name": "audit-discussion-points", "label": "Audit Discussion Points", "type": "notes", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/homepage-audit-discussion-points.md" }
+  ]
+}

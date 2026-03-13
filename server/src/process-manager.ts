@@ -1,0 +1,211 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { spawn, execSync, type ChildProcess } from "node:child_process";
+import { createConnection } from "node:net";
+import { fileURLToPath } from "node:url";
+
+// ── Types ──
+
+export interface AppEntry {
+  name: string;
+  label: string;
+  dir: string;
+  port: number;
+}
+
+export interface DocEntry {
+  name: string;
+  label: string;
+  type: string;
+  file: string;
+}
+
+export interface Registry {
+  apps: AppEntry[];
+  docs: DocEntry[];
+}
+
+export interface Artifact {
+  id: string;
+  name: string;
+  type: string;
+  status: "online" | "offline" | "starting" | "ready";
+  path: string;
+  port?: number;
+  createdAt: string;
+}
+
+// ── State ──
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const procs = new Map<string, ChildProcess>();
+const starting = new Set<string>();
+
+// ── Registry ──
+
+export function loadRegistry(): Registry {
+  const raw = readFileSync(join(__dirname, "..", "registry.json"), "utf8");
+  return JSON.parse(raw) as Registry;
+}
+
+// ── Port / HTTP checks ──
+
+export function tryConnect(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = createConnection({ port, host });
+    sock.setTimeout(1500);
+    sock.on("connect", () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on("error", () => resolve(false));
+    sock.on("timeout", () => {
+      sock.destroy();
+      resolve(false);
+    });
+  });
+}
+
+export async function isPortOpen(port: number): Promise<boolean> {
+  const [v4, v6] = await Promise.all([
+    tryConnect(port, "127.0.0.1"),
+    tryConnect(port, "::1"),
+  ]);
+  return v4 || v6;
+}
+
+export async function isHttpReady(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://localhost:${port}/`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return res.ok || res.status === 304;
+  } catch {
+    return false;
+  }
+}
+
+export function waitForReady(
+  port: number,
+  timeout = 30000
+): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    const check = async () => {
+      if (await isHttpReady(port)) return resolve();
+      if (Date.now() - start > timeout) return reject(new Error("timeout"));
+      setTimeout(check, 500);
+    };
+    check();
+  });
+}
+
+// ── App lifecycle ──
+
+export function startApp(name: string): void {
+  const registry = loadRegistry();
+  const app = registry.apps.find((a) => a.name === name);
+  if (!app || procs.has(name)) return;
+
+  starting.add(name);
+
+  const child = spawn(
+    "npx",
+    ["vite", "--port", String(app.port), "--strictPort"],
+    { cwd: app.dir, stdio: "pipe" }
+  );
+
+  procs.set(name, child);
+
+  child.on("exit", () => {
+    procs.delete(name);
+    starting.delete(name);
+  });
+
+  child.stdout?.on("data", (d: Buffer) =>
+    process.stdout.write(`[${name}] ${d}`)
+  );
+  child.stderr?.on("data", (d: Buffer) =>
+    process.stderr.write(`[${name}] ${d}`)
+  );
+}
+
+export function stopApp(name: string): boolean {
+  const child = procs.get(name);
+  if (child) {
+    child.kill("SIGTERM");
+    procs.delete(name);
+    starting.delete(name);
+    return true;
+  }
+
+  // Not managed — kill by port
+  const registry = loadRegistry();
+  const app = registry.apps.find((a) => a.name === name);
+  if (!app) return false;
+
+  try {
+    const pids = execSync(`lsof -ti:${app.port}`, {
+      encoding: "utf8",
+    }).trim();
+    if (pids) {
+      execSync(`kill ${pids.split("\n").join(" ")}`);
+      return true;
+    }
+  } catch {
+    /* no process on port */
+  }
+  return false;
+}
+
+// ── Unified artifact list ──
+
+export async function getAllArtifacts(): Promise<Artifact[]> {
+  const registry = loadRegistry();
+  const now = new Date().toISOString();
+
+  const appArtifacts = await Promise.all(
+    registry.apps.map(async (app): Promise<Artifact> => {
+      let status: Artifact["status"];
+      if (starting.has(app.name) && !(await isPortOpen(app.port))) {
+        status = "starting";
+      } else if (await isPortOpen(app.port)) {
+        status = "online";
+        starting.delete(app.name);
+      } else {
+        status = "offline";
+      }
+
+      return {
+        id: app.name,
+        name: app.label,
+        type: "app",
+        status,
+        path: app.dir,
+        port: app.port,
+        createdAt: now,
+      };
+    })
+  );
+
+  const docArtifacts: Artifact[] = registry.docs.map((doc) => ({
+    id: doc.name,
+    name: doc.label,
+    type: doc.type,
+    status: "ready" as const,
+    path: doc.file,
+    createdAt: now,
+  }));
+
+  return [...appArtifacts, ...docArtifacts];
+}
+
+// ── Cleanup on exit ──
+
+function cleanup() {
+  procs.forEach((p) => p.kill());
+  process.exit();
+}
+
+process.on("SIGINT", cleanup);
+process.on("SIGTERM", cleanup);
