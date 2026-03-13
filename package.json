@@ -1,0 +1,12 @@
+{
+  "name": "oyster-os",
+  "private": true,
+  "scripts": {
+    "dev": "npx concurrently -n web,server -c blue,green \"cd web && npm run dev\" \"cd server && npm run dev\"",
+    "dev:web": "cd web && npm run dev",
+    "dev:server": "cd server && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
