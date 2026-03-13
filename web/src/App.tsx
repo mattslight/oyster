@@ -5,12 +5,12 @@ import { Clock } from "./components/Clock";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { windowsReducer } from "./stores/windows";
-import { mockArtifacts, type Artifact } from "./data/mock-artifacts";
+import { type Artifact } from "./data/mock-artifacts";
 import "./App.css";
 
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
-  const [artifacts, setArtifacts] = useState<Artifact[]>(mockArtifacts);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
 
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
