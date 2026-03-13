@@ -16,6 +16,7 @@ import "./App.css";
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [surfaceVisible, setSurfaceVisible] = useState(false);
 
   // Fetch artifacts on mount
   useEffect(() => {
@@ -70,7 +71,7 @@ export default function App() {
       <Clock />
 
       <Desktop
-        artifacts={artifacts}
+        artifacts={surfaceVisible ? artifacts : []}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
       />
@@ -103,7 +104,8 @@ export default function App() {
       <ChatBar
         onArtifactGenerated={handleArtifactGenerated}
         onOpenTerminal={() => dispatch({ type: "OPEN_TERMINAL" })}
-        isEmpty={artifacts.length === 0}
+        isEmpty={!surfaceVisible}
+        onOpenSurface={artifacts.length > 0 ? () => setSurfaceVisible(true) : undefined}
       />
     </div>
   );

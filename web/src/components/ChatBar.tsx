@@ -11,9 +11,10 @@ interface Props {
   onArtifactGenerated: (artifact: Artifact) => void;
   onOpenTerminal: () => void;
   isEmpty?: boolean;
+  onOpenSurface?: () => void;
 }
 
-export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty }: Props) {
+export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSurface }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -130,6 +131,13 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty }: Props)
           {streaming ? "..." : "↑"}
         </button>
       </div>
+
+      {/* Resume workspace CTA — shown in hero state when artifacts exist */}
+      {isEmpty && onOpenSurface && (
+        <button className="chatbar-resume" onClick={onOpenSurface}>
+          Resume workspace
+        </button>
+      )}
     </div>
   );
 }

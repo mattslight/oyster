@@ -262,6 +262,25 @@ body {
   transition: bottom 0.5s ease, transform 0.5s ease, width 0.5s ease;
 }
 
+.chatbar-resume {
+  margin-top: 16px;
+  align-self: center;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  padding: 8px 20px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.chatbar-resume:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .chatbar-bar {
   display: flex;
   align-items: center;
