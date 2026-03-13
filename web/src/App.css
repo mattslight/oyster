@@ -276,27 +276,26 @@ body {
 }
 
 .chatbar-space-btn {
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
   color: var(--text-dim);
   font-size: 0.8rem;
   padding: 6px 16px;
   border-radius: 9999px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 
 .chatbar-space-btn:hover {
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .chatbar-space-btn.resume {
   font-size: 0.85rem;
   padding: 8px 20px;
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .chatbar-bar {
