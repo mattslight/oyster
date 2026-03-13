@@ -11,10 +11,11 @@ interface Props {
   onArtifactGenerated: (artifact: Artifact) => void;
   onOpenTerminal: () => void;
   isEmpty?: boolean;
-  onOpenSurface?: () => void;
+  onOpenSpace?: (space: string) => void;
+  hasArtifacts?: boolean;
 }
 
-export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSurface }: Props) {
+export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSpace, hasArtifacts }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -135,15 +136,15 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSu
       {/* Space buttons — shown in hero state */}
       {isEmpty && messages.length === 0 && (
         <div className="chatbar-spaces">
-          {onOpenSurface && (
-            <button className="chatbar-space-btn resume" onClick={onOpenSurface}>
+          {hasArtifacts && onOpenSpace && (
+            <button className="chatbar-space-btn resume" onClick={() => onOpenSpace("tokinvest")}>
               Resume last workspace
             </button>
           )}
           <div className="chatbar-spaces-row">
-            <button className="chatbar-space-btn" onClick={onOpenSurface}>tokinvest</button>
-            <button className="chatbar-space-btn" onClick={() => {}}>personal</button>
-            <button className="chatbar-space-btn" onClick={() => {}}>kps</button>
+            <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("tokinvest")}>tokinvest</button>
+            <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("personal")}>personal</button>
+            <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("kps")}>kps</button>
           </div>
         </div>
       )}

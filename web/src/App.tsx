@@ -16,7 +16,7 @@ import "./App.css";
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [surfaceVisible, setSurfaceVisible] = useState(false);
+  const [activeSpace, setActiveSpace] = useState<string | null>(null);
 
   // Fetch artifacts on mount
   useEffect(() => {
@@ -70,8 +70,19 @@ export default function App() {
     <div className="oyster-shell">
       <Clock />
 
+      {activeSpace && (
+        <div className="space-header">
+          <button className="space-back" onClick={() => setActiveSpace(null)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <span className="space-name">{activeSpace}</span>
+        </div>
+      )}
+
       <Desktop
-        artifacts={surfaceVisible ? artifacts : []}
+        artifacts={activeSpace ? artifacts : []}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
       />
@@ -104,8 +115,9 @@ export default function App() {
       <ChatBar
         onArtifactGenerated={handleArtifactGenerated}
         onOpenTerminal={() => dispatch({ type: "OPEN_TERMINAL" })}
-        isEmpty={!surfaceVisible}
-        onOpenSurface={artifacts.length > 0 ? () => setSurfaceVisible(true) : undefined}
+        isEmpty={!activeSpace}
+        onOpenSpace={(space) => setActiveSpace(space)}
+        hasArtifacts={artifacts.length > 0}
       />
     </div>
   );

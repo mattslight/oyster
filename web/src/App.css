@@ -40,6 +40,41 @@ body {
   position: relative;
 }
 
+/* ── Space header ── */
+.space-header {
+  position: fixed;
+  top: 16px;
+  left: 20px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: fadeUp 0.3s ease forwards;
+}
+
+.space-back {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+
+.space-back:hover {
+  color: var(--text);
+}
+
+.space-name {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
 /* ── Clock ── */
 .surface-clock {
   position: fixed;
