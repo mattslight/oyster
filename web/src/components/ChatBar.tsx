@@ -124,23 +124,27 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
           disabled={streaming}
           className="chatbar-input"
         />
-        <button
-          className="chatbar-send"
-          onClick={handleSend}
-          disabled={streaming || !input.trim()}
-        >
-          {streaming ? "..." : "↑"}
-        </button>
+        {isEmpty && hasArtifacts && !input.trim() ? (
+          <button
+            className="chatbar-resume-inline"
+            onClick={() => onOpenSpace?.("tokinvest")}
+          >
+            Resume session
+          </button>
+        ) : (
+          <button
+            className="chatbar-send"
+            onClick={handleSend}
+            disabled={streaming || !input.trim()}
+          >
+            {streaming ? "..." : "↑"}
+          </button>
+        )}
       </div>
 
       {/* Space buttons — shown in hero state */}
       {isEmpty && messages.length === 0 && (
         <div className="chatbar-spaces">
-          {hasArtifacts && onOpenSpace && (
-            <button className="chatbar-space-btn resume" onClick={() => onOpenSpace("tokinvest")}>
-              Resume last workspace
-            </button>
-          )}
           <div className="chatbar-spaces-row">
             <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("tokinvest")}>tokinvest</button>
             <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("personal")}>personal</button>

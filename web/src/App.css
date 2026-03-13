@@ -297,6 +297,24 @@ body {
   transition: bottom 0.5s ease, transform 0.5s ease, width 0.5s ease;
 }
 
+.chatbar-resume-inline {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.chatbar-resume-inline:hover {
+  opacity: 0.8;
+}
+
 .chatbar-spaces {
   display: flex;
   flex-direction: column;
@@ -326,12 +344,6 @@ body {
   background: rgba(255, 255, 255, 0.12);
 }
 
-.chatbar-space-btn.resume {
-  font-size: 0.85rem;
-  padding: 8px 20px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
-}
 
 .chatbar-bar {
   display: flex;
