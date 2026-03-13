@@ -46,10 +46,12 @@ interface Props {
   artifact: Artifact;
   index: number;
   onClick: () => void;
+  onStop?: () => void;
 }
 
-export function ArtifactIcon({ artifact, index, onClick }: Props) {
+export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
   const config = typeConfig[artifact.type];
+  const isApp = artifact.type === "app";
 
   return (
     <button
@@ -69,6 +71,24 @@ export function ArtifactIcon({ artifact, index, onClick }: Props) {
           <path d={config.icon} />
         </svg>
         <span className="file-ext">{config.ext}</span>
+
+        {isApp && (
+          <span
+            className={`status-dot ${artifact.status === "online" ? "online" : artifact.status === "starting" ? "starting" : "offline"}`}
+          />
+        )}
+
+        {isApp && artifact.status === "online" && onStop && (
+          <span
+            className="stop-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStop();
+            }}
+          >
+            &times;
+          </span>
+        )}
       </div>
       <span className="icon-label">{artifact.name}</span>
     </button>

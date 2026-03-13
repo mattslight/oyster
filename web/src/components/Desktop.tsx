@@ -5,9 +5,10 @@ import Aurora from "./reactbits/Aurora";
 interface Props {
   artifacts: Artifact[];
   onArtifactClick: (artifact: Artifact) => void;
+  onArtifactStop?: (artifact: Artifact) => void;
 }
 
-export function Desktop({ artifacts, onArtifactClick }: Props) {
+export function Desktop({ artifacts, onArtifactClick, onArtifactStop }: Props) {
   return (
     <div className="desktop">
       <div className="desktop-aurora">
@@ -25,6 +26,7 @@ export function Desktop({ artifacts, onArtifactClick }: Props) {
             artifact={artifact}
             index={i}
             onClick={() => onArtifactClick(artifact)}
+            onStop={onArtifactStop ? () => onArtifactStop(artifact) : undefined}
           />
         ))}
       </div>
