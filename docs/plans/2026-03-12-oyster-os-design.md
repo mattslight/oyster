@@ -376,9 +376,12 @@ Each user gets an isolated container with:
 - [x] Agent config (`.opencode/agents/oyster.md`) — workspace firewall, context awareness
 - [x] No minimize — windows are open or closed (iOS model)
 - [x] Click-to-focus z-order for windows
+- [x] HTTP+WS hybrid server with app process management API
+- [x] Real Tokinvest workspace artifacts (2 live apps + 4 static docs)
+- [x] App lifecycle: start/stop Vite dev servers, status polling, hero empty state
 - [ ] Wire chat bar input to OpenCode session
 - [ ] Supabase schema (nodes, edges, artifacts — no RLS for PoC)
-- [ ] Supabase realtime subscriptions replacing mock data
+- [ ] Supabase realtime subscriptions replacing JSON registry
 - [ ] Real artifact generation + appearance on surface
 
 ### Prove

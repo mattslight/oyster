@@ -226,19 +226,18 @@ git commit -m "feat: initial project scaffold with mock data"
 - [x] Agent config (`.opencode/agents/oyster.md`) — workspace firewall, context awareness
 - [x] No minimize — windows are open or closed (iOS model)
 - [x] Click-to-focus z-order for windows
+- [x] Server restructured to HTTP+WS hybrid (same port 4200)
+- [x] App process management — start/stop Vite dev servers via API
+- [x] Local JSON registry (`server/registry.json`) for apps + docs
+- [x] Real Tokinvest workspace artifacts replace mock data (2 apps + 4 docs)
+- [x] Status polling (5s) with live app status (online/offline/starting)
+- [x] Hero state chat bar — centered and bold when surface is empty
 
 ### Remaining
 - [ ] Wire chat bar input to OpenCode session (send user messages to the running OpenCode process)
 - [ ] Supabase schema: nodes, edges, artifacts tables (no RLS for PoC)
-- [ ] Supabase realtime subscriptions replacing mock artifact data
-- [ ] Real artifact generation — OpenCode creates artifacts, they appear on the surface via Supabase realtime
-
-### End-to-end smoke test
-1. Open Oyster → see surface with Aurora background
-2. Type in chat bar → message sent to OpenCode session
-3. "Create a mind map" → artifact generated, registered in Supabase, appears on surface
-4. Click artifact → opens in viewer window
-5. Verify Supabase has correct nodes, edges, artifacts
+- [ ] Supabase realtime subscriptions (replaces JSON registry)
+- [ ] Real artifact generation — OpenCode creates artifacts, they appear on the surface
 
 ---
 
