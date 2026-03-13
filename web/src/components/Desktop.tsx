@@ -1,5 +1,6 @@
 import type { Artifact } from "../data/mock-artifacts";
 import { ArtifactIcon } from "./ArtifactIcon";
+import Aurora from "./reactbits/Aurora";
 
 interface Props {
   artifacts: Artifact[];
@@ -9,6 +10,14 @@ interface Props {
 export function Desktop({ artifacts, onArtifactClick }: Props) {
   return (
     <div className="desktop">
+      <div className="desktop-aurora">
+        <Aurora
+          colorStops={["#00694b", "#21b981", "#1a1b2e"]}
+          amplitude={1.2}
+          blend={0.6}
+          speed={0.5}
+        />
+      </div>
       <div className="icon-grid">
         {artifacts.map((artifact, i) => (
           <ArtifactIcon

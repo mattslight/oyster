@@ -13,7 +13,7 @@ People's thinking, work and context are fragmented across ChatGPT, Claude, Notio
 
 ## Product
 
-Oyster is a hosted web app that looks and feels like a personal desktop operating system. The user sees a visual surface of generated outputs — documents, presentations, mind maps, apps — with chat as a floating window on that desktop. Each output replaces a separate tool.
+Oyster is a hosted web app built around a visual surface. The user sees generated outputs — documents, presentations, mind maps, apps — as icons on an ambient surface, with a unified chat bar for talking to the AI. The bar is the single entry point: chat to build, search to find, type to navigate. Each output replaces a separate tool.
 
 The engine for the PoC is OpenCode (`opencode serve`) running inside a hosted user runtime. Product behaviour is primarily steered by `.opencode/agents/oyster.md`. The user never sees OpenCode, terminals, or code — the engine is invisible.
 
@@ -23,15 +23,16 @@ The engine for the PoC is OpenCode (`opencode serve`) running inside a hosted us
 
 ## Architectural Principles
 
-1. The desktop surface is the primary user interface. Artifacts are the product.
-2. Chat is a tool on the desktop, not the product itself. Conversations are windows.
-3. Oyster system data uses a fixed central schema.
-4. App-specific data is local to the user runtime and created only when needed.
-5. Static outputs are files, not mini-apps with unnecessary persistence.
-6. The UI reads Oyster system data directly.
-7. OpenCode is the execution engine for the PoC, not the sole product surface.
-8. The engine is invisible — users never see OpenCode, terminals, or code.
-9. UIs are not static — the desktop evolves as the user creates.
+1. The surface is the primary user interface. Artifacts are the product.
+2. Chat is embedded in the surface, not a separate window to manage.
+3. Zero chrome — no titlebars, taskbars, minimize buttons, or window management for chat. Only artifact viewers use window frames.
+4. Oyster system data uses a fixed central schema.
+5. App-specific data is local to the user runtime and created only when needed.
+6. Static outputs are files, not mini-apps with unnecessary persistence.
+7. The UI reads Oyster system data directly.
+8. OpenCode is the execution engine for the PoC, not the sole product surface.
+9. The engine is invisible — users never see OpenCode, terminals, or code.
+10. The surface evolves as the user creates.
 
 ---
 
@@ -39,9 +40,9 @@ The engine for the PoC is OpenCode (`opencode serve`) running inside a hosted us
 
 Prove that Oyster can:
 
-1. Present a desktop surface where generated outputs appear as typed icons.
-2. Accept chat input via a floating window and structure it into persistent Oyster system data (nodes, edges).
-3. Generate usable outputs that appear on the desktop without the user touching code.
+1. Present a visual surface where generated outputs appear as typed icons.
+2. Accept chat input via an embedded bar and structure it into persistent Oyster system data (nodes, edges).
+3. Generate usable outputs that appear on the surface without the user touching code.
 4. Feel like a workspace you return to, not a chat thread you scroll.
 
 ---
@@ -182,56 +183,68 @@ Key sections:
 
 OpenCode supports custom agent markdown files natively via `.opencode/agents/`. No special tooling needed.
 
-### Web UI — Desktop OS Surface
+### Web UI — The Surface
 
-The UI is a desktop operating system metaphor. Artifacts are desktop icons. Chat is a floating window.
+The UI is a visual surface with an embedded chat bar. Artifacts are icons on the surface. Chat is a bar at the bottom, not a floating window.
 
 ```
 ┌─────────────────────────────────────────────────┐
+│                                          12:34  │
 │                                                  │
 │   [Wireframe]  [Deck]  [Mind Map]  [Notes]      │
 │                                                  │
-│          ┌─────────────────────┐                 │
-│          │ Chat Window         │                 │
-│          │ ─────────────────── │                 │
-│          │ You: make me a map  │                 │
-│          │ Oyster: Creating... │                 │
-│          │                     │                 │
-│          │ [Talk to Oyster...] │                 │
-│          └─────────────────────┘                 │
+│          (Aurora animated background)            │
 │                                                  │
-├──────────────────────────────────────────────────┤
-│ 🟢 Oyster  │ [💬 Creating mind map...]  │ LOCAL │
-└──────────────────────────────────────────────────┘
+│      ┌─────────────────────────────────┐        │
+│      │ 🦪  Talk to Oyster...        ↑ │        │
+│      └─────────────────────────────────┘        │
+└─────────────────────────────────────────────────┘
 ```
 
-**Desktop surface:**
+**The surface:**
 - Artifact icons in a grid, typed and colour-coded (wireframe, deck, map, notes, app — each with distinct colour/icon/badge)
-- New artifacts appear here in real time as they're generated
-- Background: subtle gradient with dot grid (like tokinvest prototype)
+- New artifacts appear in real time as they're generated
+- Background: Aurora WebGL animated gradient (ogl library). Subtle, ambient, alive.
 - Fade-in animations when artifacts appear
+- Clock in top-right corner
 
-**Chat as windows:**
-- Conversations are floating windows on the desktop, like OS app windows
-- Open via the Oyster button in the taskbar
-- Can be minimized to the taskbar
-- When minimized, show a status ticker: "thinking...", "writing presentation...", streaming preview text
+**The chat bar:**
+- Persistent input bar at the bottom-centre of the surface
+- Contains: Oyster icon, text input, send button
+- Glass-effect background with backdrop blur
+- When a conversation is active, a messages panel expands upward showing chat history
+- When streaming, the bar shows status text: "thinking...", "creating mind map..."
+- The bar is the single interface entry point — no dock, no taskbar, no start button
+
+**The bar as universal input (Sprint 2+):**
+- Type a question or instruction → starts a new chat/build session
+- Type a name or keyword → surfaces matching past work (search)
+- Type a navigation command → changes what's on the surface ("show me all projects")
+- One input, multiple intents, zero friction
 
 **Artifact viewer:**
-- Click an artifact icon → opens in a viewer window (same window system as chat)
-- Different renderers per type: iframe for HTML apps/maps/wireframes, markdown renderer for notes
-
-**Taskbar:**
-- Bottom bar with Oyster branding, minimized window chips with status text, status dot, clock
-- The Oyster button opens a new chat window
+- Click an artifact icon → opens in a viewer window (glassmorphic WindowChrome with iframe)
+- The viewer is the only remaining "window" — it makes sense because you're viewing a specific document
 
 **Data model:**
-- Trash is cosmetic — deleting an artifact removes it from the desktop, but the underlying data (nodes, edges) stays in the knowledge graph
-- Auto-hygiene (future): old/idle chats automatically archive to a "Chat History" icon on the desktop
+- Trash is cosmetic — deleting an artifact removes it from the surface, but the underlying data (nodes, edges) stays in the knowledge graph
 
 The UI reads from Supabase directly for the artifact list and knowledge graph. It connects to the OpenCode server via HTTP/SSE for chat.
 
-**Design origin:** This metaphor was validated organically — while building tokinvest-concept, the same artifact-browser-as-desktop pattern emerged naturally as the best way to navigate AI-generated outputs. The desktop metaphor is universal: familiar to older users (Windows/Mac desktop), familiar to younger users (iOS app grid).
+**Design origin:** The visual surface pattern emerged organically from the tokinvest-concept prototype. Sprint 1 initially mimicked desktop OS chrome (floating windows, dock, minimize/maximize) but prototyping revealed this was borrowed decoration that didn't serve user intent. The refined direction strips all chrome and embeds chat directly into the surface.
+
+### Future Vision — Agents on the Surface
+
+Agents are persistent AI workers that live on the surface. Each agent has a mission, produces artifacts over time, and shows live status.
+
+- "Research holiday destinations" → spawns an agent → appears as a living card on the surface
+- The agent works autonomously, producing artifacts (hotel comparisons, flight options)
+- Click an agent to see its conversation + artifacts
+- Some agents are quick one-shots, others are long-running
+
+Agents are a flat list (peers, not hierarchical). The chat bar is how you create and interact with agents.
+
+This is NOT Sprint 1 scope. The current model (artifacts on surface + chat bar) is the foundation that agents layer onto.
 
 ---
 
@@ -241,13 +254,13 @@ The UI reads from Supabase directly for the artifact list and knowledge graph. I
 
 One long-running `opencode serve` process per runtime. Messages are sequential. Context window is managed by the LLM provider. OpenCode persists sessions to SQLite natively.
 
-No concurrency. One session, one user, sequential messages. One chat window at a time.
+No concurrency. One session, one user, sequential messages.
 
 ### Production: Model B — Fresh Sessions, Shared Workspace
 
 Each conversation spawns a fresh session on the same OpenCode server operating on the same persistent workspace (filesystem + local Postgres). `.opencode/agents/oyster.md` and the file system provide continuity between sessions.
 
-Concurrency: one active session per user runtime. Messages are queued. Parallel sessions and multiple simultaneous chat windows are explicitly out of scope until a locking strategy exists.
+Concurrency: one active session per user runtime. Messages are queued. Parallel sessions are explicitly out of scope until a locking strategy exists.
 
 ---
 
@@ -265,7 +278,7 @@ OpenCode supports 75+ LLM providers out of the box, making Oyster provider-agnos
 ## Input Channels
 
 ### PoC
-- Web UI only (chat window on desktop)
+- Web UI only (chat bar on surface)
 
 ### Roadmap
 - Telegram bot
@@ -341,19 +354,21 @@ Each user gets an isolated container with:
 
 ### Sprint Strategy
 
-**Sprint 1: UI Mockup (pure frontend).** Build the desktop surface, chat window, artifact viewer, taskbar — with fake data. No backend. Prove the UX feels right.
+**Sprint 1: UI Mockup (pure frontend).** Build the surface, chat bar, artifact viewer — with fake data. No backend. Prove the UX feels right.
 
-**Sprint 2: Wire the Engine.** Connect OpenCode for chat, Supabase for data, real artifact generation with realtime updates.
+**Sprint 2: Wire the Engine.** Connect OpenCode for chat, Supabase for data, real artifact generation with realtime updates. Enable the bar as universal input (search + navigation).
 
-**Sprint 3+: Polish the OS.** Drag/resize windows, multiple chat windows, auto-hygiene, seeded starter artifacts, right-click menus, folders, search.
+**Sprint 3+: Polish.** Agents, project/workspace switching, seeded starter artifacts, search, right-click menus.
 
 ### Sprint 1 — Build
-- [ ] Desktop surface with typed artifact icons (mock data)
-- [ ] Taskbar with Oyster button, minimized window chips, status, clock
-- [ ] Chat window — floating, closeable, minimizable with status ticker
-- [ ] Artifact viewer window — iframe-based
-- [ ] Simulated chat streaming (fake responses for feel)
-- [ ] Simulated artifact generation (new icon appears on desktop)
+- [x] Surface with Aurora animated background
+- [x] Typed artifact icons on grid (mock data)
+- [x] Chat bar embedded at bottom of surface
+- [x] Chat messages panel (expands upward from bar)
+- [x] Clock in top-right corner
+- [x] Artifact viewer window — iframe-based, glassmorphism
+- [x] Simulated chat streaming (fake responses for feel)
+- [x] Simulated artifact generation (new icon appears on surface)
 
 ### Sprint 2 — Build
 - [ ] OpenCode server setup + `.opencode/agents/oyster.md`
@@ -363,10 +378,10 @@ Each user gets an isolated container with:
 - [ ] Real artifact generation + appearance on desktop
 
 ### Prove
-- Desktop feels like a workspace you return to
+- Surface feels like a workspace you return to
 - Chat becomes structured nodes and edges
 - Oyster can generate at least one static output and one simple app output
-- Artifacts appear on the desktop without the user touching code
+- Artifacts appear on the surface without the user touching code
 - Agent config-driven behaviour is viable as the main PoC control surface
 
 ### Defer
@@ -374,10 +389,9 @@ Each user gets an isolated container with:
 - Multi-user infra
 - Live connectors
 - Automated imports and live connectors
-- Spaces / organisational hierarchy
-- Parallel sessions / multiple chat windows
-- Drag and resize windows
-- Auto-hygiene (chat archival)
+- Agents (persistent AI workers on the surface)
+- Project/workspace switching
+- Bar as universal input (search + navigation)
 - Seeded starter artifacts on first use
 - Advanced graph visualisation
 
@@ -388,4 +402,3 @@ Each user gets an isolated container with:
 1. What's the app serving URL pattern? e.g. `http://vm:4096/file/apps/kps-todo/index.html`
 2. How does the frontend handle CORS when hitting `opencode serve` directly?
 3. Do we need a thin proxy between frontend and `opencode serve` for auth/CORS, or can OpenCode handle it natively?
-4. Should the desktop support spatial memory (user-arranged icon positions) or always auto-grid?

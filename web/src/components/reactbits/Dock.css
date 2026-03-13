@@ -1,0 +1,77 @@
+/* ── Dock ── */
+.dock-outer {
+  display: flex;
+  align-items: center;
+  margin: 0 0.5rem;
+  max-width: 100%;
+}
+
+.dock-panel {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  width: fit-content;
+  gap: 1rem;
+  border-radius: 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.5rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  background: rgba(13, 14, 26, 0.85);
+  backdrop-filter: blur(20px);
+}
+
+.dock-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s;
+}
+
+.dock-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dock-item:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.dock-item-oyster {
+  background: var(--accent) !important;
+  border-color: rgba(33, 185, 129, 0.3) !important;
+}
+
+.dock-item-oyster:hover {
+  background: #1a9a6b !important;
+}
+
+.dock-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-label {
+  position: absolute;
+  top: -1.5rem;
+  left: 50%;
+  width: fit-content;
+  white-space: pre;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(13, 14, 26, 0.95);
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text);
+}

@@ -1,23 +1,24 @@
-export type WindowType = "chat" | "viewer";
+export type WindowType = "chat" | "viewer" | "terminal";
 
 export interface WindowState {
   id: string;
   type: WindowType;
   title: string;
-  minimized: boolean;
   statusText: string;
   artifactPath?: string;
+  zIndex: number;
 }
 
 export type WindowAction =
   | { type: "OPEN_CHAT" }
   | { type: "OPEN_VIEWER"; title: string; path: string }
-  | { type: "MINIMIZE"; id: string }
-  | { type: "RESTORE"; id: string }
   | { type: "CLOSE"; id: string }
-  | { type: "UPDATE_STATUS"; id: string; statusText: string };
+  | { type: "UPDATE_STATUS"; id: string; statusText: string }
+  | { type: "OPEN_TERMINAL" }
+  | { type: "FOCUS"; id: string };
 
 let nextId = 1;
+let topZ = 100;
 
 export function windowsReducer(
   state: WindowState[],
@@ -25,22 +26,22 @@ export function windowsReducer(
 ): WindowState[] {
   switch (action.type) {
     case "OPEN_CHAT": {
-      const existing = state.find((w) => w.type === "chat" && !w.minimized);
-      if (existing) return state;
-      const minimized = state.find((w) => w.type === "chat" && w.minimized);
-      if (minimized) {
+      const existing = state.find((w) => w.type === "chat");
+      if (existing) {
+        topZ++;
         return state.map((w) =>
-          w.id === minimized.id ? { ...w, minimized: false } : w
+          w.id === existing.id ? { ...w, zIndex: topZ } : w
         );
       }
+      topZ++;
       return [
         ...state,
         {
           id: "chat-" + nextId++,
           type: "chat",
           title: "Chat",
-          minimized: false,
           statusText: "",
+          zIndex: topZ,
         },
       ];
     }
@@ -49,36 +50,56 @@ export function windowsReducer(
         (w) => w.type === "viewer" && w.artifactPath === action.path
       );
       if (existing) {
+        topZ++;
         return state.map((w) =>
-          w.id === existing.id ? { ...w, minimized: false } : w
+          w.id === existing.id ? { ...w, zIndex: topZ } : w
         );
       }
+      topZ++;
       return [
         ...state,
         {
           id: "viewer-" + nextId++,
           type: "viewer",
           title: action.title,
-          minimized: false,
           statusText: "",
           artifactPath: action.path,
+          zIndex: topZ,
         },
       ];
     }
-    case "MINIMIZE":
-      return state.map((w) =>
-        w.id === action.id ? { ...w, minimized: true } : w
-      );
-    case "RESTORE":
-      return state.map((w) =>
-        w.id === action.id ? { ...w, minimized: false } : w
-      );
     case "CLOSE":
       return state.filter((w) => w.id !== action.id);
     case "UPDATE_STATUS":
       return state.map((w) =>
         w.id === action.id ? { ...w, statusText: action.statusText } : w
       );
+    case "OPEN_TERMINAL": {
+      const existing = state.find((w) => w.type === "terminal");
+      if (existing) {
+        topZ++;
+        return state.map((w) =>
+          w.id === existing.id ? { ...w, zIndex: topZ } : w
+        );
+      }
+      topZ++;
+      return [
+        ...state,
+        {
+          id: "terminal-" + nextId++,
+          type: "terminal",
+          title: "opencode",
+          statusText: "",
+          zIndex: topZ,
+        },
+      ];
+    }
+    case "FOCUS": {
+      topZ++;
+      return state.map((w) =>
+        w.id === action.id ? { ...w, zIndex: topZ } : w
+      );
+    }
     default:
       return state;
   }

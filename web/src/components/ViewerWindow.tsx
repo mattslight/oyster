@@ -6,15 +6,15 @@ interface Props {
   defaultX: number;
   defaultY: number;
   zIndex: number;
-  onMinimize: () => void;
+  onFocus?: () => void;
   onClose: () => void;
 }
 
-export function ViewerWindow({ title, path, defaultX, defaultY, zIndex, onMinimize, onClose }: Props) {
+export function ViewerWindow({ title, path, defaultX, defaultY, zIndex, onFocus, onClose }: Props) {
   return (
     <WindowChrome
       title={title}
-      onMinimize={onMinimize}
+      onFocus={onFocus}
       onClose={onClose}
       defaultX={defaultX}
       defaultY={defaultY}

@@ -3,7 +3,7 @@ import { useRef, useCallback, type ReactNode, type PointerEvent } from "react";
 interface Props {
   title: string;
   children: ReactNode;
-  onMinimize: () => void;
+  onFocus?: () => void;
   onClose: () => void;
   defaultX: number;
   defaultY: number;
@@ -15,7 +15,7 @@ interface Props {
 export function WindowChrome({
   title,
   children,
-  onMinimize,
+  onFocus,
   onClose,
   defaultX,
   defaultY,
@@ -25,6 +25,7 @@ export function WindowChrome({
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const offset = useRef({ x: 0, y: 0 });
+  const pos = useRef({ x: defaultX, y: defaultY });
 
   const onPointerDown = useCallback((e: PointerEvent) => {
     if ((e.target as HTMLElement).closest(".window-controls")) return;
@@ -34,15 +35,17 @@ export function WindowChrome({
     const rect = el.getBoundingClientRect();
     offset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
-    // Prevent iframes from stealing pointer events while dragging
     document.body.style.userSelect = "none";
     document.querySelectorAll("iframe").forEach((f) => {
       (f as HTMLElement).style.pointerEvents = "none";
     });
 
     function onMove(ev: globalThis.PointerEvent) {
-      el.style.left = ev.clientX - offset.current.x + "px";
-      el.style.top = ev.clientY - offset.current.y + "px";
+      const x = ev.clientX - offset.current.x;
+      const y = ev.clientY - offset.current.y;
+      pos.current = { x, y };
+      el.style.left = x + "px";
+      el.style.top = y + "px";
     }
 
     function onUp() {
@@ -62,10 +65,11 @@ export function WindowChrome({
     <div
       ref={ref}
       className="window-chrome window-enter"
+      onMouseDown={onFocus}
       style={{
         position: "absolute",
-        left: defaultX,
-        top: defaultY,
+        left: pos.current.x,
+        top: pos.current.y,
         width: defaultW,
         height: defaultH,
         zIndex,
@@ -74,9 +78,6 @@ export function WindowChrome({
       <div className="window-titlebar" onPointerDown={onPointerDown}>
         <span className="window-title">{title}</span>
         <div className="window-controls" onMouseDown={(e) => e.stopPropagation()}>
-          <button className="window-btn minimize" onClick={onMinimize}>
-            —
-          </button>
           <button className="window-btn close" onClick={onClose}>
             ×
           </button>

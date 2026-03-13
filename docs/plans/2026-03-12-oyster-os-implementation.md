@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build a desktop OS-style web app where AI-generated outputs appear as typed icons on a visual surface, with chat as a floating window. Sprint 1 is a UI mockup with fake data — prove the feel before wiring the engine.
+**Goal:** Build a visual surface where AI-generated outputs appear as typed icons, with an embedded chat bar for talking to the AI. Sprint 1 is a UI mockup with fake data — prove the feel before wiring the engine.
 
 **Sprint strategy:** UI first (sprint 1, fake data), engine second (sprint 2, OpenCode + Supabase).
 
-**Tech Stack (Sprint 1):** React 19, Vite, Tailwind CSS. No backend. Mock data only.
+**Tech Stack (Sprint 1):** React 19, Vite, plain CSS. No backend. Mock data only.
 
 **Tech Stack (Sprint 2):** OpenCode (`opencode serve`), Supabase (Postgres), local Postgres (for app data). Optional: thin proxy for CORS.
 
