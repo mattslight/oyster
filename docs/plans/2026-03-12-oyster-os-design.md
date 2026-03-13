@@ -356,7 +356,7 @@ Each user gets an isolated container with:
 
 **Sprint 1: UI Mockup (pure frontend).** Build the surface, chat bar, artifact viewer — with fake data. No backend. Prove the UX feels right.
 
-**Sprint 2: Wire the Engine.** Connect OpenCode for chat, Supabase for data, real artifact generation with realtime updates. Enable the bar as universal input (search + navigation).
+**Sprint 2: Wire the Engine.** Embed OpenCode terminal in the surface, connect Supabase for data, real artifact generation with realtime updates.
 
 **Sprint 3+: Polish.** Agents, project/workspace switching, seeded starter artifacts, search, right-click menus.
 
@@ -371,11 +371,15 @@ Each user gets an isolated container with:
 - [x] Simulated artifact generation (new icon appears on surface)
 
 ### Sprint 2 — Build
-- [ ] OpenCode server setup + `.opencode/agents/oyster.md`
+- [x] OpenCode terminal embedded in surface (xterm.js + WebSocket PTY server)
+- [x] Persistent session — survives window close, scrollback replay on reconnect
+- [x] Agent config (`.opencode/agents/oyster.md`) — workspace firewall, context awareness
+- [x] No minimize — windows are open or closed (iOS model)
+- [x] Click-to-focus z-order for windows
+- [ ] Wire chat bar input to OpenCode session
 - [ ] Supabase schema (nodes, edges, artifacts — no RLS for PoC)
-- [ ] Real chat via HTTP/SSE to OpenCode
 - [ ] Supabase realtime subscriptions replacing mock data
-- [ ] Real artifact generation + appearance on desktop
+- [ ] Real artifact generation + appearance on surface
 
 ### Prove
 - Surface feels like a workspace you return to
@@ -399,6 +403,6 @@ Each user gets an isolated container with:
 
 ## Open Questions
 
-1. What's the app serving URL pattern? e.g. `http://vm:4096/file/apps/kps-todo/index.html`
-2. How does the frontend handle CORS when hitting `opencode serve` directly?
-3. Do we need a thin proxy between frontend and `opencode serve` for auth/CORS, or can OpenCode handle it natively?
+1. What's the app serving URL pattern for generated apps?
+2. Deployment: single VPS (nginx + WS server + OpenCode) or split (static frontend on CDN, WS server on VPS)?
+3. How to handle touch device drag (pointer events conflict with touch scrolling)?
