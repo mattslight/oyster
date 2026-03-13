@@ -1,0 +1,465 @@
+/* ── Oyster OS — Desktop Shell ── */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --desktop-bg: #1a1b2e;
+  --taskbar: #0d0e1a;
+  --window-chrome: #232440;
+  --window-body: #1e1f36;
+  --accent: #21b981;
+  --accent-glow: rgba(33, 185, 129, 0.15);
+  --text: #e8e9f0;
+  --text-dim: rgba(232, 233, 240, 0.5);
+  --icon-hover: rgba(33, 185, 129, 0.08);
+  --icon-active: rgba(33, 185, 129, 0.14);
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-body: 'Space Grotesk', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--desktop-bg);
+  color: var(--text);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── Shell layout ── */
+.oyster-shell {
+  height: 100%;
+  position: relative;
+}
+
+/* ── Desktop ── */
+.desktop {
+  position: fixed;
+  inset: 0;
+  bottom: 48px;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(33, 185, 129, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(99, 102, 241, 0.04) 0%, transparent 40%),
+    linear-gradient(180deg, #1a1b2e 0%, #141524 100%);
+  overflow: hidden;
+}
+
+.desktop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+
+/* ── Icon grid ── */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 120px);
+  gap: 8px;
+  padding: 32px;
+  align-content: start;
+  height: 100%;
+}
+
+/* ── Artifact icon ── */
+.artifact-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+  opacity: 0;
+  animation: fadeUp 0.4s ease forwards;
+}
+
+.artifact-icon:hover {
+  background: var(--icon-hover);
+}
+
+.artifact-icon:active {
+  background: var(--icon-active);
+}
+
+.artifact-icon.generating {
+  animation: fadeUp 0.4s ease forwards, pulse 1.5s ease-in-out infinite;
+}
+
+/* Icon thumbnail */
+.icon-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.icon-thumb svg {
+  width: 28px;
+  height: 28px;
+  opacity: 0.9;
+}
+
+.icon-thumb .file-ext {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  line-height: 1;
+}
+
+.icon-label {
+  font-size: 0.68rem;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.35;
+  color: var(--text);
+  word-break: break-word;
+  max-width: 104px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+
+/* ── Taskbar ── */
+.taskbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: var(--taskbar);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 200;
+  backdrop-filter: blur(20px);
+  opacity: 0;
+  animation: fadeUp 0.3s ease 0.1s forwards;
+}
+
+.taskbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.start-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  letter-spacing: 0.01em;
+}
+
+.start-btn:hover { background: #1a9a6b; }
+.start-btn:active { transform: scale(0.97); }
+.start-btn svg { width: 16px; height: 16px; }
+
+.taskbar-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255,255,255,0.08);
+}
+
+/* ── Taskbar chips ── */
+.taskbar-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  max-width: 200px;
+  overflow: hidden;
+}
+
+.taskbar-chip:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.chip-icon {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+}
+
+.chip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.taskbar-clock {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  min-width: 48px;
+  text-align: right;
+}
+
+.taskbar-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.status-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Windows layer ── */
+.windows-layer {
+  position: fixed;
+  inset: 0;
+  bottom: 48px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.windows-layer > div,
+.windows-layer > .moveable-window {
+  pointer-events: auto;
+}
+
+.moveable-window {
+  pointer-events: auto;
+}
+
+/* ── Window chrome ── */
+.window-chrome {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--window-chrome);
+  border-radius: 10px;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.4),
+    0 0 0 1px rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.window-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 36px;
+  background: rgba(0,0,0,0.2);
+  flex-shrink: 0;
+  cursor: move;
+}
+
+.window-title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.window-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.window-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.window-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text);
+}
+
+.window-btn.close:hover {
+  background: rgba(255, 80, 80, 0.3);
+  color: #ff6b6b;
+}
+
+.window-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--window-body);
+}
+
+/* ── Chat window ── */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-bubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  border-bottom-left-radius: 3px;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+.chat-input-row input {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.chat-input-row input:focus {
+  border-color: var(--accent);
+}
+
+.chat-input-row input::placeholder {
+  color: var(--text-dim);
+}
+
+.chat-input-row button {
+  width: 34px;
+  height: 34px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.chat-input-row button:hover { background: #1a9a6b; }
+.chat-input-row button:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Viewer ── */
+.viewer-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+  flex: 1;
+}
+
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.window-enter {
+  animation: windowIn 0.15s ease-out forwards;
+}
+
+@keyframes windowIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
