@@ -10,6 +10,8 @@ interface Props {
   defaultW: number;
   defaultH: number;
   zIndex: number;
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export function WindowChrome({
@@ -22,12 +24,15 @@ export function WindowChrome({
   defaultW,
   defaultH,
   zIndex,
+  fullscreen = false,
+  onToggleFullscreen,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const offset = useRef({ x: 0, y: 0 });
   const pos = useRef({ x: defaultX, y: defaultY });
 
   const onPointerDown = useCallback((e: PointerEvent) => {
+    if (fullscreen) return;
     if ((e.target as HTMLElement).closest(".window-controls")) return;
     e.preventDefault();
 
@@ -59,25 +64,62 @@ export function WindowChrome({
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-  }, []);
+  }, [fullscreen]);
+
+  const handleTitleBarDoubleClick = useCallback(() => {
+    onToggleFullscreen?.();
+  }, [onToggleFullscreen]);
+
+  const className = `window-chrome window-enter${fullscreen ? " fullscreen" : ""}`;
 
   return (
     <div
       ref={ref}
-      className="window-chrome window-enter"
+      className={className}
       onMouseDown={onFocus}
-      style={{
-        position: "absolute",
-        left: pos.current.x,
-        top: pos.current.y,
-        width: defaultW,
-        height: defaultH,
-        zIndex,
-      }}
+      style={
+        fullscreen
+          ? { position: "fixed", inset: 0, zIndex: 9999 }
+          : {
+              position: "absolute",
+              left: pos.current.x,
+              top: pos.current.y,
+              width: defaultW,
+              height: defaultH,
+              zIndex,
+            }
+      }
     >
-      <div className="window-titlebar" onPointerDown={onPointerDown}>
+      <div
+        className="window-titlebar"
+        onPointerDown={onPointerDown}
+        onDoubleClick={handleTitleBarDoubleClick}
+      >
         <span className="window-title">{title}</span>
         <div className="window-controls" onMouseDown={(e) => e.stopPropagation()}>
+          {onToggleFullscreen && (
+            <button
+              className="window-btn window-expand-btn"
+              onClick={onToggleFullscreen}
+              title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {fullscreen ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 14 10 14 10 20" />
+                  <polyline points="20 10 14 10 14 4" />
+                  <line x1="14" y1="10" x2="21" y2="3" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 3 21 3 21 9" />
+                  <polyline points="9 21 3 21 3 15" />
+                  <line x1="21" y1="3" x2="14" y2="10" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              )}
+            </button>
+          )}
           <button className="window-btn close" onClick={onClose}>
             ×
           </button>

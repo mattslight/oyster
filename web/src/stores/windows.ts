@@ -7,15 +7,18 @@ export interface WindowState {
   statusText: string;
   artifactPath?: string;
   zIndex: number;
+  fullscreen: boolean;
 }
 
 export type WindowAction =
   | { type: "OPEN_CHAT" }
-  | { type: "OPEN_VIEWER"; title: string; path: string }
+  | { type: "OPEN_VIEWER"; title: string; path: string; fullscreen?: boolean }
   | { type: "CLOSE"; id: string }
   | { type: "UPDATE_STATUS"; id: string; statusText: string }
   | { type: "OPEN_TERMINAL" }
-  | { type: "FOCUS"; id: string };
+  | { type: "FOCUS"; id: string }
+  | { type: "TOGGLE_FULLSCREEN"; id: string }
+  | { type: "NAVIGATE_VIEWER"; id: string; title: string; artifactPath: string };
 
 let nextId = 1;
 let topZ = 100;
@@ -42,6 +45,7 @@ export function windowsReducer(
           title: "Chat",
           statusText: "",
           zIndex: topZ,
+          fullscreen: false,
         },
       ];
     }
@@ -65,6 +69,7 @@ export function windowsReducer(
           statusText: "",
           artifactPath: action.path,
           zIndex: topZ,
+          fullscreen: action.fullscreen ?? false,
         },
       ];
     }
@@ -91,6 +96,7 @@ export function windowsReducer(
           title: "opencode",
           statusText: "",
           zIndex: topZ,
+          fullscreen: false,
         },
       ];
     }
@@ -98,6 +104,18 @@ export function windowsReducer(
       topZ++;
       return state.map((w) =>
         w.id === action.id ? { ...w, zIndex: topZ } : w
+      );
+    }
+    case "TOGGLE_FULLSCREEN": {
+      return state.map((w) =>
+        w.id === action.id ? { ...w, fullscreen: !w.fullscreen } : w
+      );
+    }
+    case "NAVIGATE_VIEWER": {
+      return state.map((w) =>
+        w.id === action.id
+          ? { ...w, title: action.title, artifactPath: action.artifactPath }
+          : w
       );
     }
     default:

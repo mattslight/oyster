@@ -237,8 +237,14 @@ git commit -m "feat: initial project scaffold with mock data"
 - [x] Ultra Hardcore terminal gate — first-time confirmation modal (localStorage gated)
 - [x] Multi-space artifact filtering — `space` field in registry, filtered on frontend
 - [x] Markdown rendering for doc artifacts — `marked` library, styled dark theme
-- [x] Resume session inline button — replaces send button when on hero state with existing artifacts
 - [x] Rotating placeholder text — curated phrases instead of static placeholder
+- [x] Space pills navigation — persistent pill row above chatbar for switching spaces (replaces old resume session button + hero-only space buttons)
+- [x] Fresh session model — home (`/`) always starts a new session, session URLs (`/session/:id`) are bookmarkable and refreshable
+- [x] Deck artifacts open fullscreen by default with draggable light frosted-glass toolbar
+- [x] Self-healing artifact cleanup — stale entries auto-removed when backing file is deleted/renamed
+- [x] Artifact name override system — `NAME_OVERRIDES` map for filenames that can't contain special characters (e.g. apostrophes)
+- [x] "The World's Your Oyster" showcase deck with FaultyTerminal WebGL shader background (ogl, vanilla JS)
+- [x] Chat API layer (`chat-api.ts`) — SSE streaming to OpenCode, session create/load/send
 
 ### Remaining
 - [ ] Wire chat bar input to OpenCode session (send user messages to the running OpenCode process)
@@ -252,7 +258,8 @@ git commit -m "feat: initial project scaffold with mock data"
 
 - Window resize handles
 - Agents as persistent AI workers on the surface
-- Smart workspace switching (auto-detect, recent spaces, dynamic space creation)
+- Session browser/search UI (browse and revisit past conversations)
+- Cross-session AI references (Oyster recalls and pulls context from past sessions)
 - Bar as universal input (search + navigation)
 - Richer starter content for personal/kps spaces
 - Right-click context menus on artifacts

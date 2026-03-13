@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { extname } from "node:path";
+import { spawn } from "node:child_process";
 import { WebSocketServer, WebSocket } from "ws";
 import { marked } from "marked";
 import pty from "node-pty";
@@ -11,9 +12,11 @@ import {
   stopApp,
   isPortOpen,
   waitForReady,
+  registerGeneratedArtifact,
 } from "./process-manager.js";
 
 const PORT = 4200;
+const OPENCODE_PORT = 4096;
 const SHELL = process.env.OYSTER_SHELL || "opencode";
 const SHELL_ARGS = SHELL === "opencode" ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || process.cwd();
@@ -85,6 +88,296 @@ function spawnSession() {
   return p;
 }
 
+// ── OpenCode serve (headless API server) ──
+
+let shuttingDown = false;
+let opencodeRestarts = 0;
+const MAX_RESTARTS = 10;
+
+function spawnOpenCodeServe() {
+  console.log(`Spawning opencode serve on port ${OPENCODE_PORT}`);
+  const child = spawn("opencode", ["serve", "--port", String(OPENCODE_PORT)], {
+    cwd: WORKSPACE,
+    env: cleanEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  child.stdout?.on("data", (data: Buffer) => {
+    console.log(`[opencode-serve] ${data.toString().trim()}`);
+  });
+
+  child.stderr?.on("data", (data: Buffer) => {
+    console.error(`[opencode-serve] ${data.toString().trim()}`);
+  });
+
+  child.on("exit", (code) => {
+    if (shuttingDown) return;
+    opencodeRestarts++;
+    if (opencodeRestarts > MAX_RESTARTS) {
+      console.error("[opencode-serve] too many restarts, giving up");
+      return;
+    }
+    const delay = Math.min(2000 * opencodeRestarts, 30000);
+    console.log(`[opencode-serve] exited (code ${code}), restarting in ${delay}ms...`);
+    setTimeout(spawnOpenCodeServe, delay);
+  });
+
+  return child;
+}
+
+spawnOpenCodeServe();
+
+process.on("SIGTERM", () => { shuttingDown = true; process.exit(0); });
+process.on("SIGINT", () => { shuttingDown = true; process.exit(0); });
+
+// ── Auto-approve permission requests from opencode ──
+// In the PoC, we trust all tool use. This listens to the SSE stream
+// and auto-approves any permission.asked events.
+
+// ── File-based artifact detection ──
+
+const seenFiles = new Set<string>();
+
+// Directories to watch for generated artifacts
+// WORKSPACE is the server dir; project root is one level up
+const PROJECT_ROOT = WORKSPACE.replace(/\/server\/?$/, "");
+const ARTIFACT_DIRS = [
+  { prefix: `${PROJECT_ROOT}/web/public/`, serve: "/", space: "generated" },
+  { prefix: `${PROJECT_ROOT}/apps/`, serve: "/apps/", space: "generated" },
+  { prefix: `${PROJECT_ROOT}/docs/generated/`, serve: "/docs/generated/", space: "generated" },
+];
+
+function inferType(filePath: string): string {
+  const lower = filePath.toLowerCase();
+  if (lower.includes("dashboard") || lower.includes("diagram")) return "diagram";
+  if (lower.includes("deck") || lower.includes("slide") || lower.includes("present")) return "deck";
+  if (lower.includes("map") || lower.includes("mind")) return "map";
+  if (lower.includes("note") || lower.includes("readme")) return "notes";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "deck";
+  if (lower.endsWith(".md")) return "notes";
+  return "notes";
+}
+
+// Filenames can't contain apostrophes, so override display names here
+const NAME_OVERRIDES: Record<string, string> = {
+  "the-worlds-your-oyster": "The World's Your Oyster",
+};
+
+function inferName(filePath: string): string {
+  const base = filePath.split("/").pop() || "untitled";
+  const stem = base.replace(/\.[^.]+$/, "");
+  if (NAME_OVERRIDES[stem]) return NAME_OVERRIDES[stem];
+  return stem
+    .replace(/[-_]/g, " ")         // dashes/underscores to spaces
+    .replace(/\b\w/g, (c) => c.toUpperCase()); // title case
+}
+
+function handleFileEdited(rawPath: string) {
+  // Resolve relative paths against workspace
+  const filePath = rawPath.startsWith("/") ? rawPath : `${WORKSPACE}/${rawPath}`;
+  if (seenFiles.has(filePath)) return;
+
+  for (const dir of ARTIFACT_DIRS) {
+    if (filePath.startsWith(dir.prefix)) {
+      const relativePath = filePath.slice(dir.prefix.length);
+      // Only register HTML and MD files as artifacts (skip SVGs, images, etc.)
+      if (!filePath.endsWith(".html") && !filePath.endsWith(".htm") && !filePath.endsWith(".md")) return;
+      // Skip known static assets
+      if (relativePath.startsWith("demo/") || relativePath.endsWith(".svg")) return;
+
+      const id = `gen:${relativePath}`;
+      const servePath = dir.serve + relativePath;
+      const name = inferName(filePath);
+      const type = inferType(filePath);
+
+      seenFiles.add(filePath);
+      console.log(`[artifact-detect] new artifact: ${name} (${type}) → ${servePath}`);
+
+      registerGeneratedArtifact({
+        id,
+        name,
+        type,
+        status: "ready",
+        path: servePath,
+        space: dir.space,
+        createdAt: new Date().toISOString(),
+      }, filePath);
+      return;
+    }
+  }
+}
+
+// Scan watched directories on startup for existing artifacts
+function scanExistingArtifacts() {
+  for (const dir of ARTIFACT_DIRS) {
+    if (!existsSync(dir.prefix)) continue;
+    try {
+      const files = readdirSync(dir.prefix);
+      for (const file of files) {
+        const fullPath = dir.prefix + file;
+        try {
+          if (statSync(fullPath).isFile()) {
+            handleFileEdited(fullPath);
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+}
+
+scanExistingArtifacts();
+
+async function startAutoApprover() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${OPENCODE_PORT}/event`, {
+      headers: { Accept: "text/event-stream" },
+    });
+    if (!res.ok || !res.body) {
+      console.log("[auto-approver] failed to connect, retrying in 3s...");
+      setTimeout(startAutoApprover, 3000);
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    async function pump() {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "permission.asked") {
+              const requestId = event.properties.id;
+              console.log(`[auto-approver] approving ${requestId}: ${event.properties.permission}`);
+              fetch(`http://127.0.0.1:${OPENCODE_PORT}/permission/${requestId}/reply`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reply: "always" }),
+              }).catch(() => {});
+            }
+
+            // Auto-detect new artifacts from file.edited events
+            if (event.type === "file.edited") {
+              const file = event.properties.file as string | undefined;
+              if (file) handleFileEdited(file);
+            }
+          } catch {}
+        }
+      }
+    }
+
+    pump().catch(() => {}).finally(() => {
+      if (!shuttingDown) {
+        console.log("[auto-approver] disconnected, reconnecting in 3s...");
+        setTimeout(startAutoApprover, 3000);
+      }
+    });
+  } catch {
+    if (!shuttingDown) setTimeout(startAutoApprover, 3000);
+  }
+}
+
+// Give opencode serve a moment to start before connecting
+setTimeout(startAutoApprover, 3000);
+
+// ── Proxy helpers for opencode API ──
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    let body = "";
+    req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+    req.on("end", () => resolve(body));
+    req.on("error", () => resolve(""));
+  });
+}
+
+async function proxyToOpenCode(
+  req: IncomingMessage,
+  res: ServerResponse,
+  targetPath: string
+) {
+  const method = req.method || "GET";
+  const url = `http://127.0.0.1:${OPENCODE_PORT}${targetPath}`;
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const fetchOpts: RequestInit = { method, headers };
+
+  if (method === "POST" || method === "PATCH" || method === "PUT") {
+    fetchOpts.body = await readBody(req);
+  }
+
+  try {
+    const upstream = await fetch(url, fetchOpts);
+    res.writeHead(upstream.status, {
+      "Content-Type": upstream.headers.get("content-type") || "application/json",
+    });
+    const text = await upstream.text();
+    res.end(text);
+  } catch (err) {
+    res.writeHead(502, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "opencode serve unavailable" }));
+  }
+}
+
+async function proxySSE(
+  req: IncomingMessage,
+  res: ServerResponse,
+  targetPath: string
+) {
+  const url = `http://127.0.0.1:${OPENCODE_PORT}${targetPath}`;
+
+  try {
+    const upstream = await fetch(url, {
+      headers: { Accept: "text/event-stream" },
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      res.writeHead(upstream.status);
+      res.end();
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+    });
+
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+
+    async function pump() {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        res.write(chunk);
+      }
+      res.end();
+    }
+
+    pump().catch(() => res.end());
+
+    req.on("close", () => {
+      reader.cancel();
+    });
+  } catch {
+    res.writeHead(502);
+    res.end();
+  }
+}
+
 // ── HTTP request handler ──
 
 async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
@@ -94,7 +387,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // GET /api/artifacts
   if (url === "/api/artifacts") {
-    const artifacts = await getAllArtifacts();
+    const artifacts = await getAllArtifacts((filePath) => seenFiles.delete(filePath));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(artifacts));
     return;
@@ -182,6 +475,82 @@ li { margin: 0.3rem 0; }
       res.writeHead(200, { "Content-Type": mime });
       res.end(readFileSync(filePath));
     }
+    return;
+  }
+
+  // ── OpenCode chat API proxy ──
+
+  // Handle CORS preflight for POST routes
+  if (req.method === "OPTIONS" && url.startsWith("/api/chat/")) {
+    res.writeHead(204, {
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+    res.end();
+    return;
+  }
+
+  // GET /api/chat/events → SSE proxy
+  if (url === "/api/chat/events" || url.startsWith("/api/chat/events?")) {
+    await proxySSE(req, res, "/event");
+    return;
+  }
+
+  // GET /api/chat/doc → OpenAPI spec
+  if (url === "/api/chat/doc") {
+    await proxyToOpenCode(req, res, "/doc");
+    return;
+  }
+
+  // POST /api/chat/session → create session
+  if (url === "/api/chat/session" && req.method === "POST") {
+    await proxyToOpenCode(req, res, "/session");
+    return;
+  }
+
+  // GET /api/chat/session → list sessions
+  if (url === "/api/chat/session" && req.method === "GET") {
+    await proxyToOpenCode(req, res, "/session");
+    return;
+  }
+
+  // POST /api/chat/session/:id/message → send message
+  const msgMatch = url.match(/^\/api\/chat\/session\/([^/]+)\/message$/);
+  if (msgMatch && req.method === "POST") {
+    await proxyToOpenCode(req, res, `/session/${msgMatch[1]}/message`);
+    return;
+  }
+
+  // GET /api/chat/session/:id/message → list messages
+  if (msgMatch && req.method === "GET") {
+    await proxyToOpenCode(req, res, `/session/${msgMatch[1]}/message`);
+    return;
+  }
+
+  // GET /api/chat/session/:id → get session
+  const sessionMatch = url.match(/^\/api\/chat\/session\/([^/]+)$/);
+  if (sessionMatch && req.method === "GET") {
+    await proxyToOpenCode(req, res, `/session/${sessionMatch[1]}`);
+    return;
+  }
+
+  // POST /api/chat/session/:id/abort → abort session
+  const abortMatch = url.match(/^\/api\/chat\/session\/([^/]+)\/abort$/);
+  if (abortMatch && req.method === "POST") {
+    await proxyToOpenCode(req, res, `/session/${abortMatch[1]}/abort`);
+    return;
+  }
+
+  // GET /api/chat/permission → list pending permissions
+  if (url === "/api/chat/permission" && req.method === "GET") {
+    await proxyToOpenCode(req, res, "/permission");
+    return;
+  }
+
+  // POST /api/chat/question/:id/reply → reply to question
+  const questionMatch = url.match(/^\/api\/chat\/question\/([^/]+)\/reply$/);
+  if (questionMatch && req.method === "POST") {
+    await proxyToOpenCode(req, res, `/question/${questionMatch[1]}/reply`);
     return;
   }
 

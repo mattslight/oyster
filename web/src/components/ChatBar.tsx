@@ -1,4 +1,12 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import {
+  createSession,
+  sendMessage,
+  subscribeToEvents,
+  loadMessages,
+  replyToQuestion,
+  type ChatEvent,
+} from "../data/chat-api";
 
 const placeholders = [
   "What are you working on?",
@@ -17,23 +25,31 @@ const taglines = [
   { dim: "One prompt away", bright: "from something great." },
   { dim: "Don't be shy.", bright: "The shell listens." },
 ];
-import { mockResponses, defaultChunks } from "../data/mock-chat";
-import type { Artifact } from "../data/mock-artifacts";
+
+interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+interface PendingQuestion {
+  id: string;
+  question: string;
+  options: QuestionOption[];
+}
 
 interface Message {
+  id?: string;
   role: "user" | "assistant";
   content: string;
+  question?: PendingQuestion;
 }
 
 interface Props {
-  onArtifactGenerated: (artifact: Artifact) => void;
   onOpenTerminal: () => void;
-  isEmpty?: boolean;
-  onOpenSpace?: (space: string) => void;
-  hasArtifacts?: boolean;
+  isHero?: boolean;
 }
 
-export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSpace, hasArtifacts }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -41,11 +57,192 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
   const [expanded, setExpanded] = useState(false);
   const [focused, setFocused] = useState(false);
   const [tagline, setTagline] = useState<{ dim: string; bright: string } | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const placeholder = useMemo(() => placeholders[Math.floor(Math.random() * placeholders.length)], []);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isHero = isEmpty && messages.length === 0;
+  const isHero = !!isHeroProp;
+
+  // Track current assistant message being streamed
+  const currentAssistantMsg = useRef<string | null>(null);
+  // Track text parts by partID for delta accumulation
+  const textParts = useRef<Map<string, string>>(new Map());
+
+  // Parse session ID from URL if present (/session/:id)
+  function getSessionIdFromUrl(): string | null {
+    const match = window.location.pathname.match(/^\/session\/(.+)$/);
+    return match ? match[1] : null;
+  }
+
+  // Initialize session: fresh on home (/), restore on session URL (/session/:id)
+  useEffect(() => {
+    async function init() {
+      try {
+        const urlSessionId = getSessionIdFromUrl();
+
+        if (urlSessionId) {
+          // Session URL — restore that session's messages
+          setSessionId(urlSessionId);
+          const existing = await loadMessages(urlSessionId);
+          const restored: Message[] = [];
+          for (const msg of existing) {
+            const tp = msg.parts.filter((p) => p.type === "text" && p.text);
+            const content = tp.map((p) => p.text).join("");
+            if (content) {
+              restored.push({
+                id: msg.info.id,
+                role: msg.info.role as "user" | "assistant",
+                content,
+              });
+            }
+          }
+          if (restored.length > 0) {
+            setMessages(restored);
+            setExpanded(true);
+          }
+        } else {
+          // Home — always create a fresh session
+          const session = await createSession();
+          setSessionId(session.id);
+        }
+      } catch (err) {
+        console.error("Failed to init chat session:", err);
+      }
+    }
+
+    init();
+
+    // Listen for browser back/forward navigation
+    function handlePopState() {
+      const urlSid = getSessionIdFromUrl();
+      if (!urlSid) {
+        // Navigated back to home — reset to fresh state
+        setMessages([]);
+        setExpanded(false);
+        setSessionId(null);
+        createSession().then((s) => setSessionId(s.id)).catch(console.error);
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Subscribe to SSE events once we have a session
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const unsubscribe = subscribeToEvents((event: ChatEvent) => {
+      const props = event.properties;
+
+      // Only handle events for our session
+      const eventSessionId =
+        (props.sessionID as string) ||
+        (props.info as { sessionID?: string })?.sessionID ||
+        (props.part as { sessionID?: string })?.sessionID;
+      if (eventSessionId && eventSessionId !== sessionId) return;
+
+      switch (event.type) {
+        case "session.status": {
+          const status = props.status as { type: string };
+          if (status.type === "busy") {
+            setStreaming(true);
+            setStatusText("thinking...");
+          } else if (status.type === "idle") {
+            setStreaming(false);
+            setStatusText("");
+            currentAssistantMsg.current = null;
+            textParts.current.clear();
+          }
+          break;
+        }
+
+        case "message.updated": {
+          const info = props.info as {
+            id: string;
+            role: string;
+            sessionID: string;
+          };
+          if (info.role === "assistant" && !currentAssistantMsg.current) {
+            currentAssistantMsg.current = info.id;
+            setMessages((prev) => [...prev, { id: info.id, role: "assistant", content: "" }]);
+          }
+          break;
+        }
+
+        case "message.part.delta": {
+          const messageId = props.messageID as string;
+          const partId = props.partID as string;
+          const field = props.field as string;
+          const delta = props.delta as string;
+
+          // Only accumulate deltas for the current assistant message
+          if (field === "text" && messageId === currentAssistantMsg.current) {
+            const current = textParts.current.get(partId) || "";
+            const updated = current + delta;
+            textParts.current.set(partId, updated);
+
+            // Build full content from all text parts for this message
+            const fullContent = Array.from(textParts.current.values()).join("");
+
+            setMessages((prev) => {
+              const msgs = [...prev];
+              const lastIdx = msgs.length - 1;
+              if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                msgs[lastIdx] = { ...msgs[lastIdx], content: fullContent };
+              }
+              return msgs;
+            });
+
+            // Update status with latest chunk
+            if (delta.trim()) {
+              setStatusText(delta.trim().slice(0, 40) + "...");
+            }
+          }
+          break;
+        }
+
+        case "message.part.updated": {
+          const part = props.part as {
+            type: string;
+            text?: string;
+            id: string;
+          };
+          if (part.type === "text" && part.text !== undefined) {
+            textParts.current.set(part.id, part.text);
+          }
+          break;
+        }
+
+        case "question.asked": {
+          const q = props as {
+            id: string;
+            questions: Array<{ question: string; options: QuestionOption[] }>;
+          };
+          if (q.questions?.length > 0) {
+            const first = q.questions[0];
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: first.question,
+                question: {
+                  id: q.id,
+                  question: first.question,
+                  options: first.options,
+                },
+              },
+            ]);
+            setStatusText("waiting for your choice...");
+          }
+          break;
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [sessionId]);
 
   useEffect(() => {
     if (expanded) {
@@ -53,8 +250,10 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
     }
   }, [messages, expanded]);
 
-  async function handleSend() {
-    if (!input.trim() || streaming) return;
+  const hasPushedUrl = useRef(false);
+
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || streaming || !sessionId) return;
     const content = input;
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content }]);
@@ -62,39 +261,27 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
     setExpanded(true);
     setStatusText("thinking...");
 
-    const match = mockResponses.find((r) => r.trigger.test(content));
-    const chunks = match ? match.chunks : defaultChunks;
-
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-    let accumulated = "";
-    for (const chunk of chunks) {
-      await delay(400 + Math.random() * 300);
-      accumulated += chunk;
-      const text = accumulated;
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: "assistant", content: text };
-        return updated;
-      });
-      setStatusText(chunk.trim().slice(0, 40) + "...");
+    // Push session URL on first message so refresh reloads this conversation
+    if (!hasPushedUrl.current) {
+      window.history.pushState(null, "", `/session/${sessionId}`);
+      hasPushedUrl.current = true;
     }
 
-    if (match?.generatesArtifact) {
-      await delay(600);
-      onArtifactGenerated({
-        ...match.generatesArtifact,
-        id: "gen-" + Date.now(),
-        createdAt: new Date().toISOString(),
-      });
-    }
+    // Reset text parts tracking for new response
+    textParts.current.clear();
+    currentAssistantMsg.current = null;
 
-    setStreaming(false);
-    setStatusText("");
-  }
+    try {
+      await sendMessage(sessionId, content);
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setStreaming(false);
+      setStatusText("");
+    }
+  }, [input, streaming, sessionId]);
 
   return (
-    <div className={`chatbar-wrapper ${isEmpty && messages.length === 0 ? "chatbar-hero" : ""}`}>
+    <div className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
       {/* Hero tagline — fades out on focus, cycles on blur */}
       {isHero && (
         <div className={`chatbar-hero-tagline ${focused ? "tagline-hidden" : ""}`}>
@@ -122,8 +309,41 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
             ✕
           </button>
           {messages.map((msg, i) => (
-            <div key={i} className={`chat-bubble ${msg.role}`}>
-              {msg.content}
+            <div key={msg.id || i} className={`chat-bubble ${msg.role}`}>
+              {msg.content || (msg.role === "assistant" && streaming ? "..." : "")}
+              {msg.question && (
+                <div className="question-options">
+                  {msg.question.options.map((opt) => (
+                    <button
+                      key={opt.label}
+                      className="question-option-btn"
+                      onClick={async () => {
+                        const qId = msg.question!.id;
+                        // Remove the question from this message
+                        setMessages((prev) =>
+                          prev.map((m) =>
+                            m.question?.id === qId
+                              ? { ...m, question: undefined }
+                              : m
+                          )
+                        );
+                        // Add user's choice as a message
+                        setMessages((prev) => [
+                          ...prev,
+                          { role: "user", content: opt.label },
+                        ]);
+                        try {
+                          await replyToQuestion(qId, [[opt.label]]);
+                        } catch (err) {
+                          console.error("Failed to reply to question:", err);
+                        }
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           <div ref={bottomRef} />
@@ -157,7 +377,6 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           onFocus={() => {
             setFocused(true);
-            if (messages.length > 0) setExpanded(true);
           }}
           onBlur={() => {
             if (!input.trim()) {
@@ -170,38 +389,15 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSp
           disabled={streaming}
           className="chatbar-input"
         />
-        {isEmpty && hasArtifacts && !input.trim() ? (
-          <button
-            className="chatbar-resume-inline"
-            onClick={() => onOpenSpace?.("tokinvest")}
-          >
-            Resume session
-          </button>
-        ) : (
-          <button
-            className="chatbar-send"
-            onClick={handleSend}
-            disabled={streaming || !input.trim()}
-          >
-            {streaming ? "..." : "↑"}
-          </button>
-        )}
+        <button
+          className="chatbar-send"
+          onClick={handleSend}
+          disabled={streaming || !input.trim()}
+        >
+          {streaming ? "..." : "↑"}
+        </button>
       </div>
 
-      {/* Space buttons — shown in hero state */}
-      {isEmpty && messages.length === 0 && (
-        <div className="chatbar-spaces">
-          <div className="chatbar-spaces-row">
-            <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("tokinvest")}>tokinvest</button>
-            <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("personal")}>personal</button>
-            <button className="chatbar-space-btn" onClick={() => onOpenSpace?.("kps")}>kps</button>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

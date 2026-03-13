@@ -5,6 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/api/chat/events': {
+        target: 'http://localhost:4200',
+        headers: { Accept: 'text/event-stream' },
+      },
       '/api': 'http://localhost:4200',
       '/docs': 'http://localhost:4200',
     }

@@ -224,6 +224,7 @@ The UI is a visual surface with an embedded chat bar. Artifacts are icons on the
 
 **Artifact viewer:**
 - Click an artifact icon → opens in a viewer window (glassmorphic WindowChrome with iframe)
+- Deck artifacts open fullscreen by default with a draggable light frosted-glass toolbar (universally visible on any content). Toolbar has prev/next navigation, exit fullscreen, and close.
 - The viewer is the only remaining "window" — it makes sense because you're viewing a specific document
 
 **Data model:**
@@ -250,17 +251,23 @@ This is NOT Sprint 1 scope. The current model (artifacts on surface + chat bar) 
 
 ## Session Model
 
-### PoC: Model A — One Persistent Session
+**Mental model:** Google, not ChatGPT. Home is always a clean slate. Sessions are bookmarkable URLs.
 
-One long-running `opencode serve` process per runtime. Messages are sequential. Context window is managed by the LLM provider. OpenCode persists sessions to SQLite natively.
+### PoC: Fresh Home + Session URLs
 
-No concurrency. One session, one user, sequential messages.
+Navigating to `/` always creates a new OpenCode session — no old messages, no history loading. The hero chatbar is an honest invitation to start.
 
-### Production: Model B — Fresh Sessions, Shared Workspace
+When the user sends their first message, the URL updates to `/session/:id`. Refreshing that URL reloads the conversation. Browser back to `/` starts fresh.
 
-Each conversation spawns a fresh session on the same OpenCode server operating on the same persistent workspace (filesystem + local Postgres). `.opencode/agents/oyster.md` and the file system provide continuity between sessions.
+One `opencode serve` process per runtime. Messages are sequential. OpenCode persists sessions to SQLite natively. No concurrency.
 
-Concurrency: one active session per user runtime. Messages are queued. Parallel sessions are explicitly out of scope until a locking strategy exists.
+### Production: Session Browser + Cross-Session Intelligence
+
+Each conversation has a unique URL. A session browser UI lets users search and revisit past sessions. Oyster (the AI) can reference past sessions when relevant — pulling context across conversations to build continuity.
+
+`.opencode/agents/oyster.md` and the persistent workspace provide continuity between sessions at the engine level.
+
+Concurrency: one active session per user runtime. Messages are queued. Parallel sessions are out of scope until a locking strategy exists.
 
 ---
 
@@ -379,11 +386,16 @@ Each user gets an isolated container with:
 - [x] HTTP+WS hybrid server with app process management API
 - [x] Real Tokinvest workspace artifacts (2 live apps + 4 static docs)
 - [x] App lifecycle: start/stop Vite dev servers, status polling, hero empty state
-- [x] Space-based navigation (tokinvest, personal, kps) with hero landing page
+- [x] Space-based navigation with persistent space pills above chatbar
 - [x] Hero tagline ("Tools are dead. Welcome to the shell.") with rotating nudges on blur
 - [x] Ultra Hardcore terminal gate (first-time confirmation modal with localStorage)
 - [x] Multi-space registry with `space` field filtering artifacts per workspace
 - [x] Markdown rendering for doc artifacts (marked library)
+- [x] Fresh session model — home always starts new session, session URLs bookmarkable
+- [x] Deck artifacts open fullscreen with draggable light frosted-glass toolbar
+- [x] Self-healing artifact cleanup + name override system for special characters
+- [x] "The World's Your Oyster" showcase deck with FaultyTerminal WebGL background
+- [x] Chat API layer (SSE streaming to OpenCode, session management)
 - [ ] Wire chat bar input to OpenCode session
 - [ ] Supabase schema (nodes, edges, artifacts — no RLS for PoC)
 - [ ] Supabase realtime subscriptions replacing JSON registry
@@ -402,7 +414,8 @@ Each user gets an isolated container with:
 - Live connectors
 - Automated imports and live connectors
 - Agents (persistent AI workers on the surface)
-- Project/workspace switching (basic space nav done, smart switching deferred)
+- Session browser/search UI (browse and revisit past conversations)
+- Cross-session AI references (Oyster recalls context from past sessions)
 - Bar as universal input (search + navigation)
 - Seeded starter artifacts on first use (sample content for personal/kps spaces added)
 - Advanced graph visualisation

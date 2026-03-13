@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { Desktop } from "./components/Desktop";
 import { ChatBar } from "./components/ChatBar";
 import { Clock } from "./components/Clock";
@@ -36,12 +36,19 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Derive unique space names (excluding "generated") for the pill row
+  const spaces = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of artifacts) {
+      if (a.space && a.space !== "generated") set.add(a.space);
+    }
+    return Array.from(set);
+  }, [artifacts]);
+
+  const isHero = !activeSpace;
+
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
-
-  function handleArtifactGenerated(artifact: Artifact) {
-    setArtifacts((prev) => [...prev, artifact]);
-  }
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.type === "app") {
@@ -62,7 +69,7 @@ export default function App() {
       await startAppApi(appName);
       window.open(artifact.path, artifact.id, "width=1280,height=900");
     } else {
-      dispatch({ type: "OPEN_VIEWER", title: artifact.name, path: artifact.path });
+      dispatch({ type: "OPEN_VIEWER", title: artifact.name, path: artifact.path, fullscreen: artifact.type === "deck" });
     }
   }
 
@@ -90,36 +97,53 @@ export default function App() {
     <div className="oyster-shell">
       <Clock />
 
-      {activeSpace && (
-        <div className="space-header">
-          <button className="space-back" onClick={() => setActiveSpace(null)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <span className="space-name">{activeSpace}</span>
-        </div>
-      )}
-
       <Desktop
-        artifacts={activeSpace ? artifacts.filter((a) => a.space === activeSpace) : []}
+        artifacts={activeSpace
+          ? artifacts.filter((a) => a.space === activeSpace)
+          : artifacts.filter((a) => a.space === "generated")
+        }
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
       />
 
       <div className="windows-layer">
-        {viewers.map((w, i) => (
-          <ViewerWindow
-            key={w.id}
-            title={w.title}
-            path={w.artifactPath!}
-            defaultX={200 + i * 20}
-            defaultY={40 + i * 20}
-            zIndex={w.zIndex}
-            onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
-            onClose={() => dispatch({ type: "CLOSE", id: w.id })}
-          />
-        ))}
+        {viewers.map((w, i) => {
+          const docArtifacts = artifacts.filter(
+            (a) => a.type !== "app" && activeSpace && a.space === activeSpace
+          );
+          const currentIdx = docArtifacts.findIndex((a) => a.path === w.artifactPath);
+          const hasPrev = currentIdx > 0;
+          const hasNext = currentIdx >= 0 && currentIdx < docArtifacts.length - 1;
+
+          return (
+            <ViewerWindow
+              key={w.id}
+              title={w.title}
+              path={w.artifactPath!}
+              defaultX={200 + i * 20}
+              defaultY={40 + i * 20}
+              zIndex={w.zIndex}
+              fullscreen={w.fullscreen}
+              onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
+              onClose={() => dispatch({ type: "CLOSE", id: w.id })}
+              onToggleFullscreen={() => dispatch({ type: "TOGGLE_FULLSCREEN", id: w.id })}
+              hasPrev={hasPrev}
+              hasNext={hasNext}
+              onNavigate={(dir) => {
+                const nextIdx = currentIdx + dir;
+                const next = docArtifacts[nextIdx];
+                if (next) {
+                  dispatch({
+                    type: "NAVIGATE_VIEWER",
+                    id: w.id,
+                    title: next.name,
+                    artifactPath: next.path,
+                  });
+                }
+              }}
+            />
+          );
+        })}
         {terminalWindow && (
           <TerminalWindow
             key={terminalWindow.id}
@@ -157,12 +181,29 @@ export default function App() {
         </div>
       )}
 
+      <div className="space-pills-area">
+        <div className="space-pills">
+          <button
+            className={`space-pill ${!activeSpace ? "active" : ""}`}
+            onClick={() => setActiveSpace(null)}
+          >
+            home
+          </button>
+          {spaces.map((s) => (
+            <button
+              key={s}
+              className={`space-pill ${activeSpace === s ? "active" : ""}`}
+              onClick={() => setActiveSpace(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <ChatBar
-        onArtifactGenerated={handleArtifactGenerated}
         onOpenTerminal={handleOpenTerminal}
-        isEmpty={!activeSpace}
-        onOpenSpace={(space) => setActiveSpace(space)}
-        hasArtifacts={loaded && artifacts.length > 0}
+        isHero={isHero}
       />
     </div>
   );
