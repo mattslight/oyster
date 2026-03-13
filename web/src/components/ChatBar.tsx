@@ -132,11 +132,20 @@ export function ChatBar({ onArtifactGenerated, onOpenTerminal, isEmpty, onOpenSu
         </button>
       </div>
 
-      {/* Resume workspace CTA — shown in hero state when artifacts exist */}
-      {isEmpty && onOpenSurface && (
-        <button className="chatbar-resume" onClick={onOpenSurface}>
-          Resume workspace
-        </button>
+      {/* Space buttons — shown in hero state */}
+      {isEmpty && messages.length === 0 && (
+        <div className="chatbar-spaces">
+          {onOpenSurface && (
+            <button className="chatbar-space-btn resume" onClick={onOpenSurface}>
+              Resume last workspace
+            </button>
+          )}
+          <div className="chatbar-spaces-row">
+            <button className="chatbar-space-btn" onClick={onOpenSurface}>tokinvest</button>
+            <button className="chatbar-space-btn" onClick={() => {}}>personal</button>
+            <button className="chatbar-space-btn" onClick={() => {}}>kps</button>
+          </div>
+        </div>
       )}
     </div>
   );
