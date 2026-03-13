@@ -298,21 +298,21 @@ body {
 }
 
 .chatbar-resume-inline {
-  background: none;
+  background: rgba(255, 255, 255, 0.06);
   border: none;
-  color: var(--accent);
-  font-family: var(--font-body);
+  color: var(--text-dim);
   font-size: 0.8rem;
-  font-weight: 500;
-  padding: 6px 14px;
+  padding: 6px 16px;
+  border-radius: 9999px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: opacity 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 
 .chatbar-resume-inline:hover {
-  opacity: 0.8;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .chatbar-spaces {
