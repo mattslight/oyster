@@ -40,4 +40,12 @@ export const mockArtifacts: Artifact[] = [
     path: "/demo/notes.html",
     createdAt: "2026-03-13T11:30:00Z",
   },
+  {
+    id: "5",
+    name: "NEW DOC",
+    type: "notes",
+    status: "ready",
+    path: "/demo/new-doc.html",
+    createdAt: "2026-03-13T12:00:00Z",
+  },
 ];
