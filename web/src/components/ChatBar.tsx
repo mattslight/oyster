@@ -56,6 +56,28 @@ interface Props {
   onSpaceChange?: (space: string | null) => void;
 }
 
+// Extract a short context hint from a tool event's state.input
+function extractToolHint(part: Record<string, unknown>): string | null {
+  const state = part.state as Record<string, unknown> | undefined;
+  if (!state) return null;
+  const input = state.input as Record<string, unknown> | undefined;
+  if (!input) return null;
+  // File-based tools: extract basename from file_path or path
+  const filePath = (input.file_path || input.path) as string | undefined;
+  if (filePath && typeof filePath === "string") {
+    const name = filePath.split("/").pop() || null;
+    if (name && name.length > 30) return name.slice(0, 27) + "...";
+    return name;
+  }
+  // Glob: show pattern
+  const pattern = input.pattern as string | undefined;
+  if (pattern) return pattern.length > 30 ? pattern.slice(0, 27) + "..." : pattern;
+  // Task/Agent: show description
+  const desc = input.description as string | undefined;
+  if (desc) return desc.length > 30 ? desc.slice(0, 27) + "..." : desc;
+  return null;
+}
+
 export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -77,17 +99,18 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   // Track text parts per message: messageID → Map<partID, text>
   const textPartsMap = useRef<Map<string, Map<string, string>>>(new Map());
 
-  // Friendly progress labels for tool names
+  // Friendly progress labels for tool names (ellipsis appended during construction)
+  // OpenCode sends lowercase tool names (e.g. "read", "glob", "task")
   const toolProgress: Record<string, string> = {
-    Read: "reading...",
-    Edit: "editing...",
-    Write: "writing...",
-    Bash: "running command...",
-    Glob: "searching files...",
-    Grep: "searching code...",
-    WebFetch: "fetching...",
-    WebSearch: "searching the web...",
-    Agent: "delegating...",
+    read: "reading",
+    edit: "editing",
+    write: "writing",
+    bash: "running command",
+    glob: "searching files",
+    grep: "searching code",
+    webfetch: "fetching",
+    websearch: "searching the web",
+    task: "delegating",
   };
 
   // Parse session ID from URL if present (/session/:id)
@@ -164,8 +187,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       const props = event.properties;
 
       // Debug: log all events to help discover tool/progress event shapes
-      if (event.type !== "message.part.delta") {
-        console.log("[oyster-event]", event.type, props);
+      if (event.type !== "message.part.delta" && event.type !== "server.heartbeat") {
+        console.log("[oyster-event]", event.type, JSON.stringify(props));
       }
 
       // Only handle events for our session
@@ -173,7 +196,12 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         (props.sessionID as string) ||
         (props.info as { sessionID?: string })?.sessionID ||
         (props.part as { sessionID?: string })?.sessionID;
-      if (eventSessionId && eventSessionId !== sessionId) return;
+      const isOurSession = !eventSessionId || eventSessionId === sessionId;
+      // Allow tool progress events from sub-agents to update status bar,
+      // but filter everything else to our session only
+      const isToolEvent = event.type === "message.part.updated" &&
+        (props.part as { type?: string })?.type === "tool";
+      if (!isOurSession && !isToolEvent) return;
 
       switch (event.type) {
         case "session.status": {
@@ -261,8 +289,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           // Show tool progress — extract tool name from whichever field OpenCode uses
           const tool = part.toolName || part.name || part.tool;
           if (tool && part.type !== "text") {
-            const label = toolProgress[tool] || `${tool.toLowerCase()}...`;
-            setStatusText(label);
+            const toolKey = tool.toLowerCase();
+            const label = toolProgress[toolKey] || "working";
+            const hint = toolKey === "bash" ? null : extractToolHint(part as Record<string, unknown>);
+            setStatusText(hint ? `${label} ${hint}...` : `${label}...`);
           }
           break;
         }
