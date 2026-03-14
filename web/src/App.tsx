@@ -97,17 +97,14 @@ export default function App() {
     await stopAppApi(appName);
   }
 
-  async function handleFixError(error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) {
-    try {
-      const sessionId = await getOrCreateSession();
-      const consoleText = error.console.length > 0
-        ? "\n\nRecent console output:\n" + error.console.map((e) => `[${e.type}] ${e.message}`).join("\n")
-        : "";
-      const message = `The artifact "${error.title}" crashed with an error:\n\n${error.stack || error.message}${consoleText}\n\nPlease fix this error in the artifact source code.`;
-      await sendMessage(sessionId, message);
-    } catch (err) {
-      console.error("Failed to send fix-it message:", err);
-    }
+  async function handleFixError(error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
+    const sessionId = await getOrCreateSession();
+    const consoleText = error.console.length > 0
+      ? "\n\nRecent console output:\n" + error.console.map((e) => `[${e.type}] ${e.message}`).join("\n")
+      : "";
+    const message = `The artifact "${error.title}" crashed with an error:\n\n${error.stack || error.message}${consoleText}\n\nPlease fix this error in the artifact source code.`;
+    await sendMessage(sessionId, message);
+    return sessionId;
   }
 
   return (

@@ -1,5 +1,6 @@
 import { useRef, useMemo, useCallback, useState, useEffect, type PointerEvent as ReactPointerEvent } from "react";
 import { WindowChrome } from "./WindowChrome";
+import { subscribeToEvents } from "../data/chat-api";
 
 interface ArtifactError {
   message: string;
@@ -20,7 +21,32 @@ interface Props {
   onNavigate?: (direction: -1 | 1) => void;
   hasPrev?: boolean;
   hasNext?: boolean;
-  onFixError?: (error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) => void;
+  onFixError?: (error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) => Promise<string>;
+}
+
+const toolLabels: Record<string, string> = {
+  read: "Reading",
+  edit: "Editing",
+  write: "Writing",
+  bash: "Running command",
+  glob: "Searching files",
+  grep: "Searching code",
+};
+
+function extractToolHint(part: Record<string, unknown>): string | null {
+  const state = part.state as Record<string, unknown> | undefined;
+  if (!state) return null;
+  const input = state.input as Record<string, unknown> | undefined;
+  if (!input) return null;
+  const filePath = (input.file_path || input.path) as string | undefined;
+  if (filePath && typeof filePath === "string") {
+    const name = filePath.split("/").pop() || null;
+    if (name && name.length > 40) return name.slice(0, 37) + "...";
+    return name;
+  }
+  const pattern = input.pattern as string | undefined;
+  if (pattern) return pattern.length > 30 ? pattern.slice(0, 27) + "..." : pattern;
+  return null;
 }
 
 function ErrorDetails({ stack, consoleEntries }: { stack: string; consoleEntries: Array<{ type: string; message: string }> }) {
@@ -43,6 +69,8 @@ function ErrorDetails({ stack, consoleEntries }: { stack: string; consoleEntries
   );
 }
 
+type FixPhase = "idle" | "fixing" | "done";
+
 export function ViewerWindow({
   title,
   path,
@@ -63,10 +91,12 @@ export function ViewerWindow({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<ArtifactError | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
-  const [fixState, setFixState] = useState<"idle" | "sending" | "sent">("idle");
-  // Cache-bust URL on path change or retry (iframeKey bump)
+  const [fixPhase, setFixPhase] = useState<FixPhase>("idle");
+  const [fixStatus, setFixStatus] = useState("Sending to Oyster...");
+  const fixSessionRef = useRef<string | null>(null);
   const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
 
+  // Listen for iframe errors via postMessage
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
@@ -82,29 +112,105 @@ export function ViewerWindow({
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
+  // Reset on path change
   useEffect(() => {
     setError(null);
-    setFixState("idle");
+    setFixPhase("idle");
+    setFixStatus("");
     setIframeKey((k) => k + 1);
   }, [path]);
 
+  // Subscribe to SSE when fixing
+  useEffect(() => {
+    if (fixPhase !== "fixing") return;
+    const sessionId = fixSessionRef.current;
+    if (!sessionId) return;
+
+    let seenBusy = false;
+
+    const unsubscribe = subscribeToEvents((event) => {
+      const props = event.properties;
+      const eventSessionId =
+        (props.sessionID as string) ||
+        (props.info as { sessionID?: string })?.sessionID ||
+        (props.part as { sessionID?: string })?.sessionID;
+
+      // Allow tool events from any session (sub-agents), filter rest to our session
+      const isToolEvent = event.type === "message.part.updated" &&
+        (props.part as { type?: string })?.type === "tool";
+      if (eventSessionId !== sessionId && !isToolEvent) return;
+
+      switch (event.type) {
+        case "session.status": {
+          const status = props.status as { type: string };
+          if (status.type === "busy") {
+            seenBusy = true;
+            setFixStatus("Oyster is thinking...");
+          } else if (status.type === "idle" && seenBusy) {
+            setFixPhase("done");
+            setFixStatus("Fixed! Reloading...");
+          }
+          break;
+        }
+        case "message.part.updated": {
+          const part = props.part as { type: string; tool?: string; text?: string; state?: { status?: string } };
+          if (part.type === "tool" && part.tool) {
+            const label = toolLabels[part.tool.toLowerCase()] || "Working";
+            const hint = extractToolHint(props.part as Record<string, unknown>);
+            const status = part.state?.status;
+            if (status === "running" || status === "pending") {
+              setFixStatus(hint ? `${label} ${hint}` : `${label}...`);
+            }
+          }
+          break;
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [fixPhase]);
+
+  // Auto-retry after fix completes
+  useEffect(() => {
+    if (fixPhase !== "done") return;
+    const timer = setTimeout(() => {
+      setError(null);
+      setFixPhase("idle");
+      setFixStatus("");
+      fixSessionRef.current = null;
+      setIframeKey((k) => k + 1);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [fixPhase]);
+
   const handleRetry = useCallback(() => {
     setError(null);
-    setFixState("idle");
+    setFixPhase("idle");
+    setFixStatus("");
+    fixSessionRef.current = null;
     setIframeKey((k) => k + 1);
   }, []);
 
+  const handleFix = useCallback(async () => {
+    if (!onFixError || !error) return;
+    setFixPhase("fixing");
+    setFixStatus("Sending to Oyster...");
+    try {
+      const sessionId = await onFixError({ title, message: error.message, stack: error.stack, console: error.console });
+      fixSessionRef.current = sessionId;
+    } catch {
+      setFixPhase("idle");
+      setFixStatus("");
+    }
+  }, [onFixError, error, title]);
+
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
-    // Only drag from the toolbar background / title, not from buttons
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
-
     const el = toolbarRef.current!;
     const rect = el.getBoundingClientRect();
     dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     el.setPointerCapture(e.pointerId);
-
-    // Reset centered transform so absolute positioning works
     el.style.transform = "none";
     el.style.left = `${rect.left}px`;
     el.style.top = `${rect.top}px`;
@@ -113,7 +219,6 @@ export function ViewerWindow({
   const onPointerMove = useCallback((e: ReactPointerEvent) => {
     const el = toolbarRef.current!;
     if (!el.hasPointerCapture(e.pointerId)) return;
-
     const x = e.clientX - dragOffset.current.x;
     const y = e.clientY - dragOffset.current.y;
     el.style.left = `${x}px`;
@@ -126,6 +231,60 @@ export function ViewerWindow({
       el.releasePointerCapture(e.pointerId);
     }
   }, []);
+
+  // Determine what to render inside the window
+  let content: React.ReactNode;
+
+  if (fixPhase === "fixing" || fixPhase === "done") {
+    // Fixing progress screen
+    content = (
+      <div className="viewer-fix-screen">
+        <div className={`viewer-fix-icon ${fixPhase === "done" ? "viewer-fix-icon-done" : ""}`}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="url(#fix-bolt-grad)" />
+            <defs>
+              <linearGradient id="fix-bolt-grad" x1="3" y1="2" x2="20" y2="22">
+                <stop offset="0%" stopColor="#7c6bff" />
+                <stop offset="100%" stopColor="#6366f1" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h3 className="viewer-fix-title">
+          {fixPhase === "done" ? "Fixed!" : "Oyster is on it"}
+        </h3>
+        <p className="viewer-fix-status">{fixStatus}</p>
+        {fixPhase === "fixing" && (
+          <button className="viewer-fix-cancel" onClick={handleRetry}>Cancel</button>
+        )}
+      </div>
+    );
+  } else if (error) {
+    // Error screen
+    content = (
+      <div className="viewer-error-screen">
+        <div className="viewer-error-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" fill="#3a1e1e" />
+            <path d="M12 8v4m0 4h.01" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </div>
+        <h3 className="viewer-error-title">This app ran into a problem</h3>
+        <p className="viewer-error-message">{error.message}</p>
+        <div className="viewer-error-actions">
+          {onFixError && (
+            <button className="viewer-error-fix" onClick={handleFix}>
+              Ask Oyster to fix it
+            </button>
+          )}
+          <button className="viewer-error-retry" onClick={handleRetry}>Retry</button>
+        </div>
+        <ErrorDetails stack={error.stack} consoleEntries={error.console} />
+      </div>
+    );
+  } else {
+    content = <iframe key={iframeKey} ref={iframeRef} src={iframeSrc} className="viewer-iframe" title={title} />;
+  }
 
   return (
     <WindowChrome
@@ -191,35 +350,7 @@ export function ViewerWindow({
           </button>
         </div>
       )}
-      {error ? (
-        <div className="viewer-error-screen">
-          <div className="viewer-error-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" fill="#3a1e1e" />
-              <path d="M12 8v4m0 4h.01" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </div>
-          <h3 className="viewer-error-title">This app ran into a problem</h3>
-          <p className="viewer-error-message">{error.message}</p>
-          <div className="viewer-error-actions">
-            {onFixError && (
-              <button className={`viewer-error-fix ${fixState !== "idle" ? "viewer-error-fix-sent" : ""}`}
-                disabled={fixState !== "idle"}
-                onClick={async () => {
-                  setFixState("sending");
-                  await onFixError({ title, message: error.message, stack: error.stack, console: error.console });
-                  setFixState("sent");
-                }}>
-                {fixState === "idle" ? "Ask Oyster to fix it" : fixState === "sending" ? "Sending..." : "Sent to Oyster"}
-              </button>
-            )}
-            <button className="viewer-error-retry" onClick={handleRetry}>Retry</button>
-          </div>
-          <ErrorDetails stack={error.stack} consoleEntries={error.console} />
-        </div>
-      ) : (
-        <iframe key={iframeKey} ref={iframeRef} src={iframeSrc} className="viewer-iframe" title={title} />
-      )}
+      {content}
     </WindowChrome>
   );
 }
