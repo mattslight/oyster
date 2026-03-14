@@ -16,6 +16,7 @@ import {
   updateGeneratedArtifact,
 } from "./process-manager.js";
 import { IconGenerator } from "./icon-generator.js";
+import { injectBridge } from "./error-bridge.js";
 
 const PORT = 4200;
 const OPENCODE_PORT = 4096;
@@ -763,7 +764,11 @@ ul, ol { padding-left: 1.5rem; }
 li { margin: 0.3rem 0; }
 </style></head><body>${rendered}</body></html>`;
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(html);
+      res.end(injectBridge(html));
+    } else if (ext === ".html" || ext === ".htm") {
+      const raw = readFileSync(filePath, "utf8");
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(injectBridge(raw));
     } else {
       res.writeHead(200, { "Content-Type": mime });
       res.end(readFileSync(filePath));
