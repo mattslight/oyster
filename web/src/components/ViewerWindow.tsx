@@ -1,5 +1,11 @@
-import { useRef, useMemo, useCallback, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useMemo, useCallback, useState, useEffect, type PointerEvent as ReactPointerEvent } from "react";
 import { WindowChrome } from "./WindowChrome";
+
+interface ArtifactError {
+  message: string;
+  stack: string;
+  console: Array<{ type: string; message: string; ts: number }>;
+}
 
 interface Props {
   title: string;
@@ -14,6 +20,27 @@ interface Props {
   onNavigate?: (direction: -1 | 1) => void;
   hasPrev?: boolean;
   hasNext?: boolean;
+  onFixError?: (error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) => void;
+}
+
+function ErrorDetails({ stack, consoleEntries }: { stack: string; consoleEntries: Array<{ type: string; message: string }> }) {
+  const [open, setOpen] = useState(false);
+  if (!stack && consoleEntries.length === 0) return null;
+  return (
+    <div className="viewer-error-details">
+      <button className="viewer-error-details-toggle" onClick={() => setOpen(!open)}>
+        {open ? "Hide details" : "Show details"}
+      </button>
+      {open && (
+        <pre className="viewer-error-stack">
+          {stack}
+          {consoleEntries.length > 0 && (
+            "\n\nConsole:\n" + consoleEntries.map((e) => `[${e.type}] ${e.message}`).join("\n")
+          )}
+        </pre>
+      )}
+    </div>
+  );
 }
 
 export function ViewerWindow({
@@ -29,11 +56,41 @@ export function ViewerWindow({
   onNavigate,
   hasPrev = false,
   hasNext = false,
+  onFixError,
 }: Props) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   // Cache-bust URL once per path change, not on every re-render
   const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path]);
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [error, setError] = useState<ArtifactError | null>(null);
+  const [iframeKey, setIframeKey] = useState(0);
+
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type !== "oyster-error") return;
+      setError({
+        message: event.data.error?.message || "Unknown error",
+        stack: event.data.error?.stack || "",
+        console: Array.isArray(event.data.console) ? event.data.console : [],
+      });
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  useEffect(() => {
+    setError(null);
+    setIframeKey((k) => k + 1);
+  }, [path]);
+
+  const handleRetry = useCallback(() => {
+    setError(null);
+    setIframeKey((k) => k + 1);
+  }, []);
 
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
     // Only drag from the toolbar background / title, not from buttons
@@ -132,11 +189,30 @@ export function ViewerWindow({
           </button>
         </div>
       )}
-      <iframe
-        src={iframeSrc}
-        className="viewer-iframe"
-        title={title}
-      />
+      {error ? (
+        <div className="viewer-error-screen">
+          <div className="viewer-error-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" fill="#3a1e1e" />
+              <path d="M12 8v4m0 4h.01" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+          <h3 className="viewer-error-title">This app ran into a problem</h3>
+          <p className="viewer-error-message">{error.message}</p>
+          <div className="viewer-error-actions">
+            {onFixError && (
+              <button className="viewer-error-fix"
+                onClick={() => onFixError({ title, message: error.message, stack: error.stack, console: error.console })}>
+                Ask Oyster to fix it
+              </button>
+            )}
+            <button className="viewer-error-retry" onClick={handleRetry}>Retry</button>
+          </div>
+          <ErrorDetails stack={error.stack} consoleEntries={error.console} />
+        </div>
+      ) : (
+        <iframe key={iframeKey} ref={iframeRef} src={iframeSrc} className="viewer-iframe" title={title} />
+      )}
     </WindowChrome>
   );
 }
