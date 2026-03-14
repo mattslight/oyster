@@ -265,7 +265,7 @@ export function ViewerWindow({
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
             </svg>
           </div>
-          <span className="viewer-fix-status">{fixStatus}</span>
+          <span className="viewer-fix-status" key={fixStatus}>{fixStatus}</span>
           {fixPhase === "fixing" && (
             <button className="viewer-fix-cancel" onClick={handleRetry} title="Cancel">
               ×

@@ -1035,7 +1035,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 9999px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  max-width: 360px;
+  width: 320px;
 }
 
 .viewer-fix-bar-done {
@@ -1065,7 +1065,14 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  animation: pulse 1.5s ease-in-out infinite;
+  flex: 1;
+  min-width: 0;
+  animation: fix-slide-in 0.25s ease-out;
+}
+
+@keyframes fix-slide-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .viewer-fix-bar-done .viewer-fix-status {
