@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { marked } from "marked";
 import {
   createSession,
   sendMessage,
@@ -7,6 +8,9 @@ import {
   replyToQuestion,
   type ChatEvent,
 } from "../data/chat-api";
+
+// Configure marked for inline chat use
+marked.setOptions({ breaks: true, gfm: true });
 
 const placeholders = [
   "What are you working on?",
@@ -47,9 +51,12 @@ interface Message {
 interface Props {
   onOpenTerminal: () => void;
   isHero?: boolean;
+  spaces?: string[];
+  activeSpace?: string | null;
+  onSpaceChange?: (space: string | null) => void;
 }
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -60,14 +67,28 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const placeholder = useMemo(() => placeholders[Math.floor(Math.random() * placeholders.length)], []);
   const inputRef = useRef<HTMLInputElement>(null);
   const isHero = !!isHeroProp;
 
   // Track current assistant message being streamed
   const currentAssistantMsg = useRef<string | null>(null);
-  // Track text parts by partID for delta accumulation
-  const textParts = useRef<Map<string, string>>(new Map());
+  // Track text parts per message: messageID → Map<partID, text>
+  const textPartsMap = useRef<Map<string, Map<string, string>>>(new Map());
+
+  // Friendly progress labels for tool names
+  const toolProgress: Record<string, string> = {
+    Read: "reading...",
+    Edit: "editing...",
+    Write: "writing...",
+    Bash: "running command...",
+    Glob: "searching files...",
+    Grep: "searching code...",
+    WebFetch: "fetching...",
+    WebSearch: "searching the web...",
+    Agent: "delegating...",
+  };
 
   // Parse session ID from URL if present (/session/:id)
   function getSessionIdFromUrl(): string | null {
@@ -77,6 +98,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
 
   // Initialize session: fresh on home (/), restore on session URL (/session/:id)
   useEffect(() => {
+    let retryTimer: ReturnType<typeof setTimeout>;
+
     async function init() {
       try {
         const urlSessionId = getSessionIdFromUrl();
@@ -107,7 +130,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
           setSessionId(session.id);
         }
       } catch (err) {
-        console.error("Failed to init chat session:", err);
+        console.error("Failed to init chat session, retrying in 3s...", err);
+        retryTimer = setTimeout(init, 3000);
       }
     }
 
@@ -126,7 +150,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
     }
 
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      clearTimeout(retryTimer);
+    };
   }, []);
 
   // Subscribe to SSE events once we have a session
@@ -135,6 +162,11 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
 
     const unsubscribe = subscribeToEvents((event: ChatEvent) => {
       const props = event.properties;
+
+      // Debug: log all events to help discover tool/progress event shapes
+      if (event.type !== "message.part.delta") {
+        console.log("[oyster-event]", event.type, props);
+      }
 
       // Only handle events for our session
       const eventSessionId =
@@ -152,8 +184,6 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
           } else if (status.type === "idle") {
             setStreaming(false);
             setStatusText("");
-            currentAssistantMsg.current = null;
-            textParts.current.clear();
           }
           break;
         }
@@ -164,9 +194,14 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
             role: string;
             sessionID: string;
           };
-          if (info.role === "assistant" && !currentAssistantMsg.current) {
+          if (info.role === "assistant") {
+            // Always track the latest assistant message
             currentAssistantMsg.current = info.id;
-            setMessages((prev) => [...prev, { id: info.id, role: "assistant", content: "" }]);
+            // Add to messages if not already present
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === info.id)) return prev;
+              return [...prev, { id: info.id, role: "assistant", content: "" }];
+            });
           }
           break;
         }
@@ -177,22 +212,26 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
           const field = props.field as string;
           const delta = props.delta as string;
 
-          // Only accumulate deltas for the current assistant message
-          if (field === "text" && messageId === currentAssistantMsg.current) {
-            const current = textParts.current.get(partId) || "";
-            const updated = current + delta;
-            textParts.current.set(partId, updated);
+          if (field === "text") {
+            // Get or create part map for this message
+            if (!textPartsMap.current.has(messageId)) {
+              textPartsMap.current.set(messageId, new Map());
+            }
+            const parts = textPartsMap.current.get(messageId)!;
+            const current = parts.get(partId) || "";
+            parts.set(partId, current + delta);
 
             // Build full content from all text parts for this message
-            const fullContent = Array.from(textParts.current.values()).join("");
+            const fullContent = Array.from(parts.values()).join("");
 
             setMessages((prev) => {
-              const msgs = [...prev];
-              const lastIdx = msgs.length - 1;
-              if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
-                msgs[lastIdx] = { ...msgs[lastIdx], content: fullContent };
+              // Create the message entry if it doesn't exist yet
+              if (!prev.some((m) => m.id === messageId)) {
+                return [...prev, { id: messageId, role: "assistant", content: fullContent }];
               }
-              return msgs;
+              return prev.map((m) =>
+                m.id === messageId ? { ...m, content: fullContent } : m
+              );
             });
 
             // Update status with latest chunk
@@ -204,13 +243,26 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
         }
 
         case "message.part.updated": {
+          const partMsgId = props.messageID as string;
           const part = props.part as {
             type: string;
             text?: string;
             id: string;
+            toolName?: string;
+            name?: string;
+            tool?: string;
           };
           if (part.type === "text" && part.text !== undefined) {
-            textParts.current.set(part.id, part.text);
+            if (!textPartsMap.current.has(partMsgId)) {
+              textPartsMap.current.set(partMsgId, new Map());
+            }
+            textPartsMap.current.get(partMsgId)!.set(part.id, part.text);
+          }
+          // Show tool progress — extract tool name from whichever field OpenCode uses
+          const tool = part.toolName || part.name || part.tool;
+          if (tool && part.type !== "text") {
+            const label = toolProgress[tool] || `${tool.toLowerCase()}...`;
+            setStatusText(label);
           }
           break;
         }
@@ -250,6 +302,17 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
     }
   }, [messages, expanded]);
 
+  // Click outside chatbar collapses the messages panel
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (expanded && wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setExpanded(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [expanded]);
+
   const hasPushedUrl = useRef(false);
 
   const handleSend = useCallback(async () => {
@@ -267,8 +330,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
       hasPushedUrl.current = true;
     }
 
-    // Reset text parts tracking for new response
-    textParts.current.clear();
+    // Reset tracking for new response
     currentAssistantMsg.current = null;
 
     try {
@@ -281,9 +343,9 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
   }, [input, streaming, sessionId]);
 
   return (
-    <div className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
-      {/* Hero tagline — fades out on focus, cycles on blur */}
-      {isHero && (
+    <div ref={wrapperRef} className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
+      {/* Hero tagline — only shows before any messages, fades on focus */}
+      {isHero && messages.length === 0 && (
         <div className={`chatbar-hero-tagline ${focused ? "tagline-hidden" : ""}`}>
           {tagline ? (
             <>
@@ -300,17 +362,21 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
       )}
 
       {/* Messages panel — expands upward */}
-      {expanded && messages.length > 0 && (
-        <div className="chatbar-messages">
+      {messages.length > 0 && (
+        <div className={`chatbar-messages ${expanded ? "chat-expanded" : "chat-collapsed"}`}>
           <button
             className="chatbar-collapse"
             onClick={() => setExpanded(false)}
           >
             ✕
           </button>
-          {messages.map((msg, i) => (
+          {messages.filter((msg) => msg.content || msg.question || msg.role === "user").map((msg, i) => (
             <div key={msg.id || i} className={`chat-bubble ${msg.role}`}>
-              {msg.content || (msg.role === "assistant" && streaming ? "..." : "")}
+              {msg.role === "assistant" && msg.content ? (
+                <div className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) as string }} />
+              ) : (
+                msg.content
+              )}
               {msg.question && (
                 <div className="question-options">
                   {msg.question.options.map((opt) => (
@@ -332,10 +398,16 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
                           ...prev,
                           { role: "user", content: opt.label },
                         ]);
+                        // Show immediate progress feedback
+                        setStreaming(true);
+                        setStatusText("thinking...");
+                        currentAssistantMsg.current = null;
                         try {
                           await replyToQuestion(qId, [[opt.label]]);
                         } catch (err) {
                           console.error("Failed to reply to question:", err);
+                          setStreaming(false);
+                          setStatusText("");
                         }
                       }}
                     >
@@ -377,6 +449,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           onFocus={() => {
             setFocused(true);
+            if (messages.length > 0) setExpanded(true);
           }}
           onBlur={() => {
             if (!input.trim()) {
@@ -398,6 +471,28 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp }: Props) {
         </button>
       </div>
 
+      {/* Space pills — always below the input */}
+      {spaces.length > 0 && (
+        <div className="space-pills-inline">
+          <div className="space-pills">
+            <button
+              className={`space-pill ${!activeSpace ? "active" : ""}`}
+              onClick={() => onSpaceChange?.(null)}
+            >
+              home
+            </button>
+            {spaces.map((s) => (
+              <button
+                key={s}
+                className={`space-pill ${activeSpace === s ? "active" : ""}`}
+                onClick={() => onSpaceChange?.(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

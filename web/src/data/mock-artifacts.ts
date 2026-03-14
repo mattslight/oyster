@@ -1,7 +1,7 @@
 export interface Artifact {
   id: string;
   name: string;
-  type: "wireframe" | "deck" | "map" | "notes" | "app" | "diagram";
+  type: "wireframe" | "deck" | "map" | "notes" | "app" | "diagram" | "table";
   status: "ready" | "online" | "offline" | "starting" | "generating";
   path: string;
   port?: number;

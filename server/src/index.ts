@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { extname } from "node:path";
+import { extname, join, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { WebSocketServer, WebSocket } from "ws";
 import { marked } from "marked";
@@ -21,6 +21,8 @@ const SHELL = process.env.OYSTER_SHELL || "opencode";
 const SHELL_ARGS = SHELL === "opencode" ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || process.cwd();
 const SCROLLBACK_LIMIT = 50_000; // chars to replay on reconnect
+// WORKSPACE is the server dir; project root is one level up
+const PROJECT_ROOT = WORKSPACE.replace(/\/server\/?$/, "");
 
 // ── MIME types ──
 
@@ -95,9 +97,9 @@ let opencodeRestarts = 0;
 const MAX_RESTARTS = 10;
 
 function spawnOpenCodeServe() {
-  console.log(`Spawning opencode serve on port ${OPENCODE_PORT}`);
+  console.log(`Spawning opencode serve on port ${OPENCODE_PORT} in ${PROJECT_ROOT}`);
   const child = spawn("opencode", ["serve", "--port", String(OPENCODE_PORT)], {
-    cwd: WORKSPACE,
+    cwd: PROJECT_ROOT,
     env: cleanEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -134,18 +136,43 @@ process.on("SIGINT", () => { shuttingDown = true; process.exit(0); });
 // In the PoC, we trust all tool use. This listens to the SSE stream
 // and auto-approves any permission.asked events.
 
-// ── File-based artifact detection ──
+// ── Artefact detection ──
+// Artefacts live in /artefacts/<id>/ with a manifest.json and src/ directory.
+// The server detects them by scanning for manifest.json files or falling back
+// to filename-based inference for legacy/unmanifested files.
 
-const seenFiles = new Set<string>();
+const seenArtefacts = new Set<string>();
 
-// Directories to watch for generated artifacts
-// WORKSPACE is the server dir; project root is one level up
-const PROJECT_ROOT = WORKSPACE.replace(/\/server\/?$/, "");
-const ARTIFACT_DIRS = [
+const ARTEFACTS_DIR = `${PROJECT_ROOT}/artefacts/`;
+
+// Legacy dirs — kept for backward compat with existing demo content in web/public/
+const LEGACY_DIRS = [
   { prefix: `${PROJECT_ROOT}/web/public/`, serve: "/", space: "generated" },
-  { prefix: `${PROJECT_ROOT}/apps/`, serve: "/apps/", space: "generated" },
-  { prefix: `${PROJECT_ROOT}/docs/generated/`, serve: "/docs/generated/", space: "generated" },
 ];
+
+interface ArtefactManifest {
+  id: string;
+  name: string;
+  type: string;
+  runtime: string;
+  entrypoint: string;
+  ports: number[];
+  storage: string;
+  capabilities: string[];
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function tryReadManifest(artefactDir: string): ArtefactManifest | null {
+  const manifestPath = join(artefactDir, "manifest.json");
+  if (!existsSync(manifestPath)) return null;
+  try {
+    return JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
 
 function inferType(filePath: string): string {
   const lower = filePath.toLowerCase();
@@ -153,9 +180,9 @@ function inferType(filePath: string): string {
   if (lower.includes("deck") || lower.includes("slide") || lower.includes("present")) return "deck";
   if (lower.includes("map") || lower.includes("mind")) return "map";
   if (lower.includes("note") || lower.includes("readme")) return "notes";
-  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "deck";
+  if (lower.includes("table") || lower.includes("spreadsheet") || lower.includes("tracker")) return "table";
   if (lower.endsWith(".md")) return "notes";
-  return "notes";
+  return "app";
 }
 
 // Filenames can't contain apostrophes, so override display names here
@@ -166,32 +193,103 @@ const NAME_OVERRIDES: Record<string, string> = {
 function inferName(filePath: string): string {
   const base = filePath.split("/").pop() || "untitled";
   const stem = base.replace(/\.[^.]+$/, "");
+
+  // For index.html files, use the parent directory name instead
+  if (stem.toLowerCase() === "index") {
+    const parentDir = dirname(filePath).split("/").pop() || "untitled";
+    if (NAME_OVERRIDES[parentDir]) return NAME_OVERRIDES[parentDir];
+    return parentDir
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   if (NAME_OVERRIDES[stem]) return NAME_OVERRIDES[stem];
   return stem
     .replace(/[-_]/g, " ")         // dashes/underscores to spaces
     .replace(/\b\w/g, (c) => c.toUpperCase()); // title case
 }
 
+function registerArtefactFromManifest(manifest: ArtefactManifest, artefactDir: string) {
+  const id = `gen:${manifest.id}`;
+  if (seenArtefacts.has(id)) return;
+
+  const entrypointPath = join(artefactDir, manifest.entrypoint);
+  const servePath = `/artefacts/${manifest.id}/${manifest.entrypoint}`;
+
+  seenArtefacts.add(id);
+  console.log(`[artefact-detect] manifest: ${manifest.name} (${manifest.type}) → ${servePath}`);
+
+  registerGeneratedArtifact({
+    id,
+    name: manifest.name,
+    type: manifest.type,
+    status: "ready",
+    path: servePath,
+    space: "generated",
+    createdAt: manifest.created_at,
+  }, entrypointPath);
+}
+
 function handleFileEdited(rawPath: string) {
   // Resolve relative paths against workspace
   const filePath = rawPath.startsWith("/") ? rawPath : `${WORKSPACE}/${rawPath}`;
-  if (seenFiles.has(filePath)) return;
 
-  for (const dir of ARTIFACT_DIRS) {
+  // Check if this file is inside /artefacts/<id>/
+  if (filePath.startsWith(ARTEFACTS_DIR)) {
+    const relativePath = filePath.slice(ARTEFACTS_DIR.length);
+    const artefactId = relativePath.split("/")[0];
+    if (!artefactId) return;
+
+    const artefactDir = join(ARTEFACTS_DIR, artefactId);
+    const id = `gen:${artefactId}`;
+    if (seenArtefacts.has(id)) return;
+
+    // Try manifest first
+    const manifest = tryReadManifest(artefactDir);
+    if (manifest) {
+      registerArtefactFromManifest(manifest, artefactDir);
+      return;
+    }
+
+    // Fallback: no manifest, infer from the file
+    const ext = extname(filePath);
+    if (ext !== ".html" && ext !== ".htm" && ext !== ".md") return;
+
+    const name = inferName(filePath);
+    const type = inferType(filePath);
+    const serveRelative = filePath.slice(PROJECT_ROOT.length);
+
+    seenArtefacts.add(id);
+    console.log(`[artefact-detect] inferred: ${name} (${type}) → ${serveRelative}`);
+
+    registerGeneratedArtifact({
+      id,
+      name,
+      type,
+      status: "ready",
+      path: serveRelative,
+      space: "generated",
+      createdAt: new Date().toISOString(),
+    }, filePath);
+    return;
+  }
+
+  // Legacy: check old dirs (web/public/)
+  for (const dir of LEGACY_DIRS) {
     if (filePath.startsWith(dir.prefix)) {
       const relativePath = filePath.slice(dir.prefix.length);
-      // Only register HTML and MD files as artifacts (skip SVGs, images, etc.)
       if (!filePath.endsWith(".html") && !filePath.endsWith(".htm") && !filePath.endsWith(".md")) return;
-      // Skip known static assets
       if (relativePath.startsWith("demo/") || relativePath.endsWith(".svg")) return;
 
       const id = `gen:${relativePath}`;
+      if (seenArtefacts.has(id)) return;
+
       const servePath = dir.serve + relativePath;
       const name = inferName(filePath);
       const type = inferType(filePath);
 
-      seenFiles.add(filePath);
-      console.log(`[artifact-detect] new artifact: ${name} (${type}) → ${servePath}`);
+      seenArtefacts.add(id);
+      console.log(`[artefact-detect] legacy: ${name} (${type}) → ${servePath}`);
 
       registerGeneratedArtifact({
         id,
@@ -207,9 +305,55 @@ function handleFileEdited(rawPath: string) {
   }
 }
 
-// Scan watched directories on startup for existing artifacts
-function scanExistingArtifacts() {
-  for (const dir of ARTIFACT_DIRS) {
+// Scan /artefacts/ subdirectories for existing artefacts on startup
+function scanExistingArtefacts() {
+  // Scan /artefacts/<id>/ directories
+  if (existsSync(ARTEFACTS_DIR)) {
+    try {
+      const entries = readdirSync(ARTEFACTS_DIR);
+      for (const entry of entries) {
+        if (entry.startsWith(".")) continue;
+        const artefactDir = join(ARTEFACTS_DIR, entry);
+        try {
+          if (!statSync(artefactDir).isDirectory()) continue;
+        } catch { continue; }
+
+        // Try manifest first
+        const manifest = tryReadManifest(artefactDir);
+        if (manifest) {
+          registerArtefactFromManifest(manifest, artefactDir);
+          continue;
+        }
+
+        // Fallback: look for index.html or any HTML/MD file
+        try {
+          const files = readdirSync(artefactDir);
+          // Check for src/index.html first (standard convention)
+          const srcDir = join(artefactDir, "src");
+          if (existsSync(srcDir)) {
+            const srcFiles = readdirSync(srcDir);
+            for (const f of srcFiles) {
+              if (f.endsWith(".html") || f.endsWith(".md")) {
+                handleFileEdited(join(srcDir, f));
+                break;
+              }
+            }
+          } else {
+            // Check artefact root for HTML/MD files
+            for (const f of files) {
+              if (f.endsWith(".html") || f.endsWith(".md")) {
+                handleFileEdited(join(artefactDir, f));
+                break;
+              }
+            }
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // Legacy: scan web/public/ for top-level files
+  for (const dir of LEGACY_DIRS) {
     if (!existsSync(dir.prefix)) continue;
     try {
       const files = readdirSync(dir.prefix);
@@ -225,7 +369,7 @@ function scanExistingArtifacts() {
   }
 }
 
-scanExistingArtifacts();
+scanExistingArtefacts();
 
 async function startAutoApprover() {
   try {
@@ -387,7 +531,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // GET /api/artifacts
   if (url === "/api/artifacts") {
-    const artifacts = await getAllArtifacts((filePath) => seenFiles.delete(filePath));
+    const artifacts = await getAllArtifacts((id) => seenArtefacts.delete(id));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(artifacts));
     return;
@@ -551,6 +695,58 @@ li { margin: 0.3rem 0; }
   const questionMatch = url.match(/^\/api\/chat\/question\/([^/]+)\/reply$/);
   if (questionMatch && req.method === "POST") {
     await proxyToOpenCode(req, res, `/question/${questionMatch[1]}/reply`);
+    return;
+  }
+
+  // ── Static file serving for /artefacts/ ──
+  if (url.startsWith("/artefacts/")) {
+    const urlPath = url.split("?")[0]; // Strip query params
+    const relativePath = urlPath.slice("/artefacts/".length);
+    const filePath = join(ARTEFACTS_DIR, relativePath);
+
+    // Security: prevent path traversal
+    if (!filePath.startsWith(ARTEFACTS_DIR)) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
+
+    if (!existsSync(filePath)) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+
+    const ext = extname(filePath);
+    const mime = MIME[ext] || "application/octet-stream";
+
+    if (ext === ".md") {
+      const content = readFileSync(filePath, "utf8");
+      const rendered = marked(content);
+      const name = inferName(filePath);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${name}</title><style>
+body { font-family: 'Space Grotesk', -apple-system, sans-serif; padding: 2.5rem; max-width: 72ch; margin: 0 auto; background: #1a1b2e; color: #e8e9f0; line-height: 1.7; }
+h1, h2, h3 { color: #fff; font-weight: 600; letter-spacing: -0.02em; }
+h1 { font-size: 1.8rem; margin-top: 0; }
+h2 { font-size: 1.3rem; margin-top: 2rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.4rem; }
+a { color: #21b981; text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { background: rgba(255,255,255,0.06); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; font-family: 'IBM Plex Mono', monospace; }
+pre { background: rgba(255,255,255,0.04); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+th { color: rgba(232,233,240,0.6); font-weight: 500; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em; }
+blockquote { border-left: 3px solid #21b981; margin: 1rem 0; padding: 0.5rem 1rem; color: rgba(232,233,240,0.7); }
+ul, ol { padding-left: 1.5rem; }
+li { margin: 0.3rem 0; }
+</style></head><body>${rendered}</body></html>`;
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(html);
+    } else {
+      res.writeHead(200, { "Content-Type": mime });
+      res.end(readFileSync(filePath));
+    }
     return;
   }
 

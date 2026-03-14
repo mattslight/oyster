@@ -51,7 +51,8 @@ export default function App() {
   const terminalWindow = windows.find((w) => w.type === "terminal");
 
   async function handleArtifactClick(artifact: Artifact) {
-    if (artifact.type === "app") {
+    if (artifact.type === "app" && artifact.port) {
+      // Registry app with a dev server (has a port)
       if (artifact.status === "starting") return;
 
       if (artifact.status === "online") {
@@ -69,7 +70,9 @@ export default function App() {
       await startAppApi(appName);
       window.open(artifact.path, artifact.id, "width=1280,height=900");
     } else {
-      dispatch({ type: "OPEN_VIEWER", title: artifact.name, path: artifact.path, fullscreen: artifact.type === "deck" });
+      // Static artefact (generated app, doc, deck, diagram, etc.) — open in viewer
+      const fullscreen = artifact.type === "deck" || artifact.type === "app";
+      dispatch({ type: "OPEN_VIEWER", title: artifact.name, path: artifact.path, fullscreen });
     }
   }
 
@@ -181,29 +184,12 @@ export default function App() {
         </div>
       )}
 
-      <div className="space-pills-area">
-        <div className="space-pills">
-          <button
-            className={`space-pill ${!activeSpace ? "active" : ""}`}
-            onClick={() => setActiveSpace(null)}
-          >
-            home
-          </button>
-          {spaces.map((s) => (
-            <button
-              key={s}
-              className={`space-pill ${activeSpace === s ? "active" : ""}`}
-              onClick={() => setActiveSpace(s)}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <ChatBar
         onOpenTerminal={handleOpenTerminal}
         isHero={isHero}
+        spaces={spaces}
+        activeSpace={activeSpace}
+        onSpaceChange={setActiveSpace}
       />
     </div>
   );

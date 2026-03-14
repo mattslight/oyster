@@ -3,3 +3,8 @@ dist/
 .env
 .env.local
 .superpowers/
+
+# Generated artefacts (user content, not project source)
+artefacts/*/
+# Keep the showcase deck
+!artefacts/the-worlds-your-oyster/

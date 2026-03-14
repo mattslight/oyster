@@ -131,7 +131,7 @@ export function ViewerWindow({
         </div>
       )}
       <iframe
-        src={path}
+        src={`${path}?t=${Date.now()}`}
         className="viewer-iframe"
         title={title}
       />

@@ -40,6 +40,12 @@ const typeConfig: Record<
     ext: "diagram",
     icon: "M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4",
   },
+  table: {
+    gradient: "linear-gradient(135deg, #1e3a3a, #244a4a)",
+    color: "#22d3ee",
+    ext: "table",
+    icon: "M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18",
+  },
 };
 
 interface Props {
@@ -51,7 +57,8 @@ interface Props {
 
 export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
   const config = typeConfig[artifact.type];
-  const isApp = artifact.type === "app";
+  // Only show status indicators for registry apps with dev servers (have a port)
+  const isRegistryApp = artifact.type === "app" && !!artifact.port;
 
   return (
     <button
@@ -72,13 +79,13 @@ export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
         </svg>
         <span className="file-ext">{config.ext}</span>
 
-        {isApp && (
+        {isRegistryApp && (
           <span
             className={`status-dot ${artifact.status === "online" ? "online" : artifact.status === "starting" ? "starting" : "offline"}`}
           />
         )}
 
-        {isApp && artifact.status === "online" && onStop && (
+        {isRegistryApp && artifact.status === "online" && onStop && (
           <span
             className="stop-btn"
             onClick={(e) => {

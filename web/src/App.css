@@ -40,15 +40,11 @@ body {
   position: relative;
 }
 
-/* ── Space pills (persistent nav above chatbar) ── */
-.space-pills-area {
-  position: fixed;
-  bottom: 78px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 95;
+/* ── Space pills (inline below chatbar input) ── */
+.space-pills-inline {
   display: flex;
   justify-content: center;
+  margin-top: 6px;
 }
 
 .space-pills {
@@ -263,7 +259,7 @@ body {
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: 560px;
+  width: 640px;
   max-width: calc(100% - 40px);
   z-index: 90;
   display: flex;
@@ -422,21 +418,40 @@ body {
 
 /* Chat messages panel */
 .chatbar-messages {
-  background: rgba(13, 14, 26, 0.92);
+  background: rgba(13, 14, 26, 0.7);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   margin-bottom: 8px;
-  padding: 16px;
-  max-height: 360px;
+  padding: 20px;
+  max-height: 50vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  animation: chatPanelIn 0.2s ease-out;
   position: relative;
+  transition: opacity 0.25s ease, transform 0.25s ease, max-height 0.3s ease;
+  transform-origin: bottom center;
+}
+
+.chatbar-messages.chat-expanded {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.chatbar-messages.chat-collapsed {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+  max-height: 0;
+  padding: 0 20px;
+  margin-bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .chatbar-collapse {
@@ -457,10 +472,7 @@ body {
   color: var(--text);
 }
 
-@keyframes chatPanelIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+
 
 /* Chat bubbles (shared with chatbar) */
 .chat-bubble {
@@ -486,6 +498,22 @@ body {
   border-bottom-left-radius: 3px;
 }
 
+/* ── Markdown in chat bubbles ── */
+.chat-markdown { white-space: normal; }
+.chat-markdown p { margin: 0 0 0.4em; }
+.chat-markdown p:last-child { margin-bottom: 0; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { font-size: 0.85rem; font-weight: 600; margin: 0.6em 0 0.3em; }
+.chat-markdown ul, .chat-markdown ol { margin: 0.3em 0; padding-left: 1.2em; }
+.chat-markdown li { margin: 0.15em 0; }
+.chat-markdown code { background: rgba(255,255,255,0.08); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.75rem; font-family: 'IBM Plex Mono', monospace; }
+.chat-markdown pre { background: rgba(255,255,255,0.04); padding: 0.5em 0.7em; border-radius: 6px; overflow-x: auto; margin: 0.4em 0; }
+.chat-markdown pre code { background: none; padding: 0; }
+.chat-markdown blockquote { border-left: 2px solid var(--accent); margin: 0.4em 0; padding: 0.2em 0.6em; opacity: 0.8; }
+.chat-markdown a { color: var(--accent); text-decoration: none; }
+.chat-markdown strong { font-weight: 600; }
+.chat-markdown table { border-collapse: collapse; width: 100%; margin: 0.4em 0; font-size: 0.75rem; }
+.chat-markdown th, .chat-markdown td { text-align: left; padding: 0.3em 0.5em; border-bottom: 1px solid rgba(255,255,255,0.08); }
+
 /* ── Question options ── */
 .question-options {
   display: flex;
@@ -496,7 +524,7 @@ body {
 
 .question-option-btn {
   background: rgba(33, 185, 129, 0.15);
-  border: 1px solid rgba(33, 185, 129, 0.3);
+  border: none;
   color: var(--accent);
   font-family: var(--font-body);
   font-size: 0.75rem;

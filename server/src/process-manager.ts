@@ -51,13 +51,13 @@ export function registerGeneratedArtifact(artifact: Artifact, filePath?: string)
   generatedArtifacts.set(artifact.id, { ...artifact, filePath });
 }
 
-export function getGeneratedArtifacts(onRemove?: (filePath: string) => void): Artifact[] {
+export function getGeneratedArtifacts(onRemove?: (id: string, filePath: string) => void): Artifact[] {
   // Self-healing: remove artifacts whose backing file no longer exists
   for (const [id, artifact] of generatedArtifacts) {
     if (artifact.filePath && !existsSync(artifact.filePath)) {
       console.log(`[artifact-cleanup] removed stale artifact: ${artifact.name} (${artifact.filePath})`);
       generatedArtifacts.delete(id);
-      onRemove?.(artifact.filePath);
+      onRemove?.(id, artifact.filePath);
     }
   }
   return Array.from(generatedArtifacts.values()).map(({ filePath: _, ...a }) => a);
@@ -182,7 +182,7 @@ export function stopApp(name: string): boolean {
 
 // ── Unified artifact list ──
 
-export async function getAllArtifacts(onArtifactRemoved?: (filePath: string) => void): Promise<Artifact[]> {
+export async function getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
   const registry = loadRegistry();
   const now = new Date().toISOString();
 
