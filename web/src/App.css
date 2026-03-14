@@ -946,14 +946,16 @@ body {
 }
 
 .viewer-error-fix {
-  background: #7c3aed;
+  background: var(--accent, #7c3aed);
   color: white;
   border: none;
-  padding: 8px 18px;
-  border-radius: 6px;
+  padding: 10px 24px;
+  border-radius: 999px;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
+  transition: background 0.15s;
 }
 
 .viewer-error-fix:hover {
@@ -961,18 +963,20 @@ body {
 }
 
 .viewer-error-retry {
-  background: #2a2a3e;
+  background: rgba(255, 255, 255, 0.06);
   color: #94a3b8;
-  border: 1px solid #3a3a5e;
-  padding: 8px 14px;
-  border-radius: 6px;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 999px;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
+  transition: background 0.15s;
 }
 
 .viewer-error-retry:hover {
-  background: #333350;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .viewer-error-details {
@@ -982,19 +986,23 @@ body {
 .viewer-error-details-toggle {
   background: none;
   border: none;
-  color: #64748b;
+  color: rgba(255, 255, 255, 0.3);
   font-size: 12px;
   cursor: pointer;
-  text-decoration: underline;
   font-family: inherit;
+  transition: color 0.15s;
+}
+
+.viewer-error-details-toggle:hover {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .viewer-error-stack {
   text-align: left;
   background: rgba(255, 255, 255, 0.04);
-  padding: 12px;
-  border-radius: 6px;
-  color: #94a3b8;
+  padding: 14px 16px;
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.4);
   font-size: 11px;
   font-family: "IBM Plex Mono", monospace;
   max-height: 200px;
