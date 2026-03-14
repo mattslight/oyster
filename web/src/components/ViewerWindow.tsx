@@ -93,7 +93,7 @@ export function ViewerWindow({
   const [iframeKey, setIframeKey] = useState(0);
   const [fixPhase, setFixPhase] = useState<FixPhase>("idle");
   const [fixStatus, setFixStatus] = useState("Sending to Oyster...");
-  const fixSessionRef = useRef<string | null>(null);
+  const [fixSessionId, setFixSessionId] = useState<string | null>(null);
   const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
 
   // Listen for iframe errors via postMessage
@@ -120,11 +120,12 @@ export function ViewerWindow({
     setIframeKey((k) => k + 1);
   }, [path]);
 
-  // Subscribe to SSE when fixing
+  // Subscribe to SSE when fixing — depends on fixSessionId (state) so it
+  // re-runs once the async onFixError resolves and sets the sessionId.
   useEffect(() => {
     if (fixPhase !== "fixing") return;
-    const sessionId = fixSessionRef.current;
-    if (!sessionId) return;
+    if (!fixSessionId) return;
+    const sessionId = fixSessionId;
 
     let seenBusy = false;
 
@@ -168,7 +169,7 @@ export function ViewerWindow({
     });
 
     return unsubscribe;
-  }, [fixPhase]);
+  }, [fixPhase, fixSessionId]);
 
   // Auto-retry after fix completes
   useEffect(() => {
@@ -177,7 +178,7 @@ export function ViewerWindow({
       setError(null);
       setFixPhase("idle");
       setFixStatus("");
-      fixSessionRef.current = null;
+      setFixSessionId(null);
       setIframeKey((k) => k + 1);
     }, 1200);
     return () => clearTimeout(timer);
@@ -187,7 +188,7 @@ export function ViewerWindow({
     setError(null);
     setFixPhase("idle");
     setFixStatus("");
-    fixSessionRef.current = null;
+    setFixSessionId(null);
     setIframeKey((k) => k + 1);
   }, []);
 
@@ -197,7 +198,7 @@ export function ViewerWindow({
     setFixStatus("Sending to Oyster...");
     try {
       const sessionId = await onFixError({ title, message: error.message, stack: error.stack, console: error.console });
-      fixSessionRef.current = sessionId;
+      setFixSessionId(sessionId);
     } catch {
       setFixPhase("idle");
       setFixStatus("");
