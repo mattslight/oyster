@@ -178,7 +178,7 @@ export function ViewerWindow({
           const status = props.status as { type: string };
           if (status.type === "busy") {
             seenBusy = true;
-            setFixStatus("Oyster is thinking...");
+            setFixStatus("Oyster is debugging...");
           } else if (status.type === "idle" && seenBusy) {
             unsubRef.current?.();
             unsubRef.current = null;
