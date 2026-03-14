@@ -63,6 +63,7 @@ export function ViewerWindow({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<ArtifactError | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
+  const [fixState, setFixState] = useState<"idle" | "sending" | "sent">("idle");
   // Cache-bust URL on path change or retry (iframeKey bump)
   const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
 
@@ -83,11 +84,13 @@ export function ViewerWindow({
 
   useEffect(() => {
     setError(null);
+    setFixState("idle");
     setIframeKey((k) => k + 1);
   }, [path]);
 
   const handleRetry = useCallback(() => {
     setError(null);
+    setFixState("idle");
     setIframeKey((k) => k + 1);
   }, []);
 
@@ -200,9 +203,14 @@ export function ViewerWindow({
           <p className="viewer-error-message">{error.message}</p>
           <div className="viewer-error-actions">
             {onFixError && (
-              <button className="viewer-error-fix"
-                onClick={() => onFixError({ title, message: error.message, stack: error.stack, console: error.console })}>
-                Ask Oyster to fix it
+              <button className={`viewer-error-fix ${fixState !== "idle" ? "viewer-error-fix-sent" : ""}`}
+                disabled={fixState !== "idle"}
+                onClick={async () => {
+                  setFixState("sending");
+                  await onFixError({ title, message: error.message, stack: error.stack, console: error.console });
+                  setFixState("sent");
+                }}>
+                {fixState === "idle" ? "Ask Oyster to fix it" : fixState === "sending" ? "Sending..." : "Sent to Oyster"}
               </button>
             )}
             <button className="viewer-error-retry" onClick={handleRetry}>Retry</button>

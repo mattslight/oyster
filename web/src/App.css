@@ -958,8 +958,14 @@ body {
   transition: background 0.15s;
 }
 
-.viewer-error-fix:hover {
+.viewer-error-fix:hover:not(:disabled) {
   background: #6d28d9;
+}
+
+.viewer-error-fix-sent {
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+  cursor: default;
 }
 
 .viewer-error-retry {
