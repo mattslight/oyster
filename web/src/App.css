@@ -903,3 +903,104 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* ── Artifact error screen ── */
+.viewer-error-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #1a1a2e;
+  padding: 32px;
+  text-align: center;
+}
+
+.viewer-error-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-error-title {
+  color: #e2e8f0;
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.viewer-error-message {
+  color: #64748b;
+  font-size: 13px;
+  max-width: 300px;
+  margin: 0;
+}
+
+.viewer-error-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.viewer-error-fix {
+  background: #7c3aed;
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.viewer-error-fix:hover {
+  background: #6d28d9;
+}
+
+.viewer-error-retry {
+  background: #2a2a3e;
+  color: #94a3b8;
+  border: 1px solid #3a3a5e;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.viewer-error-retry:hover {
+  background: #333350;
+}
+
+.viewer-error-details {
+  margin-top: 4px;
+}
+
+.viewer-error-details-toggle {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: inherit;
+}
+
+.viewer-error-stack {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 12px;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-family: "IBM Plex Mono", monospace;
+  max-height: 200px;
+  overflow: auto;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-width: 500px;
+}
