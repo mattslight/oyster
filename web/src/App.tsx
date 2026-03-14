@@ -11,6 +11,7 @@ import {
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/mock-artifacts";
+import { getOrCreateSession, sendMessage } from "./data/chat-api";
 import "./App.css";
 
 export default function App() {
@@ -96,6 +97,19 @@ export default function App() {
     await stopAppApi(appName);
   }
 
+  async function handleFixError(error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) {
+    try {
+      const sessionId = await getOrCreateSession();
+      const consoleText = error.console.length > 0
+        ? "\n\nRecent console output:\n" + error.console.map((e) => `[${e.type}] ${e.message}`).join("\n")
+        : "";
+      const message = `The artifact "${error.title}" crashed with an error:\n\n${error.stack || error.message}${consoleText}\n\nPlease fix this error in the artifact source code.`;
+      await sendMessage(sessionId, message);
+    } catch (err) {
+      console.error("Failed to send fix-it message:", err);
+    }
+  }
+
   return (
     <div className="oyster-shell">
       <Clock />
@@ -132,6 +146,7 @@ export default function App() {
               onToggleFullscreen={() => dispatch({ type: "TOGGLE_FULLSCREEN", id: w.id })}
               hasPrev={hasPrev}
               hasNext={hasNext}
+              onFixError={handleFixError}
               onNavigate={(dir) => {
                 const nextIdx = currentIdx + dir;
                 const next = docArtifacts[nextIdx];
