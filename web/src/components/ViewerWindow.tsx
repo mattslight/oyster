@@ -184,7 +184,7 @@ export function ViewerWindow({
             unsubRef.current = null;
             if (hasEdited) {
               setFixPhase("done");
-              setFixStatus("Fixed! Reloading...");
+              setFixStatus("Done! Reloading...");
             } else {
               // Oyster finished but didn't edit anything
               setFixPhase("idle");
@@ -271,7 +271,7 @@ export function ViewerWindow({
           </svg>
         </div>
         <h3 className="viewer-fix-title">
-          {fixPhase === "done" ? "Fixed!" : "Oyster is on it"}
+          {fixPhase === "done" ? "Done!" : "Oyster is debugging"}
         </h3>
         <p className="viewer-fix-status">{fixStatus}</p>
         {fixPhase === "fixing" && (
