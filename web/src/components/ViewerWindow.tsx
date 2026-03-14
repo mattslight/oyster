@@ -155,6 +155,7 @@ export function ViewerWindow({
 
     // Subscribe to SSE BEFORE sending the message so we don't miss events
     let seenBusy = false;
+    let hasEdited = false;
     let targetSessionId: string | null = null;
 
     unsubRef.current?.();
@@ -179,17 +180,29 @@ export function ViewerWindow({
             seenBusy = true;
             setFixStatus("Oyster is thinking...");
           } else if (status.type === "idle" && seenBusy) {
-            setFixPhase("done");
-            setFixStatus("Fixed! Reloading...");
             unsubRef.current?.();
             unsubRef.current = null;
+            if (hasEdited) {
+              setFixPhase("done");
+              setFixStatus("Fixed! Reloading...");
+            } else {
+              // Oyster finished but didn't edit anything
+              setFixPhase("idle");
+              setFixStatus("");
+              setError((prev) => prev ? { ...prev, message: prev.message + "\n\nOyster couldn't fix this automatically." } : prev);
+            }
           }
           break;
         }
         case "message.part.updated": {
           const part = props.part as { type: string; tool?: string; state?: { status?: string } };
           if (part.type === "tool" && part.tool) {
-            const label = toolLabels[part.tool.toLowerCase()] || "Working";
+            const toolName = part.tool.toLowerCase();
+            // Track if Oyster actually edited files
+            if (toolName === "edit" || toolName === "write") {
+              hasEdited = true;
+            }
+            const label = toolLabels[toolName] || "Working";
             const hint = extractToolHint(props.part as Record<string, unknown>);
             if (part.state?.status === "running" || part.state?.status === "pending") {
               setFixStatus(hint ? `${label} ${hint}` : `${label}...`);

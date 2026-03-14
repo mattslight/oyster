@@ -11,7 +11,7 @@ import {
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/mock-artifacts";
-import { getOrCreateSession, sendMessage } from "./data/chat-api";
+import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
 
 export default function App() {
@@ -98,13 +98,14 @@ export default function App() {
   }
 
   async function handleFixError(error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
-    const sessionId = await getOrCreateSession();
+    // Use a fresh session so Oyster has clean context for the fix
+    const session = await createSession();
     const consoleText = error.console.length > 0
       ? "\n\nRecent console output:\n" + error.console.map((e) => `[${e.type}] ${e.message}`).join("\n")
       : "";
     const message = `The artifact "${error.title}" crashed with an error:\n\n${error.stack || error.message}${consoleText}\n\nPlease fix this error in the artifact source code.`;
-    await sendMessage(sessionId, message);
-    return sessionId;
+    await sendMessage(session.id, message);
+    return session.id;
   }
 
   return (
