@@ -61,7 +61,7 @@ export function ViewerWindow({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   // Cache-bust URL once per path change, not on every re-render
-  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path]);
+  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<ArtifactError | null>(null);
