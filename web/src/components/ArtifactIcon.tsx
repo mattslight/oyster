@@ -66,18 +66,29 @@ export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
       style={{ animationDelay: `${index * 0.05 + 0.05}s` }}
       onClick={onClick}
     >
-      <div className="icon-thumb" style={{ background: config.gradient }}>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={config.color}
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d={config.icon} />
-        </svg>
-        <span className="file-ext">{config.ext}</span>
+      <div className={`icon-thumb ${artifact.icon ? "icon-thumb-ai" : ""}`} style={artifact.icon ? undefined : { background: config.gradient }}>
+        {artifact.icon ? (
+          <img
+            src={artifact.icon}
+            alt={artifact.name}
+            className="icon-img"
+            loading="lazy"
+          />
+        ) : (
+          <>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={config.color}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d={config.icon} />
+            </svg>
+            <span className="file-ext">{config.ext}</span>
+          </>
+        )}
 
         {isRegistryApp && (
           <span

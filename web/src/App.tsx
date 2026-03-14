@@ -168,14 +168,14 @@ export default function App() {
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="url(#bolt-grad)" />
                 <defs>
                   <linearGradient id="bolt-grad" x1="3" y1="2" x2="20" y2="22">
-                    <stop offset="0%" stopColor="#21b981" />
+                    <stop offset="0%" stopColor="#7c6bff" />
                     <stop offset="100%" stopColor="#6366f1" />
                   </linearGradient>
                 </defs>
               </svg>
             </div>
             <h2 className="hardcore-title">Ultra Hardcore</h2>
-            <p>This opens a raw terminal. You're talking directly to the engine — no guardrails, no undo, full control.</p>
+            <p>This opens the shell. You're talking directly to the engine — no guardrails, no undo, full control.</p>
             <div className="hardcore-gate-actions">
               <button className="hardcore-cancel" onClick={() => setShowHardcoreGate(false)}>I'll pass</button>
               <button className="hardcore-confirm" onClick={confirmHardcore}>Game on</button>

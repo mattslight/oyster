@@ -13,7 +13,7 @@ export function Desktop({ artifacts, onArtifactClick, onArtifactStop }: Props) {
     <div className="desktop">
       <div className="desktop-aurora">
         <Aurora
-          colorStops={["#00694b", "#21b981", "#1a1b2e"]}
+          colorStops={["#2a1f6b", "#7c6bff", "#1a1b2e"]}
           amplitude={1.2}
           blend={0.6}
           speed={0.5}

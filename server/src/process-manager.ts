@@ -36,6 +36,8 @@ export interface Artifact {
   port?: number;
   space: string;
   createdAt: string;
+  icon?: string;
+  iconStatus?: "pending" | "generating" | "ready" | "failed";
 }
 
 // ── State ──
@@ -49,6 +51,13 @@ const generatedArtifacts = new Map<string, Artifact & { filePath?: string }>();
 
 export function registerGeneratedArtifact(artifact: Artifact, filePath?: string): void {
   generatedArtifacts.set(artifact.id, { ...artifact, filePath });
+}
+
+export function updateGeneratedArtifact(id: string, fields: Partial<Artifact>): void {
+  const existing = generatedArtifacts.get(id);
+  if (existing) {
+    Object.assign(existing, fields);
+  }
 }
 
 export function getGeneratedArtifacts(onRemove?: (id: string, filePath: string) => void): Artifact[] {

@@ -13,7 +13,9 @@ import {
   isPortOpen,
   waitForReady,
   registerGeneratedArtifact,
+  updateGeneratedArtifact,
 } from "./process-manager.js";
+import { IconGenerator } from "./icon-generator.js";
 
 const PORT = 4200;
 const OPENCODE_PORT = 4096;
@@ -145,6 +147,8 @@ const seenArtefacts = new Set<string>();
 
 const ARTEFACTS_DIR = `${PROJECT_ROOT}/artefacts/`;
 
+const iconGenerator = new IconGenerator(updateGeneratedArtifact);
+
 // Legacy dirs — kept for backward compat with existing demo content in web/public/
 const LEGACY_DIRS = [
   { prefix: `${PROJECT_ROOT}/web/public/`, serve: "/", space: "generated" },
@@ -209,6 +213,15 @@ function inferName(filePath: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase()); // title case
 }
 
+function detectExistingIcon(artefactDir: string): { icon: string; iconStatus: "ready" } | {} {
+  const dirName = artefactDir.split("/").pop();
+  const iconPath = join(artefactDir, "icon.png");
+  if (existsSync(iconPath)) {
+    return { icon: `/artefacts/${dirName}/icon.png`, iconStatus: "ready" as const };
+  }
+  return {};
+}
+
 function registerArtefactFromManifest(manifest: ArtefactManifest, artefactDir: string) {
   const id = `gen:${manifest.id}`;
   if (seenArtefacts.has(id)) return;
@@ -227,7 +240,11 @@ function registerArtefactFromManifest(manifest: ArtefactManifest, artefactDir: s
     path: servePath,
     space: "generated",
     createdAt: manifest.created_at,
+    ...detectExistingIcon(artefactDir),
   }, entrypointPath);
+
+  // Queue icon generation for this artifact
+  iconGenerator.enqueue(id, manifest.name, manifest.type, artefactDir);
 }
 
 function handleFileEdited(rawPath: string) {
@@ -270,7 +287,11 @@ function handleFileEdited(rawPath: string) {
       path: serveRelative,
       space: "generated",
       createdAt: new Date().toISOString(),
+      ...detectExistingIcon(artefactDir),
     }, filePath);
+
+    // Queue icon generation for this artifact
+    iconGenerator.enqueue(id, name, type, artefactDir);
     return;
   }
 
@@ -581,7 +602,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   // GET /docs/:name
-  const docsMatch = url.match(/^\/docs\/([^/]+)$/);
+  const docsMatch = url.split("?")[0].match(/^\/docs\/([^/]+)$/);
   if (docsMatch) {
     const name = docsMatch[1];
     const filePath = docsMap.get(name);

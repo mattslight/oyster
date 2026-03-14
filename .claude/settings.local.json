@@ -46,7 +46,19 @@
       "Bash(sleep 3 && curl -s http://localhost:4200/api/artifacts 2>&1 | jq '.[] | select\\(.id | startswith\\(\"gen:\"\\)\\) | {id, name, type, path}')",
       "Bash(grep -r \"deck\\\\|Showcase\" /Users/Matthew.Slight/Dev/oyster-os --include=\"*.json\" --exclude-dir=node_modules 2>/dev/null | head -20)",
       "Bash(grep -r \"event\\\\.type\\\\|ChatEvent\" /Users/Matthew.Slight/Dev/oyster-os --path \"*/node_modules\" -prune -o -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -print 2>/dev/null)",
-      "WebFetch(domain:localhost)"
+      "WebFetch(domain:localhost)",
+      "Bash(ls -la /Users/Matthew.Slight/Dev/oyster-os/server/.env* 2>/dev/null; cat /Users/Matthew.Slight/Dev/oyster-os/server/.gitignore 2>/dev/null; cat /Users/Matthew.Slight/Dev/oyster-os/.gitignore 2>/dev/null | head -30)",
+      "Bash(cd /Users/Matthew.Slight/Dev/oyster-os/server && timeout 5 node --env-file=../.env node_modules/.bin/tsx src/index.ts 2>&1 || true)",
+      "Bash(lsof -ti:4200 2>/dev/null | xargs kill 2>/dev/null; sleep 1; echo \"Port 4200 freed\")",
+      "Bash(curl -sI http://localhost:4200/artefacts/snake-game/icon.png 2>/dev/null | head -5)",
+      "Bash(ls /Users/Matthew.Slight/Dev/oyster-os/artefacts/*/icon.png 2>/dev/null)",
+      "Bash(sleep 3 && curl -s http://localhost:5173 | head -5 && echo \"---\" && curl -s http://localhost:4200/api/artifacts | python3 -m json.tool 2>/dev/null | head -30)",
+      "Bash(curl -s http://localhost:4200/api/artifacts | python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(f'{a[\\\\\"id\\\\\"]}: icon={a.get\\(\\\\\"icon\\\\\",\\\\\"none\\\\\"\\)} iconStatus={a.get\\(\\\\\"iconStatus\\\\\",\\\\\"none\\\\\"\\)}'\\) for a in data if a.get\\('icon'\\) or a.get\\('iconStatus'\\)]\")",
+      "Bash(curl -s http://localhost:4200/api/artifacts | python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(f'{a[\\\\\"id\\\\\"]}: icon={a.get\\(\\\\\"icon\\\\\",\\\\\"none\\\\\"\\)}'\\) for a in data]\")",
+      "Bash(curl -s http://localhost:5173 | head -3)",
+      "Bash(sleep 8 && ls -la /Users/Matthew.Slight/Dev/oyster-os/artefacts/*/icon.png 2>/dev/null)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/docs/homepage-audit && echo \"\" && curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/docs/info-architecture)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:4200/docs/homepage-audit?t=123456\")"
     ]
   }
 }

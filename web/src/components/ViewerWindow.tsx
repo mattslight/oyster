@@ -1,4 +1,4 @@
-import { useRef, useCallback, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useMemo, useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { WindowChrome } from "./WindowChrome";
 
 interface Props {
@@ -32,6 +32,8 @@ export function ViewerWindow({
 }: Props) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
+  // Cache-bust URL once per path change, not on every re-render
+  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
     // Only drag from the toolbar background / title, not from buttons
@@ -131,7 +133,7 @@ export function ViewerWindow({
         </div>
       )}
       <iframe
-        src={`${path}?t=${Date.now()}`}
+        src={iframeSrc}
         className="viewer-iframe"
         title={title}
       />

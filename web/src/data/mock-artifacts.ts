@@ -7,6 +7,7 @@ export interface Artifact {
   port?: number;
   space: string;
   createdAt: string;
+  icon?: string;
 }
 
 export async function fetchArtifacts(): Promise<Artifact[]> {

@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-03-14 (night)
+
+### AI-generated artefact icons
+
+- Geometric icon generation pipeline: GPT-4o-mini reads app source code and crafts art-directed prompts, fal.ai Flux Schnell renders 512x512 geometric/low-poly icons
+- Icons use the desktop colour palette per artifact type (matching typeConfig gradients and accent colours)
+- Sequential job queue processes icons one at a time, skips if icon.png already exists on disk
+- Existing icons detected from disk on server restart (no re-generation)
+- Graceful degradation: no FAL_KEY disables icons entirely, no OPENAI_API_KEY falls back to basic prompts
+- Frontend renders AI icons with CSS border-radius clipping, falls back to SVG type icons
+- `@fal-ai/client` dependency added, env vars loaded via `node --env-file`
+
+### Fixes
+
+- Doc viewer "Not found" — `/docs/:name` route now strips query params (cache-bust `?t=` was breaking the regex)
+- Tagline: "Tools are dead. Welcome to the surface."
+- Ultra Hardcore popup: "This opens the shell." with white button text
+
+## 2026-03-14 (evening)
+
+### Global rebrand: mint green to electric blue/indigo
+
+- Accent colour changed from #21b981 (mint green) to #7c6bff (electric indigo) across all surfaces
+- Aurora background gradient updated to indigo tones
+- Terminal cursor, selection, and prompt colours updated
+- Chatbar bolt icon, send button, hover states all indigo
+
+### Showcase deck: "The World's Your Oyster" redesign
+
+- Replaced old-school scrolling webpage with modern scroll-driven reveal experience
+- Threads WebGL shader background (indigo flowing lines, mouse-reactive) replaces FaultyTerminal
+- GSAP ScrollTrigger word-by-word blur reveal on scroll (text sharpens as it reaches centre)
+- Hero: typing animation with leading cursor — "Tools are dead." then "Welcome to Oyster."
+- Scroll indicator: mouse oval with bouncing dot, fades on first scroll
+- "Your work is scattered" slide: Matter.js physics — tool names fall and tumble dramatically
+- Format list: alternating lavender/white — docs / slides / mind maps / apps / games / boards / sheets / charts / sites
+- Chat bar mockup with animated conic gradient glow border
+- Stats section: big bold numbers (1 surface, infinite artefacts, 0 tabs)
+- All copy tightened (Zinsser method) — removed jargon, shorter sentences throughout
+- Unified indigo palette — no more green/blue colour clash
+
+### Chat and UX fixes
+
+- Click outside chatbar collapses with animation; click bar to re-expand (works during streaming)
+- Placeholder hidden while AI is streaming
+- Disabled input uses pointer-events:none so clicks fall through to expand chat
+- Agent instructions: artefacts dir is the lookup path for existing user content
+- ViewerWindow iframe src memoised to prevent game restarts from polling re-renders
+- Server: query param stripping for static file serving (fixes cache-bust 404)
+- OpenCode spawned from project root (finds .opencode/agents/oyster.md)
+
 ## 2026-03-14
 
 ### Artefact contract and Tier 1 pipeline

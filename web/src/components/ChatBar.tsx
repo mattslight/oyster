@@ -355,7 +355,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           ) : (
             <>
               <span className="tagline-dim">Tools are dead.</span>{" "}
-              <span className="tagline-bright">Welcome to the shell.</span>
+              <span className="tagline-bright">Welcome to the surface.</span>
             </>
           )}
         </div>
@@ -423,7 +423,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       )}
 
       {/* Input bar */}
-      <div className="chatbar-bar">
+      <div className="chatbar-bar" onClick={() => { if (messages.length > 0 && !expanded) setExpanded(true); }}>
         <div
           className="chatbar-oyster"
           onClick={onOpenTerminal}
@@ -458,9 +458,9 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
               taglineIndexRef.current++;
             }
           }}
-          placeholder={isHero && !focused ? "" : placeholder}
+          placeholder={streaming ? "" : (isHero && !focused ? "" : placeholder)}
           disabled={streaming}
-          className="chatbar-input"
+          className={`chatbar-input ${streaming ? "chatbar-input-streaming" : ""}`}
         />
         <button
           className="chatbar-send"
