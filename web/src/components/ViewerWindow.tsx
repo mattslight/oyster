@@ -256,27 +256,22 @@ export function ViewerWindow({
   let content: React.ReactNode;
 
   if (fixPhase === "fixing" || fixPhase === "done") {
-    // Fixing progress screen
+    // Chatbar-style progress bar centered in the window
     content = (
       <div className="viewer-fix-screen">
-        <div className={`viewer-fix-icon ${fixPhase === "done" ? "viewer-fix-icon-done" : ""}`}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="url(#fix-bolt-grad)" />
-            <defs>
-              <linearGradient id="fix-bolt-grad" x1="3" y1="2" x2="20" y2="22">
-                <stop offset="0%" stopColor="#7c6bff" />
-                <stop offset="100%" stopColor="#6366f1" />
-              </linearGradient>
-            </defs>
-          </svg>
+        <div className={`viewer-fix-bar ${fixPhase === "done" ? "viewer-fix-bar-done" : ""}`}>
+          <div className="viewer-fix-bolt">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+          <span className="viewer-fix-status">{fixStatus}</span>
+          {fixPhase === "fixing" && (
+            <button className="viewer-fix-cancel" onClick={handleRetry} title="Cancel">
+              ×
+            </button>
+          )}
         </div>
-        <h3 className="viewer-fix-title">
-          {fixPhase === "done" ? "Done!" : "Oyster is debugging"}
-        </h3>
-        <p className="viewer-fix-status">{fixStatus}</p>
-        {fixPhase === "fixing" && (
-          <button className="viewer-fix-cancel" onClick={handleRetry}>Cancel</button>
-        )}
       </div>
     );
   } else if (error) {

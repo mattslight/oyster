@@ -1013,74 +1013,78 @@ body {
   max-width: 500px;
 }
 
-/* ── Fix-in-progress screen ── */
+/* ── Fix-in-progress screen (chatbar-style) ── */
 
 .viewer-fix-screen {
   flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
   background: #1a1a2e;
   padding: 32px;
-  text-align: center;
 }
 
-.viewer-fix-icon {
-  width: 56px;
-  height: 56px;
+.viewer-fix-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  background: rgba(13, 14, 26, 0.9);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  max-width: 360px;
+}
+
+.viewer-fix-bar-done {
+  border-color: rgba(74, 222, 128, 0.2);
+}
+
+.viewer-fix-bolt {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  background: rgba(124, 107, 255, 0.1);
-  animation: fix-pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+  color: #fff;
 }
 
-.viewer-fix-icon-done {
-  animation: none;
-  background: rgba(74, 222, 128, 0.12);
-}
-
-.viewer-fix-icon-done svg path {
-  fill: #4ade80;
-}
-
-@keyframes fix-pulse {
-  0%, 100% { transform: scale(1); opacity: 0.85; }
-  50% { transform: scale(1.08); opacity: 1; }
-}
-
-.viewer-fix-title {
-  color: #e2e8f0;
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0;
+.viewer-fix-bar-done .viewer-fix-bolt {
+  background: #4ade80;
 }
 
 .viewer-fix-status {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 13px;
-  margin: 0;
-  min-height: 20px;
-  transition: opacity 0.2s;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.viewer-fix-bar-done .viewer-fix-status {
+  color: #4ade80;
+  animation: none;
 }
 
 .viewer-fix-cancel {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.35);
+  background: none;
   border: none;
-  padding: 8px 20px;
-  border-radius: 999px;
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 16px;
   cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s, color 0.15s;
-  margin-top: 4px;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
 }
 
 .viewer-fix-cancel:hover {
-  background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.5);
 }
