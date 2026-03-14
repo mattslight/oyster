@@ -186,9 +186,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     const unsubscribe = subscribeToEvents((event: ChatEvent) => {
       const props = event.properties;
 
-      // Debug: log all events to help discover tool/progress event shapes
-      if (event.type !== "message.part.delta" && event.type !== "server.heartbeat") {
-        console.log("[oyster-event]", event.type, JSON.stringify(props));
+      // Debug: log events, filtering out noisy ones (heartbeat, deltas, diffs)
+      const noisy = new Set(["message.part.delta", "server.heartbeat", "session.diff", "session.updated"]);
+      if (!noisy.has(event.type)) {
+        console.log("[oyster-event]", event.type, JSON.stringify(props).slice(0, 200));
       }
 
       // Only handle events for our session
