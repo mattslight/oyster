@@ -93,7 +93,7 @@ export function ViewerWindow({
   const [iframeKey, setIframeKey] = useState(0);
   const [fixPhase, setFixPhase] = useState<FixPhase>("idle");
   const [fixStatus, setFixStatus] = useState("Sending to Oyster...");
-  const [fixSessionId, setFixSessionId] = useState<string | null>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
   const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
 
   // Listen for iframe errors via postMessage
@@ -114,32 +114,63 @@ export function ViewerWindow({
 
   // Reset on path change
   useEffect(() => {
+    unsubRef.current?.();
+    unsubRef.current = null;
     setError(null);
     setFixPhase("idle");
     setFixStatus("");
     setIframeKey((k) => k + 1);
   }, [path]);
 
-  // Subscribe to SSE when fixing — depends on fixSessionId (state) so it
-  // re-runs once the async onFixError resolves and sets the sessionId.
+  // Clean up SSE subscription on unmount
   useEffect(() => {
-    if (fixPhase !== "fixing") return;
-    if (!fixSessionId) return;
-    const sessionId = fixSessionId;
+    return () => { unsubRef.current?.(); };
+  }, []);
 
+  // Auto-retry after fix completes
+  useEffect(() => {
+    if (fixPhase !== "done") return;
+    const timer = setTimeout(() => {
+      setError(null);
+      setFixPhase("idle");
+      setFixStatus("");
+      setIframeKey((k) => k + 1);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [fixPhase]);
+
+  const handleRetry = useCallback(() => {
+    unsubRef.current?.();
+    unsubRef.current = null;
+    setError(null);
+    setFixPhase("idle");
+    setFixStatus("");
+    setIframeKey((k) => k + 1);
+  }, []);
+
+  const handleFix = useCallback(async () => {
+    if (!onFixError || !error) return;
+    setFixPhase("fixing");
+    setFixStatus("Sending to Oyster...");
+
+    // Subscribe to SSE BEFORE sending the message so we don't miss events
     let seenBusy = false;
+    let targetSessionId: string | null = null;
 
-    const unsubscribe = subscribeToEvents((event) => {
+    unsubRef.current?.();
+    unsubRef.current = subscribeToEvents((event) => {
       const props = event.properties;
       const eventSessionId =
         (props.sessionID as string) ||
         (props.info as { sessionID?: string })?.sessionID ||
         (props.part as { sessionID?: string })?.sessionID;
 
-      // Allow tool events from any session (sub-agents), filter rest to our session
-      const isToolEvent = event.type === "message.part.updated" &&
-        (props.part as { type?: string })?.type === "tool";
-      if (eventSessionId !== sessionId && !isToolEvent) return;
+      // Filter to our session once we know it; accept tool events from sub-agents
+      if (targetSessionId && eventSessionId !== targetSessionId) {
+        const isToolEvent = event.type === "message.part.updated" &&
+          (props.part as { type?: string })?.type === "tool";
+        if (!isToolEvent) return;
+      }
 
       switch (event.type) {
         case "session.status": {
@@ -150,16 +181,17 @@ export function ViewerWindow({
           } else if (status.type === "idle" && seenBusy) {
             setFixPhase("done");
             setFixStatus("Fixed! Reloading...");
+            unsubRef.current?.();
+            unsubRef.current = null;
           }
           break;
         }
         case "message.part.updated": {
-          const part = props.part as { type: string; tool?: string; text?: string; state?: { status?: string } };
+          const part = props.part as { type: string; tool?: string; state?: { status?: string } };
           if (part.type === "tool" && part.tool) {
             const label = toolLabels[part.tool.toLowerCase()] || "Working";
             const hint = extractToolHint(props.part as Record<string, unknown>);
-            const status = part.state?.status;
-            if (status === "running" || status === "pending") {
+            if (part.state?.status === "running" || part.state?.status === "pending") {
               setFixStatus(hint ? `${label} ${hint}` : `${label}...`);
             }
           }
@@ -168,38 +200,12 @@ export function ViewerWindow({
       }
     });
 
-    return unsubscribe;
-  }, [fixPhase, fixSessionId]);
-
-  // Auto-retry after fix completes
-  useEffect(() => {
-    if (fixPhase !== "done") return;
-    const timer = setTimeout(() => {
-      setError(null);
-      setFixPhase("idle");
-      setFixStatus("");
-      setFixSessionId(null);
-      setIframeKey((k) => k + 1);
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [fixPhase]);
-
-  const handleRetry = useCallback(() => {
-    setError(null);
-    setFixPhase("idle");
-    setFixStatus("");
-    setFixSessionId(null);
-    setIframeKey((k) => k + 1);
-  }, []);
-
-  const handleFix = useCallback(async () => {
-    if (!onFixError || !error) return;
-    setFixPhase("fixing");
-    setFixStatus("Sending to Oyster...");
     try {
       const sessionId = await onFixError({ title, message: error.message, stack: error.stack, console: error.console });
-      setFixSessionId(sessionId);
+      targetSessionId = sessionId;
     } catch {
+      unsubRef.current?.();
+      unsubRef.current = null;
       setFixPhase("idle");
       setFixStatus("");
     }
