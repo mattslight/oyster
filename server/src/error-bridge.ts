@@ -51,18 +51,18 @@ const BRIDGE_SCRIPT = `<script data-oyster-bridge>
     } catch (e) {}
   }
 
-  window.onerror = function(msg, src, line, col, err) {
-    sendError(msg, err && err.stack ? err.stack : src + ':' + line + ':' + col);
-  };
+  window.addEventListener('error', function(e) {
+    sendError(e.message, e.error && e.error.stack ? e.error.stack : e.filename + ':' + e.lineno + ':' + e.colno);
+  });
 
-  window.onunhandledrejection = function(e) {
+  window.addEventListener('unhandledrejection', function(e) {
     var reason = e.reason;
     if (reason instanceof Error) {
       sendError(reason.message, reason.stack);
     } else {
       sendError(String(reason), '');
     }
-  };
+  });
 })();
 </script>`;
 
