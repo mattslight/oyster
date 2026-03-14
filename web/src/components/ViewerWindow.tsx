@@ -60,12 +60,11 @@ export function ViewerWindow({
 }: Props) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
-  // Cache-bust URL once per path change, not on every re-render
-  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
-
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<ArtifactError | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
+  // Cache-bust URL on path change or retry (iframeKey bump)
+  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
