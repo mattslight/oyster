@@ -31,7 +31,7 @@ export interface Artifact {
   id: string;
   name: string;
   type: string;
-  status: "online" | "offline" | "starting" | "ready";
+  status: "online" | "offline" | "starting" | "ready" | "generating";
   path: string;
   port?: number;
   space: string;
@@ -53,10 +53,11 @@ export function registerGeneratedArtifact(artifact: Artifact, filePath?: string)
   generatedArtifacts.set(artifact.id, { ...artifact, filePath });
 }
 
-export function updateGeneratedArtifact(id: string, fields: Partial<Artifact>): void {
+export function updateGeneratedArtifact(id: string, fields: Partial<Artifact>, filePath?: string): void {
   const existing = generatedArtifacts.get(id);
   if (existing) {
     Object.assign(existing, fields);
+    if (filePath !== undefined) existing.filePath = filePath;
   }
 }
 

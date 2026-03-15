@@ -56,6 +56,28 @@ interface Props {
   onSpaceChange?: (space: string | null) => void;
 }
 
+// Extract a short context hint from a tool event's state.input
+function extractToolHint(part: Record<string, unknown>): string | null {
+  const state = part.state as Record<string, unknown> | undefined;
+  if (!state) return null;
+  const input = state.input as Record<string, unknown> | undefined;
+  if (!input) return null;
+  // File-based tools: extract basename from file_path or path
+  const filePath = (input.file_path || input.path) as string | undefined;
+  if (filePath && typeof filePath === "string") {
+    const name = filePath.split("/").pop() || null;
+    if (name && name.length > 30) return name.slice(0, 27) + "...";
+    return name;
+  }
+  // Glob: show pattern
+  const pattern = input.pattern as string | undefined;
+  if (pattern) return pattern.length > 30 ? pattern.slice(0, 27) + "..." : pattern;
+  // Task/Agent: show description
+  const desc = input.description as string | undefined;
+  if (desc) return desc.length > 30 ? desc.slice(0, 27) + "..." : desc;
+  return null;
+}
+
 export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -65,6 +87,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const [focused, setFocused] = useState(false);
   const [tagline, setTagline] = useState<{ dim: string; bright: string } | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -77,17 +100,18 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   // Track text parts per message: messageID → Map<partID, text>
   const textPartsMap = useRef<Map<string, Map<string, string>>>(new Map());
 
-  // Friendly progress labels for tool names
+  // Friendly progress labels for tool names (ellipsis appended during construction)
+  // OpenCode sends lowercase tool names (e.g. "read", "glob", "task")
   const toolProgress: Record<string, string> = {
-    Read: "reading...",
-    Edit: "editing...",
-    Write: "writing...",
-    Bash: "running command...",
-    Glob: "searching files...",
-    Grep: "searching code...",
-    WebFetch: "fetching...",
-    WebSearch: "searching the web...",
-    Agent: "delegating...",
+    read: "reading",
+    edit: "editing",
+    write: "writing",
+    bash: "running command",
+    glob: "searching files",
+    grep: "searching code",
+    webfetch: "fetching",
+    websearch: "searching the web",
+    task: "delegating",
   };
 
   // Parse session ID from URL if present (/session/:id)
@@ -163,9 +187,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     const unsubscribe = subscribeToEvents((event: ChatEvent) => {
       const props = event.properties;
 
-      // Debug: log all events to help discover tool/progress event shapes
-      if (event.type !== "message.part.delta") {
-        console.log("[oyster-event]", event.type, props);
+      // Debug: log events, filtering out noisy ones (heartbeat, deltas, diffs)
+      const noisy = new Set(["message.part.delta", "server.heartbeat", "session.diff", "session.updated"]);
+      if (!noisy.has(event.type)) {
+        console.log("[oyster-event]", event.type, JSON.stringify(props).slice(0, 200));
       }
 
       // Only handle events for our session
@@ -173,7 +198,12 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         (props.sessionID as string) ||
         (props.info as { sessionID?: string })?.sessionID ||
         (props.part as { sessionID?: string })?.sessionID;
-      if (eventSessionId && eventSessionId !== sessionId) return;
+      const isOurSession = !eventSessionId || eventSessionId === sessionId;
+      // Allow tool progress events from sub-agents to update status bar,
+      // but filter everything else to our session only
+      const isToolEvent = event.type === "message.part.updated" &&
+        (props.part as { type?: string })?.type === "tool";
+      if (!isOurSession && !isToolEvent) return;
 
       switch (event.type) {
         case "session.status": {
@@ -261,8 +291,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           // Show tool progress — extract tool name from whichever field OpenCode uses
           const tool = part.toolName || part.name || part.tool;
           if (tool && part.type !== "text") {
-            const label = toolProgress[tool] || `${tool.toLowerCase()}...`;
-            setStatusText(label);
+            const toolKey = tool.toLowerCase();
+            const label = toolProgress[toolKey] || "working";
+            const hint = toolKey === "bash" ? null : extractToolHint(part as Record<string, unknown>);
+            setStatusText(hint ? `${label} ${hint}...` : `${label}...`);
           }
           break;
         }
@@ -342,6 +374,17 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
   }, [input, streaming, sessionId]);
 
+  function handleCopyChat() {
+    const text = messages
+      .filter((m) => m.content)
+      .map((m) => `${m.role === "user" ? "You" : "Oyster"}: ${m.content}`)
+      .join("\n\n");
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   return (
     <div ref={wrapperRef} className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
       {/* Hero tagline — only shows before any messages, fades on focus */}
@@ -364,12 +407,22 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       {/* Messages panel — expands upward */}
       {messages.length > 0 && (
         <div className={`chatbar-messages ${expanded ? "chat-expanded" : "chat-collapsed"}`}>
-          <button
-            className="chatbar-collapse"
-            onClick={() => setExpanded(false)}
-          >
-            ✕
-          </button>
+          <div className="chatbar-actions">
+            <button
+              className={`chatbar-copy ${copied ? "copied" : ""}`}
+              onClick={handleCopyChat}
+              title="Copy chat"
+            >
+              {copied ? "copied" : "copy"}
+            </button>
+            <button
+              className="chatbar-collapse"
+              onClick={() => setExpanded(false)}
+              title="Collapse"
+            >
+              ↓
+            </button>
+          </div>
           {messages.filter((msg) => msg.content || msg.question || msg.role === "user").map((msg, i) => (
             <div key={msg.id || i} className={`chat-bubble ${msg.role}`}>
               {msg.role === "assistant" && msg.content ? (

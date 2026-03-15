@@ -11,6 +11,7 @@ import {
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/mock-artifacts";
+import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
 
 export default function App() {
@@ -51,6 +52,8 @@ export default function App() {
   const terminalWindow = windows.find((w) => w.type === "terminal");
 
   async function handleArtifactClick(artifact: Artifact) {
+    if (artifact.status === "generating") return;
+
     if (artifact.type === "app" && artifact.port) {
       // Registry app with a dev server (has a port)
       if (artifact.status === "starting") return;
@@ -96,6 +99,17 @@ export default function App() {
     await stopAppApi(appName);
   }
 
+  async function handleFixError(error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
+    // Use a fresh session so Oyster has clean context for the fix
+    const session = await createSession();
+    const consoleText = error.console.length > 0
+      ? "\n\nRecent console output:\n" + error.console.map((e) => `[${e.type}] ${e.message}`).join("\n")
+      : "";
+    const message = `The artifact "${error.title}" crashed with an error:\n\n${error.stack || error.message}${consoleText}\n\nPlease fix this error in the artifact source code.`;
+    await sendMessage(session.id, message);
+    return session.id;
+  }
+
   return (
     <div className="oyster-shell">
       <Clock />
@@ -132,6 +146,7 @@ export default function App() {
               onToggleFullscreen={() => dispatch({ type: "TOGGLE_FULLSCREEN", id: w.id })}
               hasPrev={hasPrev}
               hasNext={hasNext}
+              onFixError={handleFixError}
               onNavigate={(dir) => {
                 const nextIdx = currentIdx + dir;
                 const next = docArtifacts[nextIdx];

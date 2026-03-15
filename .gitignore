@@ -4,7 +4,5 @@ dist/
 .env.local
 .superpowers/
 
-# Generated artefacts (user content, not project source)
-artefacts/*/
-# Keep the showcase deck
-!artefacts/the-worlds-your-oyster/
+# Userland — agent workspace (user content, not project source)
+userland/
