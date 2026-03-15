@@ -52,6 +52,8 @@ export default function App() {
   const terminalWindow = windows.find((w) => w.type === "terminal");
 
   async function handleArtifactClick(artifact: Artifact) {
+    if (artifact.status === "generating") return;
+
     if (artifact.type === "app" && artifact.port) {
       // Registry app with a dev server (has a port)
       if (artifact.status === "starting") return;

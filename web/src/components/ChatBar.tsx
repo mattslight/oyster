@@ -87,6 +87,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const [focused, setFocused] = useState(false);
   const [tagline, setTagline] = useState<{ dim: string; bright: string } | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -373,6 +374,17 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
   }, [input, streaming, sessionId]);
 
+  function handleCopyChat() {
+    const text = messages
+      .filter((m) => m.content)
+      .map((m) => `${m.role === "user" ? "You" : "Oyster"}: ${m.content}`)
+      .join("\n\n");
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   return (
     <div ref={wrapperRef} className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
       {/* Hero tagline — only shows before any messages, fades on focus */}
@@ -395,12 +407,22 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       {/* Messages panel — expands upward */}
       {messages.length > 0 && (
         <div className={`chatbar-messages ${expanded ? "chat-expanded" : "chat-collapsed"}`}>
-          <button
-            className="chatbar-collapse"
-            onClick={() => setExpanded(false)}
-          >
-            ✕
-          </button>
+          <div className="chatbar-actions">
+            <button
+              className={`chatbar-copy ${copied ? "copied" : ""}`}
+              onClick={handleCopyChat}
+              title="Copy chat"
+            >
+              {copied ? "copied" : "copy"}
+            </button>
+            <button
+              className="chatbar-collapse"
+              onClick={() => setExpanded(false)}
+              title="Collapse"
+            >
+              ↓
+            </button>
+          </div>
           {messages.filter((msg) => msg.content || msg.question || msg.role === "user").map((msg, i) => (
             <div key={msg.id || i} className={`chat-bubble ${msg.role}`}>
               {msg.role === "assistant" && msg.content ? (

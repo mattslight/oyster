@@ -450,6 +450,9 @@ body {
   position: relative;
   transition: opacity 0.25s ease, transform 0.25s ease, max-height 0.3s ease;
   transform-origin: bottom center;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .chatbar-messages.chat-expanded {
@@ -488,7 +491,43 @@ body {
   color: var(--text);
 }
 
+.chatbar-actions {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+  padding-bottom: 4px;
+}
 
+.chatbar-actions .chatbar-collapse {
+  position: static;
+}
+
+.chatbar-copy,
+.chatbar-actions .chatbar-collapse {
+  background: rgba(13, 14, 26, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.chatbar-copy:hover,
+.chatbar-actions .chatbar-collapse:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chatbar-copy.copied {
+  color: var(--accent);
+}
 
 /* Chat bubbles (shared with chatbar) */
 .chat-bubble {

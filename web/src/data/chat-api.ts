@@ -17,7 +17,16 @@ export async function createSession(): Promise<ChatSession> {
     body: JSON.stringify({
       title: "oyster",
       permission: [
-        { permission: "*", pattern: "*", action: "allow" },
+        { permission: "read", pattern: "*", action: "allow" },
+        { permission: "write", pattern: "*", action: "allow" },
+        { permission: "edit", pattern: "*", action: "allow" },
+        { permission: "bash", pattern: "*", action: "allow" },
+        { permission: "glob", pattern: "*", action: "allow" },
+        { permission: "grep", pattern: "*", action: "allow" },
+        { permission: "list", pattern: "*", action: "allow" },
+        { permission: "task", pattern: "*", action: "allow" },
+        { permission: "todoread", pattern: "*", action: "allow" },
+        { permission: "todowrite", pattern: "*", action: "allow" },
       ],
     }),
   });

@@ -1,0 +1,9 @@
+[provider.anthropic]
+
+[model.chat]
+provider = "anthropic"
+id = "claude-sonnet-4-20250514"
+
+[model.edit]
+provider = "anthropic"
+id = "claude-sonnet-4-20250514"

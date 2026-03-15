@@ -63,7 +63,10 @@ export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
   return (
     <button
       className={`artifact-icon ${artifact.status === "generating" ? "generating" : ""}`}
-      style={{ animationDelay: `${index * 0.05 + 0.05}s` }}
+      style={{
+        animationDelay: `${index * 0.05 + 0.05}s`,
+        ...(artifact.status === "generating" ? { pointerEvents: "none" as const } : {}),
+      }}
       onClick={onClick}
     >
       <div className={`icon-thumb ${artifact.icon ? "icon-thumb-ai" : ""}`} style={artifact.icon ? undefined : { background: config.gradient }}>
