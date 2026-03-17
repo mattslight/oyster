@@ -73,7 +73,7 @@ export default function App() {
       await startAppApi(appName);
       window.open(artifact.path, artifact.id, "width=1280,height=900");
     } else {
-      // Static artefact (generated app, doc, deck, diagram, etc.) — open in viewer
+      // Static artifact (generated app, doc, deck, diagram, etc.) — open in viewer
       const fullscreen = artifact.type === "deck" || artifact.type === "app";
       dispatch({ type: "OPEN_VIEWER", title: artifact.name, path: artifact.path, fullscreen });
     }

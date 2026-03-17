@@ -75,7 +75,7 @@ Responsibilities:
 
 **File:** `server/src/index.ts` (modify existing artifact serving)
 
-When serving `.html` files from `/artefacts/*`:
+When serving `.html` files from `/artifacts/*`:
 - Read the response body
 - Inline the bridge script as a `<script>` block immediately after `<head>` (to run before any artifact scripts in the head). Fallback order: after `<html>`, after `<!doctype>`, or **prepend** to the file if it's a bare HTML fragment. The bridge must run as early as possible to catch boot-time errors.
 - Return modified response

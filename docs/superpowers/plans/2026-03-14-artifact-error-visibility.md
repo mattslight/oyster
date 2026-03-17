@@ -219,10 +219,10 @@ To:
 Create a test artifact with a JS error:
 
 ```bash
-mkdir -p /Users/Matthew.Slight/Dev/oyster-os/artefacts/error-test/src
+mkdir -p /Users/Matthew.Slight/Dev/oyster-os/artifacts/error-test/src
 ```
 
-Write `artefacts/error-test/manifest.json`:
+Write `artifacts/error-test/manifest.json`:
 ```json
 {
   "id": "error-test",
@@ -239,7 +239,7 @@ Write `artefacts/error-test/manifest.json`:
 }
 ```
 
-Write `artefacts/error-test/src/index.html`:
+Write `artifacts/error-test/src/index.html`:
 ```html
 <!DOCTYPE html>
 <html>
@@ -261,7 +261,7 @@ Write `artefacts/error-test/src/index.html`:
 Open the artifact URL in a browser (or curl it) and check that the `<script data-oyster-bridge>` tag appears immediately after `<head>`:
 
 ```bash
-curl -s http://localhost:4200/artefacts/error-test/src/index.html | head -5
+curl -s http://localhost:4200/artifacts/error-test/src/index.html | head -5
 ```
 
 Expected: Second line should contain `<script data-oyster-bridge>`
@@ -686,7 +686,7 @@ Open a working artifact (e.g. Zombie Horde). It should load normally with no err
 - [ ] **Step 8: Clean up test artifact**
 
 ```bash
-rm -rf /Users/Matthew.Slight/Dev/oyster-os/artefacts/error-test
+rm -rf /Users/Matthew.Slight/Dev/oyster-os/artifacts/error-test
 ```
 
 - [ ] **Step 9: Final commit**

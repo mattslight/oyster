@@ -11,7 +11,7 @@ export default defineConfig({
       },
       '/api': 'http://localhost:4200',
       '/docs': 'http://localhost:4200',
-      '/artefacts': 'http://localhost:4200',
+      '/artifacts': 'http://localhost:4200',
     }
   }
 })

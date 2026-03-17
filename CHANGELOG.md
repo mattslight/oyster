@@ -2,7 +2,7 @@
 
 ## 2026-03-14 (night)
 
-### AI-generated artefact icons
+### AI-generated artifact icons
 
 - Geometric icon generation pipeline: GPT-4o-mini reads app source code and crafts art-directed prompts, fal.ai Flux Schnell renders 512x512 geometric/low-poly icons
 - Icons use the desktop colour palette per artifact type (matching typeConfig gradients and accent colours)
@@ -37,7 +37,7 @@
 - "Your work is scattered" slide: Matter.js physics — tool names fall and tumble dramatically
 - Format list: alternating lavender/white — docs / slides / mind maps / apps / games / boards / sheets / charts / sites
 - Chat bar mockup with animated conic gradient glow border
-- Stats section: big bold numbers (1 surface, infinite artefacts, 0 tabs)
+- Stats section: big bold numbers (1 surface, infinite artifacts, 0 tabs)
 - All copy tightened (Zinsser method) — removed jargon, shorter sentences throughout
 - Unified indigo palette — no more green/blue colour clash
 
@@ -46,29 +46,29 @@
 - Click outside chatbar collapses with animation; click bar to re-expand (works during streaming)
 - Placeholder hidden while AI is streaming
 - Disabled input uses pointer-events:none so clicks fall through to expand chat
-- Agent instructions: artefacts dir is the lookup path for existing user content
+- Agent instructions: artifacts dir is the lookup path for existing user content
 - ViewerWindow iframe src memoised to prevent game restarts from polling re-renders
 - Server: query param stripping for static file serving (fixes cache-bust 404)
 - OpenCode spawned from project root (finds .opencode/agents/oyster.md)
 
 ## 2026-03-14
 
-### Artefact contract and Tier 1 pipeline
+### Artifact contract and Tier 1 pipeline
 
-- Defined the artefact contract: every generated output gets a folder, manifest.json, and source files under `/artefacts/<id>/`
+- Defined the artifact contract: every generated output gets a folder, manifest.json, and source files under `/artifacts/<id>/`
 - Manifest schema: id, name, type, runtime, entrypoint, ports, storage, capabilities, status, timestamps
-- Server detects artefacts by reading manifests first, falling back to filename inference for legacy files
-- Static file serving for `/artefacts/` path with markdown rendering
-- Recursive scan on startup finds existing artefacts in subdirectories
-- Agent instructions (oyster.md) rewritten with full artefact creation contract and examples
-- Added `table` artefact type (cyan, grid icon) for spreadsheets and structured data
+- Server detects artifacts by reading manifests first, falling back to filename inference for legacy files
+- Static file serving for `/artifacts/` path with markdown rendering
+- Recursive scan on startup finds existing artifacts in subdirectories
+- Agent instructions (oyster.md) rewritten with full artifact creation contract and examples
+- Added `table` artifact type (cyan, grid icon) for spreadsheets and structured data
 - Generated static apps open in ViewerWindow iframe instead of trying to start a dev server
-- Cache-busting on iframe src so updated artefacts always show fresh content
+- Cache-busting on iframe src so updated artifacts always show fresh content
 - Query param stripping in static file server to support cache-busting
 
 ### Architecture documentation
 
-- Superseded design doc with artefact contract, runtime tiers (static/vite/docker), and deployment models (single machine, control plane + runtime, central AI pool)
+- Superseded design doc with artifact contract, runtime tiers (static/vite/docker), and deployment models (single machine, control plane + runtime, central AI pool)
 - Deleted stale implementation doc, consolidated all content into single living design doc
 - Renamed to `oyster-os-design.md` (removed date prefix)
 
@@ -85,7 +85,7 @@
 
 - OpenCode serve now runs from project root (finds .opencode/agents/oyster.md)
 - PROJECT_ROOT hoisted to top of server for consistent use
-- Status dot on artefact icons only shows for registry apps with dev server ports
+- Status dot on artifact icons only shows for registry apps with dev server ports
 - Self-healing artifact cleanup passes id for proper cache invalidation
 
 ## 2026-03-13
@@ -94,12 +94,12 @@
 
 - OpenCode terminal embedded in surface (xterm.js + WebSocket PTY)
 - HTTP+WS hybrid server with app process management
-- Real workspace artefacts (Tokinvest apps + docs) replace mock data
+- Real workspace artifacts (Tokinvest apps + docs) replace mock data
 - Space-based navigation with pill row
 - Fresh session model (home = new session, session URLs bookmarkable)
-- Deck artefacts open fullscreen with draggable toolbar
+- Deck artifacts open fullscreen with draggable toolbar
 - Chat API layer with SSE streaming to OpenCode
-- Self-healing artefact cleanup and name override system
+- Self-healing artifact cleanup and name override system
 - Showcase deck with WebGL shader background
 
 ## 2026-03-12
@@ -107,7 +107,7 @@
 ### Sprint 1: UI mockup
 
 - Surface with Aurora WebGL animated background
-- Typed artefact icons on grid with colour-coded badges
+- Typed artifact icons on grid with colour-coded badges
 - Chat bar embedded at bottom of surface
 - Simulated chat streaming with mock responses
 - Window system with viewer, z-order, drag

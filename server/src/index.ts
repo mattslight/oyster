@@ -174,15 +174,15 @@ process.on("SIGINT", () => { shuttingDown = true; process.exit(0); });
 // In the PoC, we trust all tool use. This listens to the SSE stream
 // and auto-approves any permission.asked events.
 
-// ── Artefact detection ──
-// Artefacts live in userland/<id>/ with a manifest.json and src/ directory.
+// ── Artifact detection ──
+// Artifacts live in userland/<id>/ with a manifest.json and src/ directory.
 // The server detects them by scanning for manifest.json files or falling back
 // to filename-based inference. New artifacts start as "generating" and
 // transition to "ready" after quiescence + entrypoint exists.
 
-const seenArtefacts = new Set<string>();
+const seenArtifacts = new Set<string>();
 
-const ARTEFACTS_DIR = `${USERLAND_DIR}/`;
+const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
 
 const iconGenerator = new IconGenerator(updateGeneratedArtifact);
 
@@ -214,9 +214,9 @@ setInterval(() => {
     if (!existsSync(entrypoint)) {
       // Abandon if generating for too long without an entrypoint
       if (now - info.lastActivity > GENERATION_MAX_MS) {
-        console.log(`[artefact-detect] abandoned: ${info.name} (no entrypoint after ${GENERATION_MAX_MS / 1000}s)`);
+        console.log(`[artifact-detect] abandoned: ${info.name} (no entrypoint after ${GENERATION_MAX_MS / 1000}s)`);
         generatingArtifacts.delete(id);
-        seenArtefacts.delete(id);
+        seenArtifacts.delete(id);
       }
       continue;
     }
@@ -227,16 +227,16 @@ setInterval(() => {
     const type = manifest?.type || info.type;
     const dirName = info.dir.split("/").pop();
     const servePath = manifest
-      ? `/artefacts/${manifest.id}/${manifest.entrypoint}`
-      : `/artefacts/${dirName}/src/index.html`;
+      ? `/artifacts/${manifest.id}/${manifest.entrypoint}`
+      : `/artifacts/${dirName}/src/index.html`;
 
     updateGeneratedArtifact(id, { status: "ready", name, type, path: servePath }, entrypoint);
     iconGenerator.enqueue(id, name, type, info.dir);
-    console.log(`[artefact-detect] ready: ${name}`);
+    console.log(`[artifact-detect] ready: ${name}`);
   }
 }, 2000);
 
-interface ArtefactManifest {
+interface ArtifactManifest {
   id: string;
   name: string;
   type: string;
@@ -250,8 +250,8 @@ interface ArtefactManifest {
   updated_at: string;
 }
 
-function tryReadManifest(artefactDir: string): ArtefactManifest | null {
-  const manifestPath = join(artefactDir, "manifest.json");
+function tryReadManifest(artifactDir: string): ArtifactManifest | null {
+  const manifestPath = join(artifactDir, "manifest.json");
   if (!existsSync(manifestPath)) return null;
   try {
     return JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -295,26 +295,26 @@ function inferName(filePath: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase()); // title case
 }
 
-function detectExistingIcon(artefactDir: string): { icon: string; iconStatus: "ready" } | {} {
-  const dirName = artefactDir.split("/").pop();
-  const iconPath = join(artefactDir, "icon.png");
+function detectExistingIcon(artifactDir: string): { icon: string; iconStatus: "ready" } | {} {
+  const dirName = artifactDir.split("/").pop();
+  const iconPath = join(artifactDir, "icon.png");
   if (existsSync(iconPath)) {
-    return { icon: `/artefacts/${dirName}/icon.png`, iconStatus: "ready" as const };
+    return { icon: `/artifacts/${dirName}/icon.png`, iconStatus: "ready" as const };
   }
   return {};
 }
 
-function registerArtefactFromManifest(manifest: ArtefactManifest, artefactDir: string, generating = false) {
+function registerArtifactFromManifest(manifest: ArtifactManifest, artifactDir: string, generating = false) {
   const id = `gen:${manifest.id}`;
-  if (seenArtefacts.has(id)) return;
+  if (seenArtifacts.has(id)) return;
 
-  const entrypointPath = join(artefactDir, manifest.entrypoint);
-  const servePath = `/artefacts/${manifest.id}/${manifest.entrypoint}`;
+  const entrypointPath = join(artifactDir, manifest.entrypoint);
+  const servePath = `/artifacts/${manifest.id}/${manifest.entrypoint}`;
 
-  seenArtefacts.add(id);
+  seenArtifacts.add(id);
 
   if (generating) {
-    console.log(`[artefact-detect] generating: ${manifest.name} (${manifest.type})`);
+    console.log(`[artifact-detect] generating: ${manifest.name} (${manifest.type})`);
     registerGeneratedArtifact({
       id,
       name: manifest.name,
@@ -327,11 +327,11 @@ function registerArtefactFromManifest(manifest: ArtefactManifest, artefactDir: s
     generatingArtifacts.set(id, {
       name: manifest.name,
       type: manifest.type,
-      dir: artefactDir,
+      dir: artifactDir,
       lastActivity: Date.now(),
     });
   } else {
-    console.log(`[artefact-detect] manifest: ${manifest.name} (${manifest.type}) → ${servePath}`);
+    console.log(`[artifact-detect] manifest: ${manifest.name} (${manifest.type}) → ${servePath}`);
     registerGeneratedArtifact({
       id,
       name: manifest.name,
@@ -340,9 +340,9 @@ function registerArtefactFromManifest(manifest: ArtefactManifest, artefactDir: s
       path: servePath,
       space: "generated",
       createdAt: manifest.created_at,
-      ...detectExistingIcon(artefactDir),
+      ...detectExistingIcon(artifactDir),
     }, entrypointPath);
-    iconGenerator.enqueue(id, manifest.name, manifest.type, artefactDir);
+    iconGenerator.enqueue(id, manifest.name, manifest.type, artifactDir);
   }
 }
 
@@ -351,21 +351,21 @@ function handleFileEdited(rawPath: string) {
   const filePath = rawPath.startsWith("/") ? rawPath : `${USERLAND_DIR}/${rawPath}`;
 
   // Check if this file is inside userland
-  if (filePath.startsWith(ARTEFACTS_DIR)) {
-    const relativePath = filePath.slice(ARTEFACTS_DIR.length);
+  if (filePath.startsWith(ARTIFACTS_DIR)) {
+    const relativePath = filePath.slice(ARTIFACTS_DIR.length);
     const topDir = relativePath.split("/")[0];
     if (!topDir || topDir.startsWith(".")) return; // Skip dotdirs (.opencode/, .git/, etc.)
-    const artefactId = topDir;
+    const artifactId = topDir;
 
-    const artefactDir = join(ARTEFACTS_DIR, artefactId);
-    const id = `gen:${artefactId}`;
+    const artifactDir = join(ARTIFACTS_DIR, artifactId);
+    const id = `gen:${artifactId}`;
 
-    // Already tracking this artefact — update activity timestamp
-    if (seenArtefacts.has(id)) {
+    // Already tracking this artifact — update activity timestamp
+    if (seenArtifacts.has(id)) {
       if (generatingArtifacts.has(id)) {
         generatingArtifacts.get(id)!.lastActivity = Date.now();
         // Re-read manifest if it arrived after initial registration
-        const manifest = tryReadManifest(artefactDir);
+        const manifest = tryReadManifest(artifactDir);
         if (manifest) {
           updateGeneratedArtifact(id, { name: manifest.name, type: manifest.type });
         }
@@ -374,19 +374,19 @@ function handleFileEdited(rawPath: string) {
     }
 
     // Try manifest first
-    const manifest = tryReadManifest(artefactDir);
+    const manifest = tryReadManifest(artifactDir);
     if (manifest) {
-      registerArtefactFromManifest(manifest, artefactDir, true);
+      registerArtifactFromManifest(manifest, artifactDir, true);
       return;
     }
 
     // Fallback: no manifest yet, register as generating with inferred info
-    // Use the directory name (artefact ID) for inference, not the individual file
-    const name = inferName(join(artefactDir, "index.html"));
-    const type = inferType(artefactDir);
+    // Use the directory name (artifact ID) for inference, not the individual file
+    const name = inferName(join(artifactDir, "index.html"));
+    const type = inferType(artifactDir);
 
-    seenArtefacts.add(id);
-    console.log(`[artefact-detect] generating (inferred): ${name} (${type})`);
+    seenArtifacts.add(id);
+    console.log(`[artifact-detect] generating (inferred): ${name} (${type})`);
 
     registerGeneratedArtifact({
       id,
@@ -401,30 +401,30 @@ function handleFileEdited(rawPath: string) {
     generatingArtifacts.set(id, {
       name,
       type,
-      dir: artefactDir,
+      dir: artifactDir,
       lastActivity: Date.now(),
     });
     return;
   }
 }
 
-// Scan userland subdirectories for existing artefacts on startup
-function scanExistingArtefacts() {
+// Scan userland subdirectories for existing artifacts on startup
+function scanExistingArtifacts() {
   // Scan userland/<id>/ directories
-  if (existsSync(ARTEFACTS_DIR)) {
+  if (existsSync(ARTIFACTS_DIR)) {
     try {
-      const entries = readdirSync(ARTEFACTS_DIR);
+      const entries = readdirSync(ARTIFACTS_DIR);
       for (const entry of entries) {
         if (entry.startsWith(".")) continue;
-        const artefactDir = join(ARTEFACTS_DIR, entry);
+        const artifactDir = join(ARTIFACTS_DIR, entry);
         try {
-          if (!statSync(artefactDir).isDirectory()) continue;
+          if (!statSync(artifactDir).isDirectory()) continue;
         } catch { continue; }
 
         // Try manifest first
-        const manifest = tryReadManifest(artefactDir);
+        const manifest = tryReadManifest(artifactDir);
         if (manifest) {
-          registerArtefactFromManifest(manifest, artefactDir);
+          registerArtifactFromManifest(manifest, artifactDir);
           continue;
         }
 
@@ -432,7 +432,7 @@ function scanExistingArtefacts() {
         try {
           let foundFile: string | null = null;
           // Check for src/index.html first (standard convention)
-          const srcDir = join(artefactDir, "src");
+          const srcDir = join(artifactDir, "src");
           if (existsSync(srcDir)) {
             const srcFiles = readdirSync(srcDir);
             for (const f of srcFiles) {
@@ -442,22 +442,22 @@ function scanExistingArtefacts() {
               }
             }
           } else {
-            const files = readdirSync(artefactDir);
+            const files = readdirSync(artifactDir);
             for (const f of files) {
               if (f.endsWith(".html") || f.endsWith(".md")) {
-                foundFile = join(artefactDir, f);
+                foundFile = join(artifactDir, f);
                 break;
               }
             }
           }
           if (foundFile) {
             const id = `gen:${entry}`;
-            if (!seenArtefacts.has(id)) {
+            if (!seenArtifacts.has(id)) {
               const name = inferName(foundFile);
               const type = inferType(foundFile);
-              const serveRelative = `/artefacts/${foundFile.slice(ARTEFACTS_DIR.length)}`;
-              seenArtefacts.add(id);
-              console.log(`[artefact-detect] scan: ${name} (${type}) → ${serveRelative}`);
+              const serveRelative = `/artifacts/${foundFile.slice(ARTIFACTS_DIR.length)}`;
+              seenArtifacts.add(id);
+              console.log(`[artifact-detect] scan: ${name} (${type}) → ${serveRelative}`);
               registerGeneratedArtifact({
                 id,
                 name,
@@ -466,9 +466,9 @@ function scanExistingArtefacts() {
                 path: serveRelative,
                 space: "generated",
                 createdAt: new Date().toISOString(),
-                ...detectExistingIcon(artefactDir),
+                ...detectExistingIcon(artifactDir),
               }, foundFile);
-              iconGenerator.enqueue(id, name, type, artefactDir);
+              iconGenerator.enqueue(id, name, type, artifactDir);
             }
           }
         } catch {}
@@ -478,7 +478,7 @@ function scanExistingArtefacts() {
 
 }
 
-scanExistingArtefacts();
+scanExistingArtifacts();
 
 async function startAutoApprover() {
   try {
@@ -640,7 +640,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // GET /api/artifacts
   if (url === "/api/artifacts") {
-    const artifacts = await getAllArtifacts((id) => seenArtefacts.delete(id));
+    const artifacts = await getAllArtifacts((id) => seenArtifacts.delete(id));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(artifacts));
     return;
@@ -807,14 +807,14 @@ li { margin: 0.3rem 0; }
     return;
   }
 
-  // ── Static file serving for /artefacts/ ──
-  if (url.startsWith("/artefacts/")) {
+  // ── Static file serving for /artifacts/ ──
+  if (url.startsWith("/artifacts/")) {
     const urlPath = url.split("?")[0]; // Strip query params
-    const relativePath = urlPath.slice("/artefacts/".length);
-    const filePath = join(ARTEFACTS_DIR, relativePath);
+    const relativePath = urlPath.slice("/artifacts/".length);
+    const filePath = join(ARTIFACTS_DIR, relativePath);
 
     // Security: prevent path traversal
-    if (!filePath.startsWith(ARTEFACTS_DIR)) {
+    if (!filePath.startsWith(ARTIFACTS_DIR)) {
       res.writeHead(403);
       res.end("Forbidden");
       return;

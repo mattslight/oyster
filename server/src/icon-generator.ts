@@ -6,7 +6,7 @@ interface IconJob {
   artifactId: string;
   name: string;
   type: string;
-  artefactDir: string;
+  artifactDir: string;
 }
 
 type ArtifactUpdater = (
@@ -41,12 +41,12 @@ export class IconGenerator {
     }
   }
 
-  enqueue(artifactId: string, name: string, type: string, artefactDir: string): void {
+  enqueue(artifactId: string, name: string, type: string, artifactDir: string): void {
     if (!this.enabled) return;
-    if (existsSync(join(artefactDir, "icon.png"))) return;
+    if (existsSync(join(artifactDir, "icon.png"))) return;
     if (this.queue.some((j) => j.artifactId === artifactId)) return;
 
-    this.queue.push({ artifactId, name, type, artefactDir });
+    this.queue.push({ artifactId, name, type, artifactDir });
     this.updateArtifact(artifactId, { iconStatus: "pending" });
 
     if (!this.processing) {
@@ -75,7 +75,7 @@ export class IconGenerator {
     this.updateArtifact(job.artifactId, { iconStatus: "generating" });
 
     // Step 1: Read the app's source to understand what it actually is
-    const sourceContent = readAppSource(job.artefactDir);
+    const sourceContent = readAppSource(job.artifactDir);
 
     // Step 2: Get an art-directed prompt from the LLM (or fall back to basic)
     let prompt: string;
@@ -108,11 +108,11 @@ export class IconGenerator {
     }
     const buffer = Buffer.from(await imageRes.arrayBuffer());
 
-    const iconPath = join(job.artefactDir, "icon.png");
+    const iconPath = join(job.artifactDir, "icon.png");
     writeFileSync(iconPath, buffer);
 
-    const dirName = job.artefactDir.split("/").pop();
-    const servePath = `/artefacts/${dirName}/icon.png`;
+    const dirName = job.artifactDir.split("/").pop();
+    const servePath = `/artifacts/${dirName}/icon.png`;
 
     this.updateArtifact(job.artifactId, {
       icon: servePath,
@@ -200,10 +200,10 @@ const typePalette: Record<string, { accent: string; gradientFrom: string; gradie
 };
 
 /** Read the app's main source file to understand what it does */
-function readAppSource(artefactDir: string): string | null {
+function readAppSource(artifactDir: string): string | null {
   try {
     // Try src/ directory first, then root
-    const dirs = [join(artefactDir, "src"), artefactDir];
+    const dirs = [join(artifactDir, "src"), artifactDir];
     for (const dir of dirs) {
       if (!existsSync(dir)) continue;
       const files = readdirSync(dir);
