@@ -10,7 +10,7 @@ import {
   fetchArtifacts,
   startApp as startAppApi,
   stopApp as stopAppApi,
-} from "./data/mock-artifacts";
+} from "./data/artifacts-api";
 import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
 

@@ -116,7 +116,7 @@ No changes needed for serving — the existing `/artefacts/*` static file handle
 
 **Note on `status` vs `iconStatus`:** The existing `status` field on artifacts (online/offline/starting/ready) and the frontend's `status: "generating"` type are unrelated to icon generation. `iconStatus` is a separate field tracking the icon pipeline only. Do not conflate the two.
 
-### Modified: `web/src/data/mock-artifacts.ts`
+### Modified: `web/src/data/artifacts-api.ts`
 
 - Add `icon?: string` to `Artifact` type
 - Add `iconStatus?: "pending" | "generating" | "ready" | "failed"` (optional, for future UI)
