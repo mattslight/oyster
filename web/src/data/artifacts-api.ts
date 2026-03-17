@@ -1,14 +1,5 @@
-export interface Artifact {
-  id: string;
-  name: string;
-  type: "wireframe" | "deck" | "map" | "notes" | "app" | "diagram" | "table";
-  status: "ready" | "online" | "offline" | "starting" | "generating";
-  path: string;
-  port?: number;
-  space: string;
-  createdAt: string;
-  icon?: string;
-}
+export type { Artifact, ArtifactType, ArtifactStatus, IconStatus } from "../../../shared/types";
+import type { Artifact } from "../../../shared/types";
 
 export async function fetchArtifacts(): Promise<Artifact[]> {
   const res = await fetch("/api/artifacts");

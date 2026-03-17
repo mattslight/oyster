@@ -27,18 +27,8 @@ export interface Registry {
   docs: DocEntry[];
 }
 
-export interface Artifact {
-  id: string;
-  name: string;
-  type: string;
-  status: "online" | "offline" | "starting" | "ready" | "generating";
-  path: string;
-  port?: number;
-  space: string;
-  createdAt: string;
-  icon?: string;
-  iconStatus?: "pending" | "generating" | "ready" | "failed";
-}
+export type { Artifact, ArtifactType, ArtifactStatus, IconStatus } from "../../shared/types.js";
+import type { Artifact } from "../../shared/types.js";
 
 // ── State ──
 
