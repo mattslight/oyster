@@ -224,6 +224,18 @@ export function ViewerWindow({
     }
   }, [onFixError, error, title]);
 
+  // Escape key exits fullscreen
+  useEffect(() => {
+    if (!fullscreen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fullscreen, onClose]);
+
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
@@ -326,30 +338,30 @@ export function ViewerWindow({
             className="fullscreen-toolbar-btn"
             disabled={!hasPrev}
             onClick={() => onNavigate?.(-1)}
-            title="Previous doc"
+            title="Previous"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <span className="fullscreen-toolbar-title">{title}</span>
           <button
             className="fullscreen-toolbar-btn"
             disabled={!hasNext}
             onClick={() => onNavigate?.(1)}
-            title="Next doc"
+            title="Next"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 18l6-6-6-6" />
             </svg>
           </button>
+          <span className="fullscreen-toolbar-title">{title}</span>
           <div className="fullscreen-toolbar-sep" />
           <button
             className="fullscreen-toolbar-btn"
             onClick={onToggleFullscreen}
-            title="Exit fullscreen"
+            title="Window"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <polyline points="4 14 10 14 10 20" />
               <polyline points="20 10 14 10 14 4" />
               <line x1="14" y1="10" x2="21" y2="3" />
@@ -361,7 +373,9 @@ export function ViewerWindow({
             onClick={onClose}
             title="Close"
           >
-            ×
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
       )}
