@@ -3,6 +3,7 @@ dist/
 .env
 .env.local
 .superpowers/
+.claude/
 
 # Userland — agent workspace (user content, not project source)
 userland/
