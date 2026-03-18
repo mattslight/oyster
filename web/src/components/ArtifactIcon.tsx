@@ -1,4 +1,4 @@
-import type { Artifact } from "../data/mock-artifacts";
+import type { Artifact } from "../data/artifacts-api";
 
 const typeConfig: Record<
   Artifact["type"],

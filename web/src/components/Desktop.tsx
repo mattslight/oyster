@@ -1,4 +1,4 @@
-import type { Artifact } from "../data/mock-artifacts";
+import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon } from "./ArtifactIcon";
 import Aurora from "./reactbits/Aurora";
 
