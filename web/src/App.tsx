@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { Desktop } from "./components/Desktop";
 import { ChatBar } from "./components/ChatBar";
 import { Clock } from "./components/Clock";
@@ -17,7 +17,19 @@ import "./App.css";
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [activeSpace, setActiveSpace] = useState<string | null>(null);
+  const getSpaceFromUrl = useCallback((): string => {
+    const match = window.location.pathname.match(/^\/s\/(.+)$/);
+    return match ? match[1] : "home";
+  }, []);
+
+  const [activeSpace, setActiveSpace] = useState<string>(getSpaceFromUrl);
+
+  // Redirect bare `/` to `/space/home` so every space has a uniform URL
+  useEffect(() => {
+    if (window.location.pathname === "/") {
+      window.history.replaceState(null, "", "/s/home");
+    }
+  }, []);
   const [loaded, setLoaded] = useState(false);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
 
@@ -37,6 +49,24 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Sync activeSpace from browser back/forward
+  useEffect(() => {
+    function handlePopState() {
+      setActiveSpace(getSpaceFromUrl());
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [getSpaceFromUrl]);
+
+  // Push URL when space changes via pill click
+  const handleSpaceChange = useCallback((space: string) => {
+    const target = `/s/${space}`;
+    if (window.location.pathname !== target) {
+      window.history.pushState(null, "", target);
+    }
+    setActiveSpace(space);
+  }, []);
+
   // Derive unique space names (excluding "generated") for the pill row
   const spaces = useMemo(() => {
     const set = new Set<string>();
@@ -46,7 +76,7 @@ export default function App() {
     return Array.from(set);
   }, [artifacts]);
 
-  const isHero = !activeSpace;
+  const isHero = activeSpace === "home";
 
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
@@ -115,9 +145,9 @@ export default function App() {
       <Clock />
 
       <Desktop
-        artifacts={activeSpace
-          ? artifacts.filter((a) => a.space === activeSpace)
-          : artifacts.filter((a) => a.space === "generated")
+        artifacts={activeSpace === "home"
+          ? artifacts.filter((a) => a.space === "generated")
+          : artifacts.filter((a) => a.space === activeSpace)
         }
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
@@ -125,8 +155,9 @@ export default function App() {
 
       <div className="windows-layer">
         {viewers.map((w, i) => {
+          const spaceFilter = activeSpace === "home" ? "generated" : activeSpace;
           const docArtifacts = artifacts.filter(
-            (a) => a.type !== "app" && activeSpace && a.space === activeSpace
+            (a) => a.type !== "app" && a.space === spaceFilter
           );
           const currentIdx = docArtifacts.findIndex((a) => a.path === w.artifactPath);
           const hasPrev = currentIdx > 0;
@@ -204,7 +235,7 @@ export default function App() {
         isHero={isHero}
         spaces={spaces}
         activeSpace={activeSpace}
-        onSpaceChange={setActiveSpace}
+        onSpaceChange={handleSpaceChange}
       />
     </div>
   );
