@@ -1,7 +1,7 @@
 {
   "apps": [
     { "name": "tokinvest-concept", "label": "New Homepage", "dir": "/Users/Matthew.Slight/Dev/tokinvest-concept", "port": 4100, "space": "tokinvest" },
-    { "name": "drc-tokinvest", "label": "DRC x Tokinvest", "dir": "/Users/Matthew.Slight/Dev/drc-tokinvest", "port": 4101, "space": "tokinvest" }
+    { "name": "tokinvest-drc", "label": "DRC x Tokinvest", "dir": "/Users/Matthew.Slight/Dev/tokinvest-drc", "port": 4101, "space": "tokinvest" }
   ],
   "docs": [
     { "name": "homepage-audit", "label": "Homepage Audit Discussion", "type": "deck", "file": "/Users/Matthew.Slight/Dev/tokinvest-concept/docs/homepage-audit-discussion.html", "space": "tokinvest" },
