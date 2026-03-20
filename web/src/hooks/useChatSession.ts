@@ -1,10 +1,28 @@
 import { useState, useEffect, useRef } from "react";
 import { createSession, loadMessages } from "../data/chat-api";
+import { TOOL_LABELS, extractToolHint } from "./tool-labels";
+
+export interface ToolPart {
+  id: string;
+  toolName: string;
+  label: string;
+  hint: string | null;
+  status: "running" | "completed" | "error";
+  input?: Record<string, unknown>;
+  output?: string;
+}
+
+export interface MessagePart {
+  type: "text" | "tool";
+  text?: string;
+  tool?: ToolPart;
+}
 
 export interface Message {
   id?: string;
   role: "user" | "assistant";
   content: string;
+  parts?: MessagePart[];
   question?: PendingQuestion;
 }
 
@@ -44,13 +62,39 @@ export function useChatSession() {
           const existing = await loadMessages(urlSessionId);
           const restored: Message[] = [];
           for (const msg of existing) {
-            const tp = msg.parts.filter((p) => p.type === "text" && p.text);
-            const content = tp.map((p) => p.text).join("");
-            if (content) {
+            const tp = msg.parts.filter((p: Record<string, unknown>) => p.type === "text" && p.text);
+            const content = tp.map((p: Record<string, unknown>) => p.text).join("");
+
+            // Build ordered MessagePart[] from all text + tool parts
+            const msgParts: MessagePart[] = [];
+            for (const p of msg.parts) {
+              if (p.type === "text" && p.text) {
+                msgParts.push({ type: "text", text: p.text as string });
+              } else if (p.type === "tool") {
+                const toolName = ((p.tool || p.toolName || p.name || "") as string).toLowerCase();
+                msgParts.push({
+                  type: "tool",
+                  tool: {
+                    id: (p.id || p.callID || crypto.randomUUID()) as string,
+                    toolName,
+                    label: TOOL_LABELS[toolName] || toolName || "working",
+                    hint: extractToolHint(p as Record<string, unknown>),
+                    status: "completed",
+                    input: (p.state as Record<string, unknown>)?.input as Record<string, unknown> | undefined,
+                    output: (p.state as Record<string, unknown>)?.output != null
+                      ? String((p.state as Record<string, unknown>).output)
+                      : undefined,
+                  },
+                });
+              }
+            }
+
+            if (content || msgParts.length > 0) {
               restored.push({
                 id: msg.info.id,
                 role: msg.info.role as "user" | "assistant",
-                content,
+                content: content || "",
+                parts: msgParts.length > 0 ? msgParts : undefined,
               });
             }
           }
