@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oyster OS + Graphiti Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d0d;
+    color: #d4d4d4;
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 40px;
+  }
+  h1 { font-size: 2rem; font-weight: 600; color: #fff; margin-bottom: 8px; }
+  .subtitle { font-size: 1rem; color: rgba(255,255,255,0.4); margin-bottom: 60px; }
+  .diagram { width: 1100px; max-width: 100%; }
+  .layer { margin-bottom: 16px; }
+  .layer-label {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 3px;
+    color: rgba(255,255,255,0.3); margin-bottom: 14px; font-weight: 600;
+  }
+  .layer-content { display: flex; gap: 16px; }
+  .box {
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+    padding: 24px; background: rgba(255,255,255,0.03); flex: 1;
+  }
+  .box-title {
+    font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .box-desc { font-size: 0.85rem; color: rgba(255,255,255,0.45); line-height: 1.6; }
+  .box-items { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .box-item {
+    font-size: 0.85rem; color: rgba(255,255,255,0.55);
+    padding: 6px 12px; background: rgba(255,255,255,0.04); border-radius: 6px;
+  }
+  .accent-blue { border-color: rgba(96,165,250,0.35); }
+  .accent-blue .box-title { color: #60a5fa; }
+  .accent-green { border-color: rgba(74,222,128,0.35); }
+  .accent-green .box-title { color: #4ade80; }
+  .accent-purple { border-color: rgba(167,139,250,0.35); }
+  .accent-purple .box-title { color: #a78bfa; }
+  .accent-amber { border-color: rgba(251,191,36,0.35); }
+  .accent-amber .box-title { color: #fbbf24; }
+  .accent-cyan { border-color: rgba(34,211,238,0.35); }
+  .accent-cyan .box-title { color: #22d3ee; }
+  .accent-rose { border-color: rgba(251,113,133,0.35); }
+  .accent-rose .box-title { color: #fb7185; }
+  .tag {
+    display: inline-block; font-size: 0.7rem; padding: 3px 8px;
+    border-radius: 4px; font-weight: 500;
+  }
+  .tag-new { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .tag-exists { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .flow {
+    display: flex; align-items: center; justify-content: center;
+    padding: 14px 0; gap: 16px;
+  }
+  .flow-line {
+    flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  }
+  .flow-arrow { font-size: 1.4rem; color: rgba(255,255,255,0.25); }
+  .flow-label {
+    font-size: 0.8rem; color: rgba(255,255,255,0.3);
+    white-space: nowrap; font-weight: 500;
+  }
+  .inner-row { display: flex; gap: 14px; margin-top: 16px; }
+  .inner-box {
+    flex: 1; padding: 14px 16px;
+    border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;
+    background: rgba(0,0,0,0.3);
+  }
+  .inner-box .label { font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
+  .inner-box .detail { font-size: 0.8rem; color: rgba(255,255,255,0.45); line-height: 1.6; }
+  .connector-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .connector-card {
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+    padding: 20px 16px; background: rgba(255,255,255,0.03); text-align: center;
+  }
+  .connector-card .icon { font-size: 1.8rem; margin-bottom: 8px; }
+  .connector-card .name { font-size: 0.9rem; color: rgba(255,255,255,0.6); font-weight: 500; }
+  .connector-card .proto {
+    font-size: 0.75rem; color: rgba(255,255,255,0.3);
+    margin-top: 4px; font-family: 'SF Mono', monospace;
+  }
+  .connector-card .scope { font-size: 0.75rem; margin-top: 4px; }
+  .divider {
+    width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    margin: 44px 0;
+  }
+  .data-flows { margin-top: 20px; width: 1100px; max-width: 100%; }
+  .flow-example {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .flow-num {
+    font-size: 0.85rem; color: rgba(255,255,255,0.2);
+    width: 24px; text-align: right; flex-shrink: 0; font-weight: 600;
+  }
+  .flow-step { font-size: 0.9rem; color: rgba(255,255,255,0.55); line-height: 1.5; }
+  .flow-step em { font-style: normal; color: rgba(255,255,255,0.85); font-weight: 500; }
+  .flow-step code {
+    font-family: 'SF Mono', monospace; font-size: 0.8rem;
+    background: rgba(255,255,255,0.06); padding: 2px 6px;
+    border-radius: 3px; color: rgba(255,255,255,0.6);
+  }
+  .legend { margin-top: 48px; display: flex; gap: 32px; flex-wrap: wrap; }
+  .legend-item {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.8rem; color: rgba(255,255,255,0.4);
+  }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .footer { margin-top: 48px; font-size: 0.8rem; color: rgba(255,255,255,0.2); }
+</style>
+</head>
+<body>
+
+<h1>Oyster OS + Graphiti Architecture</h1>
+<p class="subtitle">Temporal knowledge graph with MCP connectors — all local</p>
+
+<div class="diagram">
+
+  <!-- User Interface -->
+  <div class="layer">
+    <div class="layer-label">User Interface</div>
+    <div class="layer-content">
+      <div class="box accent-blue">
+        <div class="box-title">Oyster Surface <span class="tag tag-exists">exists</span></div>
+        <div class="box-desc">React app — desktop, spaces, chat bar, artifact viewer</div>
+        <div class="inner-row">
+          <div class="inner-box">
+            <div class="label" style="color: #60a5fa;">Spaces → group_ids</div>
+            <div class="detail">Home / KPS / Tokinvest / Personal<br>Each space maps to a Graphiti group_id<br>Scopes which knowledge the AI sees</div>
+          </div>
+          <div class="inner-box">
+            <div class="label" style="color: #60a5fa;">Chat Bar</div>
+            <div class="detail">User input → OpenCode<br>Graph context injected into prompt<br>Conversations saved as episodes</div>
+          </div>
+          <div class="inner-box">
+            <div class="label" style="color: #60a5fa;">Artifacts</div>
+            <div class="detail">Generated apps, docs, tools<br>Live on the desktop surface<br>Can be linked to graph entities</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-line"></div>
+    <div class="flow-label">HTTP / SSE</div>
+    <div class="flow-arrow">↕</div>
+    <div class="flow-line"></div>
+  </div>
+
+  <!-- Application Server -->
+  <div class="layer">
+    <div class="layer-label">Application Server</div>
+    <div class="layer-content">
+      <div class="box accent-purple">
+        <div class="box-title">Oyster Server <span class="tag tag-exists">exists</span></div>
+        <div class="box-desc">Express — artifact serving, proxy, SSE relay</div>
+        <div class="box-items">
+          <div class="box-item">Artifact CRUD & file serving</div>
+          <div class="box-item">Chat API proxy to OpenCode</div>
+          <div class="box-item">PTY manager (terminal)</div>
+        </div>
+      </div>
+      <div class="box accent-green">
+        <div class="box-title">OpenCode <span class="tag tag-exists">exists</span></div>
+        <div class="box-desc">AI execution engine — sessions, tool use, agent config</div>
+        <div class="box-items">
+          <div class="box-item">REST API + SSE on port 4096</div>
+          <div class="box-item">MCP client → Graphiti + email connectors</div>
+          <div class="box-item">.opencode/agents/oyster.md</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-line"></div>
+    <div class="flow-label">MCP protocol (HTTP)</div>
+    <div class="flow-arrow">↕</div>
+    <div class="flow-line"></div>
+  </div>
+
+  <!-- Knowledge Graph -->
+  <div class="layer">
+    <div class="layer-label">Knowledge Graph <span class="tag tag-new" style="margin-left: 8px;">new</span></div>
+    <div class="layer-content">
+      <div class="box accent-amber">
+        <div class="box-title">Graphiti MCP Server <span class="tag tag-new">new</span></div>
+        <div class="box-desc">Temporal knowledge graph engine by Zep — Apache 2.0, 24k stars</div>
+        <div class="inner-row">
+          <div class="inner-box">
+            <div class="label" style="color: #fbbf24;">MCP Tools</div>
+            <div class="detail">
+              <code>add_episode</code> — save data<br>
+              <code>search_facts</code> — find relationships<br>
+              <code>search_nodes</code> — find entities<br>
+              <code>get_episodes</code> — recent history
+            </div>
+          </div>
+          <div class="inner-box">
+            <div class="label" style="color: #fbbf24;">Temporal Graph</div>
+            <div class="detail">
+              Entity nodes with evolving summaries<br>
+              Fact edges with validity windows<br>
+              Automatic contradiction invalidation<br>
+              Graph traversal queries
+            </div>
+          </div>
+          <div class="inner-box">
+            <div class="label" style="color: #fbbf24;">Entity Types</div>
+            <div class="detail">
+              Preference · Requirement · Procedure<br>
+              Location · Event · Organization<br>
+              Document · Topic · Object
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-line"></div>
+    <div class="flow-arrow">↕</div>
+    <div class="flow-line"></div>
+  </div>
+
+  <!-- Storage -->
+  <div class="layer">
+    <div class="layer-label">Storage</div>
+    <div class="layer-content">
+      <div class="box accent-rose">
+        <div class="box-title">FalkorDB <span class="tag tag-new">new</span></div>
+        <div class="box-desc">Redis-based graph database — bundled in single Docker container with Graphiti</div>
+        <div class="box-items">
+          <div class="box-item">Graph storage (entities + relationships)</div>
+          <div class="box-item">Vector indexes built-in (no separate vector DB)</div>
+          <div class="box-item">~200-300MB RAM</div>
+        </div>
+      </div>
+      <div class="box accent-cyan">
+        <div class="box-title">SQLite <span class="tag tag-exists">exists</span></div>
+        <div class="box-desc">Existing Oyster data</div>
+        <div class="box-items">
+          <div class="box-item">oyster.db — artifact registry</div>
+          <div class="box-item">OpenCode sessions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-line"></div>
+    <div class="flow-label">API calls (not local compute)</div>
+    <div class="flow-arrow">↕</div>
+    <div class="flow-line"></div>
+  </div>
+
+  <!-- API Services -->
+  <div class="layer">
+    <div class="layer-label">External APIs</div>
+    <div class="layer-content">
+      <div class="box" style="border-color: rgba(255,255,255,0.15);">
+        <div class="box-title" style="color: rgba(255,255,255,0.6);">OpenAI Embeddings</div>
+        <div class="box-desc">text-embedding-3-small — $0.02/1M tokens<br>Converts text to vectors for semantic search</div>
+      </div>
+      <div class="box" style="border-color: rgba(255,255,255,0.15);">
+        <div class="box-title" style="color: rgba(255,255,255,0.6);">Claude / Anthropic</div>
+        <div class="box-desc">Fact extraction, entity resolution, contradiction detection<br>Uses existing subscription</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Connectors -->
+  <div class="layer">
+    <div class="layer-label">MCP Connectors <span class="tag tag-new" style="margin-left: 8px;">future</span></div>
+    <div class="connector-grid">
+      <div class="connector-card">
+        <div class="icon">📧</div>
+        <div class="name">Gmail</div>
+        <div class="proto">google_workspace_mcp</div>
+        <div class="scope" style="color: rgba(74,222,128,0.6);">Personal email</div>
+      </div>
+      <div class="connector-card">
+        <div class="icon">📬</div>
+        <div class="name">Outlook (KPS)</div>
+        <div class="proto">office-365-mcp-server</div>
+        <div class="scope" style="color: rgba(167,139,250,0.6);">Work email #1</div>
+      </div>
+      <div class="connector-card">
+        <div class="icon">📬</div>
+        <div class="name">Outlook (Tokinvest)</div>
+        <div class="proto">office-365-mcp-server</div>
+        <div class="scope" style="color: rgba(167,139,250,0.6);">Work email #2</div>
+      </div>
+      <div class="connector-card">
+        <div class="icon">💬</div>
+        <div class="name">ChatGPT History</div>
+        <div class="proto">Export zip → import</div>
+        <div class="scope" style="color: rgba(251,191,36,0.6);">Batch → live later</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Data flows -->
+<div class="data-flows">
+  <div class="divider"></div>
+  <div class="layer-label" style="margin-bottom: 20px;">How data flows</div>
+
+  <div class="flow-example">
+    <div class="flow-num">1</div>
+    <div class="flow-step"><em>You chat</em> in the Tokinvest space → conversation saved as episode (group_id=tokinvest) → entities extracted → "Bharat → works_on → token design" added to graph</div>
+  </div>
+  <div class="flow-example">
+    <div class="flow-num">2</div>
+    <div class="flow-step"><em>Next session</em> in Tokinvest → OpenCode calls <code>search_facts</code> with group_id → relevant entities and relationships injected into prompt → AI has full context</div>
+  </div>
+  <div class="flow-example">
+    <div class="flow-num">3</div>
+    <div class="flow-step"><em>You say</em> "budget review moved to April 3rd" → Graphiti invalidates old date with timestamp → new fact has validity window → historical queries still work</div>
+  </div>
+  <div class="flow-example">
+    <div class="flow-num">4</div>
+    <div class="flow-step"><em>You ask</em> "who's involved in Tokinvest and what's blocked?" → graph traversal: Bharat → works_on → token design → blocked_by → legal review → structured answer</div>
+  </div>
+  <div class="flow-example">
+    <div class="flow-num">5</div>
+    <div class="flow-step"><em>Gmail connector</em> (future) syncs emails → each email becomes an episode → entities extracted → deadlines, contacts, decisions flow into the graph automatically</div>
+  </div>
+  <div class="flow-example">
+    <div class="flow-num">6</div>
+    <div class="flow-step"><em>Cross-space query</em> → "what needs my attention?" → searches across all group_ids → Oyster synthesises priorities from KPS + Tokinvest + Personal</div>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background: #60a5fa;"></div>Exists today</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #4ade80;"></div>New — this integration</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #fbbf24;"></div>Graphiti — open source (Apache 2.0)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #fb7185;"></div>FalkorDB — bundled with Graphiti</div>
+</div>
+
+<p class="footer">
+  All runs locally via Docker (~600-800MB RAM). External dependencies: OpenAI embeddings (~$0.02/1M tokens) + Claude API (existing subscription).
+</p>
+
+</body>
+</html>
