@@ -1,7 +1,7 @@
-import type { Artifact } from "../data/artifacts-api";
+import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 
 const typeConfig: Record<
-  Artifact["type"],
+  ArtifactKind,
   { gradient: string; color: string; ext: string; icon: string }
 > = {
   wireframe: {
@@ -56,9 +56,9 @@ interface Props {
 }
 
 export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
-  const config = typeConfig[artifact.type];
-  // Only show status indicators for registry apps with dev servers (have a port)
-  const isRegistryApp = artifact.type === "app" && !!artifact.port;
+  const config = typeConfig[artifact.artifactKind] || typeConfig.app;
+  // Only show status indicators for managed apps (local_process runtime)
+  const isManagedApp = artifact.runtimeKind === "local_process";
 
   return (
     <button
@@ -73,7 +73,7 @@ export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
         {artifact.icon ? (
           <img
             src={artifact.icon}
-            alt={artifact.name}
+            alt={artifact.label}
             className="icon-img"
             loading="lazy"
           />
@@ -93,13 +93,13 @@ export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
           </>
         )}
 
-        {isRegistryApp && (
+        {isManagedApp && (
           <span
             className={`status-dot ${artifact.status === "online" ? "online" : artifact.status === "starting" ? "starting" : "offline"}`}
           />
         )}
 
-        {isRegistryApp && artifact.status === "online" && onStop && (
+        {isManagedApp && artifact.status === "online" && onStop && (
           <span
             className="stop-btn"
             onClick={(e) => {
@@ -111,7 +111,7 @@ export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
           </span>
         )}
       </div>
-      <span className="icon-label">{artifact.name}</span>
+      <span className="icon-label">{artifact.label}</span>
     </button>
   );
 }

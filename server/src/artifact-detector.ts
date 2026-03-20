@@ -52,7 +52,15 @@ function tryReadManifest(artifactDir: string): ArtifactManifest | null {
   }
 }
 
-function inferType(filePath: string): string {
+import type { ArtifactKind } from "../../shared/types.js";
+
+const VALID_KINDS = new Set<string>(["app", "deck", "diagram", "map", "notes", "table", "wireframe"]);
+
+function toArtifactKind(value: string): ArtifactKind {
+  return VALID_KINDS.has(value) ? (value as ArtifactKind) : "app";
+}
+
+function inferType(filePath: string): ArtifactKind {
   const lower = filePath.toLowerCase();
   if (lower.includes("dashboard") || lower.includes("diagram")) return "diagram";
   if (lower.includes("deck") || lower.includes("slide") || lower.includes("present")) return "deck";
@@ -114,11 +122,13 @@ function registerArtifactFromManifest(
     console.log(`[artifact-detect] generating: ${manifest.name} (${manifest.type})`);
     registerGeneratedArtifact({
       id,
-      name: manifest.name,
-      type: manifest.type,
+      label: manifest.name,
+      artifactKind: toArtifactKind(manifest.type),
       status: "generating",
-      path: servePath,
-      space: "generated",
+      url: servePath,
+      spaceId: "home",
+      runtimeKind: "static_file",
+      runtimeConfig: {},
       createdAt: manifest.created_at,
     }); // No filePath — prevents self-healing deletion while entrypoint doesn't exist
     generatingArtifacts.set(id, {
@@ -131,11 +141,13 @@ function registerArtifactFromManifest(
     console.log(`[artifact-detect] manifest: ${manifest.name} (${manifest.type}) → ${servePath}`);
     registerGeneratedArtifact({
       id,
-      name: manifest.name,
-      type: manifest.type,
+      label: manifest.name,
+      artifactKind: toArtifactKind(manifest.type),
       status: "ready",
-      path: servePath,
-      space: "generated",
+      url: servePath,
+      spaceId: "home",
+      runtimeKind: "static_file",
+      runtimeConfig: {},
       createdAt: manifest.created_at,
       ...detectExistingIcon(artifactDir),
     }, entrypointPath);
@@ -165,7 +177,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
         // Re-read manifest if it arrived after initial registration
         const manifest = tryReadManifest(artifactDir);
         if (manifest) {
-          updateGeneratedArtifact(id, { name: manifest.name, type: manifest.type });
+          updateGeneratedArtifact(id, { label: manifest.name, artifactKind: toArtifactKind(manifest.type) });
         }
       }
       return;
@@ -188,11 +200,13 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
 
     registerGeneratedArtifact({
       id,
-      name,
-      type,
+      label: name,
+      artifactKind: type,
       status: "generating",
-      path: "",
-      space: "generated",
+      url: "",
+      spaceId: "home",
+      runtimeKind: "static_file",
+      runtimeConfig: {},
       createdAt: new Date().toISOString(),
     }); // No filePath — prevents self-healing deletion
 
@@ -256,11 +270,13 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
               console.log(`[artifact-detect] scan: ${name} (${type}) → ${serveRelative}`);
               registerGeneratedArtifact({
                 id,
-                name,
-                type,
+                label: name,
+                artifactKind: type,
                 status: "ready",
-                path: serveRelative,
-                space: "generated",
+                url: serveRelative,
+                spaceId: "home",
+                runtimeKind: "static_file",
+                runtimeConfig: {},
                 createdAt: new Date().toISOString(),
                 ...detectExistingIcon(artifactDir),
               }, foundFile);
@@ -305,7 +321,7 @@ export function startGenerationTimer(iconGenerator: IconGenerator) {
         ? `/artifacts/${manifest.id}/${manifest.entrypoint}`
         : `/artifacts/${dirName}/src/index.html`;
 
-      updateGeneratedArtifact(id, { status: "ready", name, type, path: servePath }, entrypoint);
+      updateGeneratedArtifact(id, { status: "ready", label: name, artifactKind: toArtifactKind(type), url: servePath }, entrypoint);
       iconGenerator.enqueue(id, name, type, info.dir);
       console.log(`[artifact-detect] ready: ${name}`);
     }

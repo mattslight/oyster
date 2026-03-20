@@ -9,12 +9,14 @@
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.4",
+    "better-sqlite3": "^12.8.0",
     "marked": "^17.0.4",
     "node-pty": "1.0.0",
     "opencode-ai": "^1.2.26",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.0",
     "tsx": "^4.19.0"

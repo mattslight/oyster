@@ -1,4 +1,4 @@
-export type ArtifactType =
+export type ArtifactKind =
   | "app"
   | "deck"
   | "diagram"
@@ -18,13 +18,14 @@ export type IconStatus = "pending" | "generating" | "ready" | "failed";
 
 export interface Artifact {
   id: string;
-  name: string;
-  type: ArtifactType;
+  label: string;
+  artifactKind: ArtifactKind;
+  spaceId: string;
   status: ArtifactStatus;
-  path: string;
-  port?: number;
-  space: string;
-  createdAt: string;
+  runtimeKind: string;
+  runtimeConfig: Record<string, unknown>;
+  url: string;
   icon?: string;
   iconStatus?: IconStatus;
+  createdAt: string;
 }

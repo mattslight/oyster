@@ -1,0 +1,96 @@
+import type Database from "better-sqlite3";
+
+// ── Row type (mirrors SQLite schema) ──
+
+export interface ArtifactRow {
+  id: string;
+  owner_id: string | null;
+  space_id: string;
+  label: string;
+  artifact_kind: string;
+  storage_kind: string;
+  storage_config: string;
+  runtime_kind: string;
+  runtime_config: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Store interface ──
+
+export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at">;
+
+export interface ArtifactStore {
+  getAll(): ArtifactRow[];
+  getById(id: string): ArtifactRow | undefined;
+  getBySpaceId(spaceId: string): ArtifactRow[];
+  insert(row: InsertRow): void;
+  update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void;
+  delete(id: string): void;
+}
+
+// ── SQLite implementation ──
+
+export class SqliteArtifactStore implements ArtifactStore {
+  private stmts: {
+    getAll: Database.Statement;
+    getById: Database.Statement;
+    getBySpaceId: Database.Statement;
+    insert: Database.Statement;
+    delete: Database.Statement;
+  };
+
+  constructor(private db: Database.Database) {
+    this.stmts = {
+      getAll: db.prepare("SELECT * FROM artifacts ORDER BY space_id, created_at"),
+      getById: db.prepare("SELECT * FROM artifacts WHERE id = ?"),
+      getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ? ORDER BY created_at"),
+      insert: db.prepare(`
+        INSERT INTO artifacts (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config)
+        VALUES (@id, @owner_id, @space_id, @label, @artifact_kind, @storage_kind, @storage_config, @runtime_kind, @runtime_config)
+      `),
+      delete: db.prepare("DELETE FROM artifacts WHERE id = ?"),
+    };
+  }
+
+  getAll(): ArtifactRow[] {
+    return this.stmts.getAll.all() as ArtifactRow[];
+  }
+
+  getById(id: string): ArtifactRow | undefined {
+    return this.stmts.getById.get(id) as ArtifactRow | undefined;
+  }
+
+  getBySpaceId(spaceId: string): ArtifactRow[] {
+    return this.stmts.getBySpaceId.all(spaceId) as ArtifactRow[];
+  }
+
+  insert(row: InsertRow): void {
+    this.stmts.insert.run(row);
+  }
+
+  private static readonly UPDATABLE_COLUMNS = new Set([
+    "owner_id", "space_id", "label", "artifact_kind",
+    "storage_kind", "storage_config", "runtime_kind", "runtime_config",
+  ]);
+
+  update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void {
+    const sets: string[] = [];
+    const values: Record<string, unknown> = { id };
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (!SqliteArtifactStore.UPDATABLE_COLUMNS.has(key)) continue;
+      sets.push(`${key} = @${key}`);
+      values[key] = value;
+    }
+
+    if (sets.length === 0) return;
+
+    sets.push("updated_at = datetime('now')");
+    this.db.prepare(`UPDATE artifacts SET ${sets.join(", ")} WHERE id = @id`).run(values);
+  }
+
+  delete(id: string): void {
+    this.stmts.delete.run(id);
+  }
+}
