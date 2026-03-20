@@ -56,7 +56,7 @@ interface Props {
 }
 
 export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
-  const config = typeConfig[artifact.artifactKind];
+  const config = typeConfig[artifact.artifactKind] || typeConfig.app;
   // Only show status indicators for managed apps (local_process runtime)
   const isManagedApp = artifact.runtimeKind === "local_process";
 

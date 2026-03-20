@@ -42,9 +42,9 @@ export class SqliteArtifactStore implements ArtifactStore {
 
   constructor(private db: Database.Database) {
     this.stmts = {
-      getAll: db.prepare("SELECT * FROM artifacts"),
+      getAll: db.prepare("SELECT * FROM artifacts ORDER BY space_id, created_at"),
       getById: db.prepare("SELECT * FROM artifacts WHERE id = ?"),
-      getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ?"),
+      getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ? ORDER BY created_at"),
       insert: db.prepare(`
         INSERT INTO artifacts (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config)
         VALUES (@id, @owner_id, @space_id, @label, @artifact_kind, @storage_kind, @storage_config, @runtime_kind, @runtime_config)

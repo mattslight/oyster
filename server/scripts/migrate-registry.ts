@@ -4,7 +4,7 @@
  * Usage: cd server && npx tsx scripts/migrate-registry.ts
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
@@ -46,6 +46,7 @@ if (!existsSync(REGISTRY_PATH)) {
 const raw = readFileSync(REGISTRY_PATH, "utf8");
 const registry: { apps: AppEntry[]; docs: DocEntry[] } = JSON.parse(raw);
 
+mkdirSync(USERLAND_DIR, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.exec(SCHEMA);

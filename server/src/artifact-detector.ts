@@ -52,7 +52,15 @@ function tryReadManifest(artifactDir: string): ArtifactManifest | null {
   }
 }
 
-function inferType(filePath: string): string {
+import type { ArtifactKind } from "../../shared/types.js";
+
+const VALID_KINDS = new Set<string>(["app", "deck", "diagram", "map", "notes", "table", "wireframe"]);
+
+function toArtifactKind(value: string): ArtifactKind {
+  return VALID_KINDS.has(value) ? (value as ArtifactKind) : "app";
+}
+
+function inferType(filePath: string): ArtifactKind {
   const lower = filePath.toLowerCase();
   if (lower.includes("dashboard") || lower.includes("diagram")) return "diagram";
   if (lower.includes("deck") || lower.includes("slide") || lower.includes("present")) return "deck";
@@ -115,7 +123,7 @@ function registerArtifactFromManifest(
     registerGeneratedArtifact({
       id,
       label: manifest.name,
-      artifactKind: manifest.type as any,
+      artifactKind: toArtifactKind(manifest.type),
       status: "generating",
       url: servePath,
       spaceId: "home",
@@ -134,7 +142,7 @@ function registerArtifactFromManifest(
     registerGeneratedArtifact({
       id,
       label: manifest.name,
-      artifactKind: manifest.type as any,
+      artifactKind: toArtifactKind(manifest.type),
       status: "ready",
       url: servePath,
       spaceId: "home",
@@ -169,7 +177,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
         // Re-read manifest if it arrived after initial registration
         const manifest = tryReadManifest(artifactDir);
         if (manifest) {
-          updateGeneratedArtifact(id, { label: manifest.name, artifactKind: manifest.type as any });
+          updateGeneratedArtifact(id, { label: manifest.name, artifactKind: toArtifactKind(manifest.type) });
         }
       }
       return;
@@ -193,7 +201,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
     registerGeneratedArtifact({
       id,
       label: name,
-      artifactKind: type as any,
+      artifactKind: type,
       status: "generating",
       url: "",
       spaceId: "home",
@@ -263,7 +271,7 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
               registerGeneratedArtifact({
                 id,
                 label: name,
-                artifactKind: type as any,
+                artifactKind: type,
                 status: "ready",
                 url: serveRelative,
                 spaceId: "home",
@@ -313,7 +321,7 @@ export function startGenerationTimer(iconGenerator: IconGenerator) {
         ? `/artifacts/${manifest.id}/${manifest.entrypoint}`
         : `/artifacts/${dirName}/src/index.html`;
 
-      updateGeneratedArtifact(id, { status: "ready", label: name, artifactKind: type as any, url: servePath }, entrypoint);
+      updateGeneratedArtifact(id, { status: "ready", label: name, artifactKind: toArtifactKind(type), url: servePath }, entrypoint);
       iconGenerator.enqueue(id, name, type, info.dir);
       console.log(`[artifact-detect] ready: ${name}`);
     }

@@ -16,7 +16,11 @@ interface FilesystemStorageConfig {
 
 function parseJson(raw: string): Record<string, unknown> {
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
   } catch {
     return {};
   }
