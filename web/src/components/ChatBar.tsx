@@ -3,6 +3,7 @@ import { marked } from "marked";
 import { sendMessage, replyToQuestion } from "../data/chat-api";
 import { useChatSession } from "../hooks/useChatSession";
 import { useChatEvents } from "../hooks/useChatEvents";
+import type { ToolPart } from "../hooks/useChatSession";
 
 // Configure marked for inline chat use
 marked.setOptions({ breaks: true, gfm: true });
@@ -24,6 +25,34 @@ const taglines = [
   { dim: "One prompt away", bright: "from something great." },
   { dim: "Don't be shy.", bright: "The shell listens." },
 ];
+
+function ToolBlock({ tool }: { tool: ToolPart }) {
+  const [open, setOpen] = useState(false);
+  const isRunning = tool.status === "running";
+  const summary = tool.hint ? `${tool.label} ${tool.hint}` : tool.label;
+
+  return (
+    <div className={`tool-block ${isRunning ? "tool-running" : ""}`} onClick={() => setOpen(!open)}>
+      <div className="tool-block-header">
+        <span className="tool-block-chevron">{open ? "▾" : "▸"}</span>
+        <span className="tool-block-summary">{summary}</span>
+        {isRunning && <span className="tool-block-spinner" />}
+      </div>
+      {open && (
+        <div className="tool-block-details">
+          {tool.input && (
+            <pre className="tool-block-io">{JSON.stringify(tool.input, null, 2)}</pre>
+          )}
+          {tool.output && (
+            <pre className="tool-block-io tool-block-output">{
+              tool.output.length > 2000 ? tool.output.slice(0, 2000) + "\n... (truncated)" : tool.output
+            }</pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   onOpenTerminal: () => void;
@@ -140,9 +169,17 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
               ↓
             </button>
           </div>
-          {messages.filter((msg) => msg.content || msg.question || msg.role === "user").map((msg, i) => (
+          {messages.filter((msg) => msg.content || msg.parts?.length || msg.question || msg.role === "user").map((msg, i) => (
             <div key={msg.id || i} className={`chat-bubble ${msg.role}`}>
-              {msg.role === "assistant" && msg.content ? (
+              {msg.role === "assistant" && msg.parts && msg.parts.length > 0 ? (
+                msg.parts.map((part, pi) =>
+                  part.type === "text" && part.text ? (
+                    <div key={pi} className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(part.text) as string }} />
+                  ) : part.type === "tool" && part.tool ? (
+                    <ToolBlock key={part.tool.id} tool={part.tool} />
+                  ) : null
+                )
+              ) : msg.role === "assistant" && msg.content ? (
                 <div className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) as string }} />
               ) : (
                 msg.content

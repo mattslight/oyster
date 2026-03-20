@@ -1,41 +1,7 @@
 import { useEffect, useRef } from "react";
 import { subscribeToEvents, type ChatEvent } from "../data/chat-api";
-import type { Message, PendingQuestion, QuestionOption } from "./useChatSession";
-
-// Friendly progress labels for tool names
-const TOOL_LABELS: Record<string, string> = {
-  read: "reading",
-  edit: "editing",
-  write: "writing",
-  bash: "running command",
-  glob: "searching files",
-  grep: "searching code",
-  webfetch: "fetching",
-  websearch: "searching the web",
-  task: "delegating",
-};
-
-// Extract a short context hint from a tool event's state.input
-function extractToolHint(part: Record<string, unknown>): string | null {
-  const state = part.state as Record<string, unknown> | undefined;
-  if (!state) return null;
-  const input = state.input as Record<string, unknown> | undefined;
-  if (!input) return null;
-  // File-based tools: extract basename from file_path or path
-  const filePath = (input.file_path || input.path) as string | undefined;
-  if (filePath && typeof filePath === "string") {
-    const name = filePath.split("/").pop() || null;
-    if (name && name.length > 30) return name.slice(0, 27) + "...";
-    return name;
-  }
-  // Glob: show pattern
-  const pattern = input.pattern as string | undefined;
-  if (pattern) return pattern.length > 30 ? pattern.slice(0, 27) + "..." : pattern;
-  // Task/Agent: show description
-  const desc = input.description as string | undefined;
-  if (desc) return desc.length > 30 ? desc.slice(0, 27) + "..." : desc;
-  return null;
-}
+import type { Message, MessagePart, ToolPart, PendingQuestion, QuestionOption } from "./useChatSession";
+import { TOOL_LABELS, extractToolHint } from "./tool-labels";
 
 interface UseChatEventsOptions {
   sessionId: string | null;
@@ -54,6 +20,30 @@ export function useChatEvents({
   const currentAssistantMsg = useRef<string | null>(null);
   // Track text parts per message: messageID → Map<partID, text>
   const textPartsMap = useRef<Map<string, Map<string, string>>>(new Map());
+  // Track tool parts per message: messageID → Map<partID, ToolPart>
+  const toolPartsMap = useRef<Map<string, Map<string, ToolPart>>>(new Map());
+  // Track insertion order of all parts per message: messageID → partID[]
+  const partsOrderMap = useRef<Map<string, string[]>>(new Map());
+
+  function ensurePartOrder(messageId: string, partId: string) {
+    const order = partsOrderMap.current.get(messageId);
+    if (!order) {
+      partsOrderMap.current.set(messageId, [partId]);
+    } else if (!order.includes(partId)) {
+      order.push(partId);
+    }
+  }
+
+  function buildMessageParts(messageId: string): MessagePart[] {
+    const order = partsOrderMap.current.get(messageId) || [];
+    const texts = textPartsMap.current.get(messageId);
+    const tools = toolPartsMap.current.get(messageId);
+    return order.map((partId) => {
+      const toolPart = tools?.get(partId);
+      if (toolPart) return { type: "tool" as const, tool: toolPart };
+      return { type: "text" as const, text: texts?.get(partId) || "" };
+    });
+  }
 
   useEffect(() => {
     if (!sessionId) return;
@@ -112,17 +102,19 @@ export function useChatEvents({
             if (!textPartsMap.current.has(messageId)) {
               textPartsMap.current.set(messageId, new Map());
             }
-            const parts = textPartsMap.current.get(messageId)!;
-            const current = parts.get(partId) || "";
-            parts.set(partId, current + delta);
-            const fullContent = Array.from(parts.values()).join("");
+            const textParts = textPartsMap.current.get(messageId)!;
+            const current = textParts.get(partId) || "";
+            textParts.set(partId, current + delta);
+            ensurePartOrder(messageId, partId);
+            const fullContent = Array.from(textParts.values()).join("");
+            const msgParts = buildMessageParts(messageId);
 
             setMessages((prev) => {
               if (!prev.some((m) => m.id === messageId)) {
-                return [...prev, { id: messageId, role: "assistant", content: fullContent }];
+                return [...prev, { id: messageId, role: "assistant", content: fullContent, parts: msgParts }];
               }
               return prev.map((m) =>
-                m.id === messageId ? { ...m, content: fullContent } : m
+                m.id === messageId ? { ...m, content: fullContent, parts: msgParts } : m
               );
             });
 
@@ -142,18 +134,45 @@ export function useChatEvents({
             toolName?: string;
             name?: string;
             tool?: string;
+            state?: { input?: Record<string, unknown>; output?: unknown; status?: string };
           };
           if (part.type === "text" && part.text !== undefined) {
             if (!textPartsMap.current.has(partMsgId)) {
               textPartsMap.current.set(partMsgId, new Map());
             }
             textPartsMap.current.get(partMsgId)!.set(part.id, part.text);
+            ensurePartOrder(partMsgId, part.id);
           }
           const tool = part.toolName || part.name || part.tool;
           if (tool && part.type !== "text") {
             const toolKey = tool.toLowerCase();
             const label = TOOL_LABELS[toolKey] || "working";
             const hint = toolKey === "bash" ? null : extractToolHint(part as Record<string, unknown>);
+
+            // Store tool part
+            if (!toolPartsMap.current.has(partMsgId)) {
+              toolPartsMap.current.set(partMsgId, new Map());
+            }
+            const state = part.state || {};
+            const toolPart: ToolPart = {
+              id: part.id,
+              toolName: toolKey,
+              label,
+              hint,
+              status: state.status === "completed" ? "completed" : "running",
+              input: state.input,
+              output: state.output != null ? String(state.output) : undefined,
+            };
+            toolPartsMap.current.get(partMsgId)!.set(part.id, toolPart);
+            ensurePartOrder(partMsgId, part.id);
+
+            // Rebuild parts on the message
+            const msgParts = buildMessageParts(partMsgId);
+            const fullContent = Array.from(textPartsMap.current.get(partMsgId)?.values() || []).join("");
+            setMessages((prev) => prev.map((m) =>
+              m.id === partMsgId ? { ...m, content: fullContent || m.content, parts: msgParts } : m
+            ));
+
             setStatusText(hint ? `${label} ${hint}...` : `${label}...`);
           }
           break;
@@ -190,6 +209,8 @@ export function useChatEvents({
 
   function resetTracking() {
     currentAssistantMsg.current = null;
+    toolPartsMap.current.clear();
+    partsOrderMap.current.clear();
   }
 
   return { resetTracking };

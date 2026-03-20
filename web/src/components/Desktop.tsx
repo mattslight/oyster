@@ -1,6 +1,6 @@
 import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon } from "./ArtifactIcon";
-import Aurora from "./reactbits/Aurora";
+import Grainient from "./reactbits/Grainient";
 
 interface Props {
   artifacts: Artifact[];
@@ -11,12 +11,30 @@ interface Props {
 export function Desktop({ artifacts, onArtifactClick, onArtifactStop }: Props) {
   return (
     <div className="desktop">
-      <div className="desktop-aurora">
-        <Aurora
-          colorStops={["#2a1f6b", "#7c6bff", "#1a1b2e"]}
-          amplitude={1.2}
-          blend={0.6}
-          speed={0.5}
+      <div className="desktop-bg">
+        <Grainient
+          color1="#07060f"
+          color2="#7c6bff"
+          color3="#5227FF"
+          timeSpeed={0.15}
+          colorBalance={0}
+          warpStrength={2}
+          warpFrequency={6.5}
+          warpSpeed={2}
+          warpAmplitude={20}
+          blendAngle={0}
+          blendSoftness={0.05}
+          rotationAmount={500}
+          noiseScale={2}
+          grainAmount={0.15}
+          grainScale={2}
+          grainAnimated={false}
+          contrast={1.2}
+          gamma={0.8}
+          saturation={0.7}
+          centerX={0}
+          centerY={0}
+          zoom={1}
         />
       </div>
       <div className="icon-grid">
