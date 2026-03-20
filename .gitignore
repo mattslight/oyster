@@ -5,5 +5,6 @@ dist/
 .superpowers/
 .claude/
 
-# Userland — agent workspace (user content, not project source)
+# User data (not project source)
 userland/
+server/registry.json

@@ -24,7 +24,7 @@ export default function App() {
 
   const [activeSpace, setActiveSpace] = useState<string>(getSpaceFromUrl);
 
-  // Redirect bare `/` to `/space/home` so every space has a uniform URL
+  // Redirect bare `/` to `/s/home` so every space has a uniform URL
   useEffect(() => {
     if (window.location.pathname === "/") {
       window.history.replaceState(null, "", "/s/home");
@@ -67,11 +67,11 @@ export default function App() {
     setActiveSpace(space);
   }, []);
 
-  // Derive unique space names (excluding "generated") for the pill row
+  // Derive unique space IDs (excluding "home") for the pill row
   const spaces = useMemo(() => {
     const set = new Set<string>();
     for (const a of artifacts) {
-      if (a.space && a.space !== "generated") set.add(a.space);
+      if (a.spaceId && a.spaceId !== "home") set.add(a.spaceId);
     }
     return Array.from(set);
   }, [artifacts]);
@@ -84,12 +84,12 @@ export default function App() {
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
 
-    if (artifact.type === "app" && artifact.port) {
-      // Registry app with a dev server (has a port)
+    if (artifact.runtimeKind === "local_process") {
+      // Managed app with a dev server
       if (artifact.status === "starting") return;
 
       if (artifact.status === "online") {
-        window.open(artifact.path, artifact.id, "width=1280,height=900");
+        window.open(artifact.url, artifact.id, "width=1280,height=900");
         return;
       }
 
@@ -101,11 +101,11 @@ export default function App() {
       );
       const appName = artifact.id.replace("app:", "");
       await startAppApi(appName);
-      window.open(artifact.path, artifact.id, "width=1280,height=900");
+      window.open(artifact.url, artifact.id, "width=1280,height=900");
     } else {
       // Static artifact (generated app, doc, deck, diagram, etc.) — open in viewer
-      const fullscreen = artifact.type === "deck" || artifact.type === "app";
-      dispatch({ type: "OPEN_VIEWER", title: artifact.name, path: artifact.path, fullscreen });
+      const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
+      dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
     }
   }
 
@@ -145,21 +145,17 @@ export default function App() {
       <Clock />
 
       <Desktop
-        artifacts={activeSpace === "home"
-          ? artifacts.filter((a) => a.space === "generated")
-          : artifacts.filter((a) => a.space === activeSpace)
-        }
+        artifacts={artifacts.filter((a) => a.spaceId === activeSpace)}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
       />
 
       <div className="windows-layer">
         {viewers.map((w, i) => {
-          const spaceFilter = activeSpace === "home" ? "generated" : activeSpace;
           const docArtifacts = artifacts.filter(
-            (a) => a.type !== "app" && a.space === spaceFilter
+            (a) => a.artifactKind !== "app" && a.spaceId === activeSpace
           );
-          const currentIdx = docArtifacts.findIndex((a) => a.path === w.artifactPath);
+          const currentIdx = docArtifacts.findIndex((a) => a.url === w.artifactPath);
           const hasPrev = currentIdx > 0;
           const hasNext = currentIdx >= 0 && currentIdx < docArtifacts.length - 1;
 
@@ -185,8 +181,8 @@ export default function App() {
                   dispatch({
                     type: "NAVIGATE_VIEWER",
                     id: w.id,
-                    title: next.name,
-                    artifactPath: next.path,
+                    title: next.label,
+                    artifactPath: next.url,
                   });
                 }
               }}

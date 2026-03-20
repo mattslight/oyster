@@ -4,14 +4,15 @@ import { extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
 import {
-  loadRegistry,
-  getAllArtifacts,
   startApp,
   stopApp,
   isPortOpen,
   waitForReady,
   updateGeneratedArtifact,
 } from "./process-manager.js";
+import { initDb } from "./db.js";
+import { SqliteArtifactStore } from "./artifact-store.js";
+import { ArtifactService } from "./artifact-service.js";
 import { IconGenerator } from "./icon-generator.js";
 import { injectBridge } from "./error-bridge.js";
 import {
@@ -91,13 +92,11 @@ for (const [k, v] of Object.entries(process.env)) {
 }
 delete cleanEnv["OPENAI_API_KEY"];
 
-// ── Registry ──
+// ── Artifact store ──
 
-const registry = loadRegistry();
-const docsMap = new Map<string, string>();
-for (const doc of registry.docs) {
-  docsMap.set(doc.name, doc.file);
-}
+const db = initDb(USERLAND_DIR);
+const store = new SqliteArtifactStore(db);
+const artifactService = new ArtifactService(store);
 
 // ── Initialize subsystems ──
 
@@ -109,8 +108,8 @@ scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 startGenerationTimer(iconGenerator);
 startAutoApprover(OPENCODE_PORT, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
-process.on("SIGTERM", () => { markShuttingDown(); process.exit(0); });
-process.on("SIGINT", () => { markShuttingDown(); process.exit(0); });
+process.on("SIGTERM", () => { markShuttingDown(); db.close(); process.exit(0); });
+process.on("SIGINT", () => { markShuttingDown(); db.close(); process.exit(0); });
 
 // ── Markdown rendering ──
 
@@ -146,7 +145,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // GET /api/artifacts
   if (url === "/api/artifacts") {
-    const artifacts = await getAllArtifacts((id) => clearSeenArtifact(id));
+    const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(artifacts));
     return;
@@ -156,22 +155,22 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   const startMatch = url.match(/^\/api\/apps\/([^/]+)\/start$/);
   if (startMatch) {
     const name = startMatch[1];
-    const app = registry.apps.find((a) => a.name === name);
-    if (!app) {
+    const config = artifactService.getAppConfig(name);
+    if (!config) {
       res.writeHead(404);
       res.end("Unknown app");
       return;
     }
-    if (await isPortOpen(app.port)) {
+    if (await isPortOpen(config.port)) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "already_running" }));
       return;
     }
-    startApp(name);
+    startApp(name, config);
     try {
-      await waitForReady(app.port);
+      await waitForReady(config.port);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "started", port: app.port }));
+      res.end(JSON.stringify({ status: "started", port: config.port }));
     } catch {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "timeout" }));
@@ -183,13 +182,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   const stopMatch = url.match(/^\/api\/apps\/([^/]+)\/stop$/);
   if (stopMatch) {
     const name = stopMatch[1];
-    const app = registry.apps.find((a) => a.name === name);
-    if (!app) {
+    const config = artifactService.getAppConfig(name);
+    if (!config) {
       res.writeHead(404);
       res.end("Unknown app");
       return;
     }
-    const stopped = stopApp(name);
+    const stopped = stopApp(name, config.port);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: stopped ? "stopped" : "not_managed" }));
     return;
@@ -199,7 +198,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   const docsMatch = url.split("?")[0].match(/^\/docs\/([^/]+)$/);
   if (docsMatch) {
     const name = docsMatch[1];
-    const filePath = docsMap.get(name);
+    const filePath = artifactService.getDocFile(name);
     if (!filePath || !existsSync(filePath)) {
       res.writeHead(404);
       res.end("Not found");

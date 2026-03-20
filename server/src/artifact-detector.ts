@@ -114,11 +114,13 @@ function registerArtifactFromManifest(
     console.log(`[artifact-detect] generating: ${manifest.name} (${manifest.type})`);
     registerGeneratedArtifact({
       id,
-      name: manifest.name,
-      type: manifest.type,
+      label: manifest.name,
+      artifactKind: manifest.type as any,
       status: "generating",
-      path: servePath,
-      space: "generated",
+      url: servePath,
+      spaceId: "home",
+      runtimeKind: "static_file",
+      runtimeConfig: {},
       createdAt: manifest.created_at,
     }); // No filePath — prevents self-healing deletion while entrypoint doesn't exist
     generatingArtifacts.set(id, {
@@ -131,11 +133,13 @@ function registerArtifactFromManifest(
     console.log(`[artifact-detect] manifest: ${manifest.name} (${manifest.type}) → ${servePath}`);
     registerGeneratedArtifact({
       id,
-      name: manifest.name,
-      type: manifest.type,
+      label: manifest.name,
+      artifactKind: manifest.type as any,
       status: "ready",
-      path: servePath,
-      space: "generated",
+      url: servePath,
+      spaceId: "home",
+      runtimeKind: "static_file",
+      runtimeConfig: {},
       createdAt: manifest.created_at,
       ...detectExistingIcon(artifactDir),
     }, entrypointPath);
@@ -165,7 +169,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
         // Re-read manifest if it arrived after initial registration
         const manifest = tryReadManifest(artifactDir);
         if (manifest) {
-          updateGeneratedArtifact(id, { name: manifest.name, type: manifest.type });
+          updateGeneratedArtifact(id, { label: manifest.name, artifactKind: manifest.type as any });
         }
       }
       return;
@@ -188,11 +192,13 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
 
     registerGeneratedArtifact({
       id,
-      name,
-      type,
+      label: name,
+      artifactKind: type as any,
       status: "generating",
-      path: "",
-      space: "generated",
+      url: "",
+      spaceId: "home",
+      runtimeKind: "static_file",
+      runtimeConfig: {},
       createdAt: new Date().toISOString(),
     }); // No filePath — prevents self-healing deletion
 
@@ -256,11 +262,13 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
               console.log(`[artifact-detect] scan: ${name} (${type}) → ${serveRelative}`);
               registerGeneratedArtifact({
                 id,
-                name,
-                type,
+                label: name,
+                artifactKind: type as any,
                 status: "ready",
-                path: serveRelative,
-                space: "generated",
+                url: serveRelative,
+                spaceId: "home",
+                runtimeKind: "static_file",
+                runtimeConfig: {},
                 createdAt: new Date().toISOString(),
                 ...detectExistingIcon(artifactDir),
               }, foundFile);
@@ -305,7 +313,7 @@ export function startGenerationTimer(iconGenerator: IconGenerator) {
         ? `/artifacts/${manifest.id}/${manifest.entrypoint}`
         : `/artifacts/${dirName}/src/index.html`;
 
-      updateGeneratedArtifact(id, { status: "ready", name, type, path: servePath }, entrypoint);
+      updateGeneratedArtifact(id, { status: "ready", label: name, artifactKind: type as any, url: servePath }, entrypoint);
       iconGenerator.enqueue(id, name, type, info.dir);
       console.log(`[artifact-detect] ready: ${name}`);
     }

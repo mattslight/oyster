@@ -1,4 +1,4 @@
-export type { Artifact, ArtifactType, ArtifactStatus, IconStatus } from "../../../shared/types";
+export type { Artifact, ArtifactKind, ArtifactStatus, IconStatus } from "../../../shared/types";
 import type { Artifact } from "../../../shared/types";
 
 export async function fetchArtifacts(): Promise<Artifact[]> {
