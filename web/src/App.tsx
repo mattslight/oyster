@@ -69,6 +69,13 @@ export default function App() {
       setActiveSpace(space);
       if (!artifactId) {
         dispatch({ type: "CLOSE_ALL_VIEWERS" });
+      } else {
+        const artifact = artifacts.find((a) => a.id === artifactId);
+        if (artifact) {
+          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
+          dispatch({ type: "CLOSE_ALL_VIEWERS" });
+          dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
+        }
       }
     }
     window.addEventListener("popstate", handlePopState);
