@@ -140,6 +140,7 @@ export function ViewerWindow({
         script.textContent = `
           (function() {
             var last = location.hash;
+            if (last) parent.postMessage({ type: "oyster-hash", hash: last }, "*");
             setInterval(function() {
               if (location.hash !== last) {
                 last = location.hash;
