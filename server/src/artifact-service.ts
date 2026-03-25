@@ -91,6 +91,7 @@ export class ArtifactService {
         runtimeConfig,
         url: `http://localhost:${port}`,
         createdAt: row.created_at,
+        groupName: row.group_name || undefined,
       };
     }
 
@@ -112,6 +113,7 @@ export class ArtifactService {
       runtimeConfig,
       url,
       createdAt: row.created_at,
+      groupName: row.group_name || undefined,
     };
   }
 }

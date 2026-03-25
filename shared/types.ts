@@ -28,4 +28,5 @@ export interface Artifact {
   icon?: string;
   iconStatus?: IconStatus;
   createdAt: string;
+  groupName?: string;
 }

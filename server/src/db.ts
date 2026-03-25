@@ -24,5 +24,11 @@ export function initDb(userlandDir: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
 
+  try {
+    db.exec("ALTER TABLE artifacts ADD COLUMN group_name TEXT");
+  } catch {
+    // Column already exists
+  }
+
   return db;
 }

@@ -12,6 +12,7 @@ export interface ArtifactRow {
   storage_config: string;
   runtime_kind: string;
   runtime_config: string;
+  group_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -46,8 +47,8 @@ export class SqliteArtifactStore implements ArtifactStore {
       getById: db.prepare("SELECT * FROM artifacts WHERE id = ?"),
       getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ? ORDER BY created_at"),
       insert: db.prepare(`
-        INSERT INTO artifacts (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config)
-        VALUES (@id, @owner_id, @space_id, @label, @artifact_kind, @storage_kind, @storage_config, @runtime_kind, @runtime_config)
+        INSERT INTO artifacts (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config, group_name)
+        VALUES (@id, @owner_id, @space_id, @label, @artifact_kind, @storage_kind, @storage_config, @runtime_kind, @runtime_config, @group_name)
       `),
       delete: db.prepare("DELETE FROM artifacts WHERE id = ?"),
     };
@@ -71,7 +72,7 @@ export class SqliteArtifactStore implements ArtifactStore {
 
   private static readonly UPDATABLE_COLUMNS = new Set([
     "owner_id", "space_id", "label", "artifact_kind",
-    "storage_kind", "storage_config", "runtime_kind", "runtime_config",
+    "storage_kind", "storage_config", "runtime_kind", "runtime_config", "group_name",
   ]);
 
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void {

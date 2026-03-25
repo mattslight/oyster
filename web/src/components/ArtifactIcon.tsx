@@ -1,6 +1,6 @@
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 
-const typeConfig: Record<
+export const typeConfig: Record<
   ArtifactKind,
   { gradient: string; color: string; ext: string; icon: string }
 > = {
