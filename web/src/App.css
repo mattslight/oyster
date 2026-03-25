@@ -265,6 +265,107 @@ body {
   display: flex;
 }
 
+/* ── Group icon (iOS App Library-style) ── */
+.group-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  padding: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.group-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+}
+
+.group-cell {
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.group-cell svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.9;
+}
+
+.group-cell-empty {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.group-count {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 1px 4px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+/* ── Group popup ── */
+.group-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+
+.group-popup {
+  background: rgba(30, 30, 50, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 24px;
+  min-width: 280px;
+  max-width: 500px;
+  max-height: 70vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+  animation: scaleIn 0.2s ease;
+}
+
+.group-popup-header {
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+
+.group-popup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  justify-items: center;
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 /* ── ChatBar ── */
 .chatbar-wrapper {
   position: fixed;
