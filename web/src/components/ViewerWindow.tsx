@@ -117,31 +117,24 @@ export function ViewerWindow({
   }, []);
 
   // Track hash changes inside iframe (e.g., Reveal.js slide navigation)
+  // Polls because Reveal.js uses replaceState which doesn't fire hashchange
   useEffect(() => {
     if (!onHashChange) return;
     const iframe = iframeRef.current;
     if (!iframe) return;
 
-    function handleHashChange() {
+    let lastHash = "";
+    const interval = setInterval(() => {
       try {
-        const hash = iframe!.contentWindow?.location.hash || "";
-        if (hash) onHashChange!(hash);
+        const hash = iframe.contentWindow?.location.hash || "";
+        if (hash && hash !== lastHash) {
+          lastHash = hash;
+          onHashChange(hash);
+        }
       } catch { /* cross-origin, ignore */ }
-    }
+    }, 500);
 
-    function onLoad() {
-      try {
-        iframe!.contentWindow?.addEventListener("hashchange", handleHashChange);
-      } catch { /* cross-origin, ignore */ }
-    }
-
-    iframe.addEventListener("load", onLoad);
-    return () => {
-      iframe.removeEventListener("load", onLoad);
-      try {
-        iframe.contentWindow?.removeEventListener("hashchange", handleHashChange);
-      } catch { /* ignore */ }
-    };
+    return () => clearInterval(interval);
   }, [onHashChange, iframeKey]);
 
   // Reset on path change
