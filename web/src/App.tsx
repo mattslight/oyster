@@ -67,6 +67,7 @@ export default function App() {
       window.history.pushState(null, "", target);
     }
     setActiveSpace(space);
+    setOpenGroup(null);
   }, []);
 
   // Derive unique space IDs (excluding "home") for the pill row
