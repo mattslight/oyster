@@ -18,12 +18,15 @@ import "./App.css";
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const getSpaceFromUrl = useCallback((): string => {
-    const match = window.location.pathname.match(/^\/s\/(.+)$/);
-    return match ? match[1] : "home";
+  const getUrlState = useCallback((): { space: string; artifactId: string | null } => {
+    const match = window.location.pathname.match(/^\/s\/([^/]+)(?:\/a\/([^/]+))?$/);
+    return {
+      space: match ? match[1] : "home",
+      artifactId: match?.[2] ?? null,
+    };
   }, []);
 
-  const [activeSpace, setActiveSpace] = useState<string>(getSpaceFromUrl);
+  const [activeSpace, setActiveSpace] = useState<string>(() => getUrlState().space);
 
   // Redirect bare `/` to `/s/home` so every space has a uniform URL
   useEffect(() => {
@@ -35,11 +38,19 @@ export default function App() {
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  // Fetch artifacts on mount
+  // Fetch artifacts on mount; auto-open artifact if URL contains one
   useEffect(() => {
     fetchArtifacts().then((a) => {
       setArtifacts(a);
       setLoaded(true);
+      const { artifactId } = getUrlState();
+      if (artifactId) {
+        const artifact = a.find((x) => x.id === artifactId);
+        if (artifact) {
+          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
+          dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
+        }
+      }
     });
   }, []);
 
@@ -51,14 +62,18 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Sync activeSpace from browser back/forward
+  // Sync state from browser back/forward
   useEffect(() => {
     function handlePopState() {
-      setActiveSpace(getSpaceFromUrl());
+      const { space, artifactId } = getUrlState();
+      setActiveSpace(space);
+      if (!artifactId) {
+        dispatch({ type: "CLOSE_ALL_VIEWERS" });
+      }
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [getSpaceFromUrl]);
+  }, [getUrlState]);
 
   // Push URL when space changes via pill click
   const handleSpaceChange = useCallback((space: string) => {
@@ -109,6 +124,7 @@ export default function App() {
       // Static artifact (generated app, doc, deck, diagram, etc.) — open in viewer
       const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
       dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
+      window.history.pushState(null, "", `/s/${activeSpace}/a/${artifact.id}`);
     }
   }
 
@@ -173,7 +189,10 @@ export default function App() {
               zIndex={w.zIndex}
               fullscreen={w.fullscreen}
               onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
-              onClose={() => dispatch({ type: "CLOSE", id: w.id })}
+              onClose={() => {
+                dispatch({ type: "CLOSE", id: w.id });
+                window.history.pushState(null, "", `/s/${activeSpace}`);
+              }}
               onToggleFullscreen={() => dispatch({ type: "TOGGLE_FULLSCREEN", id: w.id })}
               hasPrev={hasPrev}
               hasNext={hasNext}
@@ -188,6 +207,7 @@ export default function App() {
                     title: next.label,
                     artifactPath: next.url,
                   });
+                  window.history.replaceState(null, "", `/s/${activeSpace}/a/${next.id}`);
                 }
               }}
             />

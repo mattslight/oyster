@@ -14,6 +14,7 @@ export type WindowAction =
   | { type: "OPEN_CHAT" }
   | { type: "OPEN_VIEWER"; title: string; path: string; fullscreen?: boolean }
   | { type: "CLOSE"; id: string }
+  | { type: "CLOSE_ALL_VIEWERS" }
   | { type: "UPDATE_STATUS"; id: string; statusText: string }
   | { type: "OPEN_TERMINAL" }
   | { type: "FOCUS"; id: string }
@@ -75,6 +76,8 @@ export function windowsReducer(
     }
     case "CLOSE":
       return state.filter((w) => w.id !== action.id);
+    case "CLOSE_ALL_VIEWERS":
+      return state.filter((w) => w.type !== "viewer");
     case "UPDATE_STATUS":
       return state.map((w) =>
         w.id === action.id ? { ...w, statusText: action.statusText } : w
