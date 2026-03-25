@@ -117,24 +117,46 @@ export function ViewerWindow({
   }, []);
 
   // Track hash changes inside iframe (e.g., Reveal.js slide navigation)
-  // Polls because Reveal.js uses replaceState which doesn't fire hashchange
+  // Injects a MutationObserver + polling script into the iframe to detect
+  // hash changes from Reveal.js (which uses replaceState, not hashchange)
   useEffect(() => {
     if (!onHashChange) return;
     const iframe = iframeRef.current;
     if (!iframe) return;
 
-    let lastHash = "";
-    const interval = setInterval(() => {
-      try {
-        const hash = iframe.contentWindow?.location.hash || "";
-        if (hash && hash !== lastHash) {
-          lastHash = hash;
-          onHashChange(hash);
-        }
-      } catch { /* cross-origin, ignore */ }
-    }, 500);
+    function handleMessage(event: MessageEvent) {
+      if (event.source !== iframe!.contentWindow) return;
+      if (event.data?.type === "oyster-hash") {
+        onHashChange!(event.data.hash);
+      }
+    }
+    window.addEventListener("message", handleMessage);
 
-    return () => clearInterval(interval);
+    function onLoad() {
+      try {
+        const doc = iframe!.contentWindow?.document;
+        if (!doc) return;
+        const script = doc.createElement("script");
+        script.textContent = `
+          (function() {
+            var last = location.hash;
+            setInterval(function() {
+              if (location.hash !== last) {
+                last = location.hash;
+                parent.postMessage({ type: "oyster-hash", hash: last }, "*");
+              }
+            }, 50);
+          })();
+        `;
+        doc.body.appendChild(script);
+      } catch { /* cross-origin, ignore */ }
+    }
+
+    iframe.addEventListener("load", onLoad);
+    return () => {
+      iframe.removeEventListener("load", onLoad);
+      window.removeEventListener("message", handleMessage);
+    };
   }, [onHashChange, iframeKey]);
 
   // Reset on path change
