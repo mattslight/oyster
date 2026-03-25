@@ -22,6 +22,8 @@ interface Props {
   hasPrev?: boolean;
   hasNext?: boolean;
   onFixError?: (error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) => Promise<string>;
+  onHashChange?: (hash: string) => void;
+  initialHash?: string;
 }
 
 const toolLabels: Record<string, string> = {
@@ -85,6 +87,8 @@ export function ViewerWindow({
   hasPrev = false,
   hasNext = false,
   onFixError,
+  onHashChange,
+  initialHash,
 }: Props) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
@@ -94,7 +98,7 @@ export function ViewerWindow({
   const [fixPhase, setFixPhase] = useState<FixPhase>("idle");
   const [fixStatus, setFixStatus] = useState("Sending to Oyster...");
   const unsubRef = useRef<(() => void) | null>(null);
-  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}`, [path, iframeKey]);
+  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}${initialHash ? initialHash : ""}`, [path, iframeKey]);
 
   // Listen for iframe errors via postMessage
   useEffect(() => {
@@ -111,6 +115,34 @@ export function ViewerWindow({
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, []);
+
+  // Track hash changes inside iframe (e.g., Reveal.js slide navigation)
+  useEffect(() => {
+    if (!onHashChange) return;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    function handleHashChange() {
+      try {
+        const hash = iframe!.contentWindow?.location.hash || "";
+        if (hash) onHashChange!(hash);
+      } catch { /* cross-origin, ignore */ }
+    }
+
+    function onLoad() {
+      try {
+        iframe!.contentWindow?.addEventListener("hashchange", handleHashChange);
+      } catch { /* cross-origin, ignore */ }
+    }
+
+    iframe.addEventListener("load", onLoad);
+    return () => {
+      iframe.removeEventListener("load", onLoad);
+      try {
+        iframe.contentWindow?.removeEventListener("hashchange", handleHashChange);
+      } catch { /* ignore */ }
+    };
+  }, [onHashChange, iframeKey]);
 
   // Reset on path change
   useEffect(() => {

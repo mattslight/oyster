@@ -18,11 +18,12 @@ import "./App.css";
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const getUrlState = useCallback((): { space: string; artifactId: string | null } => {
+  const getUrlState = useCallback((): { space: string; artifactId: string | null; hash: string } => {
     const match = window.location.pathname.match(/^\/s\/([^/]+)(?:\/a\/([^/]+))?$/);
     return {
       space: match ? match[1] : "home",
       artifactId: match?.[2] ?? null,
+      hash: window.location.hash || "",
     };
   }, []);
 
@@ -37,6 +38,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
 
   // Fetch artifacts on mount; auto-open artifact if URL contains one
   useEffect(() => {
@@ -72,7 +74,9 @@ export default function App() {
       } else {
         const artifact = artifacts.find((a) => a.id === artifactId);
         if (artifact) {
+          const hash = window.location.hash || "";
           const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
+          setViewerHash(hash);
           dispatch({ type: "CLOSE_ALL_VIEWERS" });
           dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
         }
@@ -131,6 +135,7 @@ export default function App() {
       // Static artifact (generated app, doc, deck, diagram, etc.) — open in viewer
       const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
       dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
+      setViewerHash("");
       window.history.pushState(null, "", `/s/${activeSpace}/a/${artifact.id}`);
     }
   }
@@ -203,6 +208,11 @@ export default function App() {
               onToggleFullscreen={() => dispatch({ type: "TOGGLE_FULLSCREEN", id: w.id })}
               hasPrev={hasPrev}
               hasNext={hasNext}
+              initialHash={viewerHash}
+              onHashChange={(hash) => {
+                setViewerHash(hash);
+                window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
+              }}
               onFixError={handleFixError}
               onNavigate={(dir) => {
                 const nextIdx = currentIdx + dir;
