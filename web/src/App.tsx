@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { Desktop } from "./components/Desktop";
+import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
 import { Clock } from "./components/Clock";
 import { ViewerWindow } from "./components/ViewerWindow";
@@ -32,6 +33,7 @@ export default function App() {
   }, []);
   const [loaded, setLoaded] = useState(false);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   // Fetch artifacts on mount
   useEffect(() => {
@@ -148,6 +150,7 @@ export default function App() {
         artifacts={artifacts.filter((a) => a.spaceId === activeSpace)}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
+        onGroupClick={setOpenGroup}
       />
 
       <div className="windows-layer">
@@ -224,6 +227,21 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {openGroup && (
+        <GroupPopup
+          name={openGroup}
+          artifacts={artifacts.filter(
+            (a) => a.spaceId === activeSpace && a.groupName === openGroup
+          )}
+          onArtifactClick={(artifact) => {
+            setOpenGroup(null);
+            handleArtifactClick(artifact);
+          }}
+          onArtifactStop={handleArtifactStop}
+          onClose={() => setOpenGroup(null)}
+        />
       )}
 
       <ChatBar

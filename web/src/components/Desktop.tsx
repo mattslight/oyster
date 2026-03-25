@@ -1,14 +1,33 @@
+import { useMemo } from "react";
 import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon } from "./ArtifactIcon";
+import { GroupIcon } from "./GroupIcon";
 import Grainient from "./reactbits/Grainient";
 
 interface Props {
   artifacts: Artifact[];
   onArtifactClick: (artifact: Artifact) => void;
   onArtifactStop?: (artifact: Artifact) => void;
+  onGroupClick: (groupName: string) => void;
 }
 
-export function Desktop({ artifacts, onArtifactClick, onArtifactStop }: Props) {
+export function Desktop({ artifacts, onArtifactClick, onArtifactStop, onGroupClick }: Props) {
+  const { groups, ungrouped } = useMemo(() => {
+    const groups: Record<string, Artifact[]> = {};
+    const ungrouped: Artifact[] = [];
+    for (const a of artifacts) {
+      if (a.groupName) {
+        (groups[a.groupName] ??= []).push(a);
+      } else {
+        ungrouped.push(a);
+      }
+    }
+    return { groups, ungrouped };
+  }, [artifacts]);
+
+  const sortedGroupNames = Object.keys(groups).sort();
+  let idx = 0;
+
   return (
     <div className="desktop">
       <div className="desktop-bg">
@@ -38,15 +57,30 @@ export function Desktop({ artifacts, onArtifactClick, onArtifactStop }: Props) {
         />
       </div>
       <div className="icon-grid">
-        {artifacts.map((artifact, i) => (
-          <ArtifactIcon
-            key={artifact.id}
-            artifact={artifact}
-            index={i}
-            onClick={() => onArtifactClick(artifact)}
-            onStop={onArtifactStop ? () => onArtifactStop(artifact) : undefined}
-          />
-        ))}
+        {sortedGroupNames.map((name) => {
+          const i = idx++;
+          return (
+            <GroupIcon
+              key={`group:${name}`}
+              name={name}
+              artifacts={groups[name]}
+              index={i}
+              onClick={() => onGroupClick(name)}
+            />
+          );
+        })}
+        {ungrouped.map((artifact) => {
+          const i = idx++;
+          return (
+            <ArtifactIcon
+              key={artifact.id}
+              artifact={artifact}
+              index={i}
+              onClick={() => onArtifactClick(artifact)}
+              onStop={onArtifactStop ? () => onArtifactStop(artifact) : undefined}
+            />
+          );
+        })}
       </div>
     </div>
   );
