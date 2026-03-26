@@ -856,16 +856,25 @@ body {
 }
 
 /* ── Fullscreen toolbar ── */
-.fullscreen-toolbar {
+.fullscreen-toolbar-zone {
   position: absolute;
-  top: 12px;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
+  height: 24px;
   z-index: 10;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px;
+}
+
+.fullscreen-toolbar {
+  position: relative;
+  top: 12px;
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 5px 10px;
+  padding: 8px 12px;
   background: var(--window-chrome);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -874,20 +883,16 @@ body {
     0 4px 24px rgba(0, 0, 0, 0.4),
     0 0 0 1px var(--glass-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  animation: toolbarIn 0.25s ease-out;
-  cursor: grab;
-  touch-action: none;
   user-select: none;
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.fullscreen-toolbar:active {
-  cursor: grabbing;
+.fullscreen-toolbar-hidden {
+  transform: translateY(calc(-100% - 8px));
 }
 
-@keyframes toolbarIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
 
 .fullscreen-toolbar-btn {
   width: 26px;

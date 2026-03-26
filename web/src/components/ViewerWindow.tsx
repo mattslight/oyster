@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback, useState, useEffect, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { WindowChrome } from "./WindowChrome";
 import { subscribeToEvents } from "../data/chat-api";
 
@@ -91,7 +91,6 @@ export function ViewerWindow({
   initialHash,
 }: Props) {
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const dragOffset = useRef({ x: 0, y: 0 });
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<ArtifactError | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
@@ -272,6 +271,32 @@ export function ViewerWindow({
     }
   }, [onFixError, error, title]);
 
+  // Fullscreen toolbar auto-hide
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleHide = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setToolbarVisible(false), 150);
+  }, []);
+
+  const showToolbar = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setToolbarVisible(true);
+  }, []);
+
+  const leaveToolbar = useCallback(() => {
+    scheduleHide();
+  }, [scheduleHide]);
+
+  // Start auto-hide timer when entering fullscreen
+  useEffect(() => {
+    if (!fullscreen) return;
+    setToolbarVisible(true);
+    scheduleHide();
+    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+  }, [fullscreen, scheduleHide]);
+
   // Escape key exits fullscreen
   useEffect(() => {
     if (!fullscreen) return;
@@ -284,33 +309,6 @@ export function ViewerWindow({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [fullscreen, onClose]);
 
-  const onPointerDown = useCallback((e: ReactPointerEvent) => {
-    if ((e.target as HTMLElement).closest("button")) return;
-    e.preventDefault();
-    const el = toolbarRef.current!;
-    const rect = el.getBoundingClientRect();
-    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    el.setPointerCapture(e.pointerId);
-    el.style.transform = "none";
-    el.style.left = `${rect.left}px`;
-    el.style.top = `${rect.top}px`;
-  }, []);
-
-  const onPointerMove = useCallback((e: ReactPointerEvent) => {
-    const el = toolbarRef.current!;
-    if (!el.hasPointerCapture(e.pointerId)) return;
-    const x = e.clientX - dragOffset.current.x;
-    const y = e.clientY - dragOffset.current.y;
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-  }, []);
-
-  const onPointerUp = useCallback((e: ReactPointerEvent) => {
-    const el = toolbarRef.current!;
-    if (el.hasPointerCapture(e.pointerId)) {
-      el.releasePointerCapture(e.pointerId);
-    }
-  }, []);
 
   // Determine what to render inside the window
   let content: React.ReactNode;
@@ -376,11 +374,13 @@ export function ViewerWindow({
     >
       {fullscreen && (
         <div
+          className="fullscreen-toolbar-zone"
+          onMouseEnter={showToolbar}
+          onMouseLeave={leaveToolbar}
+        >
+        <div
           ref={toolbarRef}
-          className="fullscreen-toolbar"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
+          className={`fullscreen-toolbar ${toolbarVisible ? "" : "fullscreen-toolbar-hidden"}`}
         >
           <button
             className="fullscreen-toolbar-btn"
@@ -425,6 +425,7 @@ export function ViewerWindow({
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
+        </div>
         </div>
       )}
       {content}
