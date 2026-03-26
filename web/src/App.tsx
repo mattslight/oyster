@@ -186,7 +186,7 @@ export default function App() {
         onArtifactStop={handleArtifactStop}
         onGroupClick={(name) => {
           setOpenGroup(name);
-          window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name)}`);
+          window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
         }}
       />
 
@@ -275,12 +275,15 @@ export default function App() {
         </div>
       )}
 
-      {openGroup && (
+      {openGroup && (() => {
+        const groupArtifacts = artifacts.filter(
+          (a) => a.spaceId === activeSpace && a.groupName?.toLowerCase() === openGroup.toLowerCase()
+        );
+        const displayName = groupArtifacts[0]?.groupName || openGroup;
+        return (
         <GroupPopup
-          name={openGroup}
-          artifacts={artifacts.filter(
-            (a) => a.spaceId === activeSpace && a.groupName === openGroup
-          )}
+          name={displayName}
+          artifacts={groupArtifacts}
           onArtifactClick={(artifact) => {
             setOpenGroup(null);
             handleArtifactClick(artifact);
@@ -291,7 +294,8 @@ export default function App() {
             window.history.pushState(null, "", `/s/${activeSpace}`);
           }}
         />
-      )}
+        );
+      })()}
 
       <ChatBar
         onOpenTerminal={handleOpenTerminal}
