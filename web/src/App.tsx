@@ -285,7 +285,9 @@ export default function App() {
           name={displayName}
           artifacts={groupArtifacts}
           onArtifactClick={(artifact) => {
-            setOpenGroup(null);
+            if (artifact.runtimeKind !== "local_process") {
+              setOpenGroup(null);
+            }
             handleArtifactClick(artifact);
           }}
           onArtifactStop={handleArtifactStop}
