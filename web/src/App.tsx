@@ -192,6 +192,7 @@ export default function App() {
       <Clock />
 
       <Desktop
+        space={activeSpace}
         artifacts={artifacts.filter((a) => a.spaceId === activeSpace)}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}

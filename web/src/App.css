@@ -125,6 +125,18 @@ body {
   height: 100%;
 }
 
+/* ── Drag-to-reorder ── */
+.drag-placeholder {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.drag-clone {
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.4));
+  border-radius: 12px;
+  will-change: transform;
+}
+
 /* ── Artifact icon ── */
 .artifact-icon {
   display: flex;
