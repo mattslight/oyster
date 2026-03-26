@@ -21,7 +21,7 @@ interface Props {
   onNavigate?: (direction: -1 | 1) => void;
   hasPrev?: boolean;
   hasNext?: boolean;
-  onFixError?: (error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) => Promise<string>;
+  onFixError?: (error: { title: string; path: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) => Promise<string>;
   onHashChange?: (hash: string) => void;
   initialHash?: string;
 }
@@ -53,25 +53,45 @@ function extractToolHint(part: Record<string, unknown>): string | null {
 
 function ErrorDetails({ stack, consoleEntries }: { stack: string; consoleEntries: Array<{ type: string; message: string }> }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   if (!stack && consoleEntries.length === 0) return null;
+
+  const fullText = stack + (consoleEntries.length > 0
+    ? "\n\nConsole:\n" + consoleEntries.map((e) => `[${e.type}] ${e.message}`).join("\n")
+    : "");
+
+  function handleCopy() {
+    navigator.clipboard.writeText(fullText).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
   return (
     <div className="viewer-error-details">
       <button className="viewer-error-details-toggle" onClick={() => setOpen(!open)}>
         {open ? "Hide details" : "Show details"}
       </button>
       {open && (
-        <pre className="viewer-error-stack">
-          {stack}
-          {consoleEntries.length > 0 && (
-            "\n\nConsole:\n" + consoleEntries.map((e) => `[${e.type}] ${e.message}`).join("\n")
-          )}
-        </pre>
+        <div className="viewer-error-stack-wrap">
+          <button className="viewer-error-copy" onClick={handleCopy}>
+            {copied ? "Copied!" : "Copy"}
+          </button>
+          <pre className="viewer-error-stack">{fullText}</pre>
+        </div>
       )}
     </div>
   );
 }
 
 type FixPhase = "idle" | "fixing" | "done";
+
+interface FixLogEntry {
+  type: "tool" | "text";
+  label: string;
+  detail?: string;
+  ts: number;
+}
 
 export function ViewerWindow({
   title,
@@ -96,8 +116,18 @@ export function ViewerWindow({
   const [iframeKey, setIframeKey] = useState(0);
   const [fixPhase, setFixPhase] = useState<FixPhase>("idle");
   const [fixStatus, setFixStatus] = useState("Sending to Oyster...");
+  const [fixLog, setFixLog] = useState<FixLogEntry[]>([]);
+  const [fixLogOpen, setFixLogOpen] = useState(false);
+  const fixLogEndRef = useRef<HTMLDivElement>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const iframeSrc = useMemo(() => `${path}?t=${Date.now()}${initialHash ? initialHash : ""}`, [path, iframeKey]);
+
+  // Auto-scroll fix log
+  useEffect(() => {
+    if (fixLogOpen && fixLogEndRef.current) {
+      fixLogEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [fixLog, fixLogOpen]);
 
   // Listen for iframe errors via postMessage
   useEffect(() => {
@@ -110,10 +140,12 @@ export function ViewerWindow({
         stack: event.data.error?.stack || "",
         console: Array.isArray(event.data.console) ? event.data.console : [],
       });
+      // Exit fullscreen so error appears as a window on the desktop
+      if (fullscreen) onToggleFullscreen();
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  }, [fullscreen, onToggleFullscreen]);
 
   // Track hash changes inside iframe (e.g., Reveal.js slide navigation)
   // Injects a MutationObserver + polling script into the iframe to detect
@@ -166,6 +198,8 @@ export function ViewerWindow({
     setError(null);
     setFixPhase("idle");
     setFixStatus("");
+    setFixLog([]);
+    setFixLogOpen(false);
     setIframeKey((k) => k + 1);
   }, [path]);
 
@@ -192,6 +226,8 @@ export function ViewerWindow({
     setError(null);
     setFixPhase("idle");
     setFixStatus("");
+    setFixLog([]);
+    setFixLogOpen(false);
     setIframeKey((k) => k + 1);
   }, []);
 
@@ -199,11 +235,14 @@ export function ViewerWindow({
     if (!onFixError || !error) return;
     setFixPhase("fixing");
     setFixStatus("Sending to Oyster...");
+    setFixLog([]);
+    setFixLogOpen(false);
 
     // Subscribe to SSE BEFORE sending the message so we don't miss events
     let seenBusy = false;
     let hasEdited = false;
     let targetSessionId: string | null = null;
+    const textAccum = new Map<string, string>();
 
     unsubRef.current?.();
     unsubRef.current = subscribeToEvents((event) => {
@@ -232,8 +271,8 @@ export function ViewerWindow({
             if (hasEdited) {
               setFixPhase("done");
               setFixStatus("Done! Reloading...");
+              setFixLog((prev) => [...prev, { type: "text", label: "Done — reloading artifact", ts: Date.now() }]);
             } else {
-              // Oyster finished but didn't edit anything
               setFixPhase("idle");
               setFixStatus("");
               setError((prev) => prev ? { ...prev, message: prev.message + "\n\nOyster couldn't fix this automatically." } : prev);
@@ -242,17 +281,53 @@ export function ViewerWindow({
           break;
         }
         case "message.part.updated": {
-          const part = props.part as { type: string; tool?: string; state?: { status?: string } };
+          const part = props.part as { type: string; id?: string; text?: string; tool?: string; state?: { status?: string; output?: unknown } };
+
+          // Capture text parts (Oyster's reasoning)
+          if (part.type === "text" && part.text && part.id) {
+            textAccum.set(part.id, part.text);
+            // Emit the latest meaningful line as a log entry
+            const lines = part.text.split("\n").filter((l) => l.trim().length > 0);
+            const last = lines[lines.length - 1];
+            if (last) {
+              const snippet = last.length > 120 ? last.slice(0, 117) + "..." : last;
+              setFixLog((prev) => {
+                // Update existing text entry for this part ID, or add new
+                const existingIdx = prev.findIndex((e) => e.detail === part.id);
+                if (existingIdx >= 0) {
+                  const updated = [...prev];
+                  updated[existingIdx] = { type: "text", label: snippet, detail: part.id!, ts: Date.now() };
+                  return updated;
+                }
+                return [...prev, { type: "text", label: snippet, detail: part.id!, ts: Date.now() }];
+              });
+            }
+          }
+
           if (part.type === "tool" && part.tool) {
             const toolName = part.tool.toLowerCase();
-            // Track if Oyster actually edited files
             if (toolName === "edit" || toolName === "write") {
               hasEdited = true;
             }
             const label = toolLabels[toolName] || "Working";
             const hint = extractToolHint(props.part as Record<string, unknown>);
-            if (part.state?.status === "running" || part.state?.status === "pending") {
-              setFixStatus(hint ? `${label} ${hint}` : `${label}...`);
+            const status = part.state?.status;
+            if (status === "running" || status === "pending") {
+              const statusText = hint ? `${label} ${hint}` : `${label}...`;
+              setFixStatus(statusText);
+              setFixLog((prev) => [...prev, { type: "tool", label: statusText, ts: Date.now() }]);
+            } else if (status === "completed") {
+              const statusText = hint ? `${label} ${hint} ✓` : `${label} ✓`;
+              setFixLog((prev) => {
+                // Replace the last pending entry for this tool with completed
+                const lastIdx = prev.findLastIndex((e) => e.type === "tool" && e.label.startsWith(label));
+                if (lastIdx >= 0) {
+                  const updated = [...prev];
+                  updated[lastIdx] = { ...updated[lastIdx], label: statusText };
+                  return updated;
+                }
+                return [...prev, { type: "tool", label: statusText, ts: Date.now() }];
+              });
             }
           }
           break;
@@ -261,7 +336,7 @@ export function ViewerWindow({
     });
 
     try {
-      const sessionId = await onFixError({ title, message: error.message, stack: error.stack, console: error.console });
+      const sessionId = await onFixError({ title, path, message: error.message, stack: error.stack, console: error.console });
       targetSessionId = sessionId;
     } catch {
       unsubRef.current?.();
@@ -314,20 +389,43 @@ export function ViewerWindow({
   let content: React.ReactNode;
 
   if (fixPhase === "fixing" || fixPhase === "done") {
-    // Chatbar-style progress bar centered in the window
     content = (
       <div className="viewer-fix-screen">
-        <div className={`viewer-fix-bar ${fixPhase === "done" ? "viewer-fix-bar-done" : ""}`}>
-          <div className="viewer-fix-bolt">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-            </svg>
+        <div className="viewer-fix-container">
+          <div className={`viewer-fix-bar ${fixPhase === "done" ? "viewer-fix-bar-done" : ""}`}>
+            <div className="viewer-fix-bolt">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
+            </div>
+            <span className="viewer-fix-status" key={fixStatus}>{fixStatus}</span>
+            {fixPhase === "fixing" && (
+              <button className="viewer-fix-cancel" onClick={handleRetry} title="Cancel">
+                ×
+              </button>
+            )}
           </div>
-          <span className="viewer-fix-status" key={fixStatus}>{fixStatus}</span>
-          {fixPhase === "fixing" && (
-            <button className="viewer-fix-cancel" onClick={handleRetry} title="Cancel">
-              ×
+          {fixLog.length > 0 && (
+            <button
+              className="viewer-fix-log-toggle"
+              onClick={() => setFixLogOpen(!fixLogOpen)}
+            >
+              {fixLogOpen ? "Hide" : "Show"} activity log ({fixLog.length})
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: fixLogOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
             </button>
+          )}
+          {fixLogOpen && (
+            <div className="viewer-fix-log">
+              {fixLog.map((entry, i) => (
+                <div key={i} className={`viewer-fix-log-entry viewer-fix-log-${entry.type}`}>
+                  <span className="viewer-fix-log-icon">{entry.type === "tool" ? "⚙" : "›"}</span>
+                  <span className="viewer-fix-log-label">{entry.label}</span>
+                </div>
+              ))}
+              <div ref={fixLogEndRef} />
+            </div>
           )}
         </div>
       </div>

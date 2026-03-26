@@ -1,5 +1,10 @@
 import { useRef, useCallback, type ReactNode, type PointerEvent } from "react";
 
+type ResizeEdge = "e" | "w" | "s" | "n" | "se" | "sw" | "ne" | "nw";
+
+const MIN_W = 320;
+const MIN_H = 200;
+
 interface Props {
   title: string;
   children: ReactNode;
@@ -30,6 +35,9 @@ export function WindowChrome({
   const ref = useRef<HTMLDivElement>(null);
   const offset = useRef({ x: 0, y: 0 });
   const pos = useRef({ x: defaultX, y: defaultY });
+  const size = useRef({ w: defaultW, h: defaultH });
+
+  // ── Drag (title bar) ──
 
   const onPointerDown = useCallback((e: PointerEvent) => {
     if (fullscreen) return;
@@ -66,6 +74,67 @@ export function WindowChrome({
     window.addEventListener("pointerup", onUp);
   }, [fullscreen]);
 
+  // ── Resize (edges & corners) ──
+
+  const onResizePointerDown = useCallback((edge: ResizeEdge, e: PointerEvent) => {
+    if (fullscreen) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const el = ref.current!;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = size.current.w;
+    const startH = size.current.h;
+    const startLeft = pos.current.x;
+    const startTop = pos.current.y;
+
+    document.body.style.userSelect = "none";
+    document.querySelectorAll("iframe").forEach((f) => {
+      (f as HTMLElement).style.pointerEvents = "none";
+    });
+
+    function onMove(ev: globalThis.PointerEvent) {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+
+      let newW = startW;
+      let newH = startH;
+      let newX = startLeft;
+      let newY = startTop;
+
+      if (edge.includes("e")) newW = Math.max(MIN_W, startW + dx);
+      if (edge.includes("s")) newH = Math.max(MIN_H, startH + dy);
+      if (edge.includes("w")) {
+        newW = Math.max(MIN_W, startW - dx);
+        newX = startLeft + startW - newW;
+      }
+      if (edge.includes("n")) {
+        newH = Math.max(MIN_H, startH - dy);
+        newY = startTop + startH - newH;
+      }
+
+      size.current = { w: newW, h: newH };
+      pos.current = { x: newX, y: newY };
+      el.style.width = newW + "px";
+      el.style.height = newH + "px";
+      el.style.left = newX + "px";
+      el.style.top = newY + "px";
+    }
+
+    function onUp() {
+      document.body.style.userSelect = "";
+      document.querySelectorAll("iframe").forEach((f) => {
+        (f as HTMLElement).style.pointerEvents = "";
+      });
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [fullscreen]);
+
   const handleTitleBarDoubleClick = useCallback(() => {
     onToggleFullscreen?.();
   }, [onToggleFullscreen]);
@@ -84,12 +153,24 @@ export function WindowChrome({
               position: "absolute",
               left: pos.current.x,
               top: pos.current.y,
-              width: defaultW,
-              height: defaultH,
+              width: size.current.w,
+              height: size.current.h,
               zIndex,
             }
       }
     >
+      {!fullscreen && (
+        <>
+          <div className="resize-edge resize-n" onPointerDown={(e) => onResizePointerDown("n", e)} />
+          <div className="resize-edge resize-s" onPointerDown={(e) => onResizePointerDown("s", e)} />
+          <div className="resize-edge resize-e" onPointerDown={(e) => onResizePointerDown("e", e)} />
+          <div className="resize-edge resize-w" onPointerDown={(e) => onResizePointerDown("w", e)} />
+          <div className="resize-corner resize-nw" onPointerDown={(e) => onResizePointerDown("nw", e)} />
+          <div className="resize-corner resize-ne" onPointerDown={(e) => onResizePointerDown("ne", e)} />
+          <div className="resize-corner resize-sw" onPointerDown={(e) => onResizePointerDown("sw", e)} />
+          <div className="resize-corner resize-se" onPointerDown={(e) => onResizePointerDown("se", e)} />
+        </>
+      )}
       <div
         className="window-titlebar"
         onPointerDown={onPointerDown}

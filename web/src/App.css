@@ -775,6 +775,20 @@ body {
   overflow: hidden;
 }
 
+/* ── Resize handles ── */
+
+.resize-edge, .resize-corner { position: absolute; z-index: 10; }
+
+.resize-n { top: -4px; left: 8px; right: 8px; height: 8px; cursor: n-resize; }
+.resize-s { bottom: -4px; left: 8px; right: 8px; height: 8px; cursor: s-resize; }
+.resize-e { right: -4px; top: 8px; bottom: 8px; width: 8px; cursor: e-resize; }
+.resize-w { left: -4px; top: 8px; bottom: 8px; width: 8px; cursor: w-resize; }
+
+.resize-nw { top: -4px; left: -4px; width: 14px; height: 14px; cursor: nw-resize; }
+.resize-ne { top: -4px; right: -4px; width: 14px; height: 14px; cursor: ne-resize; }
+.resize-sw { bottom: -4px; left: -4px; width: 14px; height: 14px; cursor: sw-resize; }
+.resize-se { bottom: -4px; right: -4px; width: 14px; height: 14px; cursor: se-resize; }
+
 .window-titlebar {
   display: flex;
   align-items: center;
@@ -1195,6 +1209,32 @@ body {
   color: rgba(255, 255, 255, 0.5);
 }
 
+.viewer-error-stack-wrap {
+  position: relative;
+  margin: 8px 0 0;
+  max-width: 500px;
+}
+
+.viewer-error-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.5);
+  font: 11px/1 var(--font-mono);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  z-index: 1;
+}
+
+.viewer-error-copy:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .viewer-error-stack {
   text-align: left;
   background: rgba(255, 255, 255, 0.04);
@@ -1205,10 +1245,9 @@ body {
   font-family: "IBM Plex Mono", monospace;
   max-height: 200px;
   overflow: auto;
-  margin: 8px 0 0;
+  margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  max-width: 500px;
 }
 
 /* ── Fix-in-progress screen (chatbar-style) ── */
@@ -1292,4 +1331,79 @@ body {
 
 .viewer-fix-cancel:hover {
   color: rgba(255, 255, 255, 0.5);
+}
+
+.viewer-fix-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 480px;
+  width: 100%;
+}
+
+.viewer-fix-log-toggle {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  transition: color 0.15s;
+}
+
+.viewer-fix-log-toggle:hover {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.viewer-fix-log {
+  width: 100%;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 8px 0;
+  animation: fix-log-open 0.2s ease-out;
+}
+
+@keyframes fix-log-open {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 280px; }
+}
+
+.viewer-fix-log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+.viewer-fix-log-tool {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.viewer-fix-log-text {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.viewer-fix-log-icon {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-size: 0.6rem;
+}
+
+.viewer-fix-log-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

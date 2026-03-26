@@ -27,7 +27,7 @@ export default function App() {
     if (groupMatch) {
       return { space: groupMatch[1], artifactId: null, groupName: decodeURIComponent(groupMatch[2]), hash: "" };
     }
-    const spaceMatch = window.location.pathname.match(/^\/s\/([^/]+)$/);
+    const spaceMatch = window.location.pathname.match(/^\/s\/([^/]+?)\/?$/);
     return { space: spaceMatch ? spaceMatch[1] : "home", artifactId: null, groupName: null, hash: "" };
   }, []);
 
@@ -53,7 +53,7 @@ export default function App() {
       if (artifactId) {
         const artifact = a.find((x) => x.id === artifactId);
         if (artifact) {
-          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
+          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app" || artifact.artifactKind === "diagram";
           dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
         }
       }
@@ -80,7 +80,7 @@ export default function App() {
         const artifact = artifacts.find((a) => a.id === artifactId);
         if (artifact) {
           const hash = window.location.hash || "";
-          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
+          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app" || artifact.artifactKind === "diagram";
           setViewerHash(hash);
           dispatch({ type: "CLOSE_ALL_VIEWERS" });
           dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
@@ -138,7 +138,7 @@ export default function App() {
       window.open(artifact.url, artifact.id, "width=1280,height=900");
     } else {
       // Static artifact (generated app, doc, deck, diagram, etc.) — open in viewer
-      const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app";
+      const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app" || artifact.artifactKind === "diagram";
       dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
       setViewerHash("");
       window.history.pushState(null, "", `/s/${activeSpace}/a/${artifact.id}`);
@@ -165,13 +165,24 @@ export default function App() {
     await stopAppApi(appName);
   }
 
-  async function handleFixError(error: { title: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
+  async function handleFixError(error: { title: string; path: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
     // Use a fresh session so Oyster has clean context for the fix
     const session = await createSession();
     const consoleText = error.console.length > 0
       ? "\n\nRecent console output:\n" + error.console.map((e) => `[${e.type}] ${e.message}`).join("\n")
       : "";
-    const message = `The artifact "${error.title}" crashed with an error:\n\n${error.stack || error.message}${consoleText}\n\nPlease fix this error in the artifact source code.`;
+
+    // Try to resolve the actual file path from the server
+    let fileHint = "";
+    try {
+      const res = await fetch(`/api/resolve-path?url=${encodeURIComponent(error.path)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.filePath) fileHint = `\n\nThe source file is: ${data.filePath}`;
+      }
+    } catch { /* best effort */ }
+
+    const message = `The artifact "${error.title}" (served at ${error.path}) crashed with an error:\n\n${error.stack || error.message}${consoleText}${fileHint}\n\nPlease fix this error in the artifact source code.`;
     await sendMessage(session.id, message);
     return session.id;
   }

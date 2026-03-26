@@ -68,6 +68,7 @@ function inferType(filePath: string): ArtifactKind {
   if (lower.includes("note") || lower.includes("readme")) return "notes";
   if (lower.includes("table") || lower.includes("spreadsheet") || lower.includes("tracker")) return "table";
   if (lower.endsWith(".md")) return "notes";
+  if (lower.endsWith(".mmd") || lower.endsWith(".mermaid")) return "diagram";
   return "app";
 }
 
@@ -246,7 +247,7 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
           if (existsSync(srcDir)) {
             const srcFiles = readdirSync(srcDir);
             for (const f of srcFiles) {
-              if (f.endsWith(".html") || f.endsWith(".md")) {
+              if (f.endsWith(".html") || f.endsWith(".md") || f.endsWith(".mmd") || f.endsWith(".mermaid")) {
                 foundFile = join(srcDir, f);
                 break;
               }
@@ -254,7 +255,7 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
           } else {
             const files = readdirSync(artifactDir);
             for (const f of files) {
-              if (f.endsWith(".html") || f.endsWith(".md")) {
+              if (f.endsWith(".html") || f.endsWith(".md") || f.endsWith(".mmd") || f.endsWith(".mermaid")) {
                 foundFile = join(artifactDir, f);
                 break;
               }
