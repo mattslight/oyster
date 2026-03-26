@@ -24,6 +24,22 @@ export type WindowAction =
 let nextId = 1;
 let topZ = 100;
 
+const FS_KEY = "oyster-fullscreen-pref";
+
+function getFsPref(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(FS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveFsPref(path: string, fs: boolean) {
+  const prefs = getFsPref();
+  prefs[path] = fs;
+  localStorage.setItem(FS_KEY, JSON.stringify(prefs));
+}
+
 export function windowsReducer(
   state: WindowState[],
   action: WindowAction
@@ -61,6 +77,8 @@ export function windowsReducer(
         );
       }
       topZ++;
+      const savedFs = getFsPref()[action.path];
+      const fs = savedFs !== undefined ? savedFs : (action.fullscreen ?? false);
       return [
         ...state,
         {
@@ -70,7 +88,7 @@ export function windowsReducer(
           statusText: "",
           artifactPath: action.path,
           zIndex: topZ,
-          fullscreen: action.fullscreen ?? false,
+          fullscreen: fs,
         },
       ];
     }
@@ -110,9 +128,12 @@ export function windowsReducer(
       );
     }
     case "TOGGLE_FULLSCREEN": {
-      return state.map((w) =>
-        w.id === action.id ? { ...w, fullscreen: !w.fullscreen } : w
-      );
+      return state.map((w) => {
+        if (w.id !== action.id) return w;
+        const newFs = !w.fullscreen;
+        if (w.artifactPath) saveFsPref(w.artifactPath, newFs);
+        return { ...w, fullscreen: newFs };
+      });
     }
     case "NAVIGATE_VIEWER": {
       return state.map((w) =>
