@@ -18,13 +18,17 @@ import "./App.css";
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const getUrlState = useCallback((): { space: string; artifactId: string | null; hash: string } => {
-    const match = window.location.pathname.match(/^\/s\/([^/]+)(?:\/a\/([^/]+))?$/);
-    return {
-      space: match ? match[1] : "home",
-      artifactId: match?.[2] ?? null,
-      hash: window.location.hash || "",
-    };
+  const getUrlState = useCallback((): { space: string; artifactId: string | null; groupName: string | null; hash: string } => {
+    const artifactMatch = window.location.pathname.match(/^\/s\/([^/]+)\/a\/([^/]+)$/);
+    if (artifactMatch) {
+      return { space: artifactMatch[1], artifactId: artifactMatch[2], groupName: null, hash: window.location.hash || "" };
+    }
+    const groupMatch = window.location.pathname.match(/^\/s\/([^/]+)\/g\/([^/]+)$/);
+    if (groupMatch) {
+      return { space: groupMatch[1], artifactId: null, groupName: decodeURIComponent(groupMatch[2]), hash: "" };
+    }
+    const spaceMatch = window.location.pathname.match(/^\/s\/([^/]+)$/);
+    return { space: spaceMatch ? spaceMatch[1] : "home", artifactId: null, groupName: null, hash: "" };
   }, []);
 
   const [activeSpace, setActiveSpace] = useState<string>(() => getUrlState().space);
@@ -37,7 +41,7 @@ export default function App() {
   }, []);
   const [loaded, setLoaded] = useState(false);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [openGroup, setOpenGroup] = useState<string | null>(() => getUrlState().groupName);
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
 
   // Fetch artifacts on mount; auto-open artifact if URL contains one
@@ -67,9 +71,9 @@ export default function App() {
   // Sync state from browser back/forward
   useEffect(() => {
     function handlePopState() {
-      const { space, artifactId } = getUrlState();
+      const { space, artifactId, groupName } = getUrlState();
       setActiveSpace(space);
-      setOpenGroup(null);
+      setOpenGroup(groupName);
       if (!artifactId) {
         dispatch({ type: "CLOSE_ALL_VIEWERS" });
       } else {
@@ -182,7 +186,7 @@ export default function App() {
         onArtifactStop={handleArtifactStop}
         onGroupClick={(name) => {
           setOpenGroup(name);
-          window.history.pushState({ group: name }, "", window.location.pathname);
+          window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name)}`);
         }}
       />
 
@@ -282,7 +286,10 @@ export default function App() {
             handleArtifactClick(artifact);
           }}
           onArtifactStop={handleArtifactStop}
-          onClose={() => setOpenGroup(null)}
+          onClose={() => {
+            setOpenGroup(null);
+            window.history.pushState(null, "", `/s/${activeSpace}`);
+          }}
         />
       )}
 
