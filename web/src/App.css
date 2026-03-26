@@ -335,7 +335,7 @@ body {
 
 .group-popup {
   background: rgba(30, 30, 50, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   border-radius: 20px;
   padding: 24px;
   min-width: 280px;

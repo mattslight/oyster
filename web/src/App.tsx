@@ -69,6 +69,7 @@ export default function App() {
     function handlePopState() {
       const { space, artifactId } = getUrlState();
       setActiveSpace(space);
+      setOpenGroup(null);
       if (!artifactId) {
         dispatch({ type: "CLOSE_ALL_VIEWERS" });
       } else {
@@ -179,7 +180,10 @@ export default function App() {
         artifacts={artifacts.filter((a) => a.spaceId === activeSpace)}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
-        onGroupClick={setOpenGroup}
+        onGroupClick={(name) => {
+          setOpenGroup(name);
+          window.history.pushState({ group: name }, "", window.location.pathname);
+        }}
       />
 
       <div className="windows-layer">
