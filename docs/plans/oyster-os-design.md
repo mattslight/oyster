@@ -1,7 +1,7 @@
 # Oyster OS — Design Document
 
 **Status:** Approved
-**Last updated:** 2026-03-14
+**Last updated:** 2026-03-27
 **Authors:** Matthew Slight, with architectural input from Bharat Mani Prem Sankar
 
 ---
@@ -86,6 +86,8 @@ Prove that Oyster can:
 │  └─────────────────┘  └───────────┘  └────────────┘
 └─────────────────────────────────────────────────┘
 ```
+
+**Implementation note (PoC):** The PoC uses SQLite (`userland/oyster.db`) instead of Supabase for the artifact registry. The Oyster HTTP server (port 4200) handles artifact serving, the chat proxy to OpenCode, and the MCP endpoint — no separate Supabase dependency. The central/local database split described below reflects the production design, not the current implementation.
 
 ### The Artifact Contract
 
@@ -174,7 +176,20 @@ This is additive. Tier 1 artifacts continue working unchanged when Tier 2 and 3 
 
 #### What the AI agent sees
 
-OpenCode has full filesystem access to `/artifacts/` and can read/modify any artifact's manifest, source files, and data. This is tenant-scoped visibility — the agent sees everything for one user, nothing for other users. This cross-artifact visibility is Oyster's core differentiator: "take the data from the sales dashboard and reference it in the presentation" works because both artifacts are in the same filesystem scope.
+OpenCode has full filesystem access to the workspace and can read/modify any artifact's manifest, source files, and data. This is tenant-scoped visibility — the agent sees everything for one user, nothing for other users. This cross-artifact visibility is Oyster's core differentiator: "take the data from the sales dashboard and reference it in the presentation" works because both artifacts are in the same filesystem scope.
+
+**MCP tool surface:** In addition to filesystem access, agents interact with the desktop surface via the Oyster MCP server (`localhost:4200/mcp/`). This is the preferred interface for surface management — it enforces approved paths, maintains the artifact registry, and makes agent intent legible to the system.
+
+| Tool | What it does |
+|------|-------------|
+| `get_context` | Returns a full description of Oyster OS, artifact kinds, and the userland path |
+| `list_spaces` / `list_artifacts` | Discover what exists on the surface |
+| `create_artifact` | Write content + register on the surface in one step (opaque UUID id, slug-based filename) |
+| `read_artifact` | Read the raw text of a static file artifact |
+| `update_artifact` | Update display metadata (label, space, group) without touching the file |
+| `register_artifact` | Register a pre-existing file as a desktop artifact |
+
+Agents should use MCP tools for surface management and direct filesystem access for reading/modifying artifact source content. Do not touch `userland/oyster.db` directly.
 
 ### Central Database (Supabase) — Fixed Schema
 
@@ -594,7 +609,7 @@ On import, Oyster can auto-generate starter artifacts (summaries, knowledge maps
 
 PoC input is chat only. Imports are sprint 2+. Live connectors are later.
 
-**Note:** OpenCode has native MCP support. Connectors can be implemented as MCP servers, managed via the REST API (`GET /mcp`, `POST /mcp/{name}/connect`).
+**Note:** OpenCode has native MCP support. Connectors can be implemented as MCP servers, managed via the REST API (`GET /mcp`, `POST /mcp/{name}/connect`). The Oyster server itself exposes an MCP endpoint (`localhost:4200/mcp/`) that any agent — not just OpenCode — can use to manage the desktop surface. This is how Claude Code, Cursor, or any other agent with MCP support can create artifacts and navigate spaces without touching the filesystem directly.
 
 ---
 
@@ -673,11 +688,16 @@ Each user gets an isolated Oyster Runtime with:
 - [x] Self-healing artifact cleanup + name override system for special characters
 - [x] "The World's Your Oyster" showcase deck with FaultyTerminal WebGL background
 - [x] Chat API layer (SSE streaming to OpenCode, session management)
-- [ ] Wire chat bar input to OpenCode session
-- [ ] Supabase schema (nodes, edges, artifacts — no RLS for PoC)
-- [ ] Supabase realtime subscriptions replacing JSON registry
-- [ ] Real artifact generation + appearance on surface
-- [ ] Artifact manifest schema (folder + manifest.json per artifact)
+- [x] Wire chat bar input to OpenCode session
+- [~] Supabase schema — superseded: using SQLite (`userland/oyster.db`) for PoC artifact registry
+- [~] Supabase realtime subscriptions — superseded: SQLite + polling via `/api/artifacts`
+- [x] Real artifact generation + appearance on surface (auto-detected from userland/ via file watcher)
+- [x] Artifact manifest schema (folder + manifest.json per artifact)
+- [x] MCP server at `localhost:4200/mcp/` — agent tool surface for surface management (Phase 1: discover + register; Phase 2: create, read, update)
+- [x] AI-generated artifact icons (GPT-4o-mini + fal.ai Flux Schnell)
+- [x] Knowledge graph memory layer (Graphiti, localhost:8000)
+- [x] Drag-to-reorder desktop icons with localStorage persistence
+- [x] Fullscreen preference persistence per artifact
 
 ### Prove
 - Surface feels like a workspace you return to
