@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zombie Horde</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-0: #080c08;
+      --bg-1: #0f1710;
+      --panel: rgba(11, 18, 11, 0.86);
+      --panel-strong: rgba(14, 23, 14, 0.94);
+      --border: rgba(139, 195, 74, 0.18);
+      --border-strong: rgba(139, 195, 74, 0.32);
+      --text-main: #d4d0c8;
+      --text-muted: rgba(212, 208, 200, 0.62);
+      --acid: #8bc34a;
+      --ember: #c62828;
+      --glow: rgba(139, 195, 74, 0.12);
+    }
+
+    body {
+      background:
+        radial-gradient(circle at top, rgba(139, 195, 74, 0.12), transparent 34%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      color: var(--text-main);
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      padding: 1.5rem;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      width: min(100%, 680px);
+    }
+
+    .header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      width: 100%;
+      gap: 1rem;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background:
+        linear-gradient(180deg, rgba(20, 29, 18, 0.94), rgba(11, 18, 11, 0.9));
+      box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    }
+
+    .hero {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      min-width: 0;
+    }
+
+    .eyebrow {
+      font-size: 0.74rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .title {
+      font-size: clamp(1.75rem, 4vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      color: #cce89d;
+      text-shadow: 0 0 24px rgba(139, 195, 74, 0.2);
+    }
+
+    .subtitle {
+      max-width: 28rem;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+
+    .scores {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+
+    .score-card {
+      min-width: 6.5rem;
+      padding: 0.7rem 0.85rem;
+      border-radius: 16px;
+      border: 1px solid rgba(139, 195, 74, 0.14);
+      background: rgba(139, 195, 74, 0.06);
+      backdrop-filter: blur(6px);
+    }
+
+    .score-label {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(212, 208, 200, 0.48);
+    }
+
+    .score-value {
+      color: var(--ember);
+      font-size: 1.2rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stage {
+      position: relative;
+      width: 100%;
+      padding: 0.9rem;
+      border-radius: 28px;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(18, 26, 16, 0.96), rgba(8, 12, 8, 0.96));
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.015),
+        0 32px 80px rgba(0, 0, 0, 0.42);
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 1rem;
+      border-radius: 22px;
+      border: 1px solid rgba(139, 195, 74, 0.05);
+      pointer-events: none;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: fit-content;
+      margin: 0 auto;
+    }
+
+    canvas {
+      display: block;
+      width: min(100%, 480px);
+      height: auto;
+      border: 1px solid rgba(139, 195, 74, 0.12);
+      border-radius: 18px;
+      background: #111a0e;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.36);
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      font-size: 0.8rem;
+      color: rgba(212, 208, 200, 0.46);
+      padding: 0 0.6rem;
+    }
+
+    .controls kbd {
+      display: inline-block;
+      background: rgba(139, 195, 74, 0.08);
+      border: 1px solid rgba(139, 195, 74, 0.15);
+      border-radius: 4px;
+      padding: 0.15em 0.5em;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.85em;
+      color: rgba(212, 208, 200, 0.6);
+    }
+
+    .overlay {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      padding: 1.5rem;
+    }
+
+    .overlay.hidden { display: none; }
+
+    .overlay::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(6, 10, 6, 0.36), rgba(6, 10, 6, 0.72));
+    }
+
+    .overlay-card {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.9rem;
+      max-width: 22rem;
+      padding: 1.35rem 1.25rem;
+      border-radius: 24px;
+      border: 1px solid var(--border-strong);
+      background: linear-gradient(180deg, rgba(16, 26, 15, 0.9), rgba(10, 16, 10, 0.94));
+      box-shadow:
+        0 18px 36px rgba(0, 0, 0, 0.34),
+        0 0 0 1px rgba(255, 255, 255, 0.015) inset;
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+
+    .overlay-badge {
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid rgba(139, 195, 74, 0.16);
+      background: rgba(139, 195, 74, 0.07);
+      font-size: 0.72rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(212, 208, 200, 0.72);
+    }
+
+    .overlay-title {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      color: #d9f2ae;
+    }
+
+    .overlay-flavor {
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: rgba(212, 208, 200, 0.7);
+    }
+
+    .overlay-sub {
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(212, 208, 200, 0.58);
+    }
+
+    .overlay-sub kbd {
+      background: rgba(139, 195, 74, 0.08);
+      border: 1px solid rgba(139, 195, 74, 0.15);
+      border-radius: 4px;
+      padding: 0.15em 0.5em;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.85em;
+      color: rgba(212, 208, 200, 0.6);
+    }
+
+    .game-over-score {
+      color: #c62828;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .game-over-title {
+      color: #c62828;
+    }
+
+    .overlay-hint-row {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .overlay-chip {
+      padding: 0.45rem 0.65rem;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.76rem;
+      color: rgba(212, 208, 200, 0.64);
+    }
+
+    @media (max-width: 620px) {
+      body {
+        padding: 0.9rem;
+      }
+
+      .header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .scores {
+        width: 100%;
+      }
+
+      .score-card {
+        flex: 1;
+      }
+
+      .stage {
+        padding: 0.7rem;
+        border-radius: 22px;
+      }
+
+      .overlay-card {
+        max-width: 18rem;
+        padding: 1.1rem 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="hero">
+        <div class="eyebrow">Arcade survival</div>
+        <div class="title">Zombie Horde</div>
+        <div class="subtitle">Grow a ravenous trail of undead, corner the fleeing survivor, and keep the horde shambling as long as you can.</div>
+      </div>
+      <div class="scores">
+        <span class="score-card"><span class="score-label">Devoured</span><span class="score-value" id="score">0</span></span>
+        <span class="score-card"><span class="score-label">Record</span><span class="score-value" id="best">0</span></span>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="canvas-wrap">
+        <canvas id="game" width="480" height="480"></canvas>
+      <div class="overlay" id="start-overlay">
+        <div class="overlay-card">
+          <div class="overlay-badge">Outbreak detected</div>
+          <div class="overlay-title">Lead the first wave</div>
+          <div class="overlay-flavor">Stalk the grid, box in the survivor, and turn every capture into more bodies for the march.</div>
+          <div class="overlay-hint-row">
+            <span class="overlay-chip">Wrap around edges</span>
+            <span class="overlay-chip">Survivor can flee</span>
+          </div>
+          <div class="overlay-sub">Press <kbd>Space</kbd> to unleash</div>
+        </div>
+      </div>
+      <div class="overlay hidden" id="gameover-overlay">
+        <div class="overlay-card">
+          <div class="overlay-badge">Outbreak contained</div>
+          <div class="overlay-title game-over-title">Horde Destroyed</div>
+          <div class="game-over-score" id="final-score"></div>
+          <div class="overlay-sub">Press <kbd>Space</kbd> to rise again</div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <div class="controls">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or Arrow keys to shamble</span>
+      <span><kbd>Space</kbd> to pause</span>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    // ── Config ──
+    const COLS = 24;
+    const ROWS = 24;
+    const CELL = canvas.width / COLS;
+    const TICK_MS = 110;
+
+    // ── Survivor flee config ──
+    const FLEE_RANGE = 6;        // How close the head must be (Manhattan distance) before survivor panics
+    const FLEE_CHANCE = 0.6;     // Probability the survivor moves each tick when in range
+    const FLEE_EVERY = 2;        // Survivor only attempts to flee every N ticks
+    let fleeTicker = 0;
+    let survivorPanicking = false;
+
+    // ── Colors ──
+    const COLORS = {
+      bg: "#111a0e",
+      grid: "rgba(139,195,74,0.04)",
+      // Zombie horde colors (sickly greens / greys)
+      zombieHead: "#6a9b1e",
+      zombieBody: "#4a7a18",
+      zombieTail: "#2d4a10",
+      zombieEye: "#ff1744",
+      // Survivor (food) colors
+      survivor: "#e8b960",
+      survivorGlow: "rgba(232, 185, 96, 0.2)",
+      survivorSkin: "#d4a054",
+      // Blood splatter
+      blood: "rgba(198, 40, 40, 0.3)",
+      bloodDark: "rgba(120, 20, 20, 0.15)",
+    };
+
+    // ── Blood splatters (persistent during a game) ──
+    let bloodSplatters = [];
+
+    // ── State ──
+    let snake, dir, nextDir, food, score, bestScore, state, tickTimer;
+    // state: "idle" | "playing" | "paused" | "dead"
+
+    bestScore = parseInt(localStorage.getItem("zombie-horde-best") || "0", 10);
+    document.getElementById("best").textContent = bestScore;
+
+    function init() {
+      const startX = Math.floor(COLS / 2);
+      const startY = Math.floor(ROWS / 2);
+      snake = [
+        { x: startX, y: startY },
+        { x: startX - 1, y: startY },
+        { x: startX - 2, y: startY },
+      ];
+      dir = { x: 1, y: 0 };
+      nextDir = { x: 1, y: 0 };
+      score = 0;
+      bloodSplatters = [];
+      fleeTicker = 0;
+      survivorPanicking = false;
+      document.getElementById("score").textContent = "0";
+      placeFood();
+    }
+
+    function placeFood() {
+      const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
+      const free = [];
+      for (let x = 0; x < COLS; x++) {
+        for (let y = 0; y < ROWS; y++) {
+          if (!occupied.has(`${x},${y}`)) free.push({ x, y });
+        }
+      }
+      if (free.length === 0) {
+        state = "dead";
+        return;
+      }
+      food = free[Math.floor(Math.random() * free.length)];
+    }
+
+    function addBloodSplatter(x, y) {
+      // Add 3-6 blood drops around the devoured location
+      const count = 3 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < count; i++) {
+        bloodSplatters.push({
+          x: x * CELL + Math.random() * CELL,
+          y: y * CELL + Math.random() * CELL,
+          r: 2 + Math.random() * 4,
+          opacity: 0.15 + Math.random() * 0.25,
+        });
+      }
+      // Keep splatters from growing forever
+      if (bloodSplatters.length > 200) {
+        bloodSplatters = bloodSplatters.slice(-150);
+      }
+    }
+
+    // ── Drawing ──
+
+    function draw() {
+      // Background
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Grid lines (faint, like cracked earth)
+      ctx.strokeStyle = COLORS.grid;
+      ctx.lineWidth = 1;
+      for (let i = 1; i < COLS; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * CELL, 0);
+        ctx.lineTo(i * CELL, canvas.height);
+        ctx.stroke();
+      }
+      for (let i = 1; i < ROWS; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * CELL);
+        ctx.lineTo(canvas.width, i * CELL);
+        ctx.stroke();
+      }
+
+      // Blood splatters on the ground
+      for (const b of bloodSplatters) {
+        ctx.fillStyle = `rgba(140, 20, 20, ${b.opacity})`;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Survivor glow (warm lantern-like)
+      if (food) {
+        const fx = food.x * CELL + CELL / 2;
+        const fy = food.y * CELL + CELL / 2;
+        const glow = ctx.createRadialGradient(fx, fy, 2, fx, fy, CELL * 2);
+        glow.addColorStop(0, COLORS.survivorGlow);
+        glow.addColorStop(1, "transparent");
+        ctx.fillStyle = glow;
+        ctx.fillRect(food.x * CELL - CELL * 1.5, food.y * CELL - CELL * 1.5, CELL * 4, CELL * 4);
+
+        // Survivor (human figure)
+        drawSurvivor(food.x, food.y);
+      }
+
+      // Zombie horde (draw tail first so head is on top)
+      for (let i = snake.length - 1; i >= 0; i--) {
+        drawZombie(snake[i], i);
+      }
+
+      // Pause indicator
+      if (state === "paused") {
+        ctx.fillStyle = "rgba(10, 12, 8, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#8bc34a";
+        ctx.font = "600 1.4rem 'Space Grotesk', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("Horde Resting...", canvas.width / 2, canvas.height / 2);
+      }
+    }
+
+    function drawZombie(seg, index) {
+      const x = seg.x * CELL;
+      const y = seg.y * CELL;
+      const t = index / Math.max(snake.length - 1, 1);
+
+      if (index === 0) {
+        // ── Zombie head ──
+        ctx.fillStyle = COLORS.zombieHead;
+        ctx.beginPath();
+        ctx.roundRect(x + 1, y + 1, CELL - 2, CELL - 2, 5);
+        ctx.fill();
+
+        // Eyes (red glowing dots)
+        const eyeY = y + CELL * 0.4;
+        const eyeSize = 2.5;
+        ctx.fillStyle = COLORS.zombieEye;
+        // Shadow/glow behind eyes
+        ctx.shadowColor = "#ff1744";
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(x + CELL * 0.33, eyeY, eyeSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x + CELL * 0.67, eyeY, eyeSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Mouth (jagged line)
+        ctx.strokeStyle = "#2d1a0e";
+        ctx.lineWidth = 1.5;
+        const mouthY = y + CELL * 0.7;
+        ctx.beginPath();
+        ctx.moveTo(x + CELL * 0.25, mouthY);
+        ctx.lineTo(x + CELL * 0.35, mouthY - 1.5);
+        ctx.lineTo(x + CELL * 0.45, mouthY + 1);
+        ctx.lineTo(x + CELL * 0.55, mouthY - 1.5);
+        ctx.lineTo(x + CELL * 0.65, mouthY + 1);
+        ctx.lineTo(x + CELL * 0.75, mouthY);
+        ctx.stroke();
+      } else {
+        // ── Zombie body ──
+        const r = lerp(0x4a, 0x2d, t);
+        const g = lerp(0x7a, 0x4a, t);
+        const b = lerp(0x18, 0x10, t);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+
+        const pad = 2;
+        const radius = 3;
+        ctx.beginPath();
+        ctx.roundRect(x + pad, y + pad, CELL - pad * 2, CELL - pad * 2, radius);
+        ctx.fill();
+
+        // Occasional "wounds" on body segments
+        if (index % 3 === 0) {
+          ctx.fillStyle = `rgba(140, 30, 30, ${0.3 + t * 0.2})`;
+          ctx.beginPath();
+          ctx.arc(
+            x + CELL * (0.3 + Math.sin(index) * 0.2),
+            y + CELL * (0.4 + Math.cos(index) * 0.15),
+            2, 0, Math.PI * 2
+          );
+          ctx.fill();
+        }
+      }
+    }
+
+    function drawSurvivor(cellX, cellY) {
+      const x = cellX * CELL;
+      const y = cellY * CELL;
+
+      // Tremble offset when panicking
+      const tx = survivorPanicking ? (Math.random() - 0.5) * 3 : 0;
+      const ty = survivorPanicking ? (Math.random() - 0.5) * 3 : 0;
+
+      const cx = x + CELL / 2 + tx;
+      const cy = y + CELL / 2 + ty;
+
+      // Body (warm tone, redder when panicking)
+      ctx.fillStyle = survivorPanicking ? "#e09040" : COLORS.survivor;
+      ctx.beginPath();
+      ctx.roundRect(x + 3 + tx, y + 3 + ty, CELL - 6, CELL - 6, 4);
+      ctx.fill();
+
+      // Simple face - eyes (wider when panicking)
+      const eyeSize = survivorPanicking ? 2.4 : 1.8;
+      ctx.fillStyle = "#3e2723";
+      ctx.beginPath();
+      ctx.arc(cx - 3, cy - 2, eyeSize, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx + 3, cy - 2, eyeSize, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Mouth (bigger scream when panicking)
+      const mouthSize = survivorPanicking ? 3 : 2;
+      ctx.strokeStyle = "#3e2723";
+      ctx.lineWidth = survivorPanicking ? 1.5 : 1.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy + 3, mouthSize, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Exclamation mark when panicking
+      if (survivorPanicking) {
+        ctx.fillStyle = "#ff5722";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText("!", cx, y + ty - 1);
+      }
+    }
+
+    function lerp(a, b, t) {
+      return Math.round(a + (b - a) * t);
+    }
+
+    // ── Survivor flee logic ──
+
+    function manhattanDist(a, b) {
+      return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    }
+
+    function trySurvivorFlee() {
+      if (!food) return;
+
+      const head = snake[0];
+      const dist = manhattanDist(head, food);
+
+      survivorPanicking = dist <= FLEE_RANGE;
+
+      if (!survivorPanicking) return;
+      if (Math.random() > FLEE_CHANCE) return;
+
+      const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
+
+      // Block cells the head could move into next tick (both current dir and queued nextDir)
+      const nhx1 = (head.x + dir.x + COLS) % COLS;
+      const nhy1 = (head.y + dir.y + ROWS) % ROWS;
+      occupied.add(`${nhx1},${nhy1}`);
+      const nhx2 = (head.x + nextDir.x + COLS) % COLS;
+      const nhy2 = (head.y + nextDir.y + ROWS) % ROWS;
+      occupied.add(`${nhx2},${nhy2}`);
+
+      const directions = [
+        { x: 0, y: -1 },
+        { x: 0, y: 1 },
+        { x: -1, y: 0 },
+        { x: 1, y: 0 },
+      ];
+
+      // Score each adjacent cell: prefer cells that are farther from the head and valid
+      let bestDist = -1;
+      const candidates = [];
+
+      for (const d of directions) {
+        const nx = food.x + d.x;
+        const ny = food.y + d.y;
+
+        // Must stay in bounds
+        if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+        // Can't move onto the snake
+        if (occupied.has(`${nx},${ny}`)) continue;
+
+        const newDist = manhattanDist(head, { x: nx, y: ny });
+        if (newDist > bestDist) {
+          bestDist = newDist;
+          candidates.length = 0;
+          candidates.push({ x: nx, y: ny });
+        } else if (newDist === bestDist) {
+          candidates.push({ x: nx, y: ny });
+        }
+      }
+
+      if (candidates.length > 0) {
+        food = candidates[Math.floor(Math.random() * candidates.length)];
+      }
+    }
+
+    // ── Game loop ──
+
+    function tick() {
+      if (state !== "playing") return;
+
+      // Survivor flee attempt
+      fleeTicker++;
+      if (fleeTicker >= FLEE_EVERY) {
+        fleeTicker = 0;
+        trySurvivorFlee();
+      } else if (food) {
+        // Still update panicking state for visual feedback
+        survivorPanicking = manhattanDist(snake[0], food) <= FLEE_RANGE;
+      }
+
+      dir = { ...nextDir };
+
+      // Wrap around edges
+      const head = {
+        x: (snake[0].x + dir.x + COLS) % COLS,
+        y: (snake[0].y + dir.y + ROWS) % ROWS,
+      };
+
+        // Self collision
+        for (let i = 0; i < snake.length; i++) {
+          if (snake[i].x === head.x && snake[i].y === head.y) {
+            console.warn("Self collision: head", head, "hit segment", i, snake[i], "snake length", snake.length, "dir", dir);
+            die();
+            return;
+          }
+        }
+
+      snake.unshift(head);
+
+      // Devour survivor
+      if (food && head.x === food.x && head.y === food.y) {
+        score++;
+        addBloodSplatter(food.x, food.y);
+        document.getElementById("score").textContent = score;
+        if (score > bestScore) {
+          bestScore = score;
+          document.getElementById("best").textContent = bestScore;
+          localStorage.setItem("zombie-horde-best", String(bestScore));
+        }
+        placeFood();
+      } else {
+        snake.pop();
+      }
+
+      draw();
+    }
+
+    function die() {
+      state = "dead";
+      clearInterval(tickTimer);
+      draw();
+      document.getElementById("final-score").textContent = `Devoured: ${score} survivors`;
+      document.getElementById("gameover-overlay").classList.remove("hidden");
+    }
+
+    function startGame() {
+      clearInterval(tickTimer);
+      document.getElementById("start-overlay").classList.add("hidden");
+      document.getElementById("gameover-overlay").classList.add("hidden");
+      init();
+      state = "playing";
+      draw();
+      tickTimer = setInterval(tick, TICK_MS);
+    }
+
+    // ── Input ──
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        if (state === "idle" || state === "dead") {
+          startGame();
+        } else if (state === "playing") {
+          state = "paused";
+          clearInterval(tickTimer);
+          draw();
+        } else if (state === "paused") {
+          state = "playing";
+          tickTimer = setInterval(tick, TICK_MS);
+        }
+        return;
+      }
+
+      if (state !== "playing" && state !== "paused") return;
+
+      const keyMap = {
+        ArrowUp: { x: 0, y: -1 }, w: { x: 0, y: -1 }, W: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 }, s: { x: 0, y: 1 }, S: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 }, a: { x: -1, y: 0 }, A: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 }, d: { x: 1, y: 0 }, D: { x: 1, y: 0 },
+      };
+
+      const newDir = keyMap[e.key];
+      if (!newDir) return;
+
+      e.preventDefault();
+
+      // Prevent reversing into yourself
+      if (newDir.x + dir.x === 0 && newDir.y + dir.y === 0) return;
+
+      nextDir = newDir;
+    });
+
+    // ── Init ──
+
+    state = "idle";
+    init();
+    draw();
+  </script>
+</body>
+</html>

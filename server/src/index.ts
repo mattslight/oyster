@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync } from "node:fs";
 import { extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
@@ -85,6 +85,18 @@ function bootstrapUserland() {
     `${PROJECT_ROOT}/.opencode/config.toml`,
     `${USERLAND_DIR}/.opencode/config.toml`,
   );
+
+  // Seed built-in artifacts into userland on first install (copy-if-absent — no overwrite)
+  const builtinsDir = join(PROJECT_ROOT, "builtins");
+  if (existsSync(builtinsDir)) {
+    for (const entry of readdirSync(builtinsDir)) {
+      const dest = join(USERLAND_DIR, entry);
+      if (!existsSync(dest)) {
+        cpSync(join(builtinsDir, entry), dest, { recursive: true });
+        console.log(`[bootstrap] installed built-in: ${entry}`);
+      }
+    }
+  }
 }
 
 bootstrapUserland();
