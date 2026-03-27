@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-03-27
+
+### Oyster MCP — agent-facing tool surface
+
+Agents (Claude Code, OpenCode, Cursor, etc.) can now manage the Oyster desktop surface programmatically via MCP at `http://localhost:4200/mcp/`.
+
+**Discovery tools**
+- `get_context` — returns a full description of Oyster OS, artifact kinds, runtime model, and the actual userland path. Automatically called by fresh agent sessions.
+- `list_spaces` — lists all spaces with artifact counts
+- `list_artifacts` — lists all artifacts with id, label, kind, space, status, url, group, and source_path
+
+**Authoring tools**
+- `create_artifact` — writes a new file inside userland and registers it on the desktop in one step. Server computes the path from space + label; agent provides content. IDs are opaque UUIDs (not tied to filename or space), so the same label can exist in multiple spaces or subdirectories without collision. Exclusive write (`flag: wx`) + best-effort rollback prevents orphan files.
+- `read_artifact` — returns raw text content of static file artifacts (.md, .html, .mmd, .txt, .json, .csv)
+- `update_artifact` — updates display metadata only (label, space, group). Does not move or rename files. Space assignment is desktop metadata — the file stays where it is.
+- `register_artifact` — registers a pre-existing file on disk as a desktop artifact (legacy flow; prefer `create_artifact` for new content)
+
+**Design decisions recorded**
+- Stateless transport: fresh McpServer + fresh StreamableHTTPServerTransport per request
+- Localhost-only: non-local Origin headers rejected with 403
+- Approved roots: `register_artifact` only accepts paths under userland/
+- Spaces are emergent: no spaces table, derived from artifact space_id
+- Generated artifacts (`gen:` prefix) are in-memory only and cannot yet be updated via MCP — this is a known gap (Phase 3: `promote_artifact`)
+
+**Agent onboarding**
+- `opencode.json` updated with `oyster` MCP entry pointing to `localhost:4200/mcp/`
+- `.opencode/agents/oyster.md` updated with full tool table and usage guidance
+- Fresh-session test confirmed: agent called `get_context` proactively, surfaced userland path, understood spaces-are-emergent model
+
 ## 2026-03-14 (night)
 
 ### AI-generated artifact icons
