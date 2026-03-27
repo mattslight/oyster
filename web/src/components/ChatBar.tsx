@@ -26,6 +26,26 @@ const taglines = [
   { dim: "Don't be shy.", bright: "The shell listens." },
 ];
 
+function ReasoningBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const firstLine = text.split("\n").find((l) => l.trim()) || "thinking...";
+  const summary = firstLine.replace(/^\*\*(.+)\*\*$/, "$1").slice(0, 50);
+
+  return (
+    <div className="tool-block" onClick={() => setOpen(!open)}>
+      <div className="tool-block-header">
+        <span className="tool-block-chevron">{open ? "▾" : "▸"}</span>
+        <span className="tool-block-summary">{summary}</span>
+      </div>
+      {open && (
+        <div className="tool-block-details">
+          <pre className="tool-block-io">{text}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToolBlock({ tool }: { tool: ToolPart }) {
   const [open, setOpen] = useState(false);
   const isRunning = tool.status === "running";
@@ -177,6 +197,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                     <div key={pi} className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(part.text) as string }} />
                   ) : part.type === "tool" && part.tool ? (
                     <ToolBlock key={part.tool.id} tool={part.tool} />
+                  ) : part.type === "reasoning" && part.text ? (
+                    <ReasoningBlock key={pi} text={part.text} />
                   ) : null
                 )
               ) : msg.role === "assistant" && msg.content ? (

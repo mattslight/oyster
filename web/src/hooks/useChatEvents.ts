@@ -22,6 +22,8 @@ export function useChatEvents({
   const textPartsMap = useRef<Map<string, Map<string, string>>>(new Map());
   // Track tool parts per message: messageID → Map<partID, ToolPart>
   const toolPartsMap = useRef<Map<string, Map<string, ToolPart>>>(new Map());
+  // Track reasoning parts per message: messageID → Map<partID, text>
+  const reasoningPartsMap = useRef<Map<string, Map<string, string>>>(new Map());
   // Track insertion order of all parts per message: messageID → partID[]
   const partsOrderMap = useRef<Map<string, string[]>>(new Map());
 
@@ -38,9 +40,12 @@ export function useChatEvents({
     const order = partsOrderMap.current.get(messageId) || [];
     const texts = textPartsMap.current.get(messageId);
     const tools = toolPartsMap.current.get(messageId);
+    const reasoning = reasoningPartsMap.current.get(messageId);
     return order.map((partId) => {
       const toolPart = tools?.get(partId);
       if (toolPart) return { type: "tool" as const, tool: toolPart };
+      const reasoningText = reasoning?.get(partId);
+      if (reasoningText !== undefined) return { type: "reasoning" as const, text: reasoningText };
       return { type: "text" as const, text: texts?.get(partId) || "" };
     });
   }
@@ -98,6 +103,19 @@ export function useChatEvents({
           const field = props.field as string;
           const delta = props.delta as string;
 
+          // Skip deltas for reasoning parts — they're handled separately
+          if (reasoningPartsMap.current.get(messageId)?.has(partId)) {
+            // Append to reasoning map instead
+            const current = reasoningPartsMap.current.get(messageId)!.get(partId) || "";
+            reasoningPartsMap.current.get(messageId)!.set(partId, current + delta);
+            const msgParts = buildMessageParts(messageId);
+            const fullContent = Array.from(textPartsMap.current.get(messageId)?.values() || []).join("");
+            setMessages((prev) => prev.map((m) =>
+              m.id === messageId ? { ...m, content: fullContent || m.content, parts: msgParts } : m
+            ));
+            break;
+          }
+
           if (field === "text") {
             if (!textPartsMap.current.has(messageId)) {
               textPartsMap.current.set(messageId, new Map());
@@ -136,7 +154,23 @@ export function useChatEvents({
             tool?: string;
             state?: { input?: Record<string, unknown>; output?: unknown; status?: string };
           };
-          if (part.type === "text" && part.text !== undefined) {
+          // Skip non-content part types
+          if (part.type === "step-start" || part.type === "step-finish") break;
+          if (part.type === "reasoning") {
+            if (!reasoningPartsMap.current.has(partMsgId)) {
+              reasoningPartsMap.current.set(partMsgId, new Map());
+            }
+            reasoningPartsMap.current.get(partMsgId)!.set(part.id, part.text || "");
+            ensurePartOrder(partMsgId, part.id);
+
+            if (part.text) {
+              const msgParts = buildMessageParts(partMsgId);
+              const fullContent = Array.from(textPartsMap.current.get(partMsgId)?.values() || []).join("");
+              setMessages((prev) => prev.map((m) =>
+                m.id === partMsgId ? { ...m, content: fullContent || m.content, parts: msgParts } : m
+              ));
+            }
+          } else if (part.type === "text" && part.text !== undefined) {
             if (!textPartsMap.current.has(partMsgId)) {
               textPartsMap.current.set(partMsgId, new Map());
             }
@@ -209,7 +243,9 @@ export function useChatEvents({
 
   function resetTracking() {
     currentAssistantMsg.current = null;
+    textPartsMap.current.clear();
     toolPartsMap.current.clear();
+    reasoningPartsMap.current.clear();
     partsOrderMap.current.clear();
   }
 

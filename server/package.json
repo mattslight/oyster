@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.4",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "better-sqlite3": "^12.8.0",
     "marked": "^17.0.4",
     "node-pty": "1.0.0",

@@ -66,6 +66,31 @@ add_episode(
 - Entity types are extracted automatically: Preference, Requirement, Procedure, Location, Event, Organization, Document, Topic, Object
 - After saving, confirm briefly: "Saved to memory." — don't write a paragraph about it
 
+## Artifact registry (Oyster MCP)
+
+You have MCP tools (the `oyster` server) for managing the desktop surface directly. These are your primary interface — do not read or write the SQLite database, and do not place files outside `userland/`.
+
+### Tools
+
+| Tool | When to use |
+|------|-------------|
+| `get_context` | Load a full description of Oyster OS and the tool surface. Call this if unfamiliar with Oyster. |
+| `list_spaces` | See what spaces exist and how many artifacts each has. |
+| `list_artifacts` | List artifacts; filter by space or kind. Returns id, label, kind, space, status, url, group, source_path. |
+| `create_artifact` | **Write new content and register it in one step.** Provide space, label, kind, and content — the server handles the path. Use this for anything you are creating. |
+| `read_artifact` | Read the raw text content of an existing static file artifact by id. Works for .md, .html, .mmd, .txt, .json, .csv. |
+| `update_artifact` | Update display metadata only: label, space assignment, group name. Does not move or rename the file. |
+| `register_artifact` | Register a file that **already exists on disk** as a desktop artifact. Only for pre-existing files — for new content, use `create_artifact`. |
+
+### Usage
+
+- **Creating something new**: call `create_artifact(space_id, label, artifact_kind, content)`. Do not write files manually then register — that is the old flow.
+- **Editing an existing artifact**: call `read_artifact(id)` to get the current content, edit the file at `source_path` (from `list_artifacts`), surface updates automatically.
+- **Reorganising**: use `update_artifact(id, { space_id, group_name, label })` to move between spaces or groups.
+- Always call `list_spaces` and `list_artifacts` first to understand what exists before creating or modifying.
+- `create_artifact` kind determines file extension: `notes`→`.md`, `diagram`→`.mmd`, all others→`.html`
+- New artifacts appear immediately on the desktop after creation.
+
 ## What you can do
 
 - Answer questions about the project and codebase

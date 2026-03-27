@@ -13,7 +13,7 @@ export interface ToolPart {
 }
 
 export interface MessagePart {
-  type: "text" | "tool";
+  type: "text" | "tool" | "reasoning";
   text?: string;
   tool?: ToolPart;
 }

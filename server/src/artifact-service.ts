@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { resolve, extname, basename, join, sep } from "node:path";
+import crypto from "node:crypto";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifacts } from "./process-manager.js";
@@ -24,6 +27,30 @@ function parseJson(raw: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+// ── Kind inference (mirrors artifact-detector.ts logic) ──
+
+function inferKindFromPath(filePath: string): ArtifactKind {
+  const lower = filePath.toLowerCase();
+  if (lower.includes("dashboard") || lower.includes("diagram")) return "diagram";
+  if (lower.includes("deck") || lower.includes("slide") || lower.includes("present")) return "deck";
+  if (lower.includes("map") || lower.includes("mind")) return "map";
+  if (lower.includes("note") || lower.includes("readme")) return "notes";
+  if (lower.includes("table") || lower.includes("spreadsheet") || lower.includes("tracker")) return "table";
+  const ext = extname(lower);
+  if (ext === ".md") return "notes";
+  if (ext === ".mmd" || ext === ".mermaid") return "diagram";
+  return "app";
+}
+
+const KIND_EXT: Record<ArtifactKind, string> = {
+  notes: ".md", diagram: ".mmd",
+  app: ".html", deck: ".html", wireframe: ".html", table: ".html", map: ".html",
+};
+
+function slugify(str: string): string {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 // ── Service ──
@@ -60,6 +87,154 @@ export class ArtifactService {
     if (!row || row.runtime_kind !== "static_file") return undefined;
     const storage = parseJson(row.storage_config) as FilesystemStorageConfig;
     return storage.path;
+  }
+
+  // ── Registration ──
+
+  registerArtifact(
+    params: {
+      path: string;
+      space_id: string;
+      label: string;
+      id?: string;
+      artifact_kind?: ArtifactKind;
+      group_name?: string;
+    },
+    approvedRoots: string[],
+  ): Artifact {
+    const absPath = resolve(params.path);
+
+    // Validate file exists
+    if (!existsSync(absPath)) {
+      throw new Error(`File does not exist: ${absPath}`);
+    }
+
+    // Validate path is under an approved root
+    const normalizedRoots = approvedRoots.map((r) => resolve(r));
+    const isApproved = normalizedRoots.some((root) => absPath.startsWith(root + "/") || absPath === root);
+    if (!isApproved) {
+      throw new Error(
+        `Path is not under an approved root. Allowed roots: ${normalizedRoots.join(", ")}`,
+      );
+    }
+
+    // Infer ID from filename stem if not provided
+    const id = params.id || basename(absPath).replace(/\.[^.]+$/, "");
+
+    // Validate uniqueness
+    if (this.store.getById(id)) {
+      throw new Error(`Artifact with id "${id}" already exists`);
+    }
+
+    // Infer kind from file extension/name
+    const kind = params.artifact_kind || inferKindFromPath(absPath);
+
+    this.store.insert({
+      id,
+      owner_id: null,
+      space_id: params.space_id,
+      label: params.label,
+      artifact_kind: kind,
+      storage_kind: "filesystem",
+      storage_config: JSON.stringify({ path: absPath }),
+      runtime_kind: "static_file",
+      runtime_config: "{}",
+      group_name: params.group_name || null,
+    });
+
+    return {
+      id,
+      label: params.label,
+      artifactKind: kind,
+      spaceId: params.space_id,
+      status: "ready",
+      runtimeKind: "static_file",
+      runtimeConfig: {},
+      url: `/docs/${id}`,
+      createdAt: new Date().toISOString(),
+      groupName: params.group_name || undefined,
+    };
+  }
+
+  // ── Creation ──
+
+  createArtifact(
+    params: {
+      space_id: string;
+      label: string;
+      artifact_kind: ArtifactKind;
+      content: string;
+      subdir?: string;
+      group_name?: string;
+    },
+    userlandDir: string,
+  ): Artifact {
+    const label = params.label.trim();
+    const space_id = params.space_id.trim();
+    if (!label) throw new Error("label must not be empty");
+    if (!space_id) throw new Error("space_id must not be empty");
+
+    const slug = slugify(label);
+    if (!slug) throw new Error("label must contain at least one alphanumeric character");
+
+    const id = crypto.randomUUID();
+
+    // Subdir containment check (resolved path, not string scan)
+    const baseDir = join(userlandDir, space_id);
+    const targetDir = params.subdir ? resolve(baseDir, params.subdir) : baseDir;
+    if (targetDir !== baseDir && !targetDir.startsWith(baseDir + sep)) {
+      throw new Error("subdir must stay within the space directory");
+    }
+
+    const ext = KIND_EXT[params.artifact_kind];
+    const absPath = join(targetDir, `${slug}${ext}`);
+
+    // Filesystem collision check + exclusive write
+    mkdirSync(targetDir, { recursive: true });
+    if (existsSync(absPath)) {
+      throw new Error(`File already exists at path "${absPath}"`);
+    }
+    writeFileSync(absPath, params.content, { encoding: "utf8", flag: "wx" });
+
+    // Register — best-effort rollback on DB failure
+    try {
+      return this.registerArtifact(
+        { path: absPath, space_id, label, artifact_kind: params.artifact_kind, group_name: params.group_name, id },
+        [userlandDir],
+      );
+    } catch (err) {
+      try { unlinkSync(absPath); } catch {}
+      throw err;
+    }
+  }
+
+  // ── Update ──
+
+  async updateArtifact(
+    id: string,
+    fields: { label?: string; space_id?: string; group_name?: string | null },
+  ): Promise<Artifact> {
+    const row = this.store.getById(id);
+    if (!row) throw new Error(`Artifact "${id}" not found`);
+
+    const updateable: Partial<ArtifactRow> = {};
+    if (fields.label !== undefined) {
+      const label = fields.label.trim();
+      if (!label) throw new Error("label must not be empty");
+      updateable.label = label;
+    }
+    if (fields.space_id !== undefined) {
+      const space_id = fields.space_id.trim();
+      if (!space_id) throw new Error("space_id must not be empty");
+      updateable.space_id = space_id;
+    }
+    if ("group_name" in fields) updateable.group_name = fields.group_name ?? null;
+
+    if (Object.keys(updateable).length > 0) {
+      this.store.update(id, updateable);
+    }
+
+    return this.rowToArtifact(this.store.getById(id)!);
   }
 
   // ── Private ──

@@ -25,6 +25,7 @@ export interface ArtifactStore {
   getAll(): ArtifactRow[];
   getById(id: string): ArtifactRow | undefined;
   getBySpaceId(spaceId: string): ArtifactRow[];
+  getDistinctSpaces(): { space_id: string; count: number }[];
   insert(row: InsertRow): void;
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void;
   delete(id: string): void;
@@ -37,6 +38,7 @@ export class SqliteArtifactStore implements ArtifactStore {
     getAll: Database.Statement;
     getById: Database.Statement;
     getBySpaceId: Database.Statement;
+    getDistinctSpaces: Database.Statement;
     insert: Database.Statement;
     delete: Database.Statement;
   };
@@ -46,6 +48,7 @@ export class SqliteArtifactStore implements ArtifactStore {
       getAll: db.prepare("SELECT * FROM artifacts ORDER BY space_id, created_at"),
       getById: db.prepare("SELECT * FROM artifacts WHERE id = ?"),
       getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ? ORDER BY created_at"),
+      getDistinctSpaces: db.prepare("SELECT space_id, COUNT(*) as count FROM artifacts GROUP BY space_id ORDER BY space_id"),
       insert: db.prepare(`
         INSERT INTO artifacts (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config, group_name)
         VALUES (@id, @owner_id, @space_id, @label, @artifact_kind, @storage_kind, @storage_config, @runtime_kind, @runtime_config, @group_name)
@@ -64,6 +67,10 @@ export class SqliteArtifactStore implements ArtifactStore {
 
   getBySpaceId(spaceId: string): ArtifactRow[] {
     return this.stmts.getBySpaceId.all(spaceId) as ArtifactRow[];
+  }
+
+  getDistinctSpaces(): { space_id: string; count: number }[] {
+    return this.stmts.getDistinctSpaces.all() as { space_id: string; count: number }[];
   }
 
   insert(row: InsertRow): void {

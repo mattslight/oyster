@@ -30,6 +30,8 @@ import {
   proxySSE,
 } from "./opencode-manager.js";
 import { spawnSession, attachWebSocket } from "./pty-manager.js";
+import { createMcpServer } from "./mcp-server.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 // ── Config ──
 
@@ -509,6 +511,25 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       res.writeHead(200, { "Content-Type": mime });
       res.end(readFileSync(filePath));
     }
+    return;
+  }
+
+  // ── MCP server ──
+  if (url === "/mcp" || url === "/mcp/") {
+    // Localhost-only: reject non-local origins and don't emit wildcard CORS
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.writeHead(403).end("Forbidden");
+      return;
+    }
+    // Override the wildcard CORS header set at the top of handleHttpRequest
+    res.setHeader("Access-Control-Allow-Origin", origin || "http://localhost:4200");
+
+    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR });
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    res.on("close", () => { transport.close(); mcpServer.close(); });
+    await mcpServer.connect(transport);
+    await transport.handleRequest(req, res);
     return;
   }
 
