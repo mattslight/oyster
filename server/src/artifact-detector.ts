@@ -26,6 +26,7 @@ interface ArtifactManifest {
   status: string;
   created_at: string;
   updated_at: string;
+  builtin?: boolean;
 }
 
 // ── Generating lifecycle ──
@@ -37,6 +38,7 @@ interface GeneratingInfo {
   type: string;
   dir: string;
   lastActivity: number;
+  builtin: boolean;
 }
 const generatingArtifacts = new Map<string, GeneratingInfo>();
 const GENERATION_QUIESCE_MS = 8_000;
@@ -119,6 +121,8 @@ function registerArtifactFromManifest(
 
   seenArtifacts.add(id);
 
+  const builtin = manifest.builtin === true;
+
   if (generating) {
     console.log(`[artifact-detect] generating: ${manifest.name} (${manifest.type})`);
     registerGeneratedArtifact({
@@ -131,12 +135,13 @@ function registerArtifactFromManifest(
       runtimeKind: "static_file",
       runtimeConfig: {},
       createdAt: manifest.created_at,
-    }); // No filePath — prevents self-healing deletion while entrypoint doesn't exist
+    }, undefined, builtin); // No filePath — prevents self-healing deletion while entrypoint doesn't exist
     generatingArtifacts.set(id, {
       name: manifest.name,
       type: manifest.type,
       dir: artifactDir,
       lastActivity: Date.now(),
+      builtin,
     });
   } else {
     console.log(`[artifact-detect] manifest: ${manifest.name} (${manifest.type}) → ${servePath}`);
@@ -151,7 +156,7 @@ function registerArtifactFromManifest(
       runtimeConfig: {},
       createdAt: manifest.created_at,
       ...detectExistingIcon(artifactDir),
-    }, entrypointPath);
+    }, entrypointPath, builtin);
     iconGenerator.enqueue(id, manifest.name, manifest.type, artifactDir);
   }
 }
@@ -216,6 +221,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
       type,
       dir: artifactDir,
       lastActivity: Date.now(),
+      builtin: false,
     });
   }
 }
@@ -291,7 +297,10 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
 }
 
 // Start the quiescence timer that transitions artifacts from "generating" to "ready"
-export function startGenerationTimer(iconGenerator: IconGenerator) {
+export function startGenerationTimer(
+  iconGenerator: IconGenerator,
+  onReady?: (id: string, filePath: string, builtin: boolean) => void,
+) {
   setInterval(() => {
     const now = Date.now();
     for (const [id, info] of generatingArtifacts) {
@@ -325,6 +334,7 @@ export function startGenerationTimer(iconGenerator: IconGenerator) {
       updateGeneratedArtifact(id, { status: "ready", label: name, artifactKind: toArtifactKind(type), url: servePath }, entrypoint);
       iconGenerator.enqueue(id, name, type, info.dir);
       console.log(`[artifact-detect] ready: ${name}`);
+      onReady?.(id, entrypoint, info.builtin);
     }
   }, 2000);
 }

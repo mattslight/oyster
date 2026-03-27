@@ -20,10 +20,12 @@ export function clearStarting(name: string): void {
 
 // ── Generated artifacts (in-memory, transitional) ──
 
-const generatedArtifacts = new Map<string, Artifact & { filePath?: string }>();
+type GeneratedEntry = Artifact & { filePath?: string; builtin?: boolean };
 
-export function registerGeneratedArtifact(artifact: Artifact, filePath?: string): void {
-  generatedArtifacts.set(artifact.id, { ...artifact, filePath });
+const generatedArtifacts = new Map<string, GeneratedEntry>();
+
+export function registerGeneratedArtifact(artifact: Artifact, filePath?: string, builtin = false): void {
+  generatedArtifacts.set(artifact.id, { ...artifact, filePath, builtin });
 }
 
 export function updateGeneratedArtifact(id: string, fields: Partial<Artifact>, filePath?: string): void {
@@ -34,15 +36,16 @@ export function updateGeneratedArtifact(id: string, fields: Partial<Artifact>, f
   }
 }
 
-export function getGeneratedArtifacts(onRemove?: (id: string, filePath: string) => void): Artifact[] {
-  for (const [id, artifact] of generatedArtifacts) {
-    if (artifact.filePath && !existsSync(artifact.filePath)) {
-      console.log(`[artifact-cleanup] removed stale artifact: ${artifact.label} (${artifact.filePath})`);
+// Returns full entries including filePath and builtin — used for reconciliation and twin-suppression
+export function getGeneratedArtifactEntries(onRemove?: (id: string, filePath: string) => void): GeneratedEntry[] {
+  for (const [id, entry] of generatedArtifacts) {
+    if (entry.filePath && !existsSync(entry.filePath)) {
+      console.log(`[artifact-cleanup] removed stale artifact: ${entry.label} (${entry.filePath})`);
       generatedArtifacts.delete(id);
-      onRemove?.(id, artifact.filePath);
+      onRemove?.(id, entry.filePath);
     }
   }
-  return Array.from(generatedArtifacts.values()).map(({ filePath: _, ...a }) => a);
+  return Array.from(generatedArtifacts.values());
 }
 
 // ── Port / HTTP checks ──

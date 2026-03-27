@@ -9,6 +9,7 @@ import {
   isPortOpen,
   waitForReady,
   updateGeneratedArtifact,
+  getGeneratedArtifactEntries,
 } from "./process-manager.js";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
@@ -109,7 +110,20 @@ const iconGenerator = new IconGenerator(updateGeneratedArtifact);
 spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
-startGenerationTimer(iconGenerator);
+
+// Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path)
+for (const entry of getGeneratedArtifactEntries()) {
+  if (!entry.builtin && entry.filePath && entry.status === "ready") {
+    artifactService.reconcileGeneratedArtifact(entry, entry.filePath, USERLAND_DIR);
+  }
+}
+
+startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
+  if (!builtin) {
+    const entry = getGeneratedArtifactEntries().find(e => e.id === id);
+    if (entry) artifactService.reconcileGeneratedArtifact(entry, filePath, USERLAND_DIR);
+  }
+});
 startAutoApprover(OPENCODE_PORT, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
 process.on("SIGTERM", () => { markShuttingDown(); db.close(); process.exit(0); });

@@ -3,7 +3,7 @@ import { resolve, extname, basename, join, sep } from "node:path";
 import crypto from "node:crypto";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
-import { isPortOpen, isStarting, clearStarting, getGeneratedArtifacts } from "./process-manager.js";
+import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
 
 // ── Config shapes (validated here, not in route handlers) ──
 
@@ -61,8 +61,33 @@ export class ArtifactService {
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const rows = this.store.getAll();
     const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row)));
-    const generated = getGeneratedArtifacts(onArtifactRemoved);
-    return [...persisted, ...generated];
+
+    // Map of filePath → persisted artifact index — used to suppress and merge gen: twins
+    const dbPathToIdx = new Map<string, number>();
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        const p = (JSON.parse(rows[i].storage_config) as { path?: string }).path;
+        if (p) dbPathToIdx.set(p, i);
+      } catch {}
+    }
+
+    const entries = getGeneratedArtifactEntries(onArtifactRemoved);
+    const gen: Artifact[] = [];
+
+    for (const e of entries) {
+      const idx = e.filePath ? dbPathToIdx.get(e.filePath) : undefined;
+      if (idx !== undefined) {
+        // Suppressed twin — forward icon onto the DB artifact so it isn't lost
+        const dbArtifact = persisted[idx];
+        if (e.icon && !dbArtifact.icon) dbArtifact.icon = e.icon;
+        if (e.iconStatus && !dbArtifact.iconStatus) dbArtifact.iconStatus = e.iconStatus;
+      } else {
+        const { filePath: _f, builtin: _b, ...a } = e;
+        gen.push(a as Artifact);
+      }
+    }
+
+    return [...persisted, ...gen];
   }
 
   async getArtifactById(id: string): Promise<Artifact | undefined> {
@@ -205,6 +230,21 @@ export class ArtifactService {
     } catch (err) {
       try { unlinkSync(absPath); } catch {}
       throw err;
+    }
+  }
+
+  // ── Reconciliation ──
+
+  reconcileGeneratedArtifact(artifact: Artifact, filePath: string, userlandDir: string): void {
+    if (this.store.getByPath(filePath)) return; // already registered
+    console.log(`[reconcile] ${artifact.label} → DB`);
+    try {
+      this.registerArtifact(
+        { path: filePath, space_id: artifact.spaceId, label: artifact.label, artifact_kind: artifact.artifactKind, id: crypto.randomUUID() },
+        [userlandDir],
+      );
+    } catch (err) {
+      console.error(`[reconcile] failed for ${artifact.label}:`, err);
     }
   }
 
