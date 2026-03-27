@@ -13,6 +13,7 @@ export interface ArtifactRow {
   runtime_kind: string;
   runtime_config: string;
   group_name: string | null;
+  removed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +30,7 @@ export interface ArtifactStore {
   getDistinctSpaces(): { space_id: string; count: number }[];
   insert(row: InsertRow): void;
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void;
+  remove(id: string): void;
   delete(id: string): void;
 }
 
@@ -47,11 +49,11 @@ export class SqliteArtifactStore implements ArtifactStore {
 
   constructor(private db: Database.Database) {
     this.stmts = {
-      getAll: db.prepare("SELECT * FROM artifacts ORDER BY space_id, created_at"),
+      getAll: db.prepare("SELECT * FROM artifacts WHERE removed_at IS NULL ORDER BY space_id, created_at"),
       getById: db.prepare("SELECT * FROM artifacts WHERE id = ?"),
-      getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ? ORDER BY created_at"),
-      getByPath: db.prepare("SELECT * FROM artifacts WHERE json_extract(storage_config, '$.path') = ?"),
-      getDistinctSpaces: db.prepare("SELECT space_id, COUNT(*) as count FROM artifacts GROUP BY space_id ORDER BY space_id"),
+      getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ? AND removed_at IS NULL ORDER BY created_at"),
+      getByPath: db.prepare("SELECT * FROM artifacts WHERE json_extract(storage_config, '$.path') = ? AND removed_at IS NULL"),
+      getDistinctSpaces: db.prepare("SELECT space_id, COUNT(*) as count FROM artifacts WHERE removed_at IS NULL GROUP BY space_id ORDER BY space_id"),
       insert: db.prepare(`
         INSERT INTO artifacts (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config, group_name)
         VALUES (@id, @owner_id, @space_id, @label, @artifact_kind, @storage_kind, @storage_config, @runtime_kind, @runtime_config, @group_name)
@@ -103,6 +105,10 @@ export class SqliteArtifactStore implements ArtifactStore {
 
     sets.push("updated_at = datetime('now')");
     this.db.prepare(`UPDATE artifacts SET ${sets.join(", ")} WHERE id = @id`).run(values);
+  }
+
+  remove(id: string): void {
+    this.db.prepare("UPDATE artifacts SET removed_at = datetime('now') WHERE id = ?").run(id);
   }
 
   delete(id: string): void {

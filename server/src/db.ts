@@ -30,5 +30,11 @@ export function initDb(userlandDir: string): Database.Database {
     // Column already exists
   }
 
+  try {
+    db.exec("ALTER TABLE artifacts ADD COLUMN removed_at TEXT");
+  } catch {
+    // Column already exists
+  }
+
   return db;
 }

@@ -252,6 +252,22 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
   );
 
+  // ── remove_artifact ──
+
+  server.tool(
+    "remove_artifact",
+    "Remove an artifact from the desktop surface. The file and record are preserved — the artifact simply stops appearing on the surface. This is reversible.",
+    { id: z.string().describe("Artifact ID to remove") },
+    async ({ id }) => {
+      try {
+        deps.service.removeArtifact(id);
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" removed from surface` }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
   // ── regenerate_icon ──
 
   server.tool(

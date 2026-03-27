@@ -233,6 +233,14 @@ export class ArtifactService {
     }
   }
 
+  // ── Removal ──
+
+  removeArtifact(id: string): void {
+    const row = this.store.getById(id);
+    if (!row) throw new Error(`Artifact "${id}" not found`);
+    this.store.remove(id);
+  }
+
   // ── Reconciliation ──
 
   reconcileGeneratedArtifact(artifact: Artifact, filePath: string, userlandDir: string): void {
