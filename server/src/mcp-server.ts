@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
-import { extname } from "node:path";
+import { extname, dirname, join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
+import type { IconGenerator } from "./icon-generator.js";
 
 const ARTIFACT_KINDS = [
   "app", "deck", "diagram", "map", "notes", "table", "wireframe",
@@ -15,6 +16,7 @@ interface McpDeps {
   store: ArtifactStore;
   service: ArtifactService;
   userlandDir: string;
+  iconGenerator: IconGenerator;
 }
 
 function buildContext(userlandDir: string): string {
@@ -247,6 +249,45 @@ export function createMcpServer(deps: McpDeps): McpServer {
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
       }
+    },
+  );
+
+  // ── regenerate_icon ──
+
+  server.tool(
+    "regenerate_icon",
+    "Regenerate the AI-generated icon for an artifact. Uses the same geometric low-poly style as all Oyster icons. Optionally accepts a composition hint to guide what is depicted — the style (colours, geometry, palette) is always preserved.",
+    {
+      id: z.string().describe("Artifact ID"),
+      hint: z.string().optional().describe("Optional composition hint — describe what to depict (e.g. 'a chess knight piece', 'a rising bar chart'). Style is fixed; this only guides the subject matter."),
+    },
+    async ({ id, hint }) => {
+      const artifact = await deps.service.getArtifactById(id);
+      if (!artifact) {
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" not found` }], isError: true };
+      }
+
+      const sourcePath = deps.service.getDocFile(id);
+      if (!sourcePath) {
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" has no file source — icon regeneration is only supported for static file artifacts` }], isError: true };
+      }
+
+      // Derive artifact directory: if source is inside a src/ subdir, go up one level
+      const srcIdx = sourcePath.lastIndexOf("/src/");
+      const artifactDir = srcIdx !== -1 ? sourcePath.slice(0, srcIdx) : dirname(sourcePath);
+
+      if (!artifactDir.startsWith(deps.userlandDir)) {
+        return { content: [{ type: "text" as const, text: "Artifact is outside userland — cannot regenerate icon" }], isError: true };
+      }
+
+      const queued = deps.iconGenerator.forceEnqueue(id, artifact.label, artifact.artifactKind, artifactDir, hint);
+      if (!queued) {
+        return { content: [{ type: "text" as const, text: "Icon generation is disabled (FAL_KEY not configured)" }], isError: true };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ status: "queued", id, label: artifact.label, hint: hint ?? null }) }],
+      };
     },
   );
 

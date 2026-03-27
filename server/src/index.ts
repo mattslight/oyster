@@ -551,7 +551,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     // Override the wildcard CORS header set at the top of handleHttpRequest
     res.setHeader("Access-Control-Allow-Origin", origin || "http://localhost:4200");
 
-    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR });
+    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close(); mcpServer.close(); });
     await mcpServer.connect(transport);

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fal } from "@fal-ai/client";
 
@@ -7,6 +7,7 @@ interface IconJob {
   name: string;
   type: string;
   artifactDir: string;
+  hint?: string;
 }
 
 type ArtifactUpdater = (
@@ -54,6 +55,29 @@ export class IconGenerator {
     }
   }
 
+  // Force-regenerate an icon, deleting any existing one. Optional hint guides composition only.
+  forceEnqueue(artifactId: string, name: string, type: string, artifactDir: string, hint?: string): boolean {
+    if (!this.enabled) return false;
+
+    // Remove existing icon so it gets replaced
+    const iconPath = join(artifactDir, "icon.png");
+    if (existsSync(iconPath)) {
+      try { unlinkSync(iconPath); } catch {}
+    }
+
+    // Remove any pending job for this artifact and re-add with hint
+    const idx = this.queue.findIndex((j) => j.artifactId === artifactId);
+    if (idx !== -1) this.queue.splice(idx, 1);
+
+    this.queue.push({ artifactId, name, type, artifactDir, hint });
+    this.updateArtifact(artifactId, { iconStatus: "pending" });
+
+    if (!this.processing) {
+      this.processQueue();
+    }
+    return true;
+  }
+
   private async processQueue(): Promise<void> {
     this.processing = true;
 
@@ -80,10 +104,10 @@ export class IconGenerator {
     // Step 2: Get an art-directed prompt from the LLM (or fall back to basic)
     let prompt: string;
     if (this.openaiKey && sourceContent) {
-      prompt = await this.craftPromptWithLLM(job.name, job.type, sourceContent);
+      prompt = await this.craftPromptWithLLM(job.name, job.type, sourceContent, job.hint);
       console.log(`[icon-generator] art-directed prompt: ${prompt.slice(0, 80)}...`);
     } else {
-      prompt = buildBasicPrompt(job.name, job.type);
+      prompt = buildBasicPrompt(job.name, job.type, job.hint);
     }
 
     // Step 3: Generate the icon with Flux
@@ -122,7 +146,7 @@ export class IconGenerator {
     console.log(`[icon-generator] saved icon for "${job.name}" → ${servePath}`);
   }
 
-  private async craftPromptWithLLM(name: string, type: string, source: string): Promise<string> {
+  private async craftPromptWithLLM(name: string, type: string, source: string, hint?: string): Promise<string> {
     // Truncate source to avoid huge token costs — first 3000 chars is enough context
     const truncated = source.slice(0, 3000);
 
@@ -165,7 +189,7 @@ Keep it to 2-3 sentences. Read the source code to pick an object SPECIFIC to wha
           },
           {
             role: "user",
-            content: `App name: "${name}"\nType: ${type}\n\nPalette — background gradient: ${(typePalette[type] || typePalette.app).gradientFrom} → ${(typePalette[type] || typePalette.app).gradientTo}, accent colour: ${(typePalette[type] || typePalette.app).accent}. Use these exact colours.\n\nSource code:\n${truncated}`,
+            content: `App name: "${name}"\nType: ${type}\n\nPalette — background gradient: ${(typePalette[type] || typePalette.app).gradientFrom} → ${(typePalette[type] || typePalette.app).gradientTo}, accent colour: ${(typePalette[type] || typePalette.app).accent}. Use these exact colours.${hint ? `\n\nComposition note (depict this, keep the geometric style): ${hint}` : ""}\n\nSource code:\n${truncated}`,
           },
         ],
       }),
@@ -218,7 +242,7 @@ function readAppSource(artifactDir: string): string | null {
 }
 
 /** Fallback prompt when no LLM is available */
-function buildBasicPrompt(name: string, type: string): string {
+function buildBasicPrompt(name: string, type: string, hint?: string): string {
   const typeHints: Record<string, string> = {
     app: "a geometric code bracket symbol",
     deck: "a geometric presentation screen",
@@ -229,8 +253,10 @@ function buildBasicPrompt(name: string, type: string): string {
     wireframe: "a geometric wireframe layout of angular panels",
   };
 
-  const hint = typeHints[type] || "a geometric symbol representing the concept";
+  const subject = hint
+    ? `a geometric low-poly depiction of: ${hint}`
+    : (typeHints[type] || "a geometric symbol representing the concept");
   const p = typePalette[type] || typePalette.app;
 
-  return `Geometric digital art. Square canvas, diagonal gradient background from ${p.gradientFrom} to ${p.gradientTo} filling the entire surface edge to edge. Single centred ${hint} rendered in ${p.accent} with angular low-poly facets. No text, no letters, no words, no borders, no frames. Flat geometric shapes, clean angles, minimal palette, square canvas filled edge to edge.`;
+  return `Geometric digital art. Square canvas, diagonal gradient background from ${p.gradientFrom} to ${p.gradientTo} filling the entire surface edge to edge. Single centred ${subject} rendered in ${p.accent} with angular low-poly facets. No text, no letters, no words, no borders, no frames. Flat geometric shapes, clean angles, minimal palette, square canvas filled edge to edge.`;
 }
