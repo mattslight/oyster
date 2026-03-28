@@ -7,7 +7,11 @@
 
 ## Overview
 
-`.oyster/` is a lightweight, repo-carried metadata folder that stores human intent — display name overrides, group assignments, kind overrides, and space config — keyed by `source_ref` so it survives rescans and machine migrations. The SQLite DB remains authoritative for all runtime, scan, and process state. `.oyster/` is a side-effect of user actions, not a competing store.
+`.oyster/` is a repo-carried settings folder — like `.vscode/` — that developers commit so teammates who clone the repo get the same Oyster surface without any manual setup. It stores human intent: display name overrides, group assignments, kind overrides, and space config. It is keyed by `source_ref` so it survives rescans and machine migrations.
+
+The default assumption is that `.oyster/` is committed and shared. Developers who don't want it in their repo add it to their own `.gitignore`. Generated icons are the exception — they are large, machine-specific binaries that should not be committed; Oyster adds `.oyster/icons/` to the repo-root `.gitignore` automatically on first write.
+
+The SQLite DB remains authoritative for all runtime, scan, and process state. `.oyster/` is a side-effect of user actions, not a competing store.
 
 ---
 
@@ -24,11 +28,11 @@
 
 ```
 <repo-root>/
+  .gitignore         ← Oyster appends .oyster/icons/ here on first write
   .oyster/
     space.json       ← space display name, colour
     overrides.json   ← user intent keyed by source_ref
-    .gitignore       ← auto-generated; ignores icons/
-    icons/           ← AI-generated icons (gitignored by default)
+    icons/           ← AI-generated icons (repo-root gitignored)
 ```
 
 `repo_path` is machine-local and never written to `.oyster/`. It belongs in DB only.
@@ -69,15 +73,11 @@ Allowed override fields per artifact:
 - `group` — visual group on the surface
 - `kind` — see kind override restrictions below
 
-### `.oyster/.gitignore`
+### Repo-root `.gitignore` — icons entry
 
-Auto-generated on first write. Content:
+On first write to `.oyster/`, Oyster checks the repo-root `.gitignore` for a `.oyster/icons/` entry. If it isn't present, Oyster appends it. This is the only modification Oyster makes to the repo root — everything else is contained inside `.oyster/`.
 
-```
-icons/
-```
-
-This is `.oyster/.gitignore`, not the repo-root `.gitignore`. Users who want to gitignore the whole `.oyster/` folder add that to their repo-root `.gitignore` themselves.
+Developers who want to exclude the entire `.oyster/` folder manage that themselves in their `.gitignore`.
 
 ---
 
@@ -132,7 +132,7 @@ Writes are triggered only by explicit user actions:
 
 **Override cleanup.** Before writing, the new value is compared to the scanner default for that `source_ref`. If they match, the key is removed from `overrides.json` rather than stored. This keeps git diffs small and meaningful.
 
-**First write.** If `.oyster/` does not exist, it is created along with a `.oyster/.gitignore` that ignores `icons/`.
+**First write.** If `.oyster/` does not exist, it is created. The repo-root `.gitignore` is checked and `.oyster/icons/` is appended if not already present.
 
 ---
 
@@ -188,6 +188,6 @@ No extra user steps. Clone the repo, point Oyster at it, and the desktop surface
 | Port, process status         | DB        | Runtime, transient                          |
 | Scan timestamps, scan status | DB        | Operational, not portable                  |
 | Icon generation state        | DB        | Job state, transient                        |
-| Generated icon files         | `.oyster/icons/` (gitignored) | Large binary, machine-specific |
+| Generated icon files         | `.oyster/icons/` (repo-root gitignored) | Large binary, machine-specific |
 | Artifact existence           | Filesystem + DB | Derived from scanning, not stored         |
 | Source_ref (full artifact list) | DB   | Canonical — `.oyster/` only stores deltas  |
