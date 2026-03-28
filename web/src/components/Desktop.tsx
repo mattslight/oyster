@@ -88,10 +88,10 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     return "grid";
   });
 
-  const [sortMode, setSortMode] = useState<"alpha" | "kind" | "timeline">(() => {
+  const [sortMode, setSortMode] = useState<"alpha" | "kind" | "timeline" | "space">(() => {
     try {
       const stored = localStorage.getItem(SORT_KEY_PREFIX + space);
-      if (stored === "alpha" || stored === "kind" || stored === "timeline") return stored;
+      if (stored === "alpha" || stored === "kind" || stored === "timeline" || stored === "space") return stored;
     } catch { /* ignore */ }
     return "alpha";
   });
@@ -123,12 +123,12 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { /* ignore */ }
   }
 
-  function setAndSaveSortMode(mode: "alpha" | "kind" | "timeline") {
+  function setAndSaveSortMode(mode: "alpha" | "kind" | "timeline" | "space") {
     setSortMode(mode);
     try { localStorage.setItem(SORT_KEY_PREFIX + space, mode); } catch { /* ignore */ }
   }
 
-  function handleColSort(mode: "alpha" | "kind" | "timeline") {
+  function handleColSort(mode: "alpha" | "kind" | "timeline" | "space") {
     if (sortMode === mode) {
       setAndSaveSortDir(sortDir === "asc" ? "desc" : "asc");
     } else {
@@ -422,6 +422,13 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
         return a.label.localeCompare(b.label);
       });
     }
+    if (sortMode === "space") {
+      return [...arts].sort((a, b) => {
+        const s = a.spaceId.localeCompare(b.spaceId);
+        if (s !== 0) return dir * s;
+        return a.label.localeCompare(b.label);
+      });
+    }
     return [...arts].sort((a, b) => dir * a.label.localeCompare(b.label));
   }, [sortMode, sortDir]);
 
@@ -648,8 +655,8 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 </button>
               )}
               {isAllSpace && groupBy !== "space" && (
-                <button className="list-col-header" onClick={() => setAndSaveGroupBy("space")}>
-                  Space
+                <button className={`list-col-header list-col-header--right${sortMode === "space" ? " active" : ""}`} onClick={() => handleColSort("space")}>
+                  Space{sortMode === "space" ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
                 </button>
               )}
             </div>
