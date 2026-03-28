@@ -45,7 +45,7 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
 
   return (
     <div className="spotlight-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="spotlight-panel">
+      <div className={`spotlight-panel${results.length > 0 || (query.trim() && results.length === 0) ? " spotlight-panel--expanded" : ""}`}>
         <div className="spotlight-input-row">
           <svg className="spotlight-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
