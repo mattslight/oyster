@@ -1238,14 +1238,9 @@ body {
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9999px;
+  border-radius: 20px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   overflow: hidden;
-  transition: border-radius 0.2s ease;
-}
-
-.spotlight-panel--expanded {
-  border-radius: 20px;
 }
 
 .spotlight-input-row {
