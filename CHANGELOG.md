@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-28
+
+### Desktop redesign — topbar, sort/filter, drag-to-reorder, animated space pills, spotlight search
+
+**Desktop topbar (auto-hide)**
+- Topbar fades out after 2s of inactivity; hover top edge to reveal
+- View toggle: grid / list (persisted to localStorage globally)
+- Sort modes: A–Z, by kind, timeline (per-space localStorage)
+- Kind filter pills: show all or a specific artifact kind
+- Group-by (all-space only): by space or by kind
+- Clock component removed; topbar supersedes it
+
+**Drag-to-reorder**
+- Icons can be dragged to any position in grid view
+- Order persisted per-space in localStorage
+- Drag only active in A–Z sort mode (other modes have deterministic order)
+
+**Animated space pills**
+- Home icon pill, All pill, named space pills
+- Shared layout animation (framer-motion) for sliding active indicator
+- Per-space accent colors from a curated palette via `spaceColor` utility
+- Active pill text is white; `LayoutGroup` scopes animation to this pill group
+
+**Spotlight search (Cmd+K)**
+- Fuzzy label filter across all artifacts
+- Shows kind badge and space label per result
+- Keyboard nav (↑↓ Enter) and Escape to dismiss
+
+**Bug fixes**
+- Content top-padding increased from 24px to 60px across grid, all-grid, and list views — was hidden behind the 48px topbar
+- Space pill active text color set to white via `.space-pill.active` class
+
 ## 2026-03-27
 
 ### Oyster MCP — agent-facing tool surface
