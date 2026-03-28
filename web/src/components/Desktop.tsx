@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useCallback, useEffect, type PointerEvent } from "react";
-import { LayoutGrid, LayoutList, ArrowDownAZ, Tag, Clock } from "lucide-react";
+import { LayoutGrid, LayoutList, ArrowDownAZ, Tag, Clock, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
 import { GroupIcon } from "./GroupIcon";
@@ -149,6 +149,20 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   function setAndSaveGroupBy(mode: "space" | "kind" | "none") {
     setGroupBy(mode);
     try { localStorage.setItem(GROUP_BY_KEY, mode); } catch { /* ignore */ }
+  }
+
+  const HEADER_ALIGN_KEY = "oyster-header-align";
+  const [headerAlign, setHeaderAlign] = useState<"left" | "center" | "right">(() => {
+    try {
+      const stored = localStorage.getItem(HEADER_ALIGN_KEY);
+      if (stored === "left" || stored === "center" || stored === "right") return stored;
+    } catch { /* ignore */ }
+    return "center";
+  });
+
+  function setAndSaveHeaderAlign(align: "left" | "center" | "right") {
+    setHeaderAlign(align);
+    try { localStorage.setItem(HEADER_ALIGN_KEY, align); } catch { /* ignore */ }
   }
 
   const ACTIVE_KIND_KEY = "oyster-active-kind";
@@ -550,14 +564,24 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             </div>
           </div>
           {isAllSpace && (
-            <div className="ctrl-group-labeled">
-              <span className="ctrl-group-label">group</span>
-              <div className="ctrl-group">
-                <button className={`view-btn filter-pill-btn${groupBy === "none" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("none")}>none</button>
-                <button className={`view-btn filter-pill-btn${groupBy === "space" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("space")}>space</button>
-                <button className={`view-btn filter-pill-btn${groupBy === "kind" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("kind")}>kind</button>
+            <>
+              <div className="ctrl-group-labeled">
+                <span className="ctrl-group-label">group</span>
+                <div className="ctrl-group">
+                  <button className={`view-btn filter-pill-btn${groupBy === "none" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("none")}>none</button>
+                  <button className={`view-btn filter-pill-btn${groupBy === "space" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("space")}>space</button>
+                  <button className={`view-btn filter-pill-btn${groupBy === "kind" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("kind")}>kind</button>
+                </div>
               </div>
-            </div>
+              <div className="ctrl-group-labeled">
+                <span className="ctrl-group-label">align</span>
+                <div className="ctrl-group">
+                  <button className={`view-btn${headerAlign === "left" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("left")} title="Left"><AlignLeft size={13} /></button>
+                  <button className={`view-btn${headerAlign === "center" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("center")} title="Center"><AlignCenter size={13} /></button>
+                  <button className={`view-btn${headerAlign === "right" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("right")} title="Right"><AlignRight size={13} /></button>
+                </div>
+              </div>
+            </>
           )}
           <div className="ctrl-group-labeled">
             <span className="ctrl-group-label">show</span>
@@ -632,7 +656,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             {listSections.map((section) => (
               <div key={section.key} className="list-section">
                 {section.header && (
-                  <div className="list-section-header">{section.header}</div>
+                  <div className="list-section-header" style={{ textAlign: headerAlign }}>{section.header}</div>
                 )}
                 {section.artifacts.map((a) => (
                   <div key={a.id} className="list-row" onClick={() => onArtifactClick(a)}>
@@ -652,8 +676,8 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
           <div className="all-grid-view">
             {allGridSections.map((section) => (
               <div key={section.spaceId} className="all-grid-section">
-                <div className="all-grid-section-header">{section.header}</div>
-                <div className="icon-grid icon-grid--inline">
+                <div className="all-grid-section-header" style={{ textAlign: headerAlign }}>{section.header}</div>
+                <div className="icon-grid icon-grid--inline" style={{ justifyContent: headerAlign === "left" ? "start" : headerAlign === "right" ? "end" : "center" }}>
                   {section.artifacts.map((a, i) => (
                     <ArtifactIcon
                       key={a.id}

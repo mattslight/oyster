@@ -1807,6 +1807,7 @@ body {
   text-transform: uppercase;
   color: rgba(255,255,255,0.3);
   margin-bottom: 6px;
+  text-align: center;
 }
 
 .icon-grid--inline {
