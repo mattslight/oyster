@@ -2,6 +2,29 @@
 
 ## 2026-03-28
 
+### Desktop polish — floating toggle, filter notice, list headers, icon centering
+
+**Floating view toggle + filter notice**
+- View toggle (grid/list) moved out of the auto-hide topbar to a persistent pill floating centered at the top of the desktop
+- When a kind filter is active, the toggle is replaced by a filter notice: "Showing APPS ▾ ✕"
+- Clicking the kind label opens a dropdown to switch to another kind directly
+- ✕ clears the filter and restores the view toggle
+
+**List column headers**
+- Name and Kind headers sit above their respective columns
+- Clicking a header sorts by that column; clicking again toggles asc/desc direction (↑/↓)
+- Sort direction persisted to localStorage
+- Section headers aligned above the Name column (not the dot)
+
+**Group-by none**
+- "none" added to the group-by control in all-space view — shows a flat unsectioned grid or list
+
+**Layout fixes**
+- Icon grid centered horizontally (`auto-fit` columns + `justify-content: center`; was `auto-fill` which kept icons left-aligned)
+- Scroll restored — `height: 100%` changed to `min-height: 100%` on the icon grid
+- Topbar controls centered (`justify-content: center`)
+- Hero fade starts earlier (18%→38%) to clear the centered chatbar; normal fade extended for taller chatbar clearance
+
 ### Desktop redesign — topbar, sort/filter, drag-to-reorder, animated space pills, spotlight search
 
 **Desktop topbar (auto-hide)**
