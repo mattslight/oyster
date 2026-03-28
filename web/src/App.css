@@ -124,7 +124,7 @@ body {
   height: 48px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
   padding: 0 16px;
   background: rgba(13, 14, 26, 0.7);
@@ -186,13 +186,13 @@ body {
   position: absolute;
   inset: 0;
   overflow-y: auto;
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 200px), transparent calc(100% - 110px));
-  mask-image: linear-gradient(to bottom, black calc(100% - 200px), transparent calc(100% - 110px));
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 260px), transparent calc(100% - 150px));
+  mask-image: linear-gradient(to bottom, black calc(100% - 260px), transparent calc(100% - 150px));
 }
 
 .desktop-scroll--hero {
-  -webkit-mask-image: linear-gradient(to bottom, black 36%, transparent 52%);
-  mask-image: linear-gradient(to bottom, black 36%, transparent 52%);
+  -webkit-mask-image: linear-gradient(to bottom, black 18%, transparent 38%);
+  mask-image: linear-gradient(to bottom, black 18%, transparent 38%);
 }
 
 .desktop-bg {
@@ -207,11 +207,12 @@ body {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fill, 130px);
+  grid-template-columns: repeat(auto-fit, 130px);
   gap: 12px;
   padding: 60px 40px 100px;
   align-content: start;
-  height: 100%;
+  justify-content: center;
+  min-height: 100%;
 }
 
 /* ── Drag-to-reorder ── */
