@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-03-29
+
+### Add Space — spaces as first-class entities with wizard, scanner, and MCP tool
+
+**Spaces table + provenance**
+- New `spaces` table in SQLite with display name, repo path, colour, scan status, and timestamps
+- Artifact table extended with `source_origin` (`manual` | `discovered`) and `source_ref` (e.g. `web/:app`, `README.md:notes`) for deterministic rescan identity
+- DB seeded from existing artifact `space_id` values on first startup; guard prevents resurrection of deleted spaces on restart
+
+**SpaceStore + SpaceService**
+- `SqliteSpaceStore`: CRUD for spaces with atomic updates
+- `SpaceService`: `createSpace`, `listSpaces`, `getSpace`, `deleteSpace` (cascades artifacts), `scanSpace`
+- Scanner walks repo up to 4 levels deep, detects apps (via `package.json` + framework keywords), notes (README, CHANGELOG, `docs/**/*.md`), and diagrams (`.mmd`, `.mermaid`)
+- Auto-groups by top-level directory: `Apps`, `Docs`, etc.; root files ungrouped
+
+**HTTP API**
+- `POST /api/spaces` — create space
+- `GET /api/spaces` — list spaces
+- `GET /api/spaces/:id` — get space
+- `DELETE /api/spaces/:id` — delete space (cascades artifacts)
+- `POST /api/spaces/:id/scan` — trigger scan, returns `ScanResult`
+- `GET /api/resolve-folder?name=` — resolves folder name to absolute path by searching common dev directories; deduplicates by inode to handle macOS case-insensitive filesystem
+
+**MCP `onboard_space` tool**
+- Creates space + triggers scan in one call
+- Returns `space_id` and `scan_summary` with discovered/skipped/resurfaced counts
+- `list_spaces` updated to read from `SpaceStore` (returns full `Space` objects with colour, scanStatus, etc.)
+
+**Add Space wizard (UI)**
+- 2-step modal: (1) name input + drag-and-drop folder picker → (2) scan results
+- Drag-and-drop uses `webkitGetAsEntry()` — no permission prompt, no file scanning; folder name sent to `/api/resolve-folder` for path resolution
+- 3-bar stepper (`— — —`) at top; step 3 dimmed (AI generation, not yet implemented)
+- Scan results show apps and docs in separate sections with dot indicators
+- Rollback: if scan fails, the space row is deleted so the user can retry with the same name
+- `+` pill in ChatBar opens the wizard
+
+**Bug fixes + polish**
+- `getDocFile()` fixed to return storage path for `local_process` artifacts (not just `static_file`) — unblocks icon regeneration for external repo apps
+- Icon regeneration for artifacts outside userland now stores icons in `userland/icons/<id>/`
+- Space pill `+` button: low opacity, brightens on hover
+
+### Desktop toggle — etched into surface
+
+- View toggle (grid/list) restyled from frosted glass card to a sunken/recessed appearance
+- Container: inset box-shadow, no backdrop blur — looks carved into the desktop surface
+- Inactive icons: 22% white opacity (present but unobtrusive)
+- Active state: slight lift with drop shadow, 65% white (clearly active, no purple glow)
+
+### Specs + planning
+
+- Design spec: `docs/superpowers/specs/2026-03-29-oyster-folder-design.md` — `.oyster/` repo-carried project config for team sharing (Option C: overrides only, keyed by `source_ref`, merge on rescan)
+- GitHub issues: #31 `.oyster/` folder, #32 Add Space via MCP parity, #33 wizard step 3 AI generation
+
 ## 2026-03-28
 
 ### Desktop polish — floating toggle, filter notice, list headers, icon centering
