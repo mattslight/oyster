@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useCallback, useEffect, type PointerEvent } from "react";
 import type { Artifact } from "../data/artifacts-api";
-import { ArtifactIcon } from "./ArtifactIcon";
+import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
 import { GroupIcon } from "./GroupIcon";
 import Grainient from "./reactbits/Grainient";
 
@@ -18,6 +18,7 @@ type DesktopItem =
 
 const DRAG_THRESHOLD = 6;
 const STORAGE_KEY_PREFIX = "oyster-icon-order:";
+const VIEW_MODE_KEY_PREFIX = "oyster-view-mode:";
 
 function getStoredOrder(space: string): string[] {
   try {
@@ -51,9 +52,50 @@ function applyOrder(items: DesktopItem[], order: string[]): DesktopItem[] {
 }
 
 export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onGroupClick }: Props) {
+  const isAllSpace = space === "__all__";
+
+  const [viewMode, setViewMode] = useState<"grid" | "card" | "list">(() => {
+    if (isAllSpace) return "list";
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY_PREFIX + space);
+      if (stored === "grid" || stored === "card" || stored === "list") return stored;
+    } catch { /* ignore */ }
+    return "grid";
+  });
+
+  useEffect(() => {
+    if (isAllSpace) {
+      setViewMode("list");
+      return;
+    }
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY_PREFIX + space);
+      if (stored === "grid" || stored === "card" || stored === "list") {
+        setViewMode(stored);
+      } else {
+        setViewMode("grid");
+      }
+    } catch {
+      setViewMode("grid");
+    }
+  }, [space, isAllSpace]);
+
+  function setAndSaveViewMode(mode: "grid" | "card" | "list") {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(VIEW_MODE_KEY_PREFIX + space, mode);
+    } catch { /* ignore */ }
+  }
+
   const { groups, ungrouped } = useMemo(() => {
     const groups: Record<string, Artifact[]> = {};
     const ungrouped: Artifact[] = [];
+    if (isAllSpace) {
+      for (const a of artifacts) {
+        (groups[a.spaceId] ??= []).push(a);
+      }
+      return { groups, ungrouped };
+    }
     for (const a of artifacts) {
       if (a.groupName) {
         (groups[a.groupName] ??= []).push(a);
@@ -62,7 +104,7 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
       }
     }
     return { groups, ungrouped };
-  }, [artifacts]);
+  }, [artifacts, isAllSpace]);
 
   const baseItems = useMemo<DesktopItem[]>(() => {
     const sortedGroupNames = Object.keys(groups).sort();
@@ -239,6 +281,32 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
     };
   }, [space, getGridSlotFromPoint]);
 
+  const listSections = useMemo(() => {
+    if (!isAllSpace) {
+      const sections: { key: string; header: string | null; artifacts: Artifact[] }[] = [];
+      const sortedGroupNames = Object.keys(groups).sort();
+      for (const name of sortedGroupNames) {
+        sections.push({ key: `group:${name}`, header: name, artifacts: groups[name] });
+      }
+      if (ungrouped.length > 0) {
+        sections.push({ key: "__ungrouped__", header: null, artifacts: ungrouped });
+      }
+      return sections;
+    }
+    const sections: { key: string; header: string | null; artifacts: Artifact[] }[] = [];
+    const sortedSpaceIds = Object.keys(groups).sort();
+    const hasMultiple = sortedSpaceIds.length > 1;
+    for (const spaceId of sortedSpaceIds) {
+      sections.push({ key: `space:${spaceId}`, header: hasMultiple ? spaceId : null, artifacts: groups[spaceId] });
+    }
+    if (ungrouped.length > 0) {
+      sections.push({ key: "__ungrouped__", header: "Ungrouped", artifacts: ungrouped });
+    }
+    return sections;
+  }, [groups, ungrouped, isAllSpace]);
+
+  const effectiveViewMode = isAllSpace ? "list" : viewMode;
+
   return (
     <div className="desktop">
       <div className="desktop-bg">
@@ -267,10 +335,89 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
           zoom={1}
         />
       </div>
-      <div className="icon-grid" ref={gridRef}>
-        {displayItems.map((item, i) => {
-          const isDragged = item.key === dragKey;
-          if (item.type === "group") {
+
+      {!isAllSpace && (
+        <div className="desktop-controls">
+          <button
+            className={`view-btn${effectiveViewMode === "grid" ? " active" : ""}`}
+            onClick={() => setAndSaveViewMode("grid")}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+              <rect x="0" y="0" width="6" height="6" rx="1" />
+              <rect x="8" y="0" width="6" height="6" rx="1" />
+              <rect x="0" y="8" width="6" height="6" rx="1" />
+              <rect x="8" y="8" width="6" height="6" rx="1" />
+            </svg>
+          </button>
+          <button
+            className={`view-btn${effectiveViewMode === "card" ? " active" : ""}`}
+            onClick={() => setAndSaveViewMode("card")}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+              <rect x="0" y="0" width="3.5" height="3.5" rx="0.5" />
+              <rect x="5.25" y="0" width="3.5" height="3.5" rx="0.5" />
+              <rect x="10.5" y="0" width="3.5" height="3.5" rx="0.5" />
+              <rect x="0" y="5.25" width="3.5" height="3.5" rx="0.5" />
+              <rect x="5.25" y="5.25" width="3.5" height="3.5" rx="0.5" />
+              <rect x="10.5" y="5.25" width="3.5" height="3.5" rx="0.5" />
+              <rect x="0" y="10.5" width="3.5" height="3.5" rx="0.5" />
+              <rect x="5.25" y="10.5" width="3.5" height="3.5" rx="0.5" />
+              <rect x="10.5" y="10.5" width="3.5" height="3.5" rx="0.5" />
+            </svg>
+          </button>
+          <button
+            className={`view-btn${effectiveViewMode === "list" ? " active" : ""}`}
+            onClick={() => setAndSaveViewMode("list")}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+              <rect x="0" y="1" width="14" height="2" rx="1" />
+              <rect x="0" y="6" width="14" height="2" rx="1" />
+              <rect x="0" y="11" width="14" height="2" rx="1" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {effectiveViewMode === "list" ? (
+        <div className="list-view">
+          {listSections.map((section) => (
+            <div key={section.key} className="list-section">
+              {section.header && (
+                <div className="list-section-header">{section.header}</div>
+              )}
+              {section.artifacts.map((a) => (
+                <div key={a.id} className="list-row" onClick={() => onArtifactClick(a)}>
+                  <div className="list-row-dot" style={{ background: (typeConfig[a.artifactKind] || typeConfig.app).color }} />
+                  <span className="list-row-label">{a.label}</span>
+                  <span className="list-row-badge">{a.artifactKind}</span>
+                  {isAllSpace && <span className="list-row-space">{a.spaceId}</span>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={`icon-grid${effectiveViewMode === "card" ? " icon-grid--card" : ""}`} ref={gridRef}>
+          {displayItems.map((item, i) => {
+            const isDragged = item.key === dragKey;
+            if (item.type === "group") {
+              return (
+                <div
+                  key={item.key}
+                  data-drag-key={item.key}
+                  className={isDragged ? "drag-placeholder" : ""}
+                  onPointerDown={(e) => onPointerDown(e, item.key)}
+                  style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
+                >
+                  <GroupIcon
+                    name={item.name}
+                    artifacts={item.artifacts}
+                    index={i}
+                    onClick={() => onGroupClick(item.name)}
+                  />
+                </div>
+              );
+            }
             return (
               <div
                 key={item.key}
@@ -279,33 +426,17 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
                 onPointerDown={(e) => onPointerDown(e, item.key)}
                 style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
               >
-                <GroupIcon
-                  name={item.name}
-                  artifacts={item.artifacts}
+                <ArtifactIcon
+                  artifact={item.artifact}
                   index={i}
-                  onClick={() => onGroupClick(item.name)}
+                  onClick={() => onArtifactClick(item.artifact)}
+                  onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
                 />
               </div>
             );
-          }
-          return (
-            <div
-              key={item.key}
-              data-drag-key={item.key}
-              className={isDragged ? "drag-placeholder" : ""}
-              onPointerDown={(e) => onPointerDown(e, item.key)}
-              style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
-            >
-              <ArtifactIcon
-                artifact={item.artifact}
-                index={i}
-                onClick={() => onArtifactClick(item.artifact)}
-                onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
-              />
-            </div>
-          );
-        })}
-      </div>
+          })}
+        </div>
+      )}
     </div>
   );
 }

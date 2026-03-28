@@ -1419,3 +1419,120 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── View toggle ── */
+.desktop-controls {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 100;
+  display: flex;
+  gap: 2px;
+  background: rgba(13, 14, 26, 0.65);
+  border-radius: 8px;
+  padding: 4px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.view-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.45);
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.view-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.8);
+}
+
+.view-btn.active {
+  background: rgba(124,107,255,0.25);
+  color: #7c6bff;
+}
+
+/* ── Card view ── */
+.icon-grid--card {
+  grid-template-columns: repeat(auto-fill, 88px) !important;
+  gap: 8px !important;
+}
+
+/* ── List view ── */
+.list-view {
+  padding: 20px 40px 160px;
+  max-width: 760px;
+}
+
+.list-section {
+  margin-bottom: 24px;
+}
+
+.list-section-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232,233,240,0.35);
+  padding: 0 0 6px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 2px;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.list-row:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.list-row-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.list-row-label {
+  flex: 1;
+  font-size: 0.88rem;
+  color: rgba(232,233,240,0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-row-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(232,233,240,0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.05);
+  flex-shrink: 0;
+}
+
+.list-row-space {
+  font-size: 0.65rem;
+  color: rgba(124,107,255,0.7);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(124,107,255,0.08);
+  flex-shrink: 0;
+}

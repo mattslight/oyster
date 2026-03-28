@@ -193,7 +193,7 @@ export default function App() {
 
       <Desktop
         space={activeSpace}
-        artifacts={artifacts.filter((a) => a.spaceId === activeSpace)}
+        artifacts={activeSpace === "__all__" ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
         onGroupClick={(name) => {
@@ -204,9 +204,9 @@ export default function App() {
 
       <div className="windows-layer">
         {viewers.map((w, i) => {
-          const docArtifacts = artifacts.filter(
-            (a) => a.artifactKind !== "app" && a.spaceId === activeSpace
-          );
+          const docArtifacts = activeSpace === "__all__"
+            ? artifacts.filter((a) => a.artifactKind !== "app")
+            : artifacts.filter((a) => a.artifactKind !== "app" && a.spaceId === activeSpace);
           const currentIdx = docArtifacts.findIndex((a) => a.url === w.artifactPath);
           const hasPrev = currentIdx > 0;
           const hasNext = currentIdx >= 0 && currentIdx < docArtifacts.length - 1;

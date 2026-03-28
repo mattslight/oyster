@@ -316,6 +316,12 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                 {s}
               </button>
             ))}
+            <button
+              className={`space-pill${activeSpace === "__all__" ? " active" : ""}`}
+              onClick={() => onSpaceChange?.("__all__")}
+            >
+              all
+            </button>
           </div>
         </div>
       )}
