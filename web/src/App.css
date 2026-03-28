@@ -1482,9 +1482,9 @@ body {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(232,233,240,0.35);
+  color: rgba(232,233,240,0.6);
   padding: 0 0 6px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
   margin-bottom: 2px;
 }
 
@@ -1512,7 +1512,7 @@ body {
 .list-row-label {
   flex: 1;
   font-size: 0.88rem;
-  color: rgba(232,233,240,0.9);
+  color: rgba(232,233,240,0.95);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1523,10 +1523,10 @@ body {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(232,233,240,0.3);
+  color: rgba(232,233,240,0.55);
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.08);
   flex-shrink: 0;
 }
 
