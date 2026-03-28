@@ -1,15 +1,20 @@
 import { useMemo, useRef, useState, useCallback, useEffect, type PointerEvent } from "react";
+import { LayoutGrid, LayoutList, ArrowDownAZ, Tag, Clock } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
 import { GroupIcon } from "./GroupIcon";
 import Grainient from "./reactbits/Grainient";
+import { spaceColor } from "../utils/spaceColor";
 
 interface Props {
   space: string;
+  spaces: string[];
   artifacts: Artifact[];
+  isHero?: boolean;
   onArtifactClick: (artifact: Artifact) => void;
   onArtifactStop?: (artifact: Artifact) => void;
   onGroupClick: (groupName: string) => void;
+  onSpaceChange: (space: string) => void;
 }
 
 type DesktopItem =
@@ -18,7 +23,7 @@ type DesktopItem =
 
 const DRAG_THRESHOLD = 6;
 const STORAGE_KEY_PREFIX = "oyster-icon-order:";
-const VIEW_MODE_KEY_PREFIX = "oyster-view-mode:";
+const VIEW_MODE_KEY = "oyster-view-mode";
 
 function getStoredOrder(space: string): string[] {
   try {
@@ -51,52 +56,113 @@ function applyOrder(items: DesktopItem[], order: string[]): DesktopItem[] {
   return ordered;
 }
 
-export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onGroupClick }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange }: Props) {
   const isAllSpace = space === "__all__";
 
-  const [viewMode, setViewMode] = useState<"grid" | "card" | "list">(() => {
-    if (isAllSpace) return "list";
+  // ── Topbar auto-hide ──
+  const [topbarVisible, setTopbarVisible] = useState(true);
+  const topbarHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showTopbar = useCallback(() => {
+    if (topbarHideTimer.current) clearTimeout(topbarHideTimer.current);
+    setTopbarVisible(true);
+  }, []);
+
+  const scheduleHideTopbar = useCallback(() => {
+    if (topbarHideTimer.current) clearTimeout(topbarHideTimer.current);
+    topbarHideTimer.current = setTimeout(() => setTopbarVisible(false), 2000);
+  }, []);
+
+  useEffect(() => {
+    scheduleHideTopbar();
+    return () => { if (topbarHideTimer.current) clearTimeout(topbarHideTimer.current); };
+  }, [scheduleHideTopbar]);
+
+  const SORT_KEY_PREFIX = "oyster-sort-mode:";
+
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
     try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY_PREFIX + space);
-      if (stored === "grid" || stored === "card" || stored === "list") return stored;
+      const stored = localStorage.getItem(VIEW_MODE_KEY);
+      if (stored === "grid" || stored === "list") return stored;
     } catch { /* ignore */ }
     return "grid";
   });
 
-  useEffect(() => {
-    if (isAllSpace) {
-      setViewMode("list");
-      return;
-    }
+  const [sortMode, setSortMode] = useState<"alpha" | "kind" | "timeline">(() => {
     try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY_PREFIX + space);
-      if (stored === "grid" || stored === "card" || stored === "list") {
-        setViewMode(stored);
-      } else {
-        setViewMode("grid");
-      }
+      const stored = localStorage.getItem(SORT_KEY_PREFIX + space);
+      if (stored === "alpha" || stored === "kind" || stored === "timeline") return stored;
+    } catch { /* ignore */ }
+    return "alpha";
+  });
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SORT_KEY_PREFIX + space);
+      setSortMode(stored === "alpha" || stored === "kind" || stored === "timeline" ? stored : "alpha");
     } catch {
-      setViewMode("grid");
+      setSortMode("alpha");
     }
   }, [space, isAllSpace]);
 
-  function setAndSaveViewMode(mode: "grid" | "card" | "list") {
+  function setAndSaveViewMode(mode: "grid" | "list") {
     setViewMode(mode);
+    try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { /* ignore */ }
+  }
+
+  function setAndSaveSortMode(mode: "alpha" | "kind" | "timeline") {
+    setSortMode(mode);
+    try { localStorage.setItem(SORT_KEY_PREFIX + space, mode); } catch { /* ignore */ }
+  }
+
+  const GROUP_BY_KEY = "oyster-group-by";
+  const [groupBy, setGroupBy] = useState<"space" | "kind">(() => {
     try {
-      localStorage.setItem(VIEW_MODE_KEY_PREFIX + space, mode);
+      const stored = localStorage.getItem(GROUP_BY_KEY);
+      if (stored === "space" || stored === "kind") return stored;
+    } catch { /* ignore */ }
+    return "space";
+  });
+
+  function setAndSaveGroupBy(mode: "space" | "kind") {
+    setGroupBy(mode);
+    try { localStorage.setItem(GROUP_BY_KEY, mode); } catch { /* ignore */ }
+  }
+
+  const ACTIVE_KIND_KEY = "oyster-active-kind";
+
+  const [activeKind, setActiveKind] = useState<string | null>(() => {
+    try { return localStorage.getItem(ACTIVE_KIND_KEY) || null; } catch { return null; }
+  });
+
+  function selectKind(k: string | null) {
+    setActiveKind(k);
+    try {
+      if (k) localStorage.setItem(ACTIVE_KIND_KEY, k);
+      else localStorage.removeItem(ACTIVE_KIND_KEY);
     } catch { /* ignore */ }
   }
+
+  const uniqueKinds = useMemo(() => {
+    const kinds = new Set(artifacts.map((a) => a.artifactKind));
+    return Array.from(kinds).sort();
+  }, [artifacts]);
+
+  const filteredArtifacts = useMemo(() => {
+    if (activeKind) return artifacts.filter((a) => a.artifactKind === activeKind);
+    return artifacts;
+  }, [artifacts, activeKind]);
 
   const { groups, ungrouped } = useMemo(() => {
     const groups: Record<string, Artifact[]> = {};
     const ungrouped: Artifact[] = [];
     if (isAllSpace) {
-      for (const a of artifacts) {
+      for (const a of filteredArtifacts) {
         (groups[a.spaceId] ??= []).push(a);
       }
       return { groups, ungrouped };
     }
-    for (const a of artifacts) {
+    for (const a of filteredArtifacts) {
       if (a.groupName) {
         (groups[a.groupName] ??= []).push(a);
       } else {
@@ -104,7 +170,7 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
       }
     }
     return { groups, ungrouped };
-  }, [artifacts, isAllSpace]);
+  }, [filteredArtifacts, isAllSpace]);
 
   const baseItems = useMemo<DesktopItem[]>(() => {
     const sortedGroupNames = Object.keys(groups).sort();
@@ -118,10 +184,25 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
     return items;
   }, [groups, ungrouped]);
 
-  const orderedItems = useMemo(
-    () => applyOrder(baseItems, getStoredOrder(space)),
-    [baseItems, space]
-  );
+  const orderedItems = useMemo(() => {
+    if (sortMode === "alpha") return applyOrder(baseItems, getStoredOrder(space));
+    if (sortMode === "kind") {
+      return [...baseItems].sort((a, b) => {
+        const ka = a.type === "artifact" ? a.artifact.artifactKind : "zzz";
+        const kb = b.type === "artifact" ? b.artifact.artifactKind : "zzz";
+        if (ka !== kb) return ka.localeCompare(kb);
+        const la = a.type === "artifact" ? a.artifact.label : a.name;
+        const lb = b.type === "artifact" ? b.artifact.label : b.name;
+        return la.localeCompare(lb);
+      });
+    }
+    // timeline
+    return [...baseItems].sort((a, b) => {
+      const da = a.type === "artifact" ? new Date(a.artifact.createdAt).getTime() : 0;
+      const db = b.type === "artifact" ? new Date(b.artifact.createdAt).getTime() : 0;
+      return db - da;
+    });
+  }, [baseItems, sortMode, space]);
 
   // Drag state
   const gridRef = useRef<HTMLDivElement>(null);
@@ -170,8 +251,8 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
   }, []);
 
   const onPointerDown = useCallback((e: PointerEvent, key: string) => {
-    // Only left click
     if (e.button !== 0) return;
+    if (sortMode !== "alpha") return; // sorted modes: no manual reorder
     const target = e.currentTarget as HTMLElement;
     dragState.current = {
       key,
@@ -182,7 +263,7 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
       sourceRect: target.getBoundingClientRect(),
       currentOrder: displayItems,
     };
-  }, [displayItems]);
+  }, [displayItems, sortMode]);
 
   useEffect(() => {
     function onMove(e: globalThis.PointerEvent) {
@@ -281,31 +362,105 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
     };
   }, [space, getGridSlotFromPoint]);
 
-  const listSections = useMemo(() => {
-    if (!isAllSpace) {
-      const sections: { key: string; header: string | null; artifacts: Artifact[] }[] = [];
-      const sortedGroupNames = Object.keys(groups).sort();
-      for (const name of sortedGroupNames) {
-        sections.push({ key: `group:${name}`, header: name, artifacts: groups[name] });
-      }
-      if (ungrouped.length > 0) {
-        sections.push({ key: "__ungrouped__", header: null, artifacts: ungrouped });
-      }
-      return sections;
-    }
-    const sections: { key: string; header: string | null; artifacts: Artifact[] }[] = [];
-    const sortedSpaceIds = Object.keys(groups).sort();
-    const hasMultiple = sortedSpaceIds.length > 1;
-    for (const spaceId of sortedSpaceIds) {
-      sections.push({ key: `space:${spaceId}`, header: hasMultiple ? spaceId : null, artifacts: groups[spaceId] });
-    }
-    if (ungrouped.length > 0) {
-      sections.push({ key: "__ungrouped__", header: "Ungrouped", artifacts: ungrouped });
-    }
-    return sections;
-  }, [groups, ungrouped, isAllSpace]);
+  const kindLabel = (k: string) =>
+    k === "notes" ? "notes" : k + "s";
 
-  const effectiveViewMode = isAllSpace ? "list" : viewMode;
+  const sortArtifacts = useCallback((arts: Artifact[]): Artifact[] => {
+    if (sortMode === "timeline") {
+      return [...arts].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    if (sortMode === "kind") {
+      return [...arts].sort((a, b) => {
+        if (a.artifactKind !== b.artifactKind) return a.artifactKind.localeCompare(b.artifactKind);
+        return a.label.localeCompare(b.label);
+      });
+    }
+    return [...arts].sort((a, b) => a.label.localeCompare(b.label));
+  }, [sortMode]);
+
+  const listSections = useMemo(() => {
+    type Section = { key: string; header: string | null; artifacts: Artifact[] };
+
+    // __all__ groups by space or kind; sortMode applies within each section
+    if (isAllSpace) {
+      if (groupBy === "kind") {
+        const kindMap: Record<string, Artifact[]> = {};
+        for (const a of filteredArtifacts) (kindMap[a.artifactKind] ??= []).push(a);
+        return Object.keys(kindMap).sort().map((k) => ({
+          key: `kind:${k}`,
+          header: kindLabel(k),
+          artifacts: sortArtifacts(kindMap[k]),
+        })) as Section[];
+      }
+      const spaceMap: Record<string, Artifact[]> = {};
+      for (const a of filteredArtifacts) (spaceMap[a.spaceId] ??= []).push(a);
+      return Object.keys(spaceMap).sort().map((id) => ({
+        key: `space:${id}`,
+        header: id,
+        artifacts: sortArtifacts(spaceMap[id]),
+      })) as Section[];
+    }
+
+    if (sortMode === "alpha") {
+      const sorted = [...filteredArtifacts].sort((a, b) => a.label.localeCompare(b.label));
+      return [{ key: "__all__", header: null, artifacts: sorted }] as Section[];
+    }
+
+    if (sortMode === "kind") {
+      const kindMap: Record<string, Artifact[]> = {};
+      for (const a of filteredArtifacts) (kindMap[a.artifactKind] ??= []).push(a);
+      const sortedKinds = Object.keys(kindMap).sort();
+      return sortedKinds.map((k) => ({
+        key: `kind:${k}`,
+        header: kindLabel(k),
+        artifacts: kindMap[k].sort((a, b) => a.label.localeCompare(b.label)),
+      })) as Section[];
+    }
+
+    // timeline
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
+    const bucket = (iso: string) => {
+      const d = new Date(iso);
+      if (d >= todayStart) return "Today";
+      if (d >= weekStart) return "This week";
+      if (d >= monthStart) return "This month";
+      return "Earlier";
+    };
+    const sorted = [...filteredArtifacts].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    const bucketMap: Record<string, Artifact[]> = {};
+    for (const a of sorted) (bucketMap[bucket(a.createdAt)] ??= []).push(a);
+    const BUCKET_ORDER = ["Today", "This week", "This month", "Earlier"];
+    return BUCKET_ORDER
+      .filter((b) => bucketMap[b]?.length)
+      .map((b) => ({ key: b, header: b, artifacts: bucketMap[b] })) as Section[];
+  }, [filteredArtifacts, isAllSpace, sortMode, sortArtifacts, groupBy]);
+
+  const allGridSections = useMemo(() => {
+    if (!isAllSpace) return null;
+    if (groupBy === "kind") {
+      const kindMap: Record<string, Artifact[]> = {};
+      for (const a of filteredArtifacts) (kindMap[a.artifactKind] ??= []).push(a);
+      return Object.keys(kindMap).sort().map((k) => ({
+        spaceId: k,
+        header: kindLabel(k),
+        artifacts: sortArtifacts(kindMap[k]),
+      }));
+    }
+    const spaceMap: Record<string, Artifact[]> = {};
+    for (const a of filteredArtifacts) (spaceMap[a.spaceId] ??= []).push(a);
+    return Object.keys(spaceMap).sort().map((id) => ({
+      spaceId: id,
+      header: id,
+      artifacts: sortArtifacts(spaceMap[id]),
+    }));
+  }, [filteredArtifacts, isAllSpace, sortArtifacts, groupBy]);
+
+  const effectiveViewMode = viewMode;
 
   return (
     <div className="desktop">
@@ -336,71 +491,119 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
         />
       </div>
 
-      {!isAllSpace && (
-        <div className="desktop-controls">
-          <button
-            className={`view-btn${effectiveViewMode === "grid" ? " active" : ""}`}
-            onClick={() => setAndSaveViewMode("grid")}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-              <rect x="0" y="0" width="6" height="6" rx="1" />
-              <rect x="8" y="0" width="6" height="6" rx="1" />
-              <rect x="0" y="8" width="6" height="6" rx="1" />
-              <rect x="8" y="8" width="6" height="6" rx="1" />
-            </svg>
-          </button>
-          <button
-            className={`view-btn${effectiveViewMode === "card" ? " active" : ""}`}
-            onClick={() => setAndSaveViewMode("card")}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-              <rect x="0" y="0" width="3.5" height="3.5" rx="0.5" />
-              <rect x="5.25" y="0" width="3.5" height="3.5" rx="0.5" />
-              <rect x="10.5" y="0" width="3.5" height="3.5" rx="0.5" />
-              <rect x="0" y="5.25" width="3.5" height="3.5" rx="0.5" />
-              <rect x="5.25" y="5.25" width="3.5" height="3.5" rx="0.5" />
-              <rect x="10.5" y="5.25" width="3.5" height="3.5" rx="0.5" />
-              <rect x="0" y="10.5" width="3.5" height="3.5" rx="0.5" />
-              <rect x="5.25" y="10.5" width="3.5" height="3.5" rx="0.5" />
-              <rect x="10.5" y="10.5" width="3.5" height="3.5" rx="0.5" />
-            </svg>
-          </button>
-          <button
-            className={`view-btn${effectiveViewMode === "list" ? " active" : ""}`}
-            onClick={() => setAndSaveViewMode("list")}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-              <rect x="0" y="1" width="14" height="2" rx="1" />
-              <rect x="0" y="6" width="14" height="2" rx="1" />
-              <rect x="0" y="11" width="14" height="2" rx="1" />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      {effectiveViewMode === "list" ? (
-        <div className="list-view">
-          {listSections.map((section) => (
-            <div key={section.key} className="list-section">
-              {section.header && (
-                <div className="list-section-header">{section.header}</div>
-              )}
-              {section.artifacts.map((a) => (
-                <div key={a.id} className="list-row" onClick={() => onArtifactClick(a)}>
-                  <div className="list-row-dot" style={{ background: (typeConfig[a.artifactKind] || typeConfig.app).color }} />
-                  <span className="list-row-label">{a.label}</span>
-                  <span className="list-row-badge">{a.artifactKind}</span>
-                  {isAllSpace && <span className="list-row-space">{a.spaceId}</span>}
-                </div>
+      <div className="topbar-hover-zone" onMouseEnter={showTopbar} />
+      <div
+        className={`desktop-topbar${topbarVisible ? "" : " desktop-topbar-hidden"}`}
+        onMouseEnter={showTopbar}
+        onMouseLeave={scheduleHideTopbar}
+      >
+        <div className="topbar-left">
+          <div className="ctrl-group-labeled">
+            <span className="ctrl-group-label">view</span>
+            <div className="ctrl-group">
+              <button className={`view-btn${effectiveViewMode === "grid" ? " active" : ""}`} onClick={() => setAndSaveViewMode("grid")} title="Grid">
+                <LayoutGrid size={13} />
+              </button>
+              <button className={`view-btn${effectiveViewMode === "list" ? " active" : ""}`} onClick={() => setAndSaveViewMode("list")} title="List">
+                <LayoutList size={13} />
+              </button>
+            </div>
+          </div>
+          <div className="ctrl-group-labeled">
+            <span className="ctrl-group-label">sort</span>
+            <div className="ctrl-group">
+              <button className={`view-btn${sortMode === "alpha" ? " active" : ""}`} onClick={() => setAndSaveSortMode("alpha")} title="A–Z">
+                <ArrowDownAZ size={13} />
+              </button>
+              <button className={`view-btn${sortMode === "kind" ? " active" : ""}`} onClick={() => setAndSaveSortMode("kind")} title="By kind">
+                <Tag size={13} />
+              </button>
+              <button className={`view-btn${sortMode === "timeline" ? " active" : ""}`} onClick={() => setAndSaveSortMode("timeline")} title="Recent">
+                <Clock size={13} />
+              </button>
+            </div>
+          </div>
+          {isAllSpace && (
+            <div className="ctrl-group-labeled">
+              <span className="ctrl-group-label">group</span>
+              <div className="ctrl-group">
+                <button className={`view-btn filter-pill-btn${groupBy === "space" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("space")}>space</button>
+                <button className={`view-btn filter-pill-btn${groupBy === "kind" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("kind")}>kind</button>
+              </div>
+            </div>
+          )}
+          <div className="ctrl-group-labeled">
+            <span className="ctrl-group-label">show</span>
+            <div className="ctrl-group topbar-filter-pills">
+              <button className={`view-btn filter-pill-btn${!activeKind ? " active" : ""}`} onClick={() => selectKind(null)}>all</button>
+              {uniqueKinds.map((k) => (
+                <button key={k} className={`view-btn filter-pill-btn${activeKind === k ? " active" : ""}`} onClick={() => selectKind(k)}>{kindLabel(k)}</button>
               ))}
             </div>
-          ))}
+          </div>
         </div>
-      ) : (
-        <div className={`icon-grid${effectiveViewMode === "card" ? " icon-grid--card" : ""}`} ref={gridRef}>
-          {displayItems.map((item, i) => {
-            const isDragged = item.key === dragKey;
-            if (item.type === "group") {
+
+        <div className="topbar-right" />
+      </div>
+
+      <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
+        {effectiveViewMode === "list" ? (
+          <div className={`list-view${isAllSpace && groupBy === "kind" ? " list-view--no-badge" : ""}${!isAllSpace || groupBy === "space" ? " list-view--no-space" : ""}`}>
+            {listSections.map((section) => (
+              <div key={section.key} className="list-section">
+                {section.header && (
+                  <div className="list-section-header">{section.header}</div>
+                )}
+                {section.artifacts.map((a) => (
+                  <div key={a.id} className="list-row" onClick={() => onArtifactClick(a)}>
+                    <div className="list-row-dot" style={{ background: (typeConfig[a.artifactKind] || typeConfig.app).color }} />
+                    <span className="list-row-label">{a.label}</span>
+                    {(!isAllSpace || groupBy !== "kind") && <span className="list-row-badge">{a.artifactKind}</span>}
+                    {isAllSpace && groupBy !== "space" && (() => {
+                      const c = spaceColor(a.spaceId);
+                      return <span className="list-row-space" style={{ color: c, background: `${c}28` }}>{a.spaceId}</span>;
+                    })()}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : isAllSpace && allGridSections ? (
+          <div className="all-grid-view">
+            {allGridSections.map((section) => (
+              <div key={section.spaceId} className="all-grid-section">
+                <div className="all-grid-section-header">{section.header}</div>
+                <div className="icon-grid icon-grid--inline">
+                  {section.artifacts.map((a, i) => (
+                    <ArtifactIcon
+                      key={a.id}
+                      artifact={a}
+                      index={i}
+                      onClick={() => onArtifactClick(a)}
+                      onStop={onArtifactStop ? () => onArtifactStop(a) : undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="icon-grid" ref={gridRef}>
+            {displayItems.map((item, i) => {
+              const isDragged = item.key === dragKey;
+              if (item.type === "group") {
+                return (
+                  <div
+                    key={item.key}
+                    data-drag-key={item.key}
+                    className={isDragged ? "drag-placeholder" : ""}
+                    onPointerDown={(e) => onPointerDown(e, item.key)}
+                    style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
+                  >
+                    <GroupIcon name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} />
+                  </div>
+                );
+              }
               return (
                 <div
                   key={item.key}
@@ -409,34 +612,18 @@ export function Desktop({ space, artifacts, onArtifactClick, onArtifactStop, onG
                   onPointerDown={(e) => onPointerDown(e, item.key)}
                   style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
                 >
-                  <GroupIcon
-                    name={item.name}
-                    artifacts={item.artifacts}
+                  <ArtifactIcon
+                    artifact={item.artifact}
                     index={i}
-                    onClick={() => onGroupClick(item.name)}
+                    onClick={() => onArtifactClick(item.artifact)}
+                    onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
                   />
                 </div>
               );
-            }
-            return (
-              <div
-                key={item.key}
-                data-drag-key={item.key}
-                className={isDragged ? "drag-placeholder" : ""}
-                onPointerDown={(e) => onPointerDown(e, item.key)}
-                style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
-              >
-                <ArtifactIcon
-                  artifact={item.artifact}
-                  index={i}
-                  onClick={() => onArtifactClick(item.artifact)}
-                  onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
-                />
-              </div>
-            );
-          })}
-        </div>
-      )}
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

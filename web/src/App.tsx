@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { Desktop } from "./components/Desktop";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
-import { Clock } from "./components/Clock";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
+import { SpotlightSearch } from "./components/SpotlightSearch";
 import { windowsReducer } from "./stores/windows";
 import {
   type Artifact,
@@ -33,6 +33,19 @@ export default function App() {
 
   const [activeSpace, setActiveSpace] = useState<string>(() => getUrlState().space);
 
+  // Cmd+K opens spotlight
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSpotlightOpen((v) => !v);
+      }
+      if (e.key === "Escape") setSpotlightOpen(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Redirect bare `/` to `/s/home` so every space has a uniform URL
   useEffect(() => {
     if (window.location.pathname === "/") {
@@ -42,6 +55,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(() => getUrlState().groupName);
+  const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
 
   // Fetch artifacts on mount; auto-open artifact if URL contains one
@@ -189,10 +203,10 @@ export default function App() {
 
   return (
     <div className="oyster-shell">
-      <Clock />
-
       <Desktop
         space={activeSpace}
+        spaces={spaces}
+        isHero={isHero}
         artifacts={activeSpace === "__all__" ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
@@ -200,6 +214,7 @@ export default function App() {
           setOpenGroup(name);
           window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
         }}
+        onSpaceChange={handleSpaceChange}
       />
 
       <div className="windows-layer">
@@ -318,6 +333,14 @@ export default function App() {
         activeSpace={activeSpace}
         onSpaceChange={handleSpaceChange}
       />
+
+      {spotlightOpen && (
+        <SpotlightSearch
+          artifacts={artifacts}
+          onOpen={handleArtifactClick}
+          onClose={() => setSpotlightOpen(false)}
+        />
+      )}
     </div>
   );
 }

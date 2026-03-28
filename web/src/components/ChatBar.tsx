@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { spaceColor } from "../utils/spaceColor";
 import { marked } from "marked";
 import { sendMessage, replyToQuestion } from "../data/chat-api";
 import { useChatSession } from "../hooks/useChatSession";
@@ -297,34 +299,47 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         </button>
       </div>
 
-      {/* Space pills — always below the input */}
-      {spaces.length > 0 && (
+      {/* Space pills — below the input bar */}
+      {(spaces.length > 0 || activeSpace) && onSpaceChange && (
         <div className="space-pills-inline">
+          <LayoutGroup id="space-pill">
           <div className="space-pills">
-            <button
-              className={`space-pill ${activeSpace === "home" ? "active" : ""}`}
-              onClick={() => onSpaceChange?.("home")}
-            >
-              home
+            {/* Home */}
+            <button className={`space-pill space-pill--icon${activeSpace === "home" ? " active" : ""}`} onClick={() => onSpaceChange("home")} title="Home" style={{ position: "relative" }}>
+              {activeSpace === "home" && (
+                <motion.span layoutId="space-pill-bg" className="space-pill-bg" style={{ background: "#7c6bff" }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />
+              )}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ position: "relative", zIndex: 1 }}>
+                <path d="M11.03 2.59a1.5 1.5 0 0 1 1.94 0l7.5 6.363A1.5 1.5 0 0 1 21 10.097V19.5a2.5 2.5 0 0 1-2.5 2.5H15v-4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v4H5.5A2.5 2.5 0 0 1 3 19.5v-9.403a1.5 1.5 0 0 1 .53-1.137l7.5-6.37Z"/>
+              </svg>
             </button>
-            {spaces.map((s) => (
-              <button
-                key={s}
-                className={`space-pill ${activeSpace === s ? "active" : ""}`}
-                onClick={() => onSpaceChange?.(s)}
-              >
-                {s}
-              </button>
-            ))}
-            <button
-              className={`space-pill${activeSpace === "__all__" ? " active" : ""}`}
-              onClick={() => onSpaceChange?.("__all__")}
-            >
-              all
+
+            {/* All */}
+            <button className={`space-pill${activeSpace === "__all__" ? " active" : ""}`} onClick={() => onSpaceChange("__all__")} style={{ position: "relative" }}>
+              {activeSpace === "__all__" && (
+                <motion.span layoutId="space-pill-bg" className="space-pill-bg" style={{ background: "#7c6bff" }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />
+              )}
+              <span style={{ position: "relative", zIndex: 1 }}>all</span>
             </button>
+
+            {/* Named spaces */}
+            {spaces.filter(s => s !== "home").map((s) => {
+              const color = spaceColor(s);
+              const isActive = activeSpace === s;
+              return (
+                <button key={s} className={`space-pill${isActive ? " active" : ""}`} onClick={() => onSpaceChange(s)} style={{ position: "relative" }}>
+                  {isActive && (
+                    <motion.span layoutId="space-pill-bg" className="space-pill-bg" style={{ background: color }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />
+                  )}
+                  <span style={{ position: "relative", zIndex: 1 }}>{s}</span>
+                </button>
+              );
+            })}
           </div>
+          </LayoutGroup>
         </div>
       )}
+
     </div>
   );
 }
