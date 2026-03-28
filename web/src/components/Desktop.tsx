@@ -135,6 +135,14 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     try { return localStorage.getItem(ACTIVE_KIND_KEY) || null; } catch { return null; }
   });
 
+  const [kindDropdownOpen, setKindDropdownOpen] = useState(false);
+  useEffect(() => {
+    if (!kindDropdownOpen) return;
+    function close() { setKindDropdownOpen(false); }
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [kindDropdownOpen]);
+
   function selectKind(k: string | null) {
     setActiveKind(k);
     try {
@@ -499,17 +507,6 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       >
         <div className="topbar-left">
           <div className="ctrl-group-labeled">
-            <span className="ctrl-group-label">view</span>
-            <div className="ctrl-group">
-              <button className={`view-btn${effectiveViewMode === "grid" ? " active" : ""}`} onClick={() => setAndSaveViewMode("grid")} title="Grid">
-                <LayoutGrid size={13} />
-              </button>
-              <button className={`view-btn${effectiveViewMode === "list" ? " active" : ""}`} onClick={() => setAndSaveViewMode("list")} title="List">
-                <LayoutList size={13} />
-              </button>
-            </div>
-          </div>
-          <div className="ctrl-group-labeled">
             <span className="ctrl-group-label">sort</span>
             <div className="ctrl-group">
               <button className={`view-btn${sortMode === "alpha" ? " active" : ""}`} onClick={() => setAndSaveSortMode("alpha")} title="A–Z">
@@ -547,6 +544,43 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       </div>
 
       <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
+        {activeKind ? (
+          <div className="filter-notice">
+            <span>Showing</span>
+            <div className="filter-notice-kind-wrap">
+              <button
+                className="filter-notice-kind"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => setKindDropdownOpen((v) => !v)}
+              >
+                {kindLabel(activeKind)} ▾
+              </button>
+              {kindDropdownOpen && (
+                <div className="filter-kind-dropdown">
+                  {uniqueKinds.filter((k) => k !== activeKind).map((k) => (
+                    <button
+                      key={k}
+                      className="filter-kind-option"
+                      onClick={() => { selectKind(k); setKindDropdownOpen(false); }}
+                    >
+                      {kindLabel(k)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="filter-notice-clear" onClick={() => { selectKind(null); setKindDropdownOpen(false); }}>✕</button>
+          </div>
+        ) : (
+          <div className="view-toggle-float">
+            <button className={`view-btn${effectiveViewMode === "grid" ? " active" : ""}`} onClick={() => setAndSaveViewMode("grid")} title="Grid">
+              <LayoutGrid size={13} />
+            </button>
+            <button className={`view-btn${effectiveViewMode === "list" ? " active" : ""}`} onClick={() => setAndSaveViewMode("list")} title="List">
+              <LayoutList size={13} />
+            </button>
+          </div>
+        )}
         {effectiveViewMode === "list" ? (
           <div className={`list-view${isAllSpace && groupBy === "kind" ? " list-view--no-badge" : ""}${!isAllSpace || groupBy === "space" ? " list-view--no-space" : ""}`}>
             {listSections.map((section) => (
