@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useCallback, useEffect, type PointerEvent } from "react";
-import { LayoutGrid, LayoutList, ArrowDownAZ, Tag, Clock, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { LayoutGrid, List, ArrowDownAZ, Tag, Clock, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
 import { GroupIcon } from "./GroupIcon";
@@ -631,7 +631,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               <LayoutGrid size={13} />
             </button>
             <button className={`view-btn${effectiveViewMode === "list" ? " active" : ""}`} onClick={() => setAndSaveViewMode("list")} title="List">
-              <LayoutList size={13} />
+              <List size={13} />
             </button>
           </div>
         )}
