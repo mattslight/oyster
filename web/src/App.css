@@ -1482,9 +1482,9 @@ body {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(232,233,240,0.6);
+  color: #8b8fa8;
   padding: 0 0 6px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid #2a2c47;
   margin-bottom: 2px;
 }
 
@@ -1499,7 +1499,7 @@ body {
 }
 
 .list-row:hover {
-  background: rgba(255,255,255,0.05);
+  background: #1e2040;
 }
 
 .list-row-dot {
@@ -1512,7 +1512,7 @@ body {
 .list-row-label {
   flex: 1;
   font-size: 0.88rem;
-  color: rgba(232,233,240,0.95);
+  color: #e8e9f0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1523,18 +1523,18 @@ body {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(232,233,240,0.55);
+  color: #8b8fa8;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(255,255,255,0.08);
+  background: #1e2040;
   flex-shrink: 0;
 }
 
 .list-row-space {
   font-size: 0.65rem;
-  color: rgba(124,107,255,0.7);
+  color: #a89fff;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(124,107,255,0.08);
+  background: #2a2550;
   flex-shrink: 0;
 }
