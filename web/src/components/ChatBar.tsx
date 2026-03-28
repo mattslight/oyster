@@ -6,6 +6,7 @@ import { sendMessage, replyToQuestion } from "../data/chat-api";
 import { useChatSession } from "../hooks/useChatSession";
 import { useChatEvents } from "../hooks/useChatEvents";
 import type { ToolPart } from "../hooks/useChatSession";
+import type { Space } from "../../../shared/types";
 
 // Configure marked for inline chat use
 marked.setOptions({ breaks: true, gfm: true });
@@ -79,12 +80,13 @@ function ToolBlock({ tool }: { tool: ToolPart }) {
 interface Props {
   onOpenTerminal: () => void;
   isHero?: boolean;
-  spaces?: string[];
+  spaces?: Space[];
   activeSpace?: string;
   onSpaceChange?: (space: string) => void;
+  onAddSpace?: () => void;
 }
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -323,18 +325,30 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             </button>
 
             {/* Named spaces */}
-            {spaces.filter(s => s !== "home").map((s) => {
-              const color = spaceColor(s);
-              const isActive = activeSpace === s;
+            {spaces.filter(s => s.id !== "home").map((s) => {
+              const color = s.color ?? spaceColor(s.id);
+              const isActive = activeSpace === s.id;
               return (
-                <button key={s} className={`space-pill${isActive ? " active" : ""}`} onClick={() => onSpaceChange(s)} style={{ position: "relative" }}>
+                <button key={s.id} className={`space-pill${isActive ? " active" : ""}`} onClick={() => onSpaceChange(s.id)} style={{ position: "relative" }}>
                   {isActive && (
                     <motion.span layoutId="space-pill-bg" className="space-pill-bg" style={{ background: color }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />
                   )}
-                  <span style={{ position: "relative", zIndex: 1 }}>{s}</span>
+                  <span style={{ position: "relative", zIndex: 1 }}>{s.displayName}</span>
                 </button>
               );
             })}
+
+            {/* Add space */}
+            {onAddSpace && (
+              <button
+                className="space-pill space-pill--add"
+                onClick={onAddSpace}
+                title="Add space"
+                style={{ position: "relative" }}
+              >
+                <span style={{ position: "relative", zIndex: 1 }}>+</span>
+              </button>
+            )}
           </div>
           </LayoutGroup>
         </div>

@@ -14,6 +14,8 @@ import {
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
 import { ArtifactService } from "./artifact-service.js";
+import { SqliteSpaceStore } from "./space-store.js";
+import { SpaceService } from "./space-service.js";
 import { IconGenerator } from "./icon-generator.js";
 import { injectBridge } from "./error-bridge.js";
 import {
@@ -113,7 +115,9 @@ delete cleanEnv["OPENAI_API_KEY"];
 
 const db = initDb(USERLAND_DIR);
 const store = new SqliteArtifactStore(db);
-const artifactService = new ArtifactService(store);
+const artifactService = new ArtifactService(store, USERLAND_DIR);
+const spaceStore = new SqliteSpaceStore(db);
+const spaceService = new SpaceService(spaceStore, store);
 
 // ── Initialize subsystems ──
 
@@ -540,6 +544,97 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // ── Spaces API ──
+
+  // GET /api/resolve-folder?name=... — search common dev dirs for a folder by name
+  if (url.startsWith("/api/resolve-folder") && req.method === "GET") {
+    const folderName = new URL(url, "http://localhost").searchParams.get("name") ?? "";
+    if (!folderName) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "name is required" }));
+      return;
+    }
+    const home = process.env.HOME ?? "";
+    const searchRoots = [home, `${home}/Dev`, `${home}/dev`, `${home}/Projects`, `${home}/projects`,
+      `${home}/code`, `${home}/Code`, `${home}/repos`, `${home}/Repos`, `${home}/Documents`, `${home}/Desktop`];
+    const { existsSync, statSync } = await import("node:fs");
+    const seenInodes = new Set<number>();
+    const matches: string[] = [];
+    for (const root of searchRoots) {
+      const candidate = `${root}/${folderName}`;
+      try {
+        const st = statSync(candidate);
+        if (st.isDirectory() && !seenInodes.has(st.ino)) {
+          seenInodes.add(st.ino);
+          matches.push(candidate);
+        }
+      } catch { /* skip */ }
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ matches }));
+    return;
+  }
+
+  // POST /api/spaces — create space
+  if (url === "/api/spaces" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { name, repoPath } = JSON.parse(body);
+        const space = spaceService.createSpace({ name, repoPath });
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(space));
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/spaces — list spaces
+  if (url === "/api/spaces" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(spaceService.listSpaces()));
+    return;
+  }
+
+  // GET /api/spaces/:id  and  DELETE /api/spaces/:id
+  const spaceIdMatch = url.match(/^\/api\/spaces\/([^/]+)$/);
+  if (spaceIdMatch && req.method === "GET") {
+    const space = spaceService.getSpace(spaceIdMatch[1]);
+    if (!space) { res.writeHead(404); res.end("Space not found"); return; }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(space));
+    return;
+  }
+  if (spaceIdMatch && req.method === "DELETE") {
+    try {
+      spaceService.deleteSpace(spaceIdMatch[1]);
+      res.writeHead(204);
+      res.end();
+    } catch (err) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  // POST /api/spaces/:id/scan
+  const spaceScanMatch = url.match(/^\/api\/spaces\/([^/]+)\/scan$/);
+  if (spaceScanMatch && req.method === "POST") {
+    spaceService.scanSpace(spaceScanMatch[1]).then((result) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+    }).catch((err: Error) => {
+      const status = err.message.includes("already in progress") ? 409 : 400;
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
   // ── MCP server ──
   if (url === "/mcp" || url === "/mcp/") {
     // Localhost-only: reject non-local origins and don't emit wildcard CORS
@@ -551,7 +646,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     // Override the wildcard CORS header set at the top of handleHttpRequest
     res.setHeader("Access-Control-Allow-Origin", origin || "http://localhost:4200");
 
-    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator });
+    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator, spaceService });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close(); mcpServer.close(); });
     await mcpServer.connect(transport);

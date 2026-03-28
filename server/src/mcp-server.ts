@@ -1,10 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { extname, dirname, join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { IconGenerator } from "./icon-generator.js";
+import type { SpaceService } from "./space-service.js";
 
 const ARTIFACT_KINDS = [
   "app", "deck", "diagram", "map", "notes", "table", "wireframe",
@@ -17,6 +18,7 @@ interface McpDeps {
   service: ArtifactService;
   userlandDir: string;
   iconGenerator: IconGenerator;
+  spaceService: SpaceService;
 }
 
 function buildContext(userlandDir: string): string {
@@ -86,13 +88,39 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "list_spaces",
-    "List all spaces (named workspaces) on the Oyster desktop with artifact counts. A space is a tab the user switches between — e.g. 'home', 'tokinvest'.",
+    "List all spaces (named workspaces) on the Oyster desktop. A space is a tab the user switches between — e.g. 'home', 'tokinvest'.",
     {},
     async () => {
-      const spaces = deps.store.getDistinctSpaces();
+      const spaces = deps.spaceService.listSpaces();
       return {
         content: [{ type: "text" as const, text: JSON.stringify(spaces, null, 2) }],
       };
+    },
+  );
+
+  // ── onboard_space ──
+
+  server.tool(
+    "onboard_space",
+    "Create a space, attach it to a local repo, and scan for apps, docs, and diagrams. All discovered assets register as desktop artifacts immediately.",
+    {
+      name: z.string().describe("Display name for the space (slugified to ID)"),
+      repo_path: z.string().describe("Absolute local path to the repository root"),
+      skip_ai: z.boolean().optional().describe("Reserved for Phase 2 — no-op currently"),
+    },
+    async ({ name, repo_path }) => {
+      try {
+        const space = deps.spaceService.createSpace({ name, repoPath: repo_path });
+        const scanResult = await deps.spaceService.scanSpace(space.id);
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ space_id: space.id, scan_summary: scanResult }, null, 2),
+          }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
     },
   );
 
@@ -290,12 +318,18 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
       // Derive artifact directory: if source is inside a src/ subdir, go up one level
       const srcIdx = sourcePath.lastIndexOf("/src/");
-      const artifactDir = srcIdx !== -1 ? sourcePath.slice(0, srcIdx) : dirname(sourcePath);
+      const naturalDir = srcIdx !== -1 ? sourcePath.slice(0, srcIdx) : dirname(sourcePath);
+
+      // For artifacts outside userland (e.g. external repos), store the icon in userland/icons/<id>
+      const artifactDir = naturalDir.startsWith(deps.userlandDir)
+        ? naturalDir
+        : join(deps.userlandDir, "icons", id);
 
       if (!artifactDir.startsWith(deps.userlandDir)) {
         return { content: [{ type: "text" as const, text: "Artifact is outside userland — cannot regenerate icon" }], isError: true };
       }
 
+      mkdirSync(artifactDir, { recursive: true });
       const queued = deps.iconGenerator.forceEnqueue(id, artifact.label, artifact.artifactKind, artifactDir, hint);
       if (!queued) {
         return { content: [{ type: "text" as const, text: "Icon generation is disabled (FAL_KEY not configured)" }], isError: true };

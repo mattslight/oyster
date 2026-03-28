@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useCallback, useEffect, type PointerEvent } from "react";
-import { LayoutGrid, List, ArrowDownAZ, Tag, Clock, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { LayoutGrid, List, ArrowDownAZ, Tag, Clock, Folder, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
 import { GroupIcon } from "./GroupIcon";
@@ -88,7 +88,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     return "grid";
   });
 
-  const [sortMode, setSortMode] = useState<"alpha" | "kind" | "timeline" | "space">(() => {
+  const [sortMode, setSortMode] = useState<"alpha" | "kind" | "timeline" | "space" | "group">(() => {
     try {
       const stored = localStorage.getItem(SORT_KEY_PREFIX + space);
       if (stored === "alpha" || stored === "kind" || stored === "timeline" || stored === "space") return stored;
@@ -458,6 +458,26 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       })) as Section[];
     }
 
+    if (sortMode === "group") {
+      const groupMap: Record<string, Artifact[]> = {};
+      const ungrouped: Artifact[] = [];
+      for (const a of filteredArtifacts) {
+        if (a.groupName) (groupMap[a.groupName] ??= []).push(a);
+        else ungrouped.push(a);
+      }
+      const sections: Section[] = Object.keys(groupMap).sort().map((g) => ({
+        key: `group:${g}`,
+        header: g,
+        artifacts: groupMap[g].sort((a, b) => a.label.localeCompare(b.label)),
+      }));
+      if (ungrouped.length) sections.push({
+        key: "__ungrouped__",
+        header: ungrouped.length === filteredArtifacts.length ? null : "Other",
+        artifacts: ungrouped.sort((a, b) => a.label.localeCompare(b.label)),
+      });
+      return sections;
+    }
+
     if (sortMode === "alpha") {
       const sorted = [...filteredArtifacts].sort((a, b) => a.label.localeCompare(b.label));
       return [{ key: "__all__", header: null, artifacts: sorted }] as Section[];
@@ -568,6 +588,11 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               <button className={`view-btn${sortMode === "timeline" ? " active" : ""}`} onClick={() => setAndSaveSortMode("timeline")} title="Recent">
                 <Clock size={13} />
               </button>
+              {!isAllSpace && (
+                <button className={`view-btn${sortMode === "group" ? " active" : ""}`} onClick={() => setAndSaveSortMode("group")} title="By folder">
+                  <Folder size={13} />
+                </button>
+              )}
             </div>
           </div>
           {isAllSpace && (

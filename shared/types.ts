@@ -30,3 +30,26 @@ export interface Artifact {
   createdAt: string;
   groupName?: string;
 }
+
+export type ScanStatus = "none" | "scanning" | "complete" | "error";
+
+export interface ScanResult {
+  discovered: number;
+  skipped: number;
+  resurfaced: number;
+  errors: string[];
+  artifacts: Array<{ id: string; label: string; kind: string; sourceRef: string | null }>;
+}
+
+export interface Space {
+  id: string;
+  displayName: string;
+  repoPath: string | null;
+  color: string | null;
+  scanStatus: ScanStatus;
+  scanError: string | null;
+  lastScannedAt: string | null;
+  lastScanSummary: Omit<ScanResult, "artifacts"> | null;
+  createdAt: string;
+  updatedAt: string;
+}

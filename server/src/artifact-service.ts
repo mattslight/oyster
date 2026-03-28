@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
-import { resolve, extname, basename, join, sep } from "node:path";
+import { resolve, extname, basename, dirname, join, sep } from "node:path";
 import crypto from "node:crypto";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
@@ -56,7 +56,7 @@ function slugify(str: string): string {
 // ── Service ──
 
 export class ArtifactService {
-  constructor(private store: ArtifactStore) {}
+  constructor(private store: ArtifactStore, private userlandDir?: string) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const rows = this.store.getAll();
@@ -109,7 +109,8 @@ export class ArtifactService {
 
   getDocFile(id: string): string | undefined {
     const row = this.store.getById(id);
-    if (!row || row.runtime_kind !== "static_file") return undefined;
+    if (!row) return undefined;
+    if (row.storage_kind !== "filesystem") return undefined;
     const storage = parseJson(row.storage_config) as FilesystemStorageConfig;
     return storage.path;
   }
@@ -165,6 +166,8 @@ export class ArtifactService {
       runtime_kind: "static_file",
       runtime_config: "{}",
       group_name: params.group_name || null,
+      source_origin: "manual",
+      source_ref: null,
     });
 
     return {
@@ -315,6 +318,7 @@ export class ArtifactService {
         url: `http://localhost:${port}`,
         createdAt: row.created_at,
         groupName: row.group_name || undefined,
+        ...this.resolveIcon(row),
       };
     }
 
@@ -337,6 +341,31 @@ export class ArtifactService {
       url,
       createdAt: row.created_at,
       groupName: row.group_name || undefined,
+      ...this.resolveIcon(row),
     };
+  }
+
+  private resolveIcon(row: ArtifactRow): { icon?: string; iconStatus?: "ready" } {
+    if (row.storage_kind !== "filesystem") return {};
+    try {
+      const filePath = (JSON.parse(row.storage_config) as { path?: string }).path;
+      if (!filePath) return {};
+
+      // Check dedicated per-artifact icons dir first (used for external/flat artifacts)
+      if (this.userlandDir) {
+        const dedicatedPath = join(this.userlandDir, "icons", row.id, "icon.png");
+        if (existsSync(dedicatedPath)) {
+          return { icon: `/artifacts/icons/${row.id}/icon.png`, iconStatus: "ready" };
+        }
+      }
+
+      // Fall back to icon.png alongside the source file
+      const dir = dirname(filePath);
+      const iconPath = join(dir, "icon.png");
+      if (existsSync(iconPath)) {
+        return { icon: `/artifacts/${basename(dir)}/icon.png`, iconStatus: "ready" };
+      }
+    } catch {}
+    return {};
   }
 }

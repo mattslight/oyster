@@ -14,13 +14,18 @@ export interface ArtifactRow {
   runtime_config: string;
   group_name: string | null;
   removed_at: string | null;
+  source_origin: string;       // 'manual' | 'discovered' | 'ai_generated'
+  source_ref: string | null;   // e.g. 'web/:app', 'README.md:notes'
   created_at: string;
   updated_at: string;
 }
 
 // ── Store interface ──
 
-export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at">;
+export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "source_origin" | "source_ref"> & {
+  source_origin?: string;
+  source_ref?: string | null;
+};
 
 export interface ArtifactStore {
   getAll(): ArtifactRow[];
@@ -28,8 +33,10 @@ export interface ArtifactStore {
   getBySpaceId(spaceId: string): ArtifactRow[];
   getByPath(absPath: string): ArtifactRow | undefined;
   getDistinctSpaces(): { space_id: string; count: number }[];
+  getBySpaceAndSourceRef(spaceId: string, sourceRef: string): ArtifactRow | undefined;
   insert(row: InsertRow): void;
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void;
+  resurface(id: string): void;
   remove(id: string): void;
   delete(id: string): void;
 }
@@ -43,6 +50,7 @@ export class SqliteArtifactStore implements ArtifactStore {
     getBySpaceId: Database.Statement;
     getByPath: Database.Statement;
     getDistinctSpaces: Database.Statement;
+    getBySpaceAndSourceRef: Database.Statement;
     insert: Database.Statement;
     delete: Database.Statement;
   };
@@ -54,9 +62,19 @@ export class SqliteArtifactStore implements ArtifactStore {
       getBySpaceId: db.prepare("SELECT * FROM artifacts WHERE space_id = ? AND removed_at IS NULL ORDER BY created_at"),
       getByPath: db.prepare("SELECT * FROM artifacts WHERE json_extract(storage_config, '$.path') = ? AND removed_at IS NULL"),
       getDistinctSpaces: db.prepare("SELECT space_id, COUNT(*) as count FROM artifacts WHERE removed_at IS NULL GROUP BY space_id ORDER BY space_id"),
+      getBySpaceAndSourceRef: db.prepare(
+        "SELECT * FROM artifacts WHERE space_id = ? AND source_ref = ?"
+      ),
       insert: db.prepare(`
-        INSERT INTO artifacts (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config, group_name)
-        VALUES (@id, @owner_id, @space_id, @label, @artifact_kind, @storage_kind, @storage_config, @runtime_kind, @runtime_config, @group_name)
+        INSERT INTO artifacts (
+          id, owner_id, space_id, label, artifact_kind,
+          storage_kind, storage_config, runtime_kind, runtime_config,
+          group_name, source_origin, source_ref
+        ) VALUES (
+          @id, @owner_id, @space_id, @label, @artifact_kind,
+          @storage_kind, @storage_config, @runtime_kind, @runtime_config,
+          @group_name, COALESCE(@source_origin, 'manual'), @source_ref
+        )
       `),
       delete: db.prepare("DELETE FROM artifacts WHERE id = ?"),
     };
@@ -82,13 +100,24 @@ export class SqliteArtifactStore implements ArtifactStore {
     return this.stmts.getDistinctSpaces.all() as { space_id: string; count: number }[];
   }
 
+  getBySpaceAndSourceRef(spaceId: string, sourceRef: string): ArtifactRow | undefined {
+    return this.stmts.getBySpaceAndSourceRef.get(spaceId, sourceRef) as ArtifactRow | undefined;
+  }
+
   insert(row: InsertRow): void {
     this.stmts.insert.run(row);
   }
 
+  resurface(id: string): void {
+    this.db.prepare(
+      "UPDATE artifacts SET removed_at = NULL, updated_at = datetime('now') WHERE id = ?"
+    ).run(id);
+  }
+
   private static readonly UPDATABLE_COLUMNS = new Set([
     "owner_id", "space_id", "label", "artifact_kind",
-    "storage_kind", "storage_config", "runtime_kind", "runtime_config", "group_name",
+    "storage_kind", "storage_config", "runtime_kind", "runtime_config",
+    "group_name", "removed_at", "source_origin", "source_ref",
   ]);
 
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void {

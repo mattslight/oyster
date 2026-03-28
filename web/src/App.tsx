@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { Desktop } from "./components/Desktop";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
+import { AddSpaceWizard } from "./components/AddSpaceWizard";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
@@ -12,12 +13,16 @@ import {
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/artifacts-api";
+import { fetchSpaces } from "./data/spaces-api";
+import type { Space } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
 
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [spaces, setSpaces] = useState<Space[]>([]);
+  const [showAddSpaceWizard, setShowAddSpaceWizard] = useState(false);
   const getUrlState = useCallback((): { space: string; artifactId: string | null; groupName: string | null; hash: string } => {
     const artifactMatch = window.location.pathname.match(/^\/s\/([^/]+)\/a\/([^/]+)$/);
     if (artifactMatch) {
@@ -58,7 +63,7 @@ export default function App() {
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
 
-  // Fetch artifacts on mount; auto-open artifact if URL contains one
+  // Fetch artifacts + spaces on mount; auto-open artifact if URL contains one
   useEffect(() => {
     fetchArtifacts().then((a) => {
       setArtifacts(a);
@@ -72,12 +77,14 @@ export default function App() {
         }
       }
     });
+    fetchSpaces().then(setSpaces);
   }, []);
 
   // Poll for status updates every 5 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchArtifacts().then(setArtifacts);
+      fetchSpaces().then(setSpaces);
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -115,15 +122,6 @@ export default function App() {
     setOpenGroup(null);
   }, []);
 
-  // Derive unique space IDs (excluding "home") for the pill row
-  const spaces = useMemo(() => {
-    const set = new Set<string>();
-    for (const a of artifacts) {
-      if (a.spaceId && a.spaceId !== "home") set.add(a.spaceId);
-    }
-    return Array.from(set);
-  }, [artifacts]);
-
   const isHero = activeSpace === "home";
 
   const viewers = windows.filter((w) => w.type === "viewer");
@@ -131,6 +129,11 @@ export default function App() {
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
+
+    if (artifact.runtimeKind === "redirect") {
+      window.open(artifact.url, "_blank");
+      return;
+    }
 
     if (artifact.runtimeKind === "local_process") {
       // Managed app with a dev server
@@ -205,7 +208,7 @@ export default function App() {
     <div className="oyster-shell">
       <Desktop
         space={activeSpace}
-        spaces={spaces}
+        spaces={spaces.map(s => s.id)}
         isHero={isHero}
         artifacts={activeSpace === "__all__" ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
         onArtifactClick={handleArtifactClick}
@@ -332,7 +335,19 @@ export default function App() {
         spaces={spaces}
         activeSpace={activeSpace}
         onSpaceChange={handleSpaceChange}
+        onAddSpace={() => setShowAddSpaceWizard(true)}
       />
+
+      {showAddSpaceWizard && (
+        <AddSpaceWizard
+          onClose={() => setShowAddSpaceWizard(false)}
+          onComplete={() => {
+            setShowAddSpaceWizard(false);
+            fetchSpaces().then(setSpaces);
+            fetchArtifacts().then(setArtifacts);
+          }}
+        />
+      )}
 
       {spotlightOpen && (
         <SpotlightSearch
