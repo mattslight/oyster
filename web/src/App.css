@@ -1467,8 +1467,10 @@ body {
 
 /* ── List view ── */
 .list-view {
-  padding: 20px 40px 160px;
-  max-width: 760px;
+  padding: 72px 24px 160px;
+  max-width: 620px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .list-section {
