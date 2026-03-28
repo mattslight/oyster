@@ -96,6 +96,19 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     return "alpha";
   });
 
+  const SORT_DIR_KEY = "oyster-sort-dir";
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(() => {
+    try {
+      const stored = localStorage.getItem(SORT_DIR_KEY);
+      return stored === "desc" ? "desc" : "asc";
+    } catch { return "asc"; }
+  });
+
+  function setAndSaveSortDir(dir: "asc" | "desc") {
+    setSortDir(dir);
+    try { localStorage.setItem(SORT_DIR_KEY, dir); } catch { /* ignore */ }
+  }
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem(SORT_KEY_PREFIX + space);
@@ -115,16 +128,25 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     try { localStorage.setItem(SORT_KEY_PREFIX + space, mode); } catch { /* ignore */ }
   }
 
+  function handleColSort(mode: "alpha" | "kind" | "timeline") {
+    if (sortMode === mode) {
+      setAndSaveSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setAndSaveSortMode(mode);
+      setAndSaveSortDir("asc");
+    }
+  }
+
   const GROUP_BY_KEY = "oyster-group-by";
-  const [groupBy, setGroupBy] = useState<"space" | "kind">(() => {
+  const [groupBy, setGroupBy] = useState<"space" | "kind" | "none">(() => {
     try {
       const stored = localStorage.getItem(GROUP_BY_KEY);
-      if (stored === "space" || stored === "kind") return stored;
+      if (stored === "space" || stored === "kind" || stored === "none") return stored;
     } catch { /* ignore */ }
     return "space";
   });
 
-  function setAndSaveGroupBy(mode: "space" | "kind") {
+  function setAndSaveGroupBy(mode: "space" | "kind" | "none") {
     setGroupBy(mode);
     try { localStorage.setItem(GROUP_BY_KEY, mode); } catch { /* ignore */ }
   }
@@ -373,24 +395,30 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   const kindLabel = (k: string) =>
     k === "notes" ? "notes" : k + "s";
 
+  const dir = sortDir === "asc" ? 1 : -1;
+
   const sortArtifacts = useCallback((arts: Artifact[]): Artifact[] => {
     if (sortMode === "timeline") {
-      return [...arts].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return [...arts].sort((a, b) => dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
     }
     if (sortMode === "kind") {
       return [...arts].sort((a, b) => {
-        if (a.artifactKind !== b.artifactKind) return a.artifactKind.localeCompare(b.artifactKind);
+        const k = a.artifactKind.localeCompare(b.artifactKind);
+        if (k !== 0) return dir * k;
         return a.label.localeCompare(b.label);
       });
     }
-    return [...arts].sort((a, b) => a.label.localeCompare(b.label));
-  }, [sortMode]);
+    return [...arts].sort((a, b) => dir * a.label.localeCompare(b.label));
+  }, [sortMode, sortDir]);
 
   const listSections = useMemo(() => {
     type Section = { key: string; header: string | null; artifacts: Artifact[] };
 
     // __all__ groups by space or kind; sortMode applies within each section
     if (isAllSpace) {
+      if (groupBy === "none") {
+        return [{ key: "__all__", header: null, artifacts: sortArtifacts(filteredArtifacts) }] as Section[];
+      }
       if (groupBy === "kind") {
         const kindMap: Record<string, Artifact[]> = {};
         for (const a of filteredArtifacts) (kindMap[a.artifactKind] ??= []).push(a);
@@ -450,6 +478,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
 
   const allGridSections = useMemo(() => {
     if (!isAllSpace) return null;
+    if (groupBy === "none") return null;
     if (groupBy === "kind") {
       const kindMap: Record<string, Artifact[]> = {};
       for (const a of filteredArtifacts) (kindMap[a.artifactKind] ??= []).push(a);
@@ -524,6 +553,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             <div className="ctrl-group-labeled">
               <span className="ctrl-group-label">group</span>
               <div className="ctrl-group">
+                <button className={`view-btn filter-pill-btn${groupBy === "none" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("none")}>none</button>
                 <button className={`view-btn filter-pill-btn${groupBy === "space" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("space")}>space</button>
                 <button className={`view-btn filter-pill-btn${groupBy === "kind" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("kind")}>kind</button>
               </div>
@@ -583,6 +613,22 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
         )}
         {effectiveViewMode === "list" ? (
           <div className={`list-view${isAllSpace && groupBy === "kind" ? " list-view--no-badge" : ""}${!isAllSpace || groupBy === "space" ? " list-view--no-space" : ""}`}>
+            <div className="list-col-headers">
+              <span />
+              <button className={`list-col-header${sortMode === "alpha" ? " active" : ""}`} onClick={() => handleColSort("alpha")}>
+                Name{sortMode === "alpha" ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
+              </button>
+              {(!isAllSpace || groupBy !== "kind") && (
+                <button className={`list-col-header list-col-header--right${sortMode === "kind" ? " active" : ""}`} onClick={() => handleColSort("kind")}>
+                  Kind{sortMode === "kind" ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
+                </button>
+              )}
+              {isAllSpace && groupBy !== "space" && (
+                <button className="list-col-header" onClick={() => setAndSaveGroupBy("space")}>
+                  Space
+                </button>
+              )}
+            </div>
             {listSections.map((section) => (
               <div key={section.key} className="list-section">
                 {section.header && (

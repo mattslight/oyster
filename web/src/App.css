@@ -1838,8 +1838,43 @@ body {
   display: contents;
 }
 
+.list-col-headers {
+  display: contents;
+}
+
+.list-col-header {
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 233, 240, 0.25);
+  padding: 0 0 10px 0;
+  cursor: pointer;
+  text-align: start;
+  justify-self: start;
+  width: auto;
+  display: block;
+  transition: color 0.15s;
+}
+
+.list-col-header--right {
+  text-align: right;
+  justify-self: end;
+}
+
+.list-col-header.active {
+  color: rgba(232, 233, 240, 0.55);
+}
+
+.list-col-header:hover {
+  color: rgba(232, 233, 240, 0.45);
+}
+
 .list-section-header {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.08em;
