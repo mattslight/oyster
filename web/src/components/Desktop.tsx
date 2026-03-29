@@ -124,7 +124,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
             <span className="ctrl-group-label">folders</span>
             <button
               className={`ios-toggle${!effectiveFlatMode ? " on" : ""}`}
-              onClick={() => setAndSaveFlatMode(effectiveFlatMode)}
+              onClick={() => setAndSaveFlatMode(!flatMode)}
               title={effectiveFlatMode ? "Show folders" : "Flatten folders"}
               aria-pressed={!effectiveFlatMode}
             >
