@@ -200,15 +200,37 @@ export function useDesktopSections({ filteredArtifacts, isAllSpace, sortMode, so
       const kindMap: Record<string, Artifact[]> = {};
       for (const a of filteredArtifacts) (kindMap[a.artifactKind] ??= []).push(a);
       return Object.keys(kindMap).sort().map((k) => ({
-        spaceId: k, header: kindLabel(k), artifacts: sortArtifacts(kindMap[k]),
+        spaceId: k, header: kindLabel(k),
+        items: sortArtifacts(kindMap[k]).map((a): DesktopItem => ({ type: "artifact", key: a.id, artifact: a })),
       }));
     }
+    // groupBy === "space": show artifact-group folders within each space section (unless flatMode)
     const spaceMap: Record<string, Artifact[]> = {};
     for (const a of filteredArtifacts) (spaceMap[a.spaceId] ??= []).push(a);
-    return Object.keys(spaceMap).sort().map((id) => ({
-      spaceId: id, header: id, artifacts: sortArtifacts(spaceMap[id]),
-    }));
-  }, [filteredArtifacts, isAllSpace, sortArtifacts, groupBy]);
+    return Object.keys(spaceMap).sort().map((id) => {
+      const arts = spaceMap[id];
+      if (flatMode) {
+        return {
+          spaceId: id, header: id,
+          items: sortArtifacts(arts).map((a): DesktopItem => ({ type: "artifact", key: a.id, artifact: a })),
+        };
+      }
+      const groupMap: Record<string, Artifact[]> = {};
+      const ungroupedArts: Artifact[] = [];
+      for (const a of arts) {
+        if (a.groupName) (groupMap[a.groupName] ??= []).push(a);
+        else ungroupedArts.push(a);
+      }
+      const items: DesktopItem[] = [];
+      for (const name of Object.keys(groupMap).sort()) {
+        items.push({ type: "group", key: `group:${id}:${name}`, name, artifacts: groupMap[name] });
+      }
+      for (const a of sortArtifacts(ungroupedArts)) {
+        items.push({ type: "artifact", key: a.id, artifact: a });
+      }
+      return { spaceId: id, header: id, items };
+    });
+  }, [filteredArtifacts, isAllSpace, sortArtifacts, groupBy, flatMode]);
 
   return { orderedItems, listSections, allGridSections };
 }

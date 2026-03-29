@@ -244,14 +244,18 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
               <div key={section.spaceId} className="all-grid-section">
                 <div className="all-grid-section-header" style={{ textAlign: headerAlign }}>{section.header}</div>
                 <div className="icon-grid icon-grid--inline" style={{ justifyContent: headerAlign === "left" ? "start" : headerAlign === "right" ? "end" : "center" }}>
-                  {section.artifacts.map((a, i) => (
-                    <ArtifactIcon
-                      key={a.id}
-                      artifact={a}
-                      index={i}
-                      onClick={() => onArtifactClick(a)}
-                      onStop={onArtifactStop ? () => onArtifactStop(a) : undefined}
-                    />
+                  {section.items.map((item, i) => (
+                    item.type === "group" ? (
+                      <GroupIcon key={item.key} name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} />
+                    ) : (
+                      <ArtifactIcon
+                        key={item.key}
+                        artifact={item.artifact}
+                        index={i}
+                        onClick={() => onArtifactClick(item.artifact)}
+                        onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
+                      />
+                    )
                   ))}
                 </div>
               </div>
