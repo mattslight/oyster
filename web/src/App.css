@@ -169,6 +169,37 @@ body {
   font-weight: 500;
 }
 
+/* ── iOS-style toggle ── */
+.ios-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+.ios-toggle.on {
+  background: #7c6bff;
+}
+.ios-toggle-thumb {
+  position: absolute;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  transition: left 0.18s ease, background 0.2s ease;
+}
+.ios-toggle.on .ios-toggle-thumb {
+  left: 14px;
+  background: #fff;
+}
 
 .topbar-left {
   display: flex;

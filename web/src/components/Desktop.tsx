@@ -123,10 +123,14 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
           {!isAllSpace && (
             <div className="ctrl-group-labeled">
               <span className="ctrl-group-label">folders</span>
-              <div className="ctrl-group">
-                <button className={`view-btn filter-pill-btn${!effectiveFlatMode ? " active" : ""}`} onClick={() => setAndSaveFlatMode(false)} title="Show folders">on</button>
-                <button className={`view-btn filter-pill-btn${effectiveFlatMode ? " active" : ""}`} onClick={() => setAndSaveFlatMode(true)} title="Flatten folders">off</button>
-              </div>
+              <button
+                className={`ios-toggle${!effectiveFlatMode ? " on" : ""}`}
+                onClick={() => setAndSaveFlatMode(effectiveFlatMode)}
+                title={effectiveFlatMode ? "Show folders" : "Flatten folders"}
+                aria-pressed={!effectiveFlatMode}
+              >
+                <span className="ios-toggle-thumb" />
+              </button>
             </div>
           )}
           {isAllSpace && (
