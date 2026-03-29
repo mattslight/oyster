@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
-import { resolve, extname, basename, dirname, join, sep } from "node:path";
+import { resolve, basename, dirname, join, sep } from "node:path";
 import crypto from "node:crypto";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
+import { slugify, inferKindFromPath } from "./utils.js";
 
 // ── Config shapes (validated here, not in route handlers) ──
 
@@ -29,29 +30,10 @@ function parseJson(raw: string): Record<string, unknown> {
   }
 }
 
-// ── Kind inference (mirrors artifact-detector.ts logic) ──
-
-function inferKindFromPath(filePath: string): ArtifactKind {
-  const lower = filePath.toLowerCase();
-  if (lower.includes("dashboard") || lower.includes("diagram")) return "diagram";
-  if (lower.includes("deck") || lower.includes("slide") || lower.includes("present")) return "deck";
-  if (lower.includes("map") || lower.includes("mind")) return "map";
-  if (lower.includes("note") || lower.includes("readme")) return "notes";
-  if (lower.includes("table") || lower.includes("spreadsheet") || lower.includes("tracker")) return "table";
-  const ext = extname(lower);
-  if (ext === ".md") return "notes";
-  if (ext === ".mmd" || ext === ".mermaid") return "diagram";
-  return "app";
-}
-
 const KIND_EXT: Record<ArtifactKind, string> = {
   notes: ".md", diagram: ".mmd",
   app: ".html", deck: ".html", wireframe: ".html", table: ".html", map: ".html",
 };
-
-function slugify(str: string): string {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
 
 // ── Service ──
 

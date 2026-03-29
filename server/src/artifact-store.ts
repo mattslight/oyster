@@ -14,7 +14,7 @@ export interface ArtifactRow {
   runtime_config: string;
   group_name: string | null;
   removed_at: string | null;
-  source_origin: string;       // 'manual' | 'discovered' | 'ai_generated'
+  source_origin: "manual" | "discovered" | "ai_generated";
   source_ref: string | null;   // e.g. 'web/:app', 'README.md:notes'
   created_at: string;
   updated_at: string;
@@ -23,7 +23,7 @@ export interface ArtifactRow {
 // ── Store interface ──
 
 export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "source_origin" | "source_ref"> & {
-  source_origin?: string;
+  source_origin?: "manual" | "discovered" | "ai_generated";
   source_ref?: string | null;
 };
 

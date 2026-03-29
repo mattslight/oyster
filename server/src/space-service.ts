@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import type { SpaceStore, SpaceRow } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { Space, ScanResult } from "../../shared/types.js";
+import { slugify } from "./utils.js";
 
 const SPACE_PALETTE = [
   "#6057c4", "#3d8aaa", "#3a8f64", "#b06840",
@@ -16,11 +17,8 @@ function hashStr(str: string): number {
   return h;
 }
 
-function slugify(str: string): string {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
 function rowToSpace(row: SpaceRow): Space {
+  // ai_job_status / ai_job_error are Phase 2 scaffolding — intentionally not exposed to clients yet
   return {
     id: row.id,
     displayName: row.display_name,

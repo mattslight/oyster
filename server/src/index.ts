@@ -547,7 +547,14 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // ── Spaces API ──
 
   // GET /api/resolve-folder?name=... — search common dev dirs for a folder by name
+  // Restricted to same-origin (localhost) — probes $HOME filesystem, must not be callable cross-origin
   if (url.startsWith("/api/resolve-folder") && req.method === "GET") {
+    const origin = req.headers.origin;
+    if (origin && !origin.startsWith("http://localhost") && !origin.startsWith("http://127.0.0.1")) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
     const folderName = new URL(url, "http://localhost").searchParams.get("name") ?? "";
     if (!folderName) {
       res.writeHead(400, { "Content-Type": "application/json" });
