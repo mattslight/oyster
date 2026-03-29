@@ -50,6 +50,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
     groupBy, setAndSaveGroupBy,
     headerAlign, setAndSaveHeaderAlign,
     activeKind, selectKind,
+    flatMode, setAndSaveFlatMode, effectiveFlatMode,
     kindDropdownOpen, setKindDropdownOpen,
     handleColSort,
     uniqueKinds,
@@ -58,7 +59,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
 
   // ── Derived sections (sorted/grouped item lists for grid and list views) ──
   const { orderedItems, listSections, allGridSections } = useDesktopSections({
-    filteredArtifacts, isAllSpace, sortMode, sortDir, groupBy, space,
+    filteredArtifacts, isAllSpace, sortMode, sortDir, groupBy, space, flatMode: effectiveFlatMode,
   });
 
   // ── Drag-to-reorder ──
@@ -119,6 +120,15 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
               )}
             </div>
           </div>
+          {!isAllSpace && (
+            <div className="ctrl-group-labeled">
+              <span className="ctrl-group-label">folders</span>
+              <div className="ctrl-group">
+                <button className={`view-btn filter-pill-btn${!effectiveFlatMode ? " active" : ""}`} onClick={() => setAndSaveFlatMode(false)} title="Show folders">on</button>
+                <button className={`view-btn filter-pill-btn${effectiveFlatMode ? " active" : ""}`} onClick={() => setAndSaveFlatMode(true)} title="Flatten folders">off</button>
+              </div>
+            </div>
+          )}
           {isAllSpace && (
             <>
               <div className="ctrl-group-labeled">

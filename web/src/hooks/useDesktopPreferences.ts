@@ -7,6 +7,7 @@ const SORT_KEY_PREFIX = "oyster-sort-mode:";
 const GROUP_BY_KEY = "oyster-group-by";
 const HEADER_ALIGN_KEY = "oyster-header-align";
 const ACTIVE_KIND_KEY = "oyster-active-kind";
+const FLAT_MODE_KEY_PREFIX = "oyster-flat-mode:";
 
 export type SortMode = "alpha" | "kind" | "timeline" | "space" | "group";
 export type SortDir = "asc" | "desc";
@@ -53,12 +54,17 @@ export function useDesktopPreferences(space: string, artifacts: Artifact[]) {
 
   const [activeKind, setActiveKind] = useState<string | null>(() => lsGet(ACTIVE_KIND_KEY));
 
+  const [flatMode, setFlatMode] = useState<boolean>(() =>
+    lsGet(FLAT_MODE_KEY_PREFIX + space) === "true",
+  );
+
   const [kindDropdownOpen, setKindDropdownOpen] = useState(false);
 
-  // Sync sort mode when space tab changes
+  // Sync sort mode + flat mode when space tab changes
   useEffect(() => {
     const s = lsGet(SORT_KEY_PREFIX + space);
     setSortMode(s === "alpha" || s === "kind" || s === "timeline" ? s : "alpha");
+    setFlatMode(lsGet(FLAT_MODE_KEY_PREFIX + space) === "true");
   }, [space]);
 
   // Close kind dropdown on outside click
@@ -77,6 +83,9 @@ export function useDesktopPreferences(space: string, artifacts: Artifact[]) {
   }
   function setAndSaveSortDir(dir: SortDir) {
     setSortDir(dir); lsSet(SORT_DIR_KEY, dir);
+  }
+  function setAndSaveFlatMode(value: boolean) {
+    setFlatMode(value); lsSet(FLAT_MODE_KEY_PREFIX + space, String(value));
   }
   function setAndSaveGroupBy(mode: GroupBy) {
     setGroupBy(mode); lsSet(GROUP_BY_KEY, mode);
@@ -107,6 +116,9 @@ export function useDesktopPreferences(space: string, artifacts: Artifact[]) {
     [artifacts, activeKind],
   );
 
+  // When a kind filter is active, always flatten — folders add no value
+  const effectiveFlatMode = flatMode || !!activeKind;
+
   return {
     viewMode, setAndSaveViewMode,
     sortMode, setAndSaveSortMode,
@@ -114,6 +126,7 @@ export function useDesktopPreferences(space: string, artifacts: Artifact[]) {
     groupBy, setAndSaveGroupBy,
     headerAlign, setAndSaveHeaderAlign,
     activeKind, selectKind,
+    flatMode, setAndSaveFlatMode, effectiveFlatMode,
     kindDropdownOpen, setKindDropdownOpen,
     handleColSort,
     uniqueKinds,

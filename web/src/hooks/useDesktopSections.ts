@@ -40,9 +40,10 @@ interface Params {
   sortDir: SortDir;
   groupBy: GroupBy;
   space: string;
+  flatMode: boolean;
 }
 
-export function useDesktopSections({ filteredArtifacts, isAllSpace, sortMode, sortDir, groupBy, space }: Params) {
+export function useDesktopSections({ filteredArtifacts, isAllSpace, sortMode, sortDir, groupBy, space, flatMode }: Params) {
   const dir = sortDir === "asc" ? 1 : -1;
 
   const sortArtifacts = useCallback((arts: Artifact[]): Artifact[] => {
@@ -80,14 +81,23 @@ export function useDesktopSections({ filteredArtifacts, isAllSpace, sortMode, so
 
   const baseItems = useMemo<DesktopItem[]>(() => {
     const items: DesktopItem[] = [];
-    for (const name of Object.keys(groups).sort()) {
-      items.push({ type: "group", key: `group:${name}`, name, artifacts: groups[name] });
+    if (flatMode) {
+      // Flatten: all grouped artifacts render individually, no group cards
+      for (const name of Object.keys(groups).sort()) {
+        for (const artifact of groups[name]) {
+          items.push({ type: "artifact", key: artifact.id, artifact });
+        }
+      }
+    } else {
+      for (const name of Object.keys(groups).sort()) {
+        items.push({ type: "group", key: `group:${name}`, name, artifacts: groups[name] });
+      }
     }
     for (const artifact of ungrouped) {
       items.push({ type: "artifact", key: artifact.id, artifact });
     }
     return items;
-  }, [groups, ungrouped]);
+  }, [groups, ungrouped, flatMode]);
 
   const orderedItems = useMemo(() => {
     if (sortMode === "alpha") return applyOrder(baseItems, getStoredOrder(space));
@@ -130,7 +140,7 @@ export function useDesktopSections({ filteredArtifacts, isAllSpace, sortMode, so
       })) as Section[];
     }
 
-    if (sortMode === "group") {
+    if (sortMode === "group" && !flatMode) {
       const groupMap: Record<string, Artifact[]> = {};
       const rest: Artifact[] = [];
       for (const a of filteredArtifacts) {
@@ -182,7 +192,7 @@ export function useDesktopSections({ filteredArtifacts, isAllSpace, sortMode, so
     return (["Today", "This week", "This month", "Earlier"] as const)
       .filter((b) => bucketMap[b]?.length)
       .map((b) => ({ key: b, header: b, artifacts: bucketMap[b] })) as Section[];
-  }, [filteredArtifacts, isAllSpace, sortMode, sortArtifacts, groupBy]);
+  }, [filteredArtifacts, isAllSpace, sortMode, sortArtifacts, groupBy, flatMode]);
 
   const allGridSections = useMemo(() => {
     if (!isAllSpace || groupBy === "none") return null;
