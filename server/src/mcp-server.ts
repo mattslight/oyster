@@ -6,7 +6,13 @@ import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { IconGenerator } from "./icon-generator.js";
 import type { SpaceService } from "./space-service.js";
-import { ARTIFACT_KINDS } from "../../shared/types.js";
+import type { ArtifactKind } from "../../shared/types.js";
+
+// Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
+// `satisfies` ensures this stays in sync with the ArtifactKind union at compile time.
+const ARTIFACT_KINDS = [
+  "app", "deck", "diagram", "map", "notes", "table", "wireframe",
+] as const satisfies readonly ArtifactKind[];
 
 const TEXT_EXTS = new Set([".md", ".mmd", ".mermaid", ".html", ".htm", ".txt", ".json", ".csv"]);
 
