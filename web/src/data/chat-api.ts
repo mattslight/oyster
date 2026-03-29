@@ -97,7 +97,7 @@ export async function replyToQuestion(
 
 export async function loadMessages(
   sessionId: string
-): Promise<Array<{ info: { id: string; role: string }; parts: Array<{ type: string; text?: string }> }>> {
+): Promise<Array<{ info: { id: string; role: "user" | "assistant" }; parts: Array<Record<string, unknown>> }>> {
   const res = await fetch(`/api/chat/session/${sessionId}/message`);
   if (!res.ok) return [];
   return res.json();

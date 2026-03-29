@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
-import { slugify, inferKindFromPath } from "./utils.js";
+import { slugify, inferKindFromPath, toArtifactKind } from "./utils.js";
 
 // ── Config shapes (validated here, not in route handlers) ──
 
@@ -292,7 +292,7 @@ export class ArtifactService {
       return {
         id: row.id,
         label: row.label,
-        artifactKind: row.artifact_kind as ArtifactKind,
+        artifactKind: toArtifactKind(row.artifact_kind),
         spaceId: row.space_id,
         status,
         runtimeKind: row.runtime_kind,
@@ -315,7 +315,7 @@ export class ArtifactService {
     return {
       id: row.id,
       label: row.label,
-      artifactKind: row.artifact_kind as ArtifactKind,
+      artifactKind: toArtifactKind(row.artifact_kind),
       spaceId: row.space_id,
       status: "ready",
       runtimeKind: row.runtime_kind,

@@ -75,7 +75,7 @@ export function useChatSession() {
                 msgParts.push({
                   type: "tool",
                   tool: {
-                    id: (p.id || p.callID || crypto.randomUUID()) as string,
+                    id: String(p.id || p.callID || crypto.randomUUID()),
                     toolName,
                     label: TOOL_LABELS[toolName] || toolName || "working",
                     hint: extractToolHint(p as Record<string, unknown>),
@@ -92,7 +92,7 @@ export function useChatSession() {
             if (content || msgParts.length > 0) {
               restored.push({
                 id: msg.info.id,
-                role: msg.info.role as "user" | "assistant",
+                role: msg.info.role,
                 content: content || "",
                 parts: msgParts.length > 0 ? msgParts : undefined,
               });

@@ -1,5 +1,30 @@
-import type { ArtifactKind } from "../../shared/types.js";
+import type { ArtifactKind, ScanStatus } from "../../shared/types.js";
 import { extname } from "node:path";
+
+// ReadonlySet<string> lets .has() accept any string without casting.
+// The `satisfies` on the array literal keeps the sets in sync with their union types at compile time.
+const VALID_ARTIFACT_KINDS: ReadonlySet<string> = new Set(
+  ["app", "deck", "diagram", "map", "notes", "table", "wireframe"] as const satisfies readonly ArtifactKind[],
+);
+const VALID_SCAN_STATUSES: ReadonlySet<string> = new Set(
+  ["none", "scanning", "complete", "error"] as const satisfies readonly ScanStatus[],
+);
+
+export function isArtifactKind(value: string): value is ArtifactKind {
+  return VALID_ARTIFACT_KINDS.has(value);
+}
+
+export function toArtifactKind(value: string): ArtifactKind {
+  return isArtifactKind(value) ? value : "app";
+}
+
+function isScanStatus(value: string): value is ScanStatus {
+  return VALID_SCAN_STATUSES.has(value);
+}
+
+export function toScanStatus(value: string): ScanStatus {
+  return isScanStatus(value) ? value : "none";
+}
 
 export function slugify(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

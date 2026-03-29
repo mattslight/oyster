@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import type { SpaceStore, SpaceRow } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { Space, ScanResult } from "../../shared/types.js";
-import { slugify } from "./utils.js";
+import { slugify, toScanStatus } from "./utils.js";
 
 const SPACE_PALETTE = [
   "#6057c4", "#3d8aaa", "#3a8f64", "#b06840",
@@ -24,7 +24,7 @@ function rowToSpace(row: SpaceRow): Space {
     displayName: row.display_name,
     repoPath: row.repo_path,
     color: row.color,
-    scanStatus: row.scan_status as Space["scanStatus"],
+    scanStatus: toScanStatus(row.scan_status),
     scanError: row.scan_error,
     lastScannedAt: row.last_scanned_at,
     lastScanSummary: row.last_scan_summary ? JSON.parse(row.last_scan_summary) : null,
