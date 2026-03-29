@@ -6,10 +6,7 @@ import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { IconGenerator } from "./icon-generator.js";
 import type { SpaceService } from "./space-service.js";
-
-const ARTIFACT_KINDS = [
-  "app", "deck", "diagram", "map", "notes", "table", "wireframe",
-] as const;
+import { ARTIFACT_KINDS } from "../../shared/types.js";
 
 const TEXT_EXTS = new Set([".md", ".mmd", ".mermaid", ".html", ".htm", ".txt", ".json", ".csv"]);
 

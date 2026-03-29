@@ -24,7 +24,9 @@
       "Bash(sqlite3:*)",
       "Bash(grep -r \"X-Frame-Options\\\\|Content-Security-Policy\\\\|X-Content-Type-Options\" /Users/Matthew.Slight/Dev/oyster-os/server --include=*.ts --include=*.js)",
       "Bash(grep -r \"sandbox\\\\|allow=\" /Users/Matthew.Slight/Dev/oyster-os/web/src --include=*.tsx --include=*.ts)",
-      "Bash(grep -r iframe /Users/Matthew.Slight/Dev/oyster-os/web/src --include=*.tsx -A 2 -B 2)"
+      "Bash(grep -r iframe /Users/Matthew.Slight/Dev/oyster-os/web/src --include=*.tsx -A 2 -B 2)",
+      "Bash(git stash:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

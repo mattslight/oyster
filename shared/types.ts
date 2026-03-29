@@ -1,11 +1,12 @@
-export type ArtifactKind =
-  | "app"
-  | "deck"
-  | "diagram"
-  | "map"
-  | "notes"
-  | "table"
-  | "wireframe";
+export const ARTIFACT_KINDS = [
+  "app", "deck", "diagram", "map", "notes", "table", "wireframe",
+] as const;
+
+export type ArtifactKind = typeof ARTIFACT_KINDS[number];
+
+export function shouldOpenFullscreen(kind: ArtifactKind): boolean {
+  return kind === "deck" || kind === "app" || kind === "diagram";
+}
 
 export type ArtifactStatus =
   | "generating"

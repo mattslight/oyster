@@ -56,12 +56,6 @@ export function useChatEvents({
     const unsubscribe = subscribeToEvents((event: ChatEvent) => {
       const props = event.properties;
 
-      // Debug: log events, filtering out noisy ones
-      const noisy = new Set(["message.part.delta", "server.heartbeat", "session.diff", "session.updated"]);
-      if (!noisy.has(event.type)) {
-        console.log("[oyster-event]", event.type, JSON.stringify(props).slice(0, 200));
-      }
-
       // Only handle events for our session
       const eventSessionId =
         (props.sessionID as string) ||

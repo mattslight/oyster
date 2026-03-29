@@ -538,8 +538,6 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     }));
   }, [filteredArtifacts, isAllSpace, sortArtifacts, groupBy]);
 
-  const effectiveViewMode = viewMode;
-
   return (
     <div className="desktop">
       <div className="desktop-bg">
@@ -659,15 +657,15 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
           </div>
         ) : (
           <div className="view-toggle-float">
-            <button className={`view-btn${effectiveViewMode === "grid" ? " active" : ""}`} onClick={() => setAndSaveViewMode("grid")} title="Grid">
+            <button className={`view-btn${viewMode === "grid" ? " active" : ""}`} onClick={() => setAndSaveViewMode("grid")} title="Grid">
               <LayoutGrid size={13} />
             </button>
-            <button className={`view-btn${effectiveViewMode === "list" ? " active" : ""}`} onClick={() => setAndSaveViewMode("list")} title="List">
+            <button className={`view-btn${viewMode === "list" ? " active" : ""}`} onClick={() => setAndSaveViewMode("list")} title="List">
               <List size={13} />
             </button>
           </div>
         )}
-        {effectiveViewMode === "list" ? (
+        {viewMode === "list" ? (
           <div className={`list-view${isAllSpace && groupBy === "kind" ? " list-view--no-badge" : ""}${!isAllSpace || groupBy === "space" ? " list-view--no-space" : ""}`}>
             <div className="list-col-headers">
               <span />

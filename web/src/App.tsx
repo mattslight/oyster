@@ -13,6 +13,7 @@ import {
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/artifacts-api";
+import { shouldOpenFullscreen } from "../../shared/types";
 import { fetchSpaces } from "./data/spaces-api";
 import type { Space } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
@@ -72,7 +73,7 @@ export default function App() {
       if (artifactId) {
         const artifact = a.find((x) => x.id === artifactId);
         if (artifact) {
-          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app" || artifact.artifactKind === "diagram";
+          const fullscreen = shouldOpenFullscreen(artifact.artifactKind);
           dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
         }
       }
@@ -101,7 +102,7 @@ export default function App() {
         const artifact = artifacts.find((a) => a.id === artifactId);
         if (artifact) {
           const hash = window.location.hash || "";
-          const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app" || artifact.artifactKind === "diagram";
+          const fullscreen = shouldOpenFullscreen(artifact.artifactKind);
           setViewerHash(hash);
           dispatch({ type: "CLOSE_ALL_VIEWERS" });
           dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
@@ -155,7 +156,7 @@ export default function App() {
       window.open(artifact.url, artifact.id, "width=1280,height=900");
     } else {
       // Static artifact (generated app, doc, deck, diagram, etc.) — open in viewer
-      const fullscreen = artifact.artifactKind === "deck" || artifact.artifactKind === "app" || artifact.artifactKind === "diagram";
+      const fullscreen = shouldOpenFullscreen(artifact.artifactKind);
       dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
       setViewerHash("");
       window.history.pushState(null, "", `/s/${activeSpace}/a/${artifact.id}`);
