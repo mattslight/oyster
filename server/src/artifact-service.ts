@@ -83,7 +83,7 @@ export class ArtifactService {
     if (!row || row.runtime_kind !== "local_process") return undefined;
     const config = parseJson(row.runtime_config);
     const command = config.command as string | undefined;
-    const cwd = (config.cwd as string | undefined) || (parseJson(row.storage_config) as FilesystemStorageConfig).path;
+    const cwd = (config.cwd as string | undefined) || (JSON.parse(row.storage_config) as { path?: string }).path;
     const port = config.port as number | undefined;
     if (!command || !cwd || !port) return undefined;
     return { command, cwd, port };
@@ -93,7 +93,7 @@ export class ArtifactService {
     const row = this.store.getById(id);
     if (!row) return undefined;
     if (row.storage_kind !== "filesystem") return undefined;
-    const storage = parseJson(row.storage_config) as FilesystemStorageConfig;
+    const storage = JSON.parse(row.storage_config) as { path?: string };
     return storage.path;
   }
 

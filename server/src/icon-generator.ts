@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fal } from "@fal-ai/client";
+import type { IconStatus } from "../../shared/types.js";
 
 interface IconJob {
   artifactId: string;
@@ -12,7 +13,7 @@ interface IconJob {
 
 type ArtifactUpdater = (
   id: string,
-  fields: { icon?: string; iconStatus?: string }
+  fields: { icon?: string; iconStatus?: IconStatus }
 ) => void;
 
 export class IconGenerator {

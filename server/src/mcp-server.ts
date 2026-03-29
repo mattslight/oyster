@@ -247,7 +247,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         );
         return {
           content: [{ type: "text" as const, text: JSON.stringify(artifact, null, 2) }],
-          structuredContent: artifact as Record<string, unknown>,
+          structuredContent: { ...artifact },
         };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
@@ -275,7 +275,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(updated, null, 2) }],
-          structuredContent: updated as Record<string, unknown>,
+          structuredContent: { ...updated },
         };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };

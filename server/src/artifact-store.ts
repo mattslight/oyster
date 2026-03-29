@@ -22,7 +22,7 @@ export interface ArtifactRow {
 
 // ── Store interface ──
 
-export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "source_origin" | "source_ref"> & {
+export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref"> & {
   source_origin?: "manual" | "discovered" | "ai_generated";
   source_ref?: string | null;
 };
