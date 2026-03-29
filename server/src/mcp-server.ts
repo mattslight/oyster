@@ -43,9 +43,11 @@ artifacts (interactive documents, apps, diagrams, etc.) live as launchable icons
 - \`url\`: how to open it (relative path for static files, localhost:PORT for running apps)
 - \`group\`: optional visual group on the desktop surface
 
-**Spaces** — named workspaces (tabs) the user switches between. Spaces are emergent:
-they exist because artifacts reference them. There is no separate spaces table.
+**Spaces** — named workspaces (tabs) the user switches between. Each space has an ID,
+display name, optional repo path, and scan status. Use \`list_spaces\` to enumerate them.
 Common spaces: "home" (default), plus one per project (e.g. "tokinvest", "research").
+Spaces can be onboarded from a local repo — use \`onboard_space\` to create a space and
+scan it for artifacts in one step, or \`scan_space\` to rescan an existing space.
 
 **Artifact kinds**:
 - \`app\` — a local web app (React, Vite, etc.) that runs as a process on a port
@@ -63,10 +65,17 @@ Common spaces: "home" (default), plus one per project (e.g. "tokinvest", "resear
 
 ## What agents should do
 
-Use \`create_artifact\` to write a new file and register it in one step.
-Use \`read_artifact\` to read the content of an existing static file artifact.
-Use \`list_spaces\` and \`list_artifacts\` to understand what already exists.
-Use \`update_artifact\` to rename, reassign to a different space, or change the group.
+**Onboarding a project:**
+1. Call \`list_spaces\` — check if the space already exists (avoid duplicates).
+2. Call \`onboard_space\` with the project name and repo path — creates the space and scans for apps, docs, and diagrams in one step.
+3. Call \`list_artifacts\` with the new space_id to see what was discovered.
+4. To rescan later (e.g. after new files are added), call \`scan_space\`.
+
+**Working with artifacts:**
+- Use \`create_artifact\` to write a new file and register it in one step.
+- Use \`read_artifact\` to read the content of an existing static file artifact.
+- Use \`update_artifact\` to rename, reassign to a different space, or change the group.
+- Use \`remove_artifact\` to hide an artifact from the surface (reversible).
 
 Do NOT read or write the SQLite database (userland/oyster.db) directly.
 Files you create must live under: ${userlandDir}/
@@ -120,6 +129,26 @@ export function createMcpServer(deps: McpDeps): McpServer {
             type: "text" as const,
             text: JSON.stringify({ space_id: space.id, scan_summary: scanResult }, null, 2),
           }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── scan_space ──
+
+  server.tool(
+    "scan_space",
+    "Rescan an existing space's repo for new apps, docs, and diagrams. Already-registered artifacts are skipped (idempotent). Use this after adding new files to a repo that was previously onboarded.",
+    {
+      space_id: z.string().describe("ID of the space to scan"),
+    },
+    async ({ space_id }) => {
+      try {
+        const result = await deps.spaceService.scanSpace(space_id);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
         };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
