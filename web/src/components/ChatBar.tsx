@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { spaceColor } from "../utils/spaceColor";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { sendMessage, replyToQuestion } from "../data/chat-api";
 import { useChatSession } from "../hooks/useChatSession";
 import { useChatEvents } from "../hooks/useChatEvents";
@@ -198,7 +199,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
               {msg.role === "assistant" && msg.parts && msg.parts.length > 0 ? (
                 msg.parts.map((part, pi) =>
                   part.type === "text" && part.text ? (
-                    <div key={pi} className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(part.text) as string }} />
+                    <div key={pi} className="chat-markdown" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(part.text) as string) }} />
                   ) : part.type === "tool" && part.tool ? (
                     <ToolBlock key={part.tool.id} tool={part.tool} />
                   ) : part.type === "reasoning" && part.text ? (
@@ -206,7 +207,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                   ) : null
                 )
               ) : msg.role === "assistant" && msg.content ? (
-                <div className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) as string }} />
+                <div className="chat-markdown" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(msg.content) as string) }} />
               ) : (
                 msg.content
               )}
