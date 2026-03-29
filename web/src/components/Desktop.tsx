@@ -120,19 +120,17 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
               )}
             </div>
           </div>
-          {!isAllSpace && (
-            <div className="ctrl-group-labeled">
-              <span className="ctrl-group-label">folders</span>
-              <button
-                className={`ios-toggle${!effectiveFlatMode ? " on" : ""}`}
-                onClick={() => setAndSaveFlatMode(effectiveFlatMode)}
-                title={effectiveFlatMode ? "Show folders" : "Flatten folders"}
-                aria-pressed={!effectiveFlatMode}
-              >
-                <span className="ios-toggle-thumb" />
-              </button>
-            </div>
-          )}
+          <div className="ctrl-group-labeled">
+            <span className="ctrl-group-label">folders</span>
+            <button
+              className={`ios-toggle${!effectiveFlatMode ? " on" : ""}`}
+              onClick={() => setAndSaveFlatMode(effectiveFlatMode)}
+              title={effectiveFlatMode ? "Show folders" : "Flatten folders"}
+              aria-pressed={!effectiveFlatMode}
+            >
+              <span className="ios-toggle-thumb" />
+            </button>
+          </div>
           {isAllSpace && (
             <>
               <div className="ctrl-group-labeled">
