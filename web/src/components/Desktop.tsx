@@ -240,7 +240,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                     {(!isAllSpace || groupBy !== "kind") && <span className="list-row-badge">{a.artifactKind}</span>}
                     {isAllSpace && groupBy !== "space" && (() => {
                       const c = spaceColor(a.spaceId);
-                      return <span className="list-row-space" style={{ color: c, background: `${c}28` }}>{a.spaceId}</span>;
+                      return <span className="list-row-space" style={{ color: "rgba(255,255,255,0.7)", background: `${c}40` }}>{a.spaceId}</span>;
                     })()}
                   </div>
                 ))}
