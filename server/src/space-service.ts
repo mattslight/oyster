@@ -24,6 +24,7 @@ function rowToSpace(row: SpaceRow): Space {
     displayName: row.display_name,
     repoPath: row.repo_path,
     color: row.color,
+    parentId: row.parent_id,
     scanStatus: toScanStatus(row.scan_status),
     scanError: row.scan_error,
     lastScannedAt: row.last_scanned_at,
@@ -73,7 +74,7 @@ export class SpaceService {
 
     const color = SPACE_PALETTE[hashStr(id) % SPACE_PALETTE.length];
     this.spaceStore.insert({
-      id, display_name: displayName, repo_path: repoPath, color,
+      id, display_name: displayName, repo_path: repoPath, color, parent_id: null,
       scan_status: "none", scan_error: null, last_scanned_at: null,
       last_scan_summary: null, ai_job_status: null, ai_job_error: null,
     });

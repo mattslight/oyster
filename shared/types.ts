@@ -47,6 +47,7 @@ export interface Space {
   displayName: string;
   repoPath: string | null;
   color: string | null;
+  parentId: string | null;
   scanStatus: ScanStatus;
   scanError: string | null;
   lastScannedAt: string | null;
