@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-03-30
+
+### View toggle — always visible alongside kind filter
+
+- View toggle (grid/list) now floats next to the kind filter pill instead of being replaced by it
+- Filter pill simplified: "Showing" label removed — just `APPS ▾ ✕`
+- Toggle and pill share a `.filter-bar` flex wrapper, centered at the top of the surface
+- Kind switcher dropdown (▾) only shown when multiple kinds exist in the space
+- Fixed bug: clicking a kind option in the dropdown had no effect — `pointerdown` outside-click handler was unmounting the dropdown before the `click` could fire; fixed by stopping propagation on dropdown option `pointerdown`
+
 ## 2026-03-29
 
 ### Add Space — spaces as first-class entities with wizard, scanner, and MCP tool

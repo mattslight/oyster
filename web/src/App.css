@@ -233,13 +233,20 @@ body {
   opacity: 0.45;
 }
 
-/* ── Floating view toggle ── */
-.view-toggle-float {
+/* ── Filter bar (wraps filter notice + view toggle) ── */
+.filter-bar {
   position: fixed;
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 102;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Floating view toggle ── */
+.view-toggle-float {
   display: flex;
   align-items: center;
   gap: 1px;
@@ -248,11 +255,6 @@ body {
 
 /* ── Filter notice ── */
 .filter-notice {
-  position: fixed;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 102;
   display: flex;
   align-items: center;
   gap: 6px;

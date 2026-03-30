@@ -165,34 +165,41 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
       </div>
 
       <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
-        {activeKind ? (
-          <div className="filter-notice">
-            <span>Showing</span>
-            <div className="filter-notice-kind-wrap">
-              <button
-                className="filter-notice-kind"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => setKindDropdownOpen((v) => !v)}
-              >
-                {kindLabel(activeKind)} ▾
-              </button>
-              {kindDropdownOpen && (
-                <div className="filter-kind-dropdown">
-                  {uniqueKinds.filter((k) => k !== activeKind).map((k) => (
+        <div className="filter-bar">
+          {activeKind && (
+            <div className="filter-notice">
+              <div className="filter-notice-kind-wrap">
+                {uniqueKinds.length > 1 ? (
+                  <>
                     <button
-                      key={k}
-                      className="filter-kind-option"
-                      onClick={() => { selectKind(k); setKindDropdownOpen(false); }}
+                      className="filter-notice-kind"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => setKindDropdownOpen((v) => !v)}
                     >
-                      {kindLabel(k)}
+                      {kindLabel(activeKind)} ▾
                     </button>
-                  ))}
-                </div>
-              )}
+                    {kindDropdownOpen && (
+                      <div className="filter-kind-dropdown">
+                        {uniqueKinds.filter((k) => k !== activeKind).map((k) => (
+                          <button
+                            key={k}
+                            className="filter-kind-option"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => { selectKind(k); setKindDropdownOpen(false); }}
+                          >
+                            {kindLabel(k)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span className="filter-notice-kind">{kindLabel(activeKind)}</span>
+                )}
+              </div>
+              <button className="filter-notice-clear" onClick={() => { selectKind(null); setKindDropdownOpen(false); }}>✕</button>
             </div>
-            <button className="filter-notice-clear" onClick={() => { selectKind(null); setKindDropdownOpen(false); }}>✕</button>
-          </div>
-        ) : (
+          )}
           <div className="view-toggle-float">
             <button className={`view-btn${viewMode === "grid" ? " active" : ""}`} onClick={() => setAndSaveViewMode("grid")} title="Grid">
               <LayoutGrid size={13} />
@@ -201,7 +208,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
               <List size={13} />
             </button>
           </div>
-        )}
+        </div>
 
         {viewMode === "list" ? (
           <div className={`list-view${isAllSpace && groupBy === "kind" ? " list-view--no-badge" : ""}${!isAllSpace || groupBy === "space" ? " list-view--no-space" : ""}`}>
