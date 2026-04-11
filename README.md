@@ -1,6 +1,6 @@
 # Oyster
 
-A modern OS for knowledge work powered by LLM — connect your projects, control everything from a prompt / MCP
+A modern OS for knowledge work powered by MCP — connect your projects, control everything from a prompt. Bring your own LLM. Install as easy as `npm install oyster-os`
 
 Open the right thing, switch context quickly, and organise work from one chat bar.  
 Oyster is local, AI-first, visual, and built for people juggling multiple projects, tools, and sessions.
