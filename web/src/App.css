@@ -735,10 +735,14 @@ body {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.chatbar-messages {
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
 .chatbar-messages.slash-dimmed {
-  opacity: 0.3;
+  opacity: 0.25;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  filter: blur(2px);
 }
 
 .slash-cmd {
