@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
-import { extname, dirname, join } from "node:path";
+import { existsSync, readFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { extname, dirname, join, resolve, basename } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
@@ -16,12 +16,107 @@ const ARTIFACT_KINDS = [
 
 const TEXT_EXTS = new Set([".md", ".mmd", ".mermaid", ".html", ".htm", ".txt", ".json", ".csv"]);
 
+const CONTEXT_PRIORITY_FILES = [
+  "README.md", "CLAUDE.md", "AGENTS.md", "package.json", "tsconfig.json",
+  "pyproject.toml", "Cargo.toml", "go.mod", ".opencode/agents",
+];
+const CONTEXT_SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage", ".cache"]);
+const CONTEXT_MAX_TOKENS = 30_000;
+const CHARS_PER_TOKEN = 4;
+
+interface RepoFile { path: string; relPath: string; size: number }
+
+function walkRepoFiles(dir: string, root: string, depth = 0, acc: RepoFile[] = []): RepoFile[] {
+  if (depth > 5) return acc;
+  let entries: string[];
+  try { entries = readdirSync(dir); } catch { return acc; }
+  for (const entry of entries) {
+    const abs = join(dir, entry);
+    let st: ReturnType<typeof statSync>;
+    try { st = statSync(abs); } catch { continue; }
+    if (st.isDirectory()) {
+      if (!CONTEXT_SKIP_DIRS.has(entry)) walkRepoFiles(abs, root, depth + 1, acc);
+    } else if (TEXT_EXTS.has(extname(entry).toLowerCase())) {
+      acc.push({ path: abs, relPath: abs.slice(root.length + 1), size: st.size });
+    }
+  }
+  return acc;
+}
+
+function gatherRepoContext(repoPath: string): { content: string; suggestions: Array<{ label: string; kind: string; evidence_paths: string[] }> } {
+  const root = resolve(repoPath);
+  if (!existsSync(root)) return { content: `Repo path not found: ${root}`, suggestions: [] };
+
+  const allFiles = walkRepoFiles(root, root);
+
+  // Sort: priority files first, then by path
+  allFiles.sort((a, b) => {
+    const aPri = CONTEXT_PRIORITY_FILES.findIndex(p => a.relPath === p || a.relPath.startsWith(p + "/")) >= 0 ? 0 : 1;
+    const bPri = CONTEXT_PRIORITY_FILES.findIndex(p => b.relPath === p || b.relPath.startsWith(p + "/")) >= 0 ? 0 : 1;
+    if (aPri !== bPri) return aPri - bPri;
+    return a.relPath.localeCompare(b.relPath);
+  });
+
+  const sections: string[] = [];
+  let tokenBudget = CONTEXT_MAX_TOKENS;
+  const includedPaths: string[] = [];
+
+  for (const file of allFiles) {
+    if (tokenBudget <= 0) break;
+    try {
+      const raw = readFileSync(file.path, "utf8");
+      const tokens = Math.ceil(raw.length / CHARS_PER_TOKEN);
+      if (tokens > tokenBudget) continue;
+      sections.push(`### ${file.relPath}\n\`\`\`\n${raw}\n\`\`\``);
+      includedPaths.push(file.relPath);
+      tokenBudget -= tokens;
+    } catch { /* unreadable */ }
+  }
+
+  // Derive suggestions from what we found
+  const suggestions: Array<{ label: string; kind: string; evidence_paths: string[] }> = [];
+
+  // README → notes
+  const readmePaths = includedPaths.filter(p => basename(p).toLowerCase() === "readme.md");
+  for (const p of readmePaths) suggestions.push({ label: basename(p, ".md"), kind: "notes", evidence_paths: [p] });
+
+  // .mmd / .mermaid → diagram
+  const diagramPaths = includedPaths.filter(p => p.endsWith(".mmd") || p.endsWith(".mermaid"));
+  for (const p of diagramPaths) suggestions.push({ label: basename(p).replace(/\.[^.]+$/, ""), kind: "diagram", evidence_paths: [p] });
+
+  // Directories with package.json + dev/start script → app
+  const pkgPaths = allFiles.filter(f => basename(f.path) === "package.json");
+  for (const pkg of pkgPaths) {
+    try {
+      const parsed = JSON.parse(readFileSync(pkg.path, "utf8"));
+      if (parsed.scripts?.dev || parsed.scripts?.start) {
+        const dir = pkg.path.slice(root.length + 1).replace(/\/package\.json$/, "") || ".";
+        suggestions.push({ label: parsed.name ?? basename(dir), kind: "app", evidence_paths: [pkg.relPath] });
+      }
+    } catch { /* bad json */ }
+  }
+
+  const skippedCount = allFiles.length - includedPaths.length;
+  const header = `# Repo context: ${root}\nFiles included: ${includedPaths.length} / ${allFiles.length} (${skippedCount} skipped — over budget or unreadable)\n\n`;
+
+  return { content: header + sections.join("\n\n"), suggestions };
+}
+
+interface UiCommand {
+  version: 1;
+  command: string;
+  payload: unknown;
+  correlationId?: string;
+}
+
 interface McpDeps {
   store: ArtifactStore;
   service: ArtifactService;
   userlandDir: string;
   iconGenerator: IconGenerator;
   spaceService: SpaceService;
+  pendingReveals: Set<string>;
+  broadcastUiEvent: (event: UiCommand) => void;
 }
 
 function buildContext(userlandDir: string): string {
@@ -70,9 +165,11 @@ scan it for artifacts in one step, or \`scan_space\` to rescan an existing space
 2. Call \`onboard_space\` with the project name and repo path — creates the space and scans for apps, docs, and diagrams in one step.
 3. Call \`list_artifacts\` with the new space_id to see what was discovered.
 4. To rescan later (e.g. after new files are added), call \`scan_space\`.
+5. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
 
 **Working with artifacts:**
 - Use \`create_artifact\` to write a new file and register it in one step.
+- After \`create_artifact\`, always call \`reveal_artifact\` with the new artifact's id — this switches the user's desktop to the right space and highlights the icon so they know where it landed.
 - Use \`read_artifact\` to read the content of an existing static file artifact.
 - Use \`update_artifact\` to rename, reassign to a different space, or change the group.
 - Use \`remove_artifact\` to hide an artifact from the surface (reversible).
@@ -156,22 +253,50 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
   );
 
+  // ── gather_repo_context ──
+
+  server.tool(
+    "gather_repo_context",
+    "Read key files from a local repo and return them as a structured context payload, along with deterministic artifact suggestions (READMEs, diagrams, apps detected from package.json). Stays within a ~30k token budget. Does NOT create artifacts — call create_artifact separately if you want to persist any output.",
+    {
+      repo_path: z.string().describe("Absolute local path to the repository root"),
+    },
+    async ({ repo_path }) => {
+      try {
+        const result = gatherRepoContext(repo_path);
+        return {
+          content: [{ type: "text" as const, text: result.content }],
+          structuredContent: { suggestions: result.suggestions },
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
   // ── list_artifacts ──
 
   server.tool(
     "list_artifacts",
-    "List artifacts (desktop icons) on the Oyster surface, optionally filtered by space or kind. Returns id, label, kind, space, status, url, group, and source_path for each artifact.",
+    "List artifacts (desktop icons) on the Oyster surface, optionally filtered by space, kind, or search term. Returns id, label, kind, space, status, url, group, and source_path for each artifact.",
     {
       space_id: z.string().optional().describe("Filter by space"),
       artifact_kind: z
         .enum(ARTIFACT_KINDS)
         .optional()
         .describe("Filter by artifact kind"),
+      search: z.string().optional().describe("Search term — filters artifacts whose label contains this text (case-insensitive)"),
+      limit: z.number().optional().describe("Max results to return (default 20)"),
     },
-    async ({ space_id, artifact_kind }) => {
+    async ({ space_id, artifact_kind, search, limit }) => {
       let artifacts = await deps.service.getAllArtifacts();
       if (space_id) artifacts = artifacts.filter((a) => a.spaceId === space_id);
       if (artifact_kind) artifacts = artifacts.filter((a) => a.artifactKind === artifact_kind);
+      if (search) {
+        const q = search.toLowerCase();
+        artifacts = artifacts.filter((a) => a.label.toLowerCase().includes(q));
+      }
+      artifacts = artifacts.slice(0, limit ?? 20);
 
       const summary = artifacts.map((a) => ({
         id: a.id,
@@ -210,7 +335,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
       try {
         const artifact = deps.service.registerArtifact(
           { path, space_id, label, id, artifact_kind, group_name },
-          [deps.userlandDir],
+          [], // MCP callers are trusted — no path restriction
         );
         return {
           content: [{ type: "text" as const, text: JSON.stringify(artifact, null, 2) }],
@@ -267,11 +392,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
       content: z.string().describe("File content to write"),
       subdir: z.string().optional().describe("Subdirectory within the space (e.g. 'invoices'). Must be a relative path."),
       group_name: z.string().optional().describe("Visual group on the surface"),
+      source_origin: z.enum(["manual", "ai_generated"]).optional().describe("Provenance of the artifact. Defaults to 'manual'. Use 'ai_generated' when the content was produced by an AI agent."),
     },
-    async ({ space_id, label, artifact_kind, content, subdir, group_name }) => {
+    async ({ space_id, label, artifact_kind, content, subdir, group_name, source_origin }) => {
       try {
         const artifact = deps.service.createArtifact(
-          { space_id, label, artifact_kind, content, subdir, group_name },
+          { space_id, label, artifact_kind, content, subdir, group_name, source_origin },
           deps.userlandDir,
         );
         return {
@@ -288,18 +414,20 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "update_artifact",
-    "Update display metadata only: label, space assignment, or group name. Does not rename or move the file on disk.",
+    "Update display metadata: label, space assignment, group name, or artifact kind. Does not rename or move the file on disk.",
     {
       id: z.string().describe("Artifact ID to update"),
       label: z.string().optional().describe("New display name"),
       space_id: z.string().optional().describe("Reassign to a different space (tab). Does not move the file."),
       group_name: z.string().optional().describe("Change visual group. Pass empty string to remove grouping."),
+      artifact_kind: z.enum(["app", "deck", "map", "notes", "diagram", "wireframe", "table"]).optional().describe("Correct the artifact kind if it was inferred incorrectly."),
     },
-    async ({ id, label, space_id, group_name }) => {
+    async ({ id, label, space_id, group_name, artifact_kind }) => {
       try {
         const updated = await deps.service.updateArtifact(id, {
           label,
           space_id,
+          artifact_kind,
           ...(group_name !== undefined ? { group_name: group_name || null } : {}),
         });
         return {
@@ -325,6 +453,65 @@ export function createMcpServer(deps: McpDeps): McpServer {
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
       }
+    },
+  );
+
+  // ── reveal_artifact ──
+
+  server.tool(
+    "reveal_artifact",
+    "Flag an artifact to be revealed on the user's desktop — the UI will switch to its space and briefly highlight the icon on the next poll. Call this after create_artifact so the user knows where to find what you just created.",
+    { id: z.string().describe("Artifact ID to reveal") },
+    async ({ id }) => {
+      const artifact = await deps.service.getArtifactById(id);
+      if (!artifact) {
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" not found` }], isError: true };
+      }
+      deps.pendingReveals.add(id);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ revealed: id, space: artifact.spaceId, label: artifact.label }) }],
+      };
+    },
+  );
+
+  // ── open_artifact ──
+
+  server.tool(
+    "open_artifact",
+    "Open an artifact in the user's viewer window by exact ID. The UI switches to the artifact's space and opens the viewer immediately. Use list_artifacts(search) first to find the right ID.",
+    { id: z.string().describe("Artifact ID to open") },
+    async ({ id }) => {
+      const artifact = await deps.service.getArtifactById(id);
+      if (!artifact) {
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" not found. Use list_artifacts to find available artifacts.` }], isError: true };
+      }
+      deps.broadcastUiEvent({
+        version: 1,
+        command: "open_artifact",
+        payload: { id: artifact.id, spaceId: artifact.spaceId, label: artifact.label, url: artifact.url, artifactKind: artifact.artifactKind },
+      });
+      return { content: [{ type: "text" as const, text: `Opened "${artifact.label}"` }] };
+    },
+  );
+
+  // ── switch_space ──
+
+  server.tool(
+    "switch_space",
+    "Switch the user's desktop to a different space by exact ID. The UI navigates immediately. Use list_spaces first to find available space IDs.",
+    { id: z.string().describe("Space ID to switch to") },
+    async ({ id }) => {
+      const spaces = deps.spaceService.listSpaces();
+      const space = spaces.find((s: { id: string }) => s.id === id);
+      if (!space) {
+        return { content: [{ type: "text" as const, text: `Space "${id}" not found. Available: ${spaces.map((s: { id: string }) => s.id).join(", ")}` }], isError: true };
+      }
+      deps.broadcastUiEvent({
+        version: 1,
+        command: "switch_space",
+        payload: { spaceId: space.id },
+      });
+      return { content: [{ type: "text" as const, text: `Switched to "${space.displayName}"` }] };
     },
   );
 

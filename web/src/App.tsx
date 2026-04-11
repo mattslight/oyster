@@ -59,6 +59,7 @@ export default function App() {
     }
   }, []);
   const [loaded, setLoaded] = useState(false);
+  const [revealId, setRevealId] = useState<string | null>(null);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(() => getUrlState().groupName);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
@@ -81,13 +82,47 @@ export default function App() {
     fetchSpaces().then(setSpaces);
   }, []);
 
-  // Poll for status updates every 5 seconds
+  // Poll for status updates every 5 seconds; handle pending reveals
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchArtifacts().then(setArtifacts);
+      fetchArtifacts().then((arts) => {
+        setArtifacts(arts);
+        const revealed = arts.find((a) => a.pendingReveal);
+        if (revealed) {
+          setActiveSpace(revealed.spaceId);
+          window.history.pushState(null, "", `/s/${revealed.spaceId}`);
+          if (revealed.groupName) setOpenGroup(revealed.groupName);
+          setRevealId(revealed.id);
+          setTimeout(() => setRevealId(null), 3000);
+        }
+      });
       fetchSpaces().then(setSpaces);
     }, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to server-pushed UI commands (open artifact, switch space)
+  useEffect(() => {
+    const es = new EventSource("/api/ui/events");
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.command === "open_artifact") {
+          const { spaceId, label, url, artifactKind } = event.payload;
+          setActiveSpace(spaceId);
+          window.history.pushState(null, "", `/s/${spaceId}/a/${event.payload.id}`);
+          dispatch({ type: "CLOSE_ALL_VIEWERS" });
+          dispatch({ type: "OPEN_VIEWER", title: label, path: url, fullscreen: shouldOpenFullscreen(artifactKind) });
+        }
+        if (event.command === "switch_space") {
+          const { spaceId } = event.payload;
+          setActiveSpace(spaceId);
+          window.history.pushState(null, "", `/s/${spaceId}`);
+          dispatch({ type: "CLOSE_ALL_VIEWERS" });
+        }
+      } catch { /* ignore malformed events */ }
+    };
+    return () => es.close();
   }, []);
 
   // Sync state from browser back/forward
@@ -219,6 +254,7 @@ export default function App() {
           window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
         }}
         onSpaceChange={handleSpaceChange}
+        revealId={revealId}
       />
 
       <div className="windows-layer">

@@ -123,6 +123,7 @@ const spaceService = new SpaceService(spaceStore, store);
 // ── Initialize subsystems ──
 
 const iconGenerator = new IconGenerator(updateGeneratedArtifact);
+const pendingReveals = new Set<string>();
 
 spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
@@ -145,6 +146,24 @@ startAutoApprover(OPENCODE_PORT, (file) => handleFileEdited(file, ARTIFACTS_DIR,
 
 process.on("SIGTERM", () => { markShuttingDown(); db.close(); process.exit(0); });
 process.on("SIGINT", () => { markShuttingDown(); db.close(); process.exit(0); });
+
+// ── UI push events (SSE) ──
+
+interface UiCommand {
+  version: 1;
+  command: string;
+  payload: unknown;
+  correlationId?: string;
+}
+
+const uiClients = new Set<ServerResponse>();
+
+function broadcastUiEvent(event: UiCommand) {
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  for (const client of uiClients) {
+    client.write(data);
+  }
+}
 
 // ── HTTP request handler ──
 
@@ -184,8 +203,23 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // GET /api/artifacts
   if (url === "/api/artifacts") {
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
+    const revealed = new Set(pendingReveals);
+    pendingReveals.clear();
+    const response = artifacts.map((a) => revealed.has(a.id) ? { ...a, pendingReveal: true } : a);
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(artifacts));
+    res.end(JSON.stringify(response));
+    return;
+  }
+
+  // GET /api/ui/events — SSE stream for UI commands
+  if (url === "/api/ui/events") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    uiClients.add(res);
+    req.on("close", () => uiClients.delete(res));
     return;
   }
 
@@ -367,6 +401,52 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   if (await handleSpacesRequest(url, req, res, spaceService)) return;
 
+  // ── No-op OAuth for MCP SDK (localhost only, no real auth) ──
+
+  const BASE = `http://localhost:${PORT}`;
+  const json = (res: ServerResponse, data: unknown, status = 200) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(data));
+  };
+
+  if (url === "/.well-known/oauth-protected-resource/mcp" || url === "/.well-known/oauth-protected-resource/mcp/") {
+    json(res, { resource: `${BASE}/mcp`, authorization_servers: [`${BASE}/`], scopes_supported: [] });
+    return;
+  }
+  if (url === "/.well-known/oauth-authorization-server") {
+    json(res, {
+      issuer: `${BASE}/`,
+      authorization_endpoint: `${BASE}/oauth/authorize`,
+      token_endpoint: `${BASE}/oauth/token`,
+      registration_endpoint: `${BASE}/oauth/register`,
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      code_challenge_methods_supported: ["S256"],
+      token_endpoint_auth_methods_supported: ["client_secret_post", "none"],
+    });
+    return;
+  }
+  if (url === "/oauth/register" && req.method === "POST") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const { client_name } = JSON.parse(body || "{}");
+    json(res, { client_id: "oyster-local", client_name: client_name || "oyster", client_secret: "none", redirect_uris: ["http://localhost"] }, 201);
+    return;
+  }
+  if (url?.startsWith("/oauth/authorize")) {
+    const params = new URL(url, BASE).searchParams;
+    const redirect = params.get("redirect_uri") || `${BASE}/`;
+    const state = params.get("state") || "";
+    const sep = redirect.includes("?") ? "&" : "?";
+    res.writeHead(302, { Location: `${redirect}${sep}code=oyster-local-code&state=${state}` });
+    res.end();
+    return;
+  }
+  if (url === "/oauth/token" && req.method === "POST") {
+    json(res, { access_token: "oyster-local-token", token_type: "bearer", expires_in: 86400 });
+    return;
+  }
+
   // ── MCP server ──
   if (url === "/mcp" || url === "/mcp/") {
     // Localhost-only: reject non-local origins and don't emit wildcard CORS
@@ -378,7 +458,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     // Override the wildcard CORS header set at the top of handleHttpRequest
     res.setHeader("Access-Control-Allow-Origin", origin || "http://localhost:4200");
 
-    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator, spaceService });
+    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator, spaceService, pendingReveals, broadcastUiEvent });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close(); mcpServer.close(); });
     await mcpServer.connect(transport);
@@ -386,9 +466,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // Fallback
-  res.writeHead(404);
-  res.end("Not found");
+  // Fallback — JSON body so MCP SDK OAuth discovery doesn't choke on plain text
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Not found" }));
 }
 
 // ── HTTP + WebSocket server ──

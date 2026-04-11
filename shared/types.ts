@@ -30,6 +30,7 @@ export interface Artifact {
   iconStatus?: IconStatus;
   createdAt: string;
   groupName?: string;
+  pendingReveal?: boolean;
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";

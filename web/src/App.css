@@ -687,7 +687,61 @@ body {
 }
 
 
+.slash-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(13, 14, 26, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.slash-autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.slash-autocomplete-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.slash-cmd {
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 24px;
+}
+
+.slash-args {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.slash-desc {
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: auto;
+  font-size: 12px;
+}
+
 .chatbar-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;

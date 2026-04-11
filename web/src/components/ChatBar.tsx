@@ -78,6 +78,11 @@ function ToolBlock({ tool }: { tool: ToolPart }) {
   );
 }
 
+const SLASH_COMMANDS = [
+  { cmd: "/s", args: "<prefix>", desc: "Switch space", example: "/s bf → blunderfixer" },
+  { cmd: "/o", args: "<search>", desc: "Open artifact", example: "/o competitor analysis" },
+];
+
 interface Props {
   onOpenTerminal: () => void;
   isHero?: boolean;
@@ -124,6 +129,45 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const handleSend = useCallback(async () => {
     if (!input.trim() || streaming || !sessionId) return;
     const content = input;
+
+    // ── Slash commands — instant, no LLM call ──
+    // Nothing starting with "/" ever reaches the AI.
+    if (content.trim().startsWith("/")) {
+      setInput("");
+      const slashMatch = content.trim().match(/^\/([a-z])\s+(.+)$/i);
+      if (slashMatch) {
+        const [, cmd, arg] = slashMatch;
+        const q = arg.trim().toLowerCase();
+
+        if (cmd === "s" && onSpaceChange) {
+          // Subsequence match: "bf" matches "blunderfixer" (b...f...)
+          const subsequence = (query: string, target: string) => {
+            let qi = 0;
+            for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+              if (target[ti] === query[qi]) qi++;
+            }
+            return qi === query.length;
+          };
+
+          // Try: exact ID, then prefix, then subsequence on ID, then subsequence on display name
+          const match = spaces.find(s => s.id === q)
+            || spaces.find(s => s.id.startsWith(q))
+            || spaces.find(s => s.displayName.toLowerCase().startsWith(q))
+            || spaces.find(s => subsequence(q, s.id))
+            || spaces.find(s => subsequence(q, s.displayName.toLowerCase()));
+
+          if (match) {
+            onSpaceChange(match.id);
+          } else {
+            const available = spaces.map(s => s.id).join(", ");
+            setMessages(prev => [...prev, { role: "assistant", content: `No space matching "${arg.trim()}". Available: ${available}` }]);
+            setExpanded(true);
+          }
+        }
+      }
+      return;
+    }
+
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content }]);
     setStreaming(true);
@@ -143,7 +187,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       setStreaming(false);
       setStatusText("");
     }
-  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking]);
+  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange]);
 
   function handleCopyChat() {
     const text = messages
@@ -255,6 +299,72 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
 
       {/* Input bar */}
       <div className="chatbar-bar" onClick={() => { if (messages.length > 0 && !expanded) setExpanded(true); }}>
+        {/* Slash command autocomplete — floats above input */}
+        {input.startsWith("/") && (() => {
+          const lower = input.toLowerCase().trim();
+          const spaceArgMatch = lower.match(/^\/s(\s+(.*))?$/);
+
+          // "/s" or "/s " or "/s b..." — show matching spaces
+          if (spaceArgMatch !== null && (lower === "/s" || lower.startsWith("/s "))) {
+            const q = (spaceArgMatch[2] || "").trim();
+            const subseq = (query: string, target: string) => {
+              let qi = 0;
+              for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+                if (target[ti] === query[qi]) qi++;
+              }
+              return qi === query.length;
+            };
+            const matches = spaces.filter(s =>
+              !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase())
+            ).slice(0, 8);
+            if (matches.length === 0) return null;
+            return (
+              <div className="slash-autocomplete">
+                {matches.map(s => (
+                  <button
+                    key={s.id}
+                    className="slash-autocomplete-item"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setInput("");
+                      onSpaceChange?.(s.id);
+                    }}
+                  >
+                    <span className="slash-cmd">{s.id}</span>
+                    <span className="slash-desc">{s.displayName}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          }
+
+          // After "/" — show available commands (but not if already showing spaces)
+          if (!input.includes(" ") && lower !== "/s") {
+            const filtered = SLASH_COMMANDS.filter(c => c.cmd.startsWith(lower));
+            if (filtered.length === 0) return null;
+            return (
+              <div className="slash-autocomplete">
+                {filtered.map(c => (
+                  <button
+                    key={c.cmd}
+                    className="slash-autocomplete-item"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setInput(c.cmd + (c.args ? " " : ""));
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    <span className="slash-cmd">{c.cmd}</span>
+                    {c.args && <span className="slash-args">{c.args}</span>}
+                    <span className="slash-desc">{c.desc}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          }
+
+          return null;
+        })()}
         <div
           className="chatbar-oyster"
           onClick={onOpenTerminal}
