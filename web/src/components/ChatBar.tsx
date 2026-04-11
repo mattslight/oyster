@@ -419,7 +419,19 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           ref={inputRef}
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            // Instant space switch for unambiguous # shortcuts
+            if (onSpaceChange && /^#[0-9ha]$/i.test(val)) {
+              const ch = val[1].toLowerCase();
+              if (ch === "h") { setInput(""); onSpaceChange("home"); return; }
+              if (ch === "a" || ch === "0") { setInput(""); onSpaceChange("__all__"); return; }
+              const idx = parseInt(ch, 10);
+              const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
+              if (idx >= 1 && idx <= userSpaces.length) { setInput(""); onSpaceChange(userSpaces[idx - 1].id); return; }
+            }
+            setInput(val);
+          }}
           onKeyDown={(e) => {
             if (slashOpen) {
               if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex(i => Math.min(i + 1, slashItems.length - 1)); return; }
