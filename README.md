@@ -1,9 +1,9 @@
 # Oyster
 
-A prompt and MCP controlled workspace OS for files, projects, and artefacts.
+A modern OS for knowledge work powered by LLM — connect your projects, control everything from a prompt / MCP
 
 Open the right thing, switch context quickly, and organise work from one chat bar.  
-Oyster is local-first, visual, and built for people juggling multiple projects, tools, and sessions.
+Oyster is local, LLM-first, visual, and built for people juggling multiple projects, tools, and sessions.
 
 ![Oyster desktop](docs/screenshots/desktop.png)
 
