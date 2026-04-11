@@ -36,11 +36,12 @@ async function ensureApiKey(env) {
   if (keys.some((k) => env[k])) return env;
 
   console.log("\n  🦪 Welcome to Oyster\n");
-  console.log("  You need an API key to power the AI engine.\n");
+  console.log("  You need an Anthropic API key to get started.");
+  console.log("  Get one at: https://console.anthropic.com/settings/keys\n");
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise((resolve) => {
-    rl.question("  Paste your API key: ", resolve);
+    rl.question("  Paste your Anthropic API key: ", resolve);
   });
   rl.close();
 
