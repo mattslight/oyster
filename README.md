@@ -25,13 +25,16 @@ Oyster puts that work on one surface and lets you control it with simple command
 - **Let the agent act on the surface**  
   Oyster can open artefacts, switch spaces, and organise the workspace through MCP tools.
 
+- **Bring your own AI**  
+  Oyster exposes an MCP server. Claude Code, Cursor, ChatGPT, or any MCP-compatible tool can control your workspace through a standard protocol. 12 tools available out of the box.
+
 ## What works today
 
 - Prompt-driven navigation
 - Space switching
 - Artefact desktop with icons
 - Local repo onboarding
-- MCP-powered agent actions
+- MCP-powered agent actions (works with Claude Code, Cursor, any MCP client)
 - Instant UI updates via SSE
 
 ## Example
@@ -64,7 +67,7 @@ npm run dev
 
 Open:
 
-**http://localhost:7337**
+**http://localhost:7337** 😎
 
 Create a `.env` file at the project root:
 
