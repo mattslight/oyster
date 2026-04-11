@@ -196,7 +196,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
 
     return [];
-  }, [input, spaces, subseq]);
+  }, [input, spaces, subseq, artifacts, activeSpace, scoreArtifacts]);
 
   const slashOpen = slashItems.length > 0;
 
