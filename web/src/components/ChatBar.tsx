@@ -124,6 +124,25 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     return qi === query.length;
   }, []);
 
+  const scoreArtifacts = useCallback((query: string) => {
+    const tokens = query.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return [];
+    return artifacts.map(a => {
+      let score = 0;
+      const label = a.label.toLowerCase();
+      const id = a.id.toLowerCase();
+      const space = a.spaceId.toLowerCase();
+      for (const t of tokens) {
+        if (label.includes(t)) score += 5;
+        else if (subseq(t, label)) score += 3;
+        if (id.includes(t)) score += 4;
+        if (space.startsWith(t) || subseq(t, space)) score += 10;
+      }
+      if (a.spaceId === activeSpace) score += 3;
+      return { a, score };
+    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+  }, [artifacts, activeSpace, subseq]);
+
   const slashItems = useMemo(() => {
     const lower = input.toLowerCase().trim();
 
@@ -137,7 +156,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         ...userSpaces.map((s, i) => ({ ...s, hint: `#${i + 1}` })),
       ];
       return ordered
-        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || q === "all" && s.id === "__all__" || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
         .map(s => ({ key: s.id, label: `#${s.id === "__all__" ? "all" : s.id}`, desc: s.hint, type: "space" as const }));
     }
@@ -149,7 +168,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     if (spaceArgMatch !== null && (lower === "/s" || lower.startsWith("/s "))) {
       const q = (spaceArgMatch[2] || "").trim();
       return spaces
-        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || q === "all" && s.id === "__all__" || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
         .map(s => ({ key: s.id, label: s.id, desc: s.displayName, type: "space" as const }));
     }
@@ -159,26 +178,14 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     if (artifactArgMatch !== null && (lower === "/o" || lower.startsWith("/o "))) {
       const q = (artifactArgMatch[2] || "").trim();
       if (!q) {
-        // No query — show current space artifacts, then others
-        const sorted = [...artifacts].sort((a, b) => (a.spaceId === activeSpace ? -1 : 1) - (b.spaceId === activeSpace ? -1 : 1));
+        const sorted = [...artifacts].sort((a, b) => {
+          if (a.spaceId === activeSpace && b.spaceId !== activeSpace) return -1;
+          if (b.spaceId === activeSpace && a.spaceId !== activeSpace) return 1;
+          return a.label.localeCompare(b.label);
+        });
         return sorted.slice(0, 8).map(a => ({ key: a.id, label: a.label, desc: a.spaceId, type: "artifact" as const, score: 0 }));
       }
-      const tokens = q.split(/\s+/);
-      const scored = artifacts.map(a => {
-        let score = 0;
-        const label = a.label.toLowerCase();
-        const id = a.id.toLowerCase();
-        const space = a.spaceId.toLowerCase();
-        for (const t of tokens) {
-          if (label.includes(t)) score += 5;
-          else if (subseq(t, label)) score += 3;
-          if (id.includes(t)) score += 4;
-          if (space.startsWith(t) || subseq(t, space)) score += 10;
-        }
-        if (a.spaceId === activeSpace) score += 3;
-        return { a, score };
-      }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
-      return scored.slice(0, 8).map(x => ({ key: x.a.id, label: x.a.label, desc: x.a.spaceId, type: "artifact" as const, score: x.score }));
+      return scoreArtifacts(q).slice(0, 8).map(x => ({ key: x.a.id, label: x.a.label, desc: x.a.spaceId, type: "artifact" as const, score: x.score }));
     }
 
     // / prefix — command list
@@ -189,7 +196,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
 
     return [];
-  }, [input, spaces, subseq]);
+  }, [input, spaces, subseq, artifacts, activeSpace, scoreArtifacts]);
 
   const slashOpen = slashItems.length > 0;
 
@@ -245,7 +252,13 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         || spaces.find(s => s.displayName.toLowerCase().startsWith(q))
         || spaces.find(s => subseq(q, s.id))
         || spaces.find(s => subseq(q, s.displayName.toLowerCase()));
-      if (match) onSpaceChange(match.id);
+      if (match) {
+        onSpaceChange(match.id);
+      } else {
+        const available = spaces.map(s => s.id).join(", ");
+        setMessages(prev => [...prev, { role: "assistant", content: `No space matching "${q}". Available: ${available}` }]);
+        setExpanded(true);
+      }
       return;
     }
 
@@ -275,31 +288,16 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         }
 
         if (cmd === "o" && onArtifactOpen) {
-          const tokens = q.split(/\s+/);
-          const scored = artifacts.map(a => {
-            let score = 0;
-            const label = a.label.toLowerCase();
-            const id = a.id.toLowerCase();
-            const space = a.spaceId.toLowerCase();
-            for (const t of tokens) {
-              if (label.includes(t)) score += 5;
-              else if (subseq(t, label)) score += 3;
-              if (id.includes(t)) score += 4;
-              if (space.startsWith(t) || subseq(t, space)) score += 10;
-            }
-            if (a.spaceId === activeSpace) score += 3;
-            return { a, score };
-          }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+          const scored = scoreArtifacts(q);
 
           if (scored.length === 0) {
             setMessages(prev => [...prev, { role: "assistant", content: `No artifact matching "${arg.trim()}"` }]);
             setExpanded(true);
           } else if (scored.length === 1 || scored[0].score >= scored[1].score * 2) {
-            // Clear winner — open directly
             onArtifactOpen(scored[0].a);
           } else {
-            // Ambiguous — show as autocomplete (rewrite input to keep dropdown open)
             setInput(`/o ${arg.trim()}`);
+            return; // keep input, don't clear — dropdown stays open
           }
         }
       }
@@ -325,7 +323,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       setStreaming(false);
       setStatusText("");
     }
-  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq]);
+  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts]);
 
   function handleCopyChat() {
     const text = messages
