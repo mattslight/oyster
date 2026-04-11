@@ -26,7 +26,10 @@
       "Bash(grep -r \"sandbox\\\\|allow=\" /Users/Matthew.Slight/Dev/oyster-os/web/src --include=*.tsx --include=*.ts)",
       "Bash(grep -r iframe /Users/Matthew.Slight/Dev/oyster-os/web/src --include=*.tsx -A 2 -B 2)",
       "Bash(git stash:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)"
     ]
   }
 }
