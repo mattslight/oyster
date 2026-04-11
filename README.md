@@ -3,7 +3,7 @@
 A modern OS for knowledge work powered by LLM — connect your projects, control everything from a prompt / MCP
 
 Open the right thing, switch context quickly, and organise work from one chat bar.  
-Oyster is local, LLM-first, visual, and built for people juggling multiple projects, tools, and sessions.
+Oyster is local, AI-first, visual, and built for people juggling multiple projects, tools, and sessions.
 
 ![Oyster desktop](docs/screenshots/desktop.png)
 
