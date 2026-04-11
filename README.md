@@ -1,6 +1,6 @@
 # Oyster
 
-A prompt-controlled workspace for files, projects, and artefacts.
+A prompt and MCP controlled workspace OS for files, projects, and artefacts.
 
 Open the right thing, switch context quickly, and organise work from one chat bar.  
 Oyster is local-first, visual, and built for people juggling multiple projects, tools, and sessions.
