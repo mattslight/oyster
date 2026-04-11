@@ -69,14 +69,14 @@ Open:
 
 **http://localhost:7337** 😎
 
-Create a `.env` file at the project root:
+Create a `.env` file at the project root with your preferred AI provider key:
 
 ```
-ANTHROPIC_API_KEY=your-key
-FAL_KEY=your-key
+ANTHROPIC_API_KEY=your-key    # or OPENAI_API_KEY, etc.
+FAL_KEY=your-key              # optional — AI-generated icons
 ```
 
-`FAL_KEY` is optional and only used for AI-generated icons.
+Oyster uses OpenCode under the hood, which supports Anthropic, OpenAI, Gemini, Groq, and Ollama. Bring whichever AI you prefer.
 
 ## Core commands
 
