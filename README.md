@@ -119,6 +119,7 @@ Local-first. Single-user. Built for fast iteration.
 - visual workspace
 
 **Planned later**
+- dynamic UI — interfaces that adapt to the task at hand, not static layouts
 - cloud hosting
 - persistent memory
 - richer plugins and integrations
@@ -168,6 +169,7 @@ If you want to contribute:
 
 **Longer term:**
 
+- dynamic UI — surfaces that reshape to fit the job, not one-size-fits-all layouts
 - cloud and hybrid hosting
 - persistent memory
 - plugin ecosystem
