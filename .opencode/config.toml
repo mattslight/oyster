@@ -7,3 +7,8 @@ id = "claude-sonnet-4-20250514"
 [model.edit]
 provider = "anthropic"
 id = "claude-sonnet-4-20250514"
+
+[mcp.oyster]
+type = "remote"
+url = "http://localhost:4200/mcp/"
+

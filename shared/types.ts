@@ -30,6 +30,7 @@ export interface Artifact {
   iconStatus?: IconStatus;
   createdAt: string;
   groupName?: string;
+  pendingReveal?: boolean;
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";
@@ -47,6 +48,7 @@ export interface Space {
   displayName: string;
   repoPath: string | null;
   color: string | null;
+  parentId: string | null;
   scanStatus: ScanStatus;
   scanError: string | null;
   lastScannedAt: string | null;

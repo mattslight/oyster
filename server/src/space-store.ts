@@ -5,6 +5,7 @@ export interface SpaceRow {
   display_name: string;
   repo_path: string | null;
   color: string | null;
+  parent_id: string | null;
   scan_status: string;
   scan_error: string | null;
   last_scanned_at: string | null;
@@ -39,11 +40,11 @@ export class SqliteSpaceStore implements SpaceStore {
       getByRepoPath: db.prepare("SELECT * FROM spaces WHERE repo_path = ?"),
       insert: db.prepare(`
         INSERT INTO spaces (
-          id, display_name, repo_path, color, scan_status,
+          id, display_name, repo_path, color, parent_id, scan_status,
           scan_error, last_scanned_at, last_scan_summary,
           ai_job_status, ai_job_error
         ) VALUES (
-          @id, @display_name, @repo_path, @color, @scan_status,
+          @id, @display_name, @repo_path, @color, @parent_id, @scan_status,
           @scan_error, @last_scanned_at, @last_scan_summary,
           @ai_job_status, @ai_job_error
         )
@@ -58,7 +59,7 @@ export class SqliteSpaceStore implements SpaceStore {
   delete(id: string): void { this.db.prepare("DELETE FROM spaces WHERE id = ?").run(id); }
 
   private static readonly UPDATABLE_COLUMNS = new Set([
-    "display_name", "repo_path", "color", "scan_status",
+    "display_name", "repo_path", "color", "parent_id", "scan_status",
     "scan_error", "last_scanned_at", "last_scan_summary",
     "ai_job_status", "ai_job_error",
   ]);

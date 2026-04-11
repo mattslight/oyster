@@ -32,9 +32,9 @@ export function slugify(str: string): string {
 
 export function inferKindFromPath(filePath: string): ArtifactKind {
   const lower = filePath.toLowerCase();
-  if (lower.includes("dashboard") || lower.includes("diagram")) return "diagram";
+  if (lower.includes("dashboard") || lower.includes("diagram") || lower.includes("analysis") || lower.includes("chart")) return "diagram";
   if (lower.includes("deck") || lower.includes("slide") || lower.includes("present")) return "deck";
-  if (lower.includes("map") || lower.includes("mind")) return "map";
+  if (lower.includes("map") || lower.includes("mind") || lower.includes("segment")) return "map";
   if (lower.includes("note") || lower.includes("readme")) return "notes";
   if (lower.includes("table") || lower.includes("spreadsheet") || lower.includes("tracker")) return "table";
   const ext = extname(lower);

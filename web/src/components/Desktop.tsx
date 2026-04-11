@@ -18,9 +18,10 @@ interface Props {
   onArtifactStop?: (artifact: Artifact) => void;
   onGroupClick: (groupName: string) => void;
   onSpaceChange: (space: string) => void;
+  revealId?: string | null;
 }
 
-export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick }: Props) {
+export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, revealId }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Topbar auto-hide ──
@@ -240,7 +241,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                     {(!isAllSpace || groupBy !== "kind") && <span className="list-row-badge">{a.artifactKind}</span>}
                     {isAllSpace && groupBy !== "space" && (() => {
                       const c = spaceColor(a.spaceId);
-                      return <span className="list-row-space" style={{ color: c, background: `${c}28` }}>{a.spaceId}</span>;
+                      return <span className="list-row-space" style={{ color: "rgba(255,255,255,0.7)", background: `${c}40` }}>{a.spaceId}</span>;
                     })()}
                   </div>
                 ))}
@@ -263,6 +264,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                         index={i}
                         onClick={() => onArtifactClick(item.artifact)}
                         onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
+                        reveal={item.artifact.id === revealId}
                       />
                     )
                   ))}
@@ -290,6 +292,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                       index={i}
                       onClick={() => onArtifactClick(item.artifact)}
                       onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
+                      reveal={item.artifact.id === revealId}
                     />
                   )}
                 </div>

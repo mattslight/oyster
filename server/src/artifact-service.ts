@@ -107,6 +107,7 @@ export class ArtifactService {
       id?: string;
       artifact_kind?: ArtifactKind;
       group_name?: string;
+      source_origin?: "manual" | "discovered" | "ai_generated";
     },
     approvedRoots: string[],
   ): Artifact {
@@ -117,20 +118,36 @@ export class ArtifactService {
       throw new Error(`File does not exist: ${absPath}`);
     }
 
-    // Validate path is under an approved root
-    const normalizedRoots = approvedRoots.map((r) => resolve(r));
-    const isApproved = normalizedRoots.some((root) => absPath.startsWith(root + "/") || absPath === root);
-    if (!isApproved) {
-      throw new Error(
-        `Path is not under an approved root. Allowed roots: ${normalizedRoots.join(", ")}`,
-      );
+    // Validate path is under an approved root (skip if no roots specified — trusted caller)
+    if (approvedRoots.length > 0) {
+      const normalizedRoots = approvedRoots.map((r) => resolve(r));
+      const isApproved = normalizedRoots.some((root) => absPath.startsWith(root + "/") || absPath === root);
+      if (!isApproved) {
+        throw new Error(
+          `Path is not under an approved root. Allowed roots: ${normalizedRoots.join(", ")}`,
+        );
+      }
     }
 
     // Infer ID from filename stem if not provided
     const id = params.id || basename(absPath).replace(/\.[^.]+$/, "");
 
-    // Validate uniqueness
-    if (this.store.getById(id)) {
+    // If a removed record exists with this ID, resurface and update it
+    const existing = this.store.getById(id);
+    if (existing) {
+      if (existing.removed_at) {
+        this.store.resurface(id);
+        const kind = params.artifact_kind || inferKindFromPath(absPath);
+        this.store.update(id, {
+          space_id: params.space_id,
+          label: params.label,
+          artifact_kind: kind,
+          group_name: params.group_name || null,
+          storage_config: JSON.stringify({ path: absPath }),
+          source_origin: params.source_origin ?? "manual",
+        });
+        return this.rowToArtifact(this.store.getById(id)!);
+      }
       throw new Error(`Artifact with id "${id}" already exists`);
     }
 
@@ -148,7 +165,7 @@ export class ArtifactService {
       runtime_kind: "static_file",
       runtime_config: "{}",
       group_name: params.group_name || null,
-      source_origin: "manual",
+      source_origin: params.source_origin ?? "manual",
       source_ref: null,
     });
 
@@ -176,6 +193,7 @@ export class ArtifactService {
       content: string;
       subdir?: string;
       group_name?: string;
+      source_origin?: "manual" | "discovered" | "ai_generated";
     },
     userlandDir: string,
   ): Artifact {
@@ -209,7 +227,7 @@ export class ArtifactService {
     // Register — best-effort rollback on DB failure
     try {
       return this.registerArtifact(
-        { path: absPath, space_id, label, artifact_kind: params.artifact_kind, group_name: params.group_name, id },
+        { path: absPath, space_id, label, artifact_kind: params.artifact_kind, group_name: params.group_name, id, source_origin: params.source_origin },
         [userlandDir],
       );
     } catch (err) {
@@ -245,7 +263,7 @@ export class ArtifactService {
 
   async updateArtifact(
     id: string,
-    fields: { label?: string; space_id?: string; group_name?: string | null },
+    fields: { label?: string; space_id?: string; group_name?: string | null; artifact_kind?: ArtifactKind },
   ): Promise<Artifact> {
     const row = this.store.getById(id);
     if (!row) throw new Error(`Artifact "${id}" not found`);
@@ -261,6 +279,7 @@ export class ArtifactService {
       if (!space_id) throw new Error("space_id must not be empty");
       updateable.space_id = space_id;
     }
+    if (fields.artifact_kind !== undefined) updateable.artifact_kind = fields.artifact_kind;
     if ("group_name" in fields) updateable.group_name = fields.group_name ?? null;
 
     if (Object.keys(updateable).length > 0) {

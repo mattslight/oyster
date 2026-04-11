@@ -1,22 +1,39 @@
 # Oyster OS — Design Document
 
-**Status:** Approved
-**Last updated:** 2026-03-27
+**Status:** Living document
+**Last updated:** 2026-03-30
 **Authors:** Matthew Slight, with architectural input from Bharat Mani Prem Sankar
 
 ---
 
+## Hypothesis
+
+> The right interface for knowledge work is a **surface that connects all your systems, accumulates context over time, and synthesises across boundaries** — so you can ask a question that spans Zoho and ProCore and last month's conversation and get one answer, not three logins.
+
+Not just for makers and developers. For anyone whose work is distributed across more than one system and one session.
+
+**The key test:** can the surface join dots that no single tool, dashboard, or LLM session could?
+- A dashboard can't — it's a pre-defined view of one system.
+- ChatGPT can't — it has no live access and forgets between sessions.
+- A Zoho report can't — ProCore isn't in scope.
+
+Oyster can, because it connects all systems via MCP, holds the relationships between them in a knowledge graph, and accumulates context across every session.
+
 ## Problem
 
-People's thinking, work and context are fragmented across ChatGPT, Claude, Notion, email, docs, task tools, whiteboards and CRMs. No single tool captures intent, structures it, and renders it into whatever form is needed. Every tool forces you to choose the format first. This starts with thought first.
+People's work is fragmented across systems, projects, and sessions. A construction company's chairman needs to know the health of the sales pipeline — but the answer spans Zoho CRM and ProCore and decisions made last quarter. No single tool sees all of it. No dashboard was pre-built for exactly that question. No LLM session has access to both systems plus the history.
+
+More broadly: each LLM conversation starts from scratch. No tool knows the auth pattern you built in one project conflicts with what you're building in another. No tool remembers the decision you made six months ago. No tool can answer "what should I focus on this week?" from first principles across all your work.
+
+Oyster's surface accumulates context across all your systems and sessions — so your AI partner gets smarter the longer you use it, not just during a single conversation.
 
 ## Product
 
-Oyster is a hosted web app built around a visual surface. The user sees generated outputs — documents, presentations, mind maps, apps — as icons on an ambient surface, with a unified chat bar for talking to the AI. The bar is the single entry point: chat to build, search to find, type to navigate. Each output replaces a separate tool.
+Oyster is a visual surface where generated outputs — documents, diagrams, apps, notes — appear as artifacts you can open, organise, and build on. A unified chat bar is the single entry point: chat to build, search to find, type to navigate. Each output replaces a separate tool.
 
-The engine for the PoC is OpenCode (`opencode serve`) running inside a hosted user runtime. Product behaviour is primarily steered by `.opencode/agents/oyster.md`. The user never sees OpenCode, terminals, or code — the engine is invisible.
+The engine is OpenCode (`opencode serve`). Persistent memory is Graphiti (a temporal knowledge graph running locally via Docker). Product behaviour is steered by `.opencode/agents/oyster.md`. The user never sees OpenCode or the graph — the engine is invisible.
 
-**One-liner:** Ditch the tools. Use AI like a pro — to write, to present, to build, to visualise.
+**One-liner:** A surface that remembers. An AI that connects the dots.
 
 ---
 
@@ -52,42 +69,44 @@ Prove that Oyster can:
 ### System Overview
 
 ```
-┌─────────────────────────────────────────────────┐
-│            Central (Supabase)                    │
-│                                                  │
-│  oyster schema (all users, RLS)                  │
-│  ├── nodes                                       │
-│  ├── edges                                       │
-│  └── artifacts                                   │
-│                                                  │
-│  Auth (Supabase Auth)                            │
-│  User registry                                   │
-└────────────────────┬────────────────────────────┘
-                     │ DATABASE_URL
-                     │
-┌────────────────────▼────────────────────────────┐
-│           User Container / VM                    │
-│                                                  │
-│  ┌──────────────────────────────────────────┐   │
-│  │  opencode serve (port 4096)              │   │
-│  │  REST API + SSE streaming                │◄──┼── HTTP/SSE ──► Clients
-│  │  ├── POST /session                       │   │
-│  │  ├── POST /session/{id}/message          │   │
-│  │  ├── GET  /event (SSE stream)            │   │
-│  │  └── GET  /file/* (static serving)       │   │
-│  └──────────────┬───────────────────────────┘   │
-│                 │                                │
-│  ┌──────────────▼──┐  ┌───────────┐  ┌────────────┐
-│  │/workspace       │  │/artifacts │  │Local       │
-│  │ .opencode/      │  │ <id>/     │  │Postgres    │
-│  │   agents/       │  │  manifest │  │(app data   │
-│  │ docs/           │  │  src/     │  │ only)      │
-│  │ data/           │  │  data/    │  │            │
-│  └─────────────────┘  └───────────┘  └────────────┘
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    User Machine (local)                   │
+│                                                           │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │  Oyster Server  (port 4200)                         │ │
+│  │  ├── HTTP API  (/api/artifacts, /api/spaces, etc.)  │ │
+│  │  ├── MCP endpoint  (/mcp/)  ← agent tool surface    │ │
+│  │  ├── Chat proxy  → OpenCode                         │ │
+│  │  └── SQLite  (userland/oyster.db)                   │ │
+│  │       ├── artifacts  (registry, metadata)           │ │
+│  │       └── spaces  (nav hierarchy, scan status)      │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─────────────────┐                                      │
+│  │  OpenCode       │   (Graphiti — deferred to v2)        │
+│  │  (port 4096)    │                                      │
+│  │  REST + SSE     │                                      │
+│  │  .opencode/     │                                      │
+│  │  agents/        │                                      │
+│  │  oyster.md      │                                      │
+│  └─────────────────┘                                      │
+│                                                           │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │  React UI  (Vite dev server or static)               │ │
+│  │  ├── polls /api/artifacts + /api/spaces              │ │
+│  │  └── streams chat via SSE                            │ │
+│  └──────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**Implementation note (PoC):** The PoC uses SQLite (`userland/oyster.db`) instead of Supabase for the artifact registry. The Oyster HTTP server (port 4200) handles artifact serving, the chat proxy to OpenCode, and the MCP endpoint — no separate Supabase dependency. The central/local database split described below reflects the production design, not the current implementation.
+**Three systems, three responsibilities:**
+
+| System | Port | Responsibility |
+|---|---|---|
+| Oyster Server | 4200 | Artifact/space registry (SQLite), MCP tool surface, chat proxy |
+| OpenCode | 4096 | AI engine, code execution, filesystem access |
+
+The agent (OpenCode) has MCP access to Oyster (surface management). The UI talks only to Oyster Server. Persistent memory (Graphiti) is deferred to v2.
 
 ### The Artifact Contract
 
@@ -191,69 +210,32 @@ OpenCode has full filesystem access to the workspace and can read/modify any art
 
 Agents should use MCP tools for surface management and direct filesystem access for reading/modifying artifact source content. Do not touch `userland/oyster.db` directly.
 
-### Central Database (Supabase) — Fixed Schema
+### SQLite — Artifact and Space Registry
 
-The Oyster system data lives centrally. One migration updates all users. UI and clients query this directly without going through OpenCode.
-
-The central schema is a fixed product contract, optimised for reliable UI querying and broad semantic flexibility rather than exhaustive type-specific modelling.
+Oyster Server owns a local SQLite database (`userland/oyster.db`) for surface state. This is fast, local, zero-infrastructure.
 
 ```sql
--- Core knowledge graph
-nodes (
-  id uuid primary key,
-  user_id uuid references auth.users,
-  type text,              -- person, task, idea, project, note, meeting, etc.
-  title text,
-  content text,
-  metadata jsonb,         -- type-specific fields (email, status, due_date, etc.)
-  source_type text,       -- chat, import, connector, system
-  created_at timestamptz,
-  updated_at timestamptz
-)
+artifacts (id, space_id, label, artifact_kind, storage_kind, storage_config,
+           runtime_kind, runtime_config, group_name, source_origin, source_ref,
+           removed_at, created_at, updated_at)
 
--- Relationships between nodes
-edges (
-  id uuid primary key,
-  user_id uuid references auth.users,
-  source_node_id uuid references nodes,
-  target_node_id uuid references nodes,
-  relationship text,      -- works_with, blocked_by, part_of, mentioned_in, etc.
-  metadata jsonb,
-  source_type text,       -- chat, import, connector, system
-  created_at timestamptz
-)
-
--- Registry of generated outputs
-artifacts (
-  id uuid primary key,
-  user_id uuid references auth.users,
-  name text,
-  type text,              -- app, deck, map, notes, diagram, wireframe, table
-  runtime text,           -- static, vite, docker
-  path text,              -- filesystem path on the VM
-  node_id uuid references nodes,  -- optional: linked to a node
-  status text,            -- generating, ready, failed
-  metadata jsonb,         -- storage, capabilities, ports, entrypoint
-  created_at timestamptz
-)
+spaces (id, display_name, repo_path, color, parent_id,
+        scan_status, scan_error, last_scanned_at, last_scan_summary,
+        created_at, updated_at)
 ```
 
-**RLS on all tables:** `user_id = auth.uid()`
+`source_origin` tracks how an artifact arrived: `manual` | `discovered` | `ai_generated`.
+`parent_id` on spaces is **navigation only** — where to show the space in the UI hierarchy. Semantic relationships between spaces live in the knowledge graph.
 
-**PoC simplification:** No user_id columns, no RLS, no auth. Single user.
+### Knowledge Graph — Deferred to v2
 
-### Local Database (Per-Container Postgres) — App Data Only
+Persistent memory (cross-session context, entity graphs, relationship tracking) is planned but not active in v1. The v1 surface works without it — the agent is stateless between sessions.
 
-When OpenCode generates an artifact that needs persistent data (e.g. a todo tracker, a CRM), it creates a schema in local Postgres for that artifact. Artifacts with `storage: "none"` don't get a database — they're just files.
+**v2 options under evaluation:** Graphiti (FalkorDB, Docker), opencode-plugin-simple-memory, forgetful (SQLite + embeddings), or custom Oyster-native SQLite FTS5. See issue #70 for details.
 
-```
-One Postgres instance, one database
-├── schema: app_kps_todo      ← OpenCode created and manages this
-├── schema: app_deal_tracker  ← OpenCode created and manages this
-└── (no schema for static-only artifacts)
-```
+### App-Specific Data
 
-**Firewall:** OpenCode can access both central and local Postgres. The UI only accesses central Supabase. Local app schemas are only accessed by their generated artifact frontends.
+Artifacts that need persistence (e.g. a generated todo tracker) use their own local SQLite or browser storage. OpenCode creates and manages this per-artifact. It is separate from Oyster's registry.
 
 ### OpenCode Server (Engine)
 
@@ -281,10 +263,10 @@ Defines a major part of Oyster's behaviour and conventions via `.opencode/agents
 Key sections:
 
 - **Identity:** "You are Oyster. You help the user capture, structure, and visualise their thinking."
-- **Knowledge conventions:** Always structure input into the Oyster system data (nodes + edges in Supabase). Check if a node exists before creating duplicates. Use node types and relationship types flexibly.
-- **Artifact generation:** Generated artifacts go in `/artifacts/<id>/`. Each gets a `manifest.json`. The agent sets `runtime`, `storage`, and `capabilities` based on what the user asked for. Report the served URL after generation.
-- **Output conventions:** Defined per output type. The agent infers the correct artifact type from the user's intent — the user doesn't choose formats, they describe what they need.
-- **Data rules:** Oyster system data is in Supabase (connection string from env). App-specific data is in local Postgres. Never mix them.
+- **Knowledge graph (Graphiti) — MANDATORY:** At session start, call `search_nodes` to load context. When the user shares facts, decisions, or project info, call `add_episode` immediately. Before answering anything about a person, project, or past work, call `search_nodes` + `search_facts` first. The graph is how Oyster remembers across sessions — without it, the agent is stateless.
+- **Artifact generation:** Use `create_artifact` via Oyster MCP. Generated artifacts are registered on the desktop surface automatically. Set `source_origin: 'ai_generated'` for agent-produced content.
+- **Output conventions:** The agent infers the correct artifact type from intent — the user describes what they need, not what format to use.
+- **Surface management:** Prefer Oyster MCP tools (`create_artifact`, `list_artifacts`, `update_artifact`) over direct filesystem manipulation. The MCP tools keep the registry consistent.
 
 OpenCode supports custom agent markdown files natively via `.opencode/agents/`. No special tooling needed.
 
@@ -335,7 +317,7 @@ The UI is a visual surface with an embedded chat bar. Artifacts are icons on the
 **Data model:**
 - Trash is cosmetic — deleting an artifact removes it from the surface, but the underlying data (nodes, edges) stays in the knowledge graph
 
-The UI reads from Supabase directly for the artifact list and knowledge graph. It connects to the OpenCode server via HTTP/SSE for chat.
+The UI polls Oyster Server (`/api/artifacts`, `/api/spaces`) for surface state and streams chat via SSE. It has no direct connection to Graphiti or OpenCode.
 
 **Design origin:** The visual surface pattern emerged organically from the tokinvest-concept prototype. Sprint 1 initially mimicked desktop OS chrome (floating windows, dock, minimize/maximize) but prototyping revealed this was borrowed decoration that didn't serve user intent. The refined direction strips all chrome and embeds chat directly into the surface.
 
