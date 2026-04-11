@@ -388,53 +388,7 @@
     <img src="screenshots/desktop.png" alt="Oyster desktop" class="hero-img">
   </div>
 
-  <!-- Feature 1: Open things fast -->
-  <div class="feature-section">
-    <div class="feature-text">
-      <h3>Find what you need. Fast.</h3>
-      <p>Type what you're looking for and Oyster finds it. No folders, no tabs, no hunting. The right artefact opens instantly.</p>
-    </div>
-    <div class="feature-mock">
-      <div class="mock-panel" id="mock-open">
-        <div class="mock-chatbar">
-          <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div class="mock-chatbar-text"><code><span class="typing-text" data-text="/o competitor analysis"></span></code></div>
-        </div>
-        <div class="mock-autocomplete">
-          <div class="mock-autocomplete-item active fade-in fade-in-1">
-            <span class="name">Competitor Analysis</span>
-          </div>
-          <div class="mock-autocomplete-item fade-in fade-in-2">
-            <span class="name">Competitor Landscape</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Feature 2: Switch context instantly -->
-  <div class="feature-section reverse">
-    <div class="feature-text">
-      <h3>Switch context instantly</h3>
-      <p>Jump between project spaces with a single shortcut. Your brain switches context — your workspace should keep up.</p>
-    </div>
-    <div class="feature-mock">
-      <div class="mock-panel" id="mock-switch">
-        <div class="mock-chatbar">
-          <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div class="mock-chatbar-text"><code><span class="typing-text" id="switch-typing" data-text="#home"></span></code></div>
-        </div>
-        <div class="mock-pills pill-switch" id="pill-switch">
-          <span class="mock-pill active" data-idx="0">home</span>
-          <span class="mock-pill" data-idx="1">research</span>
-          <span class="mock-pill" data-idx="2">clients</span>
-          <span class="mock-pill" data-idx="3">ops</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Feature 3: One surface. All your work. -->
+  <!-- Feature 1: One surface. All your work. -->
   <div class="feature-section">
     <div class="feature-text">
       <h3>One surface. All your work.</h3>
@@ -472,34 +426,54 @@
     </div>
   </div>
 
-  <!-- Feature 4: Act, not just chat -->
+  <!-- Feature 2: Find what you need. Fast. -->
   <div class="feature-section reverse">
     <div class="feature-text">
-      <h3>Act, not just chat</h3>
-      <p>Oyster doesn't just answer questions. It opens artefacts, switches spaces, creates documents, and manages your workspace from the prompt bar.</p>
+      <h3>Find what you need. Fast.</h3>
+      <p>Type what you're looking for and Oyster finds it. No folders, no tabs, no hunting. The right artefact opens instantly.</p>
     </div>
     <div class="feature-mock">
-      <div class="mock-panel" id="mock-act">
+      <div class="mock-panel" id="mock-open">
         <div class="mock-chatbar">
           <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div class="mock-chatbar-text"><span class="typing-text" data-text="create a summary of Q1"></span></div>
+          <div class="mock-chatbar-text"><code><span class="typing-text" data-text="/o competitor analysis"></span></code></div>
         </div>
-        <div class="mock-building">
-          <div class="build-progress"><div class="build-progress-bar"></div></div>
-          <div class="build-artifact">
-            <div class="build-artifact-icon"></div>
-            <div class="build-artifact-text">
-              <strong>Q1 Summary</strong>
-              Added to research space
-            </div>
+        <div class="mock-autocomplete">
+          <div class="mock-autocomplete-item active fade-in fade-in-1">
+            <span class="name">Competitor Analysis</span>
+          </div>
+          <div class="mock-autocomplete-item fade-in fade-in-2">
+            <span class="name">Competitor Landscape</span>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Feature 5: Import your projects -->
+  <!-- Feature 3: Switch context instantly -->
   <div class="feature-section">
+    <div class="feature-text">
+      <h3>Switch context instantly</h3>
+      <p>Jump between project spaces with a single shortcut. Your brain switches context — your workspace should keep up.</p>
+    </div>
+    <div class="feature-mock">
+      <div class="mock-panel" id="mock-switch">
+        <div class="mock-chatbar">
+          <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div class="mock-chatbar-text"><code><span class="typing-text" id="switch-typing" data-text="#home"></span></code></div>
+        </div>
+        <div class="mock-pills pill-switch" id="pill-switch">
+          <span class="mock-pill active" data-idx="0">home</span>
+          <span class="mock-pill" data-idx="1">research</span>
+          <span class="mock-pill" data-idx="2">clients</span>
+          <span class="mock-pill" data-idx="3">ops</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 4: Drop in a folder. Get organised. -->
+  <div class="feature-section reverse">
     <div class="feature-text">
       <h3>Drop in a folder. Get organised.</h3>
       <p>Point Oyster at any folder or project and it picks up what's inside — documents, presentations, diagrams, tools, apps. Your existing work lands on the surface automatically.</p>
@@ -524,6 +498,32 @@
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="width: 8px; height: 8px; border-radius: 50%; background: #a78bfa; flex-shrink: 0;"></span>
               <span style="font-size: 12px;">2 diagrams found</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 5: Act, not just chat -->
+  <div class="feature-section">
+    <div class="feature-text">
+      <h3>Act, not just chat</h3>
+      <p>Oyster doesn't just answer questions. It opens artefacts, switches spaces, creates documents, and manages your workspace from the prompt bar.</p>
+    </div>
+    <div class="feature-mock">
+      <div class="mock-panel" id="mock-act">
+        <div class="mock-chatbar">
+          <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div class="mock-chatbar-text"><span class="typing-text" data-text="create a summary of Q1"></span></div>
+        </div>
+        <div class="mock-building">
+          <div class="build-progress"><div class="build-progress-bar"></div></div>
+          <div class="build-artifact">
+            <div class="build-artifact-icon"></div>
+            <div class="build-artifact-text">
+              <strong>Q1 Summary</strong>
+              Added to research space
             </div>
           </div>
         </div>
