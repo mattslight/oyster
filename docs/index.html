@@ -518,7 +518,7 @@
   <div class="bottom-cta" style="padding-bottom: 0;">
     <h3 style="font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 32px;">One command to get started</h3>
     <div style="display: inline-block; position: relative; background: rgba(13,14,26,0.9); backdrop-filter: blur(24px); border-radius: 12px; padding: 20px 40px; box-shadow: 0 16px 48px rgba(0,0,0,0.4);">
-      <span style="position: absolute; top: -10px; right: -10px; background: #7c6bff; color: #fff; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; padding: 4px 10px; border-radius: 6px;">Coming soon</span>
+      <span style="position: absolute; top: -12px; right: -16px; background: #d93025; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 4px 12px; border-radius: 4px; transform: rotate(6deg); font-family: 'IBM Plex Mono', monospace; box-shadow: 0 2px 8px rgba(217,48,37,0.4);">Coming soon</span>
       <code style="font-family: 'IBM Plex Mono', monospace; font-size: 18px; color: #a99eff;">npx oyster</code>
     </div>
   </div>
@@ -549,21 +549,83 @@
       });
     });
 
-    // Typing animation — types text when element scrolls into view
-    const typingEls = document.querySelectorAll('.typing-text');
-    const typed = new Set();
+    // Looping typing animation for each mock panel
+    function animatePanel(panel) {
+      const typingEl = panel.querySelector('.typing-text');
+      const fadeEls = panel.querySelectorAll('.fade-in');
+      const response = panel.querySelector('.mock-response');
+      const building = panel.querySelector('.mock-building');
 
-    function typeText(el) {
-      const text = el.dataset.text;
-      let i = 0;
-      el.textContent = '';
-      const interval = setInterval(() => {
-        el.textContent = text.slice(0, ++i);
-        if (i >= text.length) clearInterval(interval);
-      }, 50);
+      function reset() {
+        if (typingEl) { typingEl.textContent = ''; typingEl.style.borderRight = '2px solid #a99eff'; }
+        fadeEls.forEach(el => { el.style.opacity = '0'; el.style.transform = 'translateY(8px)'; });
+        if (response) { response.style.opacity = '0'; response.style.transform = 'translateY(8px)'; }
+        if (building) {
+          building.querySelector('.build-progress-bar').style.width = '0';
+          building.querySelector('.build-artifact').style.opacity = '0';
+        }
+      }
+
+      function run() {
+        reset();
+        const text = typingEl ? typingEl.dataset.text : '';
+        let i = 0;
+
+        // Type
+        const typeInterval = setInterval(() => {
+          if (!typingEl) return clearInterval(typeInterval);
+          typingEl.textContent = text.slice(0, ++i);
+          if (i >= text.length) {
+            clearInterval(typeInterval);
+            typingEl.style.borderRight = '2px solid transparent';
+
+            // Show results after typing
+            fadeEls.forEach((el, idx) => {
+              setTimeout(() => {
+                el.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+                el.style.opacity = '1';
+                el.style.transform = 'translateY(0)';
+              }, 300 + idx * 400);
+            });
+
+            if (response) {
+              setTimeout(() => {
+                response.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+                response.style.opacity = '1';
+                response.style.transform = 'translateY(0)';
+              }, 600);
+            }
+
+            if (building) {
+              const bar = building.querySelector('.build-progress-bar');
+              const artifact = building.querySelector('.build-artifact');
+              bar.style.transition = 'width 1.5s ease-in-out';
+              bar.style.width = '100%';
+              setTimeout(() => {
+                artifact.style.transition = 'opacity 0.4s ease';
+                artifact.style.opacity = '1';
+              }, 1600);
+            }
+          }
+        }, 60);
+      }
+
+      // Loop: run, wait, reset, wait, run again
+      function loop() {
+        run();
+        setTimeout(() => { reset(); setTimeout(loop, 1000); }, 5000);
+      }
+
+      // Start when visible
+      const obs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) { obs.disconnect(); loop(); }
+      }, { threshold: 0.3 });
+      obs.observe(panel);
     }
 
-    // Pill switching animation
+    document.querySelectorAll('.mock-panel[id]').forEach(animatePanel);
+
+    // Pill switching animation (loops independently)
     let pillIdx = 0;
     const pillContainer = document.getElementById('pill-switch');
     if (pillContainer) {
@@ -574,22 +636,6 @@
         pills[pillIdx].classList.add('active');
       }, 2000);
     }
-
-    // Intersection observer — trigger animations when visible
-    const observer = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const el = entry.target;
-          if (!typed.has(el)) {
-            typed.add(el);
-            const typingEl = el.querySelector('.typing-text');
-            if (typingEl) typeText(typingEl);
-          }
-        }
-      });
-    }, { threshold: 0.3 });
-
-    document.querySelectorAll('.mock-panel').forEach(p => observer.observe(p));
   </script>
 </body>
 </html>
