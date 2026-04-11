@@ -56,18 +56,23 @@ function findPackageRoot(): string {
 const PACKAGE_ROOT = findPackageRoot();
 // OpenCode binary: walk up from PACKAGE_ROOT to find node_modules/.bin/opencode (handles npm hoisting)
 function findOpenCodeBin(): string {
-  const candidates = [
-    join(PACKAGE_ROOT, "server", "node_modules", ".bin", "opencode"),
-    join(PACKAGE_ROOT, "node_modules", ".bin", "opencode"),
+  const isWin = process.platform === "win32";
+  const names = isWin ? ["opencode.cmd", "opencode.ps1", "opencode"] : ["opencode"];
+  const roots = [
+    join(PACKAGE_ROOT, "server", "node_modules", ".bin"),
+    join(PACKAGE_ROOT, "node_modules", ".bin"),
   ];
   // Walk up for hoisted installs (npx, global)
   let dir = PACKAGE_ROOT;
   for (let i = 0; i < 5; i++) {
-    candidates.push(join(dir, "node_modules", ".bin", "opencode"));
+    roots.push(join(dir, "node_modules", ".bin"));
     dir = dirname(dir);
   }
-  for (const c of candidates) {
-    if (existsSync(c)) return c;
+  for (const root of roots) {
+    for (const name of names) {
+      const candidate = join(root, name);
+      if (existsSync(candidate)) return candidate;
+    }
   }
   return "opencode"; // fallback to PATH
 }
