@@ -28,57 +28,69 @@ Oyster puts that work on one surface and lets you control it with simple command
 - **Bring your own AI**  
   Oyster speaks MCP — the open standard that lets AI tools talk to each other. Connect the AI you already use and it can control your workspace directly.
 
+## Quick start
+
+### Install and run
+
+```bash
+npm install -g oyster-os
+oyster
+```
+
+That's it. Oyster starts, your browser opens to **http://localhost:4200**, and you're on the surface.
+
+On first run, Oyster will ask for your API key. Paste it and it's saved to `~/.oyster/.env`.
+
+### Connect your AI
+
+Oyster is an MCP server. Any MCP-compatible tool can control your workspace.
+
+**Claude Code:**
+
+```bash
+claude mcp add --transport http oyster http://localhost:4200/mcp/
+```
+
+**Cursor / VS Code / other MCP clients** — add to your MCP config:
+
+```json
+{
+  "oyster": {
+    "type": "http",
+    "url": "http://localhost:4200/mcp/"
+  }
+}
+```
+
+Once connected, your AI can list spaces, open artefacts, create documents, onboard projects, and manage the surface directly.
+
+### Onboard a project
+
+From the Oyster chat bar:
+
+```
+onboard my project at ~/Dev/my-project
+```
+
+Or from Claude Code / any connected AI:
+
+```
+> onboard_space(name: "My Project", repo_path: "/path/to/my-project")
+```
+
+Oyster scans the folder for documents, apps, and diagrams and adds them to the surface automatically.
+
 ## What works today
 
 - Prompt-driven navigation
 - Space switching
 - Artefact desktop with icons
 - Local repo onboarding
-- MCP-powered agent actions (works with Claude Code, Cursor, any MCP client)
+- MCP server with 12 tools (works with Claude Code, Cursor, any MCP client)
 - Instant UI updates via SSE
+- Slash commands (`/s`, `/o`, `#`)
 
-## Example
-
-Things you can type into Oyster:
-
-```text
-show me the competitor analysis
-switch to blunderfixer
-/o competitor analysis
-/s home
-#bf
-#1
-```
-
-## Quick start
-
-### Requirements
-
-Node.js 22+
-
-### Install
-
-```bash
-git clone https://github.com/mattslight/oyster.git
-cd oyster
-npm install
-npm run dev
-```
-
-Open:
-
-**http://localhost:7337** 😎
-
-Create a `.env` file at the project root with your preferred AI provider key:
-
-```
-ANTHROPIC_API_KEY=your-key    # or OPENAI_API_KEY, etc.
-FAL_KEY=your-key              # optional — AI-generated icons
-```
-
-Oyster uses OpenCode under the hood, which supports Anthropic, OpenAI, Gemini, Groq, and Ollama. Bring whichever AI you prefer.
-
-## Core commands
+## Commands
 
 | Command | What it does |
 |---|---|
@@ -95,6 +107,34 @@ Examples:
 /o pricing deck
 #home
 #2
+```
+
+## The full loop
+
+Here's what it looks like end to end:
+
+```bash
+# 1. Install Oyster
+npm install -g oyster-os
+
+# 2. Start it
+oyster
+# → browser opens to http://localhost:4200
+
+# 3. Connect Claude Code (or any MCP client)
+claude mcp add --transport http oyster http://localhost:4200/mcp/
+
+# 4. From Claude Code, onboard a project
+> onboard_space(name: "My App", repo_path: "~/Dev/my-app")
+# → Oyster scans for docs, apps, diagrams
+
+# 5. From the Oyster chat bar
+show me the architecture diagram
+# → artifact opens in the viewer
+
+# 6. Switch spaces
+#1
+# → instant switch to your first project
 ```
 
 ## Who it is for
@@ -117,6 +157,7 @@ Local-first. Single-user. Built for fast iteration.
 - artefact management
 - repo onboarding
 - visual workspace
+- MCP server
 
 **Planned later**
 - dynamic UI — interfaces that adapt to the task at hand, not static layouts
@@ -127,17 +168,14 @@ Local-first. Single-user. Built for fast iteration.
 ## Architecture
 
 ```
-Web UI (React + Vite)
-        |
-        v
-Oyster Server
-  - SQLite
-  - MCP tools
-  - SSE updates
-  - chat proxy
-        |
-        v
-OpenCode / LLM
+Browser → http://localhost:4200
+              |
+        Oyster Server
+         - SQLite (artefacts, spaces)
+         - MCP server (/mcp/)
+         - SSE push (instant UI updates)
+         - Static web UI
+         - Chat proxy → OpenCode → LLM
 ```
 
 ## Contributing
@@ -150,7 +188,7 @@ Good areas to help with:
 - slash commands
 - artefact search and ranking
 - UI polish
-- packaging and distribution
+- MCP connectors
 
 If you want to contribute:
 
@@ -158,18 +196,27 @@ If you want to contribute:
 2. Keep the scope tight
 3. Send a focused PR with a clear before and after
 
+### Development
+
+```bash
+git clone https://github.com/mattslight/oyster.git
+cd oyster
+cd web && npm install && cd ../server && npm install && cd ..
+npm run dev
+# → dev server at http://localhost:7337 (proxies to server at 4200)
+```
+
 ## Roadmap
 
-**Short term priorities:**
+**Short term:**
 
 - smoother onboarding
-- stronger packaging and distribution
 - faster artefact opening and navigation
 - better repo import experience
 
 **Longer term:**
 
-- dynamic UI — surfaces that reshape to fit the job, not one-size-fits-all layouts
+- dynamic UI — surfaces that reshape to fit the job
 - cloud and hybrid hosting
 - persistent memory
 - plugin ecosystem

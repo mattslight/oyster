@@ -1,10 +1,14 @@
 node_modules/
-dist/
 .env
 .env.local
 .superpowers/
 .claude/
+*.tgz
 
-# User data (not project source)
+# Build output
+server/dist/
+shared/types.js
+
+# User data
 userland/
 server/registry.json

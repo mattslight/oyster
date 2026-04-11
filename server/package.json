@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file=../.env node_modules/.bin/tsx watch src/index.ts",
-    "start": "node --env-file=../.env node_modules/.bin/tsx src/index.ts"
+    "start": "node --env-file=../.env node_modules/.bin/tsx src/index.ts",
+    "build": "tsc"
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.4",
@@ -20,6 +21,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.2"
   }
 }

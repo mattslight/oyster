@@ -1,12 +1,21 @@
 import { WebSocketServer, WebSocket } from "ws";
-import pty from "node-pty";
 import type { Server } from "node:http";
 
 const SCROLLBACK_LIMIT = 50_000; // chars to replay on reconnect
 
 let scrollback = "";
 const clients = new Set<WebSocket>();
-let proc: pty.IPty;
+let proc: any;
+let ptyAvailable = false;
+let ptyModule: any;
+
+// Dynamic import — node-pty is optional (native module, may not build on all platforms)
+try {
+  ptyModule = await import("node-pty");
+  ptyAvailable = true;
+} catch {
+  console.log("[pty] node-pty not available — terminal disabled");
+}
 
 export function spawnSession(
   shell: string,
@@ -14,8 +23,10 @@ export function spawnSession(
   cwd: string,
   env: Record<string, string>,
 ) {
+  if (!ptyAvailable) return;
+
   console.log(`Spawning ${shell} in ${cwd}`);
-  proc = pty.spawn(shell, shellArgs, {
+  proc = ptyModule.default.spawn(shell, shellArgs, {
     name: "xterm-256color",
     cols: 120,
     rows: 40,
@@ -35,7 +46,7 @@ export function spawnSession(
     }
   });
 
-  proc.onExit(({ exitCode }) => {
+  proc.onExit(({ exitCode }: { exitCode: number }) => {
     console.log(`Session exited with code ${exitCode}`);
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) {
@@ -54,6 +65,12 @@ export function attachWebSocket(httpServer: Server) {
     console.log(`Client connected (${clients.size + 1} total)`);
     clients.add(ws);
 
+    if (!ptyAvailable) {
+      ws.send("\r\n\x1b[90m[terminal not available — node-pty not installed]\x1b[0m\r\n");
+      ws.on("close", () => { clients.delete(ws); });
+      return;
+    }
+
     // Replay scrollback so reconnecting clients see current state
     if (scrollback.length > 0) {
       ws.send(scrollback);
@@ -61,6 +78,7 @@ export function attachWebSocket(httpServer: Server) {
 
     // Client → PTY
     ws.on("message", (msg: Buffer | string) => {
+      if (!proc) return;
       const data = typeof msg === "string" ? msg : msg.toString("utf-8");
 
       // Handle resize messages

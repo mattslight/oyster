@@ -16,6 +16,7 @@ export function spawnOpenCodeServe(
     cwd: userlandDir,
     env: cleanEnv,
     stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32",
   });
 
   child.stdout?.on("data", (data: Buffer) => {

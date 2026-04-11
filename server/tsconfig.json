@@ -6,7 +6,9 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "rootDir": "..",
+    "declaration": false
   },
-  "include": ["src"]
+  "include": ["src", "../shared"]
 }
