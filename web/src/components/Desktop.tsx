@@ -271,7 +271,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
             ))}
           </div>
         ) : (
-          <div className="icon-grid" ref={gridRef}>
+          <div className="icon-grid" ref={gridRef} style={{ justifyContent: headerAlign === "left" ? "start" : headerAlign === "right" ? "end" : "center" }}>
             {displayItems.map((item, i) => {
               const isDragged = item.key === dragKey;
               return (
