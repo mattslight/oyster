@@ -332,12 +332,20 @@
     }
 
     /* Dynamic UI carousel */
+    #dynamic-ui-carousel {
+      position: relative;
+    }
     .dui-view {
-      transition: opacity 0.4s ease;
+      position: absolute;
+      inset: 0;
       opacity: 0;
+      transition: opacity 0.6s ease;
+      pointer-events: none;
     }
     .dui-view.dui-active {
       opacity: 1;
+      position: relative;
+      pointer-events: auto;
     }
 
     /* Bottom CTA */
@@ -571,21 +579,21 @@
             <div style="flex: 1;">
               <div style="font-size: 9px; font-weight: 600; color: #a99eff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">To Do</div>
               <div style="display: flex; flex-direction: column; gap: 6px;">
-                <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fb7185;">Fix auth bug</div>
-                <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fbbf24;">Update docs</div>
+                <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fb7185;">Review proposal</div>
+                <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fbbf24;">Chase invoice</div>
               </div>
             </div>
             <div style="flex: 1;">
               <div style="font-size: 9px; font-weight: 600; color: #36d399; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">In Progress</div>
-              <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #4dc9f6;">API redesign</div>
+              <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #4dc9f6;">Client onboarding</div>
             </div>
             <div style="flex: 1;">
               <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Done</div>
-              <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.35); border-left: 2px solid rgba(255,255,255,0.15);">Setup CI</div>
+              <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.35); border-left: 2px solid rgba(255,255,255,0.15);">Send contract</div>
             </div>
           </div>
           <!-- View 2: Chart/Report -->
-          <div class="dui-view" data-view="1" style="display: none;">
+          <div class="dui-view" data-view="1">
             <div style="font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Q1 Progress</div>
             <div style="display: flex; align-items: flex-end; gap: 8px; height: 100px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div style="flex: 1; background: rgba(124,107,255,0.3); border-radius: 4px 4px 0 0; height: 40%;"></div>
@@ -605,7 +613,7 @@
             </div>
           </div>
           <!-- View 3: List/Table -->
-          <div class="dui-view" data-view="2" style="display: none;">
+          <div class="dui-view" data-view="2">
             <div style="font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Recent Activity</div>
             <div style="display: flex; flex-direction: column; gap: 1px;">
               <div style="display: flex; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px;">
@@ -787,10 +795,8 @@
       let duiIdx = 0;
       function cycleDui() {
         views[duiIdx].classList.remove('dui-active');
-        views[duiIdx].style.display = 'none';
         duiIdx = (duiIdx + 1) % views.length;
-        views[duiIdx].style.display = '';
-        requestAnimationFrame(() => views[duiIdx].classList.add('dui-active'));
+        views[duiIdx].classList.add('dui-active');
       }
       const duiObs = new IntersectionObserver(entries => {
         if (entries[0].isIntersecting) {
