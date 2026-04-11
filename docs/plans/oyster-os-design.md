@@ -83,9 +83,8 @@ Prove that Oyster can:
 │  └──────────────────────────────────────────────────────┘ │
 │                                                           │
 │  ┌─────────────────┐                                      │
-│  │  OpenCode       │   (Graphiti — deferred to v2)        │
-│  │  (port 4096)    │                                      │
-│  │  REST + SSE     │                                      │
+│  │  OpenCode       │   (spawned internally by server)     │
+│  │  AI engine      │                                      │
 │  │  .opencode/     │                                      │
 │  │  agents/        │                                      │
 │  │  oyster.md      │                                      │
@@ -99,14 +98,15 @@ Prove that Oyster can:
 └──────────────────────────────────────────────────────────┘
 ```
 
-**Three systems, three responsibilities:**
+**One server, one port:**
 
-| System | Port | Responsibility |
-|---|---|---|
-| Oyster Server | 4200 | Artifact/space registry (SQLite), MCP tool surface, chat proxy |
-| OpenCode | 4096 | AI engine, code execution, filesystem access |
+| Component | Role |
+|---|---|
+| Oyster Server (port 4200) | Everything: API, SQLite, MCP server, static web UI, chat proxy |
+| OpenCode (internal) | AI engine, spawned as subprocess, not user-facing |
+| SQLite (~/.oyster/userland/oyster.db) | Artefact and space registry |
 
-The agent (OpenCode) has MCP access to Oyster (surface management). The UI talks only to Oyster Server. Persistent memory (Graphiti) is deferred to v2.
+The UI, API, and MCP server all run on port 4200. OpenCode is spawned internally. No persistent memory in v1.
 
 ### The Artifact Contract
 
@@ -225,7 +225,7 @@ spaces (id, display_name, repo_path, color, parent_id,
 ```
 
 `source_origin` tracks how an artifact arrived: `manual` | `discovered` | `ai_generated`.
-`parent_id` on spaces is **navigation only** — where to show the space in the UI hierarchy. Semantic relationships between spaces live in the knowledge graph.
+`parent_id` on spaces is **navigation only** — where to show the space in the UI hierarchy. Semantic relationships between spaces are a v2 feature.
 
 ### Knowledge Graph — Deferred to v2
 
@@ -239,7 +239,7 @@ Artifacts that need persistence (e.g. a generated todo tracker) use their own lo
 
 ### OpenCode Server (Engine)
 
-`opencode serve` runs on the user's VM and exposes a comprehensive REST API on port 4096. This is the invisible engine that powers all chat interactions and output generation.
+`opencode serve` is spawned internally by Oyster Server as a subprocess. It's not user-facing — the user only sees port 4200. OpenCode powers the chat and tool calling behind the scenes.
 
 Key endpoints:
 - `POST /session` — create a new session
@@ -263,10 +263,10 @@ Defines a major part of Oyster's behaviour and conventions via `.opencode/agents
 Key sections:
 
 - **Identity:** "You are Oyster. You help the user capture, structure, and visualise their thinking."
-- **Knowledge graph (Graphiti) — MANDATORY:** At session start, call `search_nodes` to load context. When the user shares facts, decisions, or project info, call `add_episode` immediately. Before answering anything about a person, project, or past work, call `search_nodes` + `search_facts` first. The graph is how Oyster remembers across sessions — without it, the agent is stateless.
-- **Artifact generation:** Use `create_artifact` via Oyster MCP. Generated artifacts are registered on the desktop surface automatically. Set `source_origin: 'ai_generated'` for agent-produced content.
+- **Navigation:** "Show me X" → `list_artifacts(search)` → `open_artifact(id)`. "Switch to Y" → `switch_space(id)`. Instant, no deliberation.
+- **Artifact generation:** Use `create_artifact` via Oyster MCP. Set `source_origin: 'ai_generated'` for agent-produced content.
 - **Output conventions:** The agent infers the correct artifact type from intent — the user describes what they need, not what format to use.
-- **Surface management:** Prefer Oyster MCP tools (`create_artifact`, `list_artifacts`, `update_artifact`) over direct filesystem manipulation. The MCP tools keep the registry consistent.
+- **Surface management:** Prefer Oyster MCP tools (`create_artifact`, `list_artifacts`, `update_artifact`, `open_artifact`, `switch_space`) over direct filesystem manipulation.
 
 OpenCode supports custom agent markdown files natively via `.opencode/agents/`. No special tooling needed.
 

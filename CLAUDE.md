@@ -1,57 +1,81 @@
-# Oyster OS — Working Context
+# Oyster — Working Context
 
-## Hypothesis
+## What Oyster Is
 
-The right interface for knowledge work is a **surface that connects all your systems, accumulates context over time, and synthesises across boundaries** — so you can ask a question that spans Zoho and ProCore and last month's conversation and get one answer, not three logins.
-
-Not just for makers and developers. For anyone whose work is distributed across more than one system and one session.
-
-**The key test:** can the surface join dots that no single tool, dashboard, or LLM session could? A dashboard can't — it's a pre-defined view. ChatGPT can't — it has no live access and forgets. A Zoho report can't — ProCore isn't in scope. Oyster can, because it connects all systems via MCP, holds the relationships between them in a knowledge graph, and accumulates context across every session.
+A prompt-controlled workspace OS. Users install it with `npm install -g oyster-os`, run `oyster`, and get a visual surface at `http://localhost:4200` where they organise files, projects, and artefacts — controlled from a chat bar and slash commands.
 
 ## Architecture
 
-Three systems, three responsibilities:
+One server does everything:
 
-| System | Port | Responsibility |
-|---|---|---|
-| Oyster Server | 4200 | Artifact/space registry (SQLite), MCP tool surface, chat proxy |
-| OpenCode | 4096 | AI engine, code execution, filesystem access |
+```
+Browser → http://localhost:4200
+              |
+        Oyster Server
+         - SQLite (artefacts, spaces)
+         - MCP server at /mcp/ (externally connectable)
+         - SSE push (instant UI updates)
+         - Static web UI (server/dist/public/)
+         - Chat proxy → OpenCode (spawned internally) → LLM
+```
 
-**SQLite** (`userland/oyster.db`) holds surface state: artifacts and spaces. Fast, local, no infrastructure.
+**Oyster Server** (port 4200) — HTTP API, artifact/space registry (SQLite), MCP tool surface, static web serving, chat proxy to OpenCode. This is the only user-facing port.
 
-**OpenCode** has MCP access to Oyster (surface management). The UI talks only to Oyster Server.
+**OpenCode** — AI engine, spawned as a subprocess by the server. Not user-facing. Configured via `.opencode/agents/oyster.md` and `.opencode/config.toml`.
 
-**Graphiti** (knowledge graph / persistent memory) is deferred to v2. The v1 surface works without cross-session memory.
+**SQLite** (`~/.oyster/userland/oyster.db`) — artefact and space registry. Fast, local, no infrastructure.
+
+**No persistent memory in v1.** Cross-session memory (Graphiti / knowledge graph) is deferred to v2. The agent is stateless between sessions.
 
 ## Mental Models
 
-**Spaces** — organisational nodes, navigated via `parent_id` hierarchy in SQLite (nav only). Semantic relationships between spaces (client_of, depends_on, shares_pattern) are a future feature via knowledge graph — not SQL columns.
+**Spaces** — organisational nodes. Each space has an ID, display name, optional repo path, and colour. Navigated via pills at the bottom of the chat bar, or via `#space` / `/s space` commands.
 
-**Artifacts** — typed outputs on the surface (app, notes, diagram, deck, wireframe, table, map). Registered in SQLite, files in `userland/`. `source_origin` tracks provenance: `manual` | `discovered` | `ai_generated`.
+**Artefacts** — typed outputs on the surface (app, notes, diagram, deck, wireframe, table, map). Registered in SQLite, files in `~/.oyster/userland/`. `source_origin` tracks provenance: `manual` | `discovered` | `ai_generated`.
 
-**Groups/folders** — display clustering only (`group_name` on artifacts). Not structural.
+**MCP** — the server exposes 15 tools at `/mcp/`. Any MCP client (Claude Code, Cursor, etc.) can connect and control the surface.
 
 ## Key Files
 
-- `server/src/index.ts` — HTTP server, all API routes
-- `server/src/mcp-server.ts` — MCP tool surface for agents
+- `bin/oyster.mjs` — CLI entry point (API key prompt, browser open)
+- `server/src/index.ts` — HTTP server, all API routes, SSE, static serving, MCP
+- `server/src/mcp-server.ts` — MCP tool definitions
 - `server/src/artifact-store.ts` / `artifact-service.ts` — artifact CRUD
 - `server/src/space-store.ts` / `space-service.ts` — space CRUD + repo scanner
 - `server/src/db.ts` — SQLite schema and migrations
 - `.opencode/agents/oyster.md` — agent personality, conventions
-- `opencode.json` — MCP server config (Oyster endpoint)
-- `web/src/App.tsx` — root, spaces/artifacts state, wizard triggers
+- `opencode.json` — OpenCode config (model, MCP endpoints)
+- `web/src/App.tsx` — root component, state, SSE subscription
 - `web/src/components/Desktop.tsx` — surface grid, topbar, sort/filter/view
-- `web/src/components/ChatBar.tsx` — chat input, space pills, messages panel
+- `web/src/components/ChatBar.tsx` — chat input, slash commands, space pills
+
+## How to build and run
+
+```bash
+# Development
+cd web && npm install && cd ../server && npm install && cd ..
+npm run dev              # Vite dev server at 7337, proxies to server at 4200
+
+# Production build
+npm run build            # Builds web + server + copies web into server/dist/public/
+
+# Run from build
+node server/dist/server/src/index.js
+
+# Published package
+npm install -g oyster-os
+oyster                   # Starts server, opens browser to localhost:4200
+```
 
 ## Conventions
 
 - Prefer editing existing files over creating new ones
 - MCP tools for surface management; direct filesystem for artifact content
-- Never write to `userland/oyster.db` directly from agent — use MCP tools
+- Never write to SQLite directly from agent — use MCP tools
 - `source_origin: 'ai_generated'` on all agent-created artifacts
 - SQLite migrations are additive `ALTER TABLE ... ADD COLUMN` with try/catch (idempotent)
-- Space `parent_id` is nav only — semantic relationships are a future feature
+- Userland data lives at `~/.oyster/userland/` (not in the package directory)
+- Always use feature branches, never commit to main directly
 
 ---
 

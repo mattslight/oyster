@@ -1,5 +1,7 @@
 # Memory Layer Evaluation — March 2026
 
+> **STATUS: Decision made (Graphiti) but deferred to v2.** Current v1 has no persistent memory. The agent is stateless between sessions. See issue #70 for v2 options.
+
 ## Context
 
 Oyster needs a persistent knowledge layer so spaces become contextual containers (not just visual folders) and the AI retains context across sessions. The original design doc specifies a nodes + edges knowledge graph in Supabase, but this was deferred during PoC.
