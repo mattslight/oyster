@@ -133,7 +133,6 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
             </button>
           </div>
           {isAllSpace && (
-            <>
               <div className="ctrl-group-labeled">
                 <span className="ctrl-group-label">group</span>
                 <div className="ctrl-group">
@@ -142,16 +141,15 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                   <button className={`view-btn filter-pill-btn${groupBy === "kind" ? " active" : ""}`} onClick={() => setAndSaveGroupBy("kind")}>kind</button>
                 </div>
               </div>
-              <div className="ctrl-group-labeled">
-                <span className="ctrl-group-label">align</span>
-                <div className="ctrl-group">
-                  <button className={`view-btn${headerAlign === "left" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("left")} title="Left"><AlignLeft size={13} /></button>
-                  <button className={`view-btn${headerAlign === "center" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("center")} title="Center"><AlignCenter size={13} /></button>
-                  <button className={`view-btn${headerAlign === "right" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("right")} title="Right"><AlignRight size={13} /></button>
-                </div>
-              </div>
-            </>
           )}
+          <div className="ctrl-group-labeled">
+            <span className="ctrl-group-label">align</span>
+            <div className="ctrl-group">
+              <button className={`view-btn${headerAlign === "left" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("left")} title="Left"><AlignLeft size={13} /></button>
+              <button className={`view-btn${headerAlign === "center" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("center")} title="Center"><AlignCenter size={13} /></button>
+              <button className={`view-btn${headerAlign === "right" ? " active" : ""}`} onClick={() => setAndSaveHeaderAlign("right")} title="Right"><AlignRight size={13} /></button>
+            </div>
+          </div>
           <div className="ctrl-group-labeled">
             <span className="ctrl-group-label">show</span>
             <div className="ctrl-group topbar-filter-pills">
