@@ -331,6 +331,15 @@
       transition: all 0.3s ease;
     }
 
+    /* Dynamic UI carousel */
+    .dui-view {
+      transition: opacity 0.4s ease;
+      opacity: 0;
+    }
+    .dui-view.dui-active {
+      opacity: 1;
+    }
+
     /* Bottom CTA */
     .bottom-cta {
       position: relative;
@@ -550,32 +559,71 @@
   <!-- Feature 7: Dynamic UI -->
   <div class="feature-section">
     <div class="feature-text">
-      <h3>UI that adapts to the job</h3>
+      <h3>Every task. A new surface.</h3>
       <p>Static dashboards show the same layout no matter what you're doing. Oyster builds surfaces that reshape to fit the task — whether you're reviewing a pipeline, writing a brief, or triaging errors.</p>
-      <p style="margin-top: 12px; font-size: 13px; color: rgba(124,107,255,0.7); font-weight: 500;">Coming soon</p>
+      <p style="margin-top: 16px; display: inline-block; background: #d93025; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 4px 12px; border-radius: 4px; transform: rotate(-2deg); font-family: 'IBM Plex Mono', monospace; box-shadow: 0 2px 8px rgba(217,48,37,0.4);">Coming soon</p>
     </div>
     <div class="feature-mock">
       <div class="mock-panel">
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(124,107,255,0.08); border-radius: 10px;">
-            <span style="font-size: 16px;">📊</span>
+        <div id="dynamic-ui-carousel" style="min-height: 180px; position: relative;">
+          <!-- View 1: Kanban -->
+          <div class="dui-view dui-active" data-view="0" style="display: flex; gap: 8px;">
             <div style="flex: 1;">
-              <div style="font-size: 12px; font-weight: 600; color: #fff;">Pipeline Review</div>
-              <div style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 6px;"><div style="height: 100%; width: 65%; background: #7c6bff; border-radius: 2px;"></div></div>
+              <div style="font-size: 9px; font-weight: 600; color: #a99eff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">To Do</div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fb7185;">Fix auth bug</div>
+                <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fbbf24;">Update docs</div>
+              </div>
+            </div>
+            <div style="flex: 1;">
+              <div style="font-size: 9px; font-weight: 600; color: #36d399; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">In Progress</div>
+              <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #4dc9f6;">API redesign</div>
+            </div>
+            <div style="flex: 1;">
+              <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Done</div>
+              <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.35); border-left: 2px solid rgba(255,255,255,0.15);">Setup CI</div>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(54,211,153,0.08); border-radius: 10px;">
-            <span style="font-size: 16px;">📝</span>
-            <div>
-              <div style="font-size: 12px; font-weight: 600; color: #fff;">Writing Mode</div>
-              <div style="font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px;">Distraction-free, full focus</div>
+          <!-- View 2: Chart/Report -->
+          <div class="dui-view" data-view="1" style="display: none;">
+            <div style="font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Q1 Progress</div>
+            <div style="display: flex; align-items: flex-end; gap: 8px; height: 100px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+              <div style="flex: 1; background: rgba(124,107,255,0.3); border-radius: 4px 4px 0 0; height: 40%;"></div>
+              <div style="flex: 1; background: rgba(124,107,255,0.4); border-radius: 4px 4px 0 0; height: 55%;"></div>
+              <div style="flex: 1; background: rgba(124,107,255,0.5); border-radius: 4px 4px 0 0; height: 70%;"></div>
+              <div style="flex: 1; background: rgba(124,107,255,0.6); border-radius: 4px 4px 0 0; height: 45%;"></div>
+              <div style="flex: 1; background: rgba(124,107,255,0.7); border-radius: 4px 4px 0 0; height: 85%;"></div>
+              <div style="flex: 1; background: #7c6bff; border-radius: 4px 4px 0 0; height: 95%;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+              <span style="font-size: 9px; color: rgba(255,255,255,0.25);">Jan</span>
+              <span style="font-size: 9px; color: rgba(255,255,255,0.25);">Feb</span>
+              <span style="font-size: 9px; color: rgba(255,255,255,0.25);">Mar</span>
+              <span style="font-size: 9px; color: rgba(255,255,255,0.25);">Apr</span>
+              <span style="font-size: 9px; color: rgba(255,255,255,0.25);">May</span>
+              <span style="font-size: 9px; color: rgba(255,255,255,0.25);">Jun</span>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(251,113,133,0.08); border-radius: 10px;">
-            <span style="font-size: 16px;">🔍</span>
-            <div>
-              <div style="font-size: 12px; font-weight: 600; color: #fff;">Error Triage</div>
-              <div style="font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px;">Logs, stack traces, context</div>
+          <!-- View 3: List/Table -->
+          <div class="dui-view" data-view="2" style="display: none;">
+            <div style="font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Recent Activity</div>
+            <div style="display: flex; flex-direction: column; gap: 1px;">
+              <div style="display: flex; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px;">
+                <span style="color: rgba(255,255,255,0.6);">Competitor Analysis updated</span>
+                <span style="color: rgba(255,255,255,0.25);">2m ago</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px;">
+                <span style="color: rgba(255,255,255,0.6);">Pitch Deck created</span>
+                <span style="color: rgba(255,255,255,0.25);">15m ago</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px;">
+                <span style="color: rgba(255,255,255,0.6);">3 new docs imported</span>
+                <span style="color: rgba(255,255,255,0.25);">1h ago</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px;">
+                <span style="color: rgba(255,255,255,0.6);">Sprint Board reorganised</span>
+                <span style="color: rgba(255,255,255,0.25);">3h ago</span>
+              </div>
             </div>
           </div>
         </div>
@@ -731,6 +779,26 @@
         if (entries[0].isIntersecting) { switchObs.disconnect(); switchLoop(); }
       }, { threshold: 0.3 });
       switchObs.observe(switchPanel);
+    }
+    // Dynamic UI carousel — cycles kanban → chart → list
+    const duiCarousel = document.getElementById('dynamic-ui-carousel');
+    if (duiCarousel) {
+      const views = duiCarousel.querySelectorAll('.dui-view');
+      let duiIdx = 0;
+      function cycleDui() {
+        views[duiIdx].classList.remove('dui-active');
+        views[duiIdx].style.display = 'none';
+        duiIdx = (duiIdx + 1) % views.length;
+        views[duiIdx].style.display = '';
+        requestAnimationFrame(() => views[duiIdx].classList.add('dui-active'));
+      }
+      const duiObs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) {
+          duiObs.disconnect();
+          setInterval(cycleDui, 3000);
+        }
+      }, { threshold: 0.3 });
+      duiObs.observe(duiCarousel);
     }
   </script>
 </body>
