@@ -3,7 +3,7 @@ import type { Artifact } from "../../../shared/types";
 
 export async function fetchArtifacts(): Promise<Artifact[]> {
   const res = await fetch("/api/artifacts");
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
   return res.json();
 }
 
