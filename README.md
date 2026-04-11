@@ -76,7 +76,7 @@ ANTHROPIC_API_KEY=your-key    # or OPENAI_API_KEY, etc.
 FAL_KEY=your-key              # optional — AI-generated icons
 ```
 
-Oyster uses OpenCode under the hood, which supports Anthropic, OpenAI, Gemini, Groq, and Ollama. Bring whichever AI you prefer.
+Anthropic (Claude) is the default. Other providers (OpenAI, Gemini, Groq, Ollama) can be configured in `.opencode/config.toml`.
 
 ## Core commands
 
