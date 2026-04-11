@@ -501,6 +501,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                 e.preventDefault();
                 const item = slashItems[slashIndex];
                 if (item.type === "space") { setInput(""); onSpaceChange?.(item.key); }
+                else if (item.type === "artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactOpen?.(a); }
                 else { setInput(item.label + ("args" in item && item.args ? " " : "")); }
                 return;
               }
