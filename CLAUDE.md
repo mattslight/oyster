@@ -16,17 +16,16 @@ Three systems, three responsibilities:
 |---|---|---|
 | Oyster Server | 4200 | Artifact/space registry (SQLite), MCP tool surface, chat proxy |
 | OpenCode | 4096 | AI engine, code execution, filesystem access |
-| Graphiti | 8000 | Knowledge graph, persistent memory, cross-session context (Docker/FalkorDB) |
 
 **SQLite** (`userland/oyster.db`) holds surface state: artifacts and spaces. Fast, local, no infrastructure.
 
-**Graphiti** is the memory layer. Everything is nodes and edges — no separate tables. Episodes are ingested, entities and facts extracted by LLM automatically. The agent calls `search_nodes`/`search_facts` before answering, and `add_episode` to remember things. Configured in `opencode.json`, mandatory rules in `.opencode/agents/oyster.md`.
+**OpenCode** has MCP access to Oyster (surface management). The UI talks only to Oyster Server.
 
-**OpenCode** has MCP access to both Oyster (surface) and Graphiti (memory). The UI talks only to Oyster Server.
+**Graphiti** (knowledge graph / persistent memory) is deferred to v2. The v1 surface works without cross-session memory.
 
 ## Mental Models
 
-**Spaces** — organisational nodes, navigated via `parent_id` hierarchy in SQLite (nav only). Semantic relationships between spaces (client_of, depends_on, shares_pattern) live as edges in the Graphiti graph — not SQL columns. "Tell me about all my client projects" is a graph traversal, not a container space query.
+**Spaces** — organisational nodes, navigated via `parent_id` hierarchy in SQLite (nav only). Semantic relationships between spaces (client_of, depends_on, shares_pattern) are a future feature via knowledge graph — not SQL columns.
 
 **Artifacts** — typed outputs on the surface (app, notes, diagram, deck, wireframe, table, map). Registered in SQLite, files in `userland/`. `source_origin` tracks provenance: `manual` | `discovered` | `ai_generated`.
 
@@ -39,8 +38,8 @@ Three systems, three responsibilities:
 - `server/src/artifact-store.ts` / `artifact-service.ts` — artifact CRUD
 - `server/src/space-store.ts` / `space-service.ts` — space CRUD + repo scanner
 - `server/src/db.ts` — SQLite schema and migrations
-- `.opencode/agents/oyster.md` — agent personality, Graphiti rules, conventions
-- `opencode.json` — MCP server config (Oyster + Graphiti endpoints)
+- `.opencode/agents/oyster.md` — agent personality, conventions
+- `opencode.json` — MCP server config (Oyster endpoint)
 - `web/src/App.tsx` — root, spaces/artifacts state, wizard triggers
 - `web/src/components/Desktop.tsx` — surface grid, topbar, sort/filter/view
 - `web/src/components/ChatBar.tsx` — chat input, space pills, messages panel
@@ -52,7 +51,7 @@ Three systems, three responsibilities:
 - Never write to `userland/oyster.db` directly from agent — use MCP tools
 - `source_origin: 'ai_generated'` on all agent-created artifacts
 - SQLite migrations are additive `ALTER TABLE ... ADD COLUMN` with try/catch (idempotent)
-- Space `parent_id` is nav only — don't encode semantics there, use the graph
+- Space `parent_id` is nav only — semantic relationships are a future feature
 
 ---
 

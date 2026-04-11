@@ -80,7 +80,6 @@ function ToolBlock({ tool }: { tool: ToolPart }) {
 
 const SLASH_COMMANDS = [
   { cmd: "/s", args: "<prefix>", desc: "Switch space", example: "/s bf → blunderfixer" },
-  { cmd: "/o", args: "<search>", desc: "Open artifact", example: "/o competitor analysis" },
 ];
 
 interface Props {
@@ -99,6 +98,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const [focused, setFocused] = useState(false);
   const [tagline, setTagline] = useState<{ dim: string; bright: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(0);
   const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -107,6 +107,42 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const isHero = !!isHeroProp;
 
   const { messages, setMessages, sessionId, expanded, setExpanded, pushSessionUrl } = useChatSession();
+
+  // Compute slash autocomplete items
+  const subseq = useCallback((query: string, target: string) => {
+    let qi = 0;
+    for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+      if (target[ti] === query[qi]) qi++;
+    }
+    return qi === query.length;
+  }, []);
+
+  const slashItems = useMemo(() => {
+    if (!input.startsWith("/")) return [];
+    const lower = input.toLowerCase().trim();
+    const spaceArgMatch = lower.match(/^\/s(\s+(.*))?$/);
+
+    if (spaceArgMatch !== null && (lower === "/s" || lower.startsWith("/s "))) {
+      const q = (spaceArgMatch[2] || "").trim();
+      return spaces
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .slice(0, 8)
+        .map(s => ({ key: s.id, label: s.id, desc: s.displayName, type: "space" as const }));
+    }
+
+    if (!input.includes(" ") && lower !== "/s") {
+      return SLASH_COMMANDS
+        .filter(c => c.cmd.startsWith(lower))
+        .map(c => ({ key: c.cmd, label: c.cmd, args: c.args, desc: c.desc, type: "command" as const }));
+    }
+
+    return [];
+  }, [input, spaces, subseq]);
+
+  const slashOpen = slashItems.length > 0;
+
+  // Reset index when items change
+  useEffect(() => { setSlashIndex(0); }, [slashItems.length]);
   const { resetTracking } = useChatEvents({ sessionId, setMessages, setStreaming, setStatusText });
 
   useEffect(() => {
@@ -140,21 +176,12 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         const q = arg.trim().toLowerCase();
 
         if (cmd === "s" && onSpaceChange) {
-          // Subsequence match: "bf" matches "blunderfixer" (b...f...)
-          const subsequence = (query: string, target: string) => {
-            let qi = 0;
-            for (let ti = 0; ti < target.length && qi < query.length; ti++) {
-              if (target[ti] === query[qi]) qi++;
-            }
-            return qi === query.length;
-          };
-
           // Try: exact ID, then prefix, then subsequence on ID, then subsequence on display name
           const match = spaces.find(s => s.id === q)
             || spaces.find(s => s.id.startsWith(q))
             || spaces.find(s => s.displayName.toLowerCase().startsWith(q))
-            || spaces.find(s => subsequence(q, s.id))
-            || spaces.find(s => subsequence(q, s.displayName.toLowerCase()));
+            || spaces.find(s => subseq(q, s.id))
+            || spaces.find(s => subseq(q, s.displayName.toLowerCase()));
 
           if (match) {
             onSpaceChange(match.id);
@@ -187,7 +214,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       setStreaming(false);
       setStatusText("");
     }
-  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange]);
+  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq]);
 
   function handleCopyChat() {
     const text = messages
@@ -221,7 +248,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
 
       {/* Messages panel — expands upward */}
       {messages.length > 0 && (
-        <div className={`chatbar-messages ${expanded ? "chat-expanded" : "chat-collapsed"}`}>
+        <div className={`chatbar-messages ${expanded ? "chat-expanded" : "chat-collapsed"}${slashOpen ? " slash-dimmed" : ""}`}>
           <div className="chatbar-actions">
             <button
               className={`chatbar-copy ${copied ? "copied" : ""}`}
@@ -300,71 +327,26 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       {/* Input bar */}
       <div className="chatbar-bar" onClick={() => { if (messages.length > 0 && !expanded) setExpanded(true); }}>
         {/* Slash command autocomplete — floats above input */}
-        {input.startsWith("/") && (() => {
-          const lower = input.toLowerCase().trim();
-          const spaceArgMatch = lower.match(/^\/s(\s+(.*))?$/);
-
-          // "/s" or "/s " or "/s b..." — show matching spaces
-          if (spaceArgMatch !== null && (lower === "/s" || lower.startsWith("/s "))) {
-            const q = (spaceArgMatch[2] || "").trim();
-            const subseq = (query: string, target: string) => {
-              let qi = 0;
-              for (let ti = 0; ti < target.length && qi < query.length; ti++) {
-                if (target[ti] === query[qi]) qi++;
-              }
-              return qi === query.length;
-            };
-            const matches = spaces.filter(s =>
-              !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase())
-            ).slice(0, 8);
-            if (matches.length === 0) return null;
-            return (
-              <div className="slash-autocomplete">
-                {matches.map(s => (
-                  <button
-                    key={s.id}
-                    className="slash-autocomplete-item"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      setInput("");
-                      onSpaceChange?.(s.id);
-                    }}
-                  >
-                    <span className="slash-cmd">{s.id}</span>
-                    <span className="slash-desc">{s.displayName}</span>
-                  </button>
-                ))}
-              </div>
-            );
-          }
-
-          // After "/" — show available commands (but not if already showing spaces)
-          if (!input.includes(" ") && lower !== "/s") {
-            const filtered = SLASH_COMMANDS.filter(c => c.cmd.startsWith(lower));
-            if (filtered.length === 0) return null;
-            return (
-              <div className="slash-autocomplete">
-                {filtered.map(c => (
-                  <button
-                    key={c.cmd}
-                    className="slash-autocomplete-item"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      setInput(c.cmd + (c.args ? " " : ""));
-                      inputRef.current?.focus();
-                    }}
-                  >
-                    <span className="slash-cmd">{c.cmd}</span>
-                    {c.args && <span className="slash-args">{c.args}</span>}
-                    <span className="slash-desc">{c.desc}</span>
-                  </button>
-                ))}
-              </div>
-            );
-          }
-
-          return null;
-        })()}
+        {slashOpen && (
+          <div className="slash-autocomplete">
+            {slashItems.map((item, i) => (
+              <button
+                key={item.key}
+                className={`slash-autocomplete-item${i === slashIndex ? " active" : ""}`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (item.type === "space") { setInput(""); onSpaceChange?.(item.key); }
+                  else { setInput(item.label + ("args" in item && item.args ? " " : "")); inputRef.current?.focus(); }
+                }}
+                onMouseEnter={() => setSlashIndex(i)}
+              >
+                <span className="slash-cmd">{item.label}</span>
+                {"args" in item && item.args && <span className="slash-args">{item.args}</span>}
+                <span className="slash-desc">{item.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div
           className="chatbar-oyster"
           onClick={onOpenTerminal}
@@ -387,7 +369,21 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => {
+            if (slashOpen) {
+              if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex(i => Math.min(i + 1, slashItems.length - 1)); return; }
+              if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndex(i => Math.max(i - 1, 0)); return; }
+              if (e.key === "Tab" || (e.key === "Enter" && slashItems[slashIndex])) {
+                e.preventDefault();
+                const item = slashItems[slashIndex];
+                if (item.type === "space") { setInput(""); onSpaceChange?.(item.key); }
+                else { setInput(item.label + ("args" in item && item.args ? " " : "")); }
+                return;
+              }
+              if (e.key === "Escape") { setInput(""); return; }
+            }
+            if (e.key === "Enter") handleSend();
+          }}
           onFocus={() => {
             setFocused(true);
             if (messages.length > 0) setExpanded(true);

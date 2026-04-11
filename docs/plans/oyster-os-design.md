@@ -82,16 +82,14 @@ Prove that Oyster can:
 │  │       └── spaces  (nav hierarchy, scan status)      │ │
 │  └──────────────────────────────────────────────────────┘ │
 │                                                           │
-│  ┌─────────────────┐   ┌──────────────────────────────┐  │
-│  │  OpenCode       │   │  Graphiti  (port 8000)        │  │
-│  │  (port 4096)    │   │  ├── FalkorDB graph store     │  │
-│  │  REST + SSE     │   │  ├── LLM entity extraction    │  │
-│  │  .opencode/     │   │  └── MCP endpoint  (/mcp/)   │  │
-│  │  agents/        │   │       ├── search_nodes        │  │
-│  │  oyster.md      │   │       ├── search_facts        │  │
-│  └─────────────────┘   │       ├── add_episode        │  │
-│                         │       └── get_episodes       │  │
-│                         └──────────────────────────────┘  │
+│  ┌─────────────────┐                                      │
+│  │  OpenCode       │   (Graphiti — deferred to v2)        │
+│  │  (port 4096)    │                                      │
+│  │  REST + SSE     │                                      │
+│  │  .opencode/     │                                      │
+│  │  agents/        │                                      │
+│  │  oyster.md      │                                      │
+│  └─────────────────┘                                      │
 │                                                           │
 │  ┌──────────────────────────────────────────────────────┐ │
 │  │  React UI  (Vite dev server or static)               │ │
@@ -107,9 +105,8 @@ Prove that Oyster can:
 |---|---|---|
 | Oyster Server | 4200 | Artifact/space registry (SQLite), MCP tool surface, chat proxy |
 | OpenCode | 4096 | AI engine, code execution, filesystem access |
-| Graphiti | 8000 | Knowledge graph, persistent memory, cross-session context |
 
-The agent (OpenCode) has MCP access to both Oyster (surface management) and Graphiti (memory). The UI talks only to Oyster Server. Graphiti is invisible to the user.
+The agent (OpenCode) has MCP access to Oyster (surface management). The UI talks only to Oyster Server. Persistent memory (Graphiti) is deferred to v2.
 
 ### The Artifact Contract
 
@@ -230,20 +227,11 @@ spaces (id, display_name, repo_path, color, parent_id,
 `source_origin` tracks how an artifact arrived: `manual` | `discovered` | `ai_generated`.
 `parent_id` on spaces is **navigation only** — where to show the space in the UI hierarchy. Semantic relationships between spaces live in the knowledge graph.
 
-### Knowledge Graph — Graphiti
+### Knowledge Graph — Deferred to v2
 
-Graphiti runs locally via Docker (FalkorDB backend, MCP endpoint at `localhost:8000`). This is where Oyster's memory lives.
+Persistent memory (cross-session context, entity graphs, relationship tracking) is planned but not active in v1. The v1 surface works without it — the agent is stateless between sessions.
 
-**Model:** Everything is nodes and edges — no separate tables for memories vs spaces.
-
-- **Episodes** — raw input ingested via `add_episode` (conversations, onboarding events, documents)
-- **Entity nodes** — extracted by LLM from episodes: `Space`, `Artifact`, `Person`, `Decision`, `Technology`, `Pattern`
-- **Fact edges** — typed relationships: `USES`, `CLIENT_OF`, `DEPENDS_ON`, `SHARES_PATTERN`, `HAS_ARTIFACT`, `DECIDED`
-- **group_id** — namespace mapping to `space_id` for scoped queries
-
-**Key property:** Space relationships are graph edges, not SQL columns. "Tell me about all my client projects" is a graph traversal over `CLIENT_OF` edges — not a query against a container space. There may be no container space. Relationships emerge as the agent observes and records them.
-
-**Temporal facts:** Graphiti invalidates stale facts when state changes. A decision made last month that's been superseded is marked invalid, not deleted. History is preserved.
+**v2 options under evaluation:** Graphiti (FalkorDB, Docker), opencode-plugin-simple-memory, forgetful (SQLite + embeddings), or custom Oyster-native SQLite FTS5. See issue #70 for details.
 
 ### App-Specific Data
 

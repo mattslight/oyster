@@ -161,7 +161,15 @@ const uiClients = new Set<ServerResponse>();
 function broadcastUiEvent(event: UiCommand) {
   const data = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of uiClients) {
-    client.write(data);
+    if (client.writableEnded || client.destroyed) {
+      uiClients.delete(client);
+      continue;
+    }
+    try {
+      client.write(data);
+    } catch {
+      uiClients.delete(client);
+    }
   }
 }
 
@@ -429,8 +437,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (url === "/oauth/register" && req.method === "POST") {
     let body = "";
     for await (const chunk of req) body += chunk;
-    const { client_name } = JSON.parse(body || "{}");
-    json(res, { client_id: "oyster-local", client_name: client_name || "oyster", client_secret: "none", redirect_uris: ["http://localhost"] }, 201);
+    let parsed: { client_name?: string };
+    try { parsed = JSON.parse(body || "{}"); } catch { json(res, { error: "Invalid JSON body" }, 400); return; }
+    json(res, { client_id: "oyster-local", client_name: parsed.client_name || "oyster", client_secret: "none", redirect_uris: ["http://localhost"] }, 201);
     return;
   }
   if (url?.startsWith("/oauth/authorize")) {

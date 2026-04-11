@@ -286,7 +286,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         .optional()
         .describe("Filter by artifact kind"),
       search: z.string().optional().describe("Search term — filters artifacts whose label contains this text (case-insensitive)"),
-      limit: z.number().optional().describe("Max results to return (default 20)"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max results to return (default 20)"),
     },
     async ({ space_id, artifact_kind, search, limit }) => {
       let artifacts = await deps.service.getAllArtifacts();
@@ -502,9 +502,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
     { id: z.string().describe("Space ID to switch to") },
     async ({ id }) => {
       const spaces = deps.spaceService.listSpaces();
-      const space = spaces.find((s: { id: string }) => s.id === id);
+      const space = spaces.find(s => s.id === id);
       if (!space) {
-        return { content: [{ type: "text" as const, text: `Space "${id}" not found. Available: ${spaces.map((s: { id: string }) => s.id).join(", ")}` }], isError: true };
+        return { content: [{ type: "text" as const, text: `Space "${id}" not found. Available: ${spaces.map(s => s.id).join(", ")}` }], isError: true };
       }
       deps.broadcastUiEvent({
         version: 1,
