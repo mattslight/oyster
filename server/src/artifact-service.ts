@@ -99,7 +99,7 @@ export class ArtifactService {
 
   // ── Registration ──
 
-  registerArtifact(
+  async registerArtifact(
     params: {
       path: string;
       space_id: string;
@@ -110,7 +110,7 @@ export class ArtifactService {
       source_origin?: "manual" | "discovered" | "ai_generated";
     },
     approvedRoots: string[],
-  ): Artifact {
+  ): Promise<Artifact> {
     const absPath = resolve(params.path);
 
     // Validate file exists
@@ -146,7 +146,7 @@ export class ArtifactService {
           storage_config: JSON.stringify({ path: absPath }),
           source_origin: params.source_origin ?? "manual",
         });
-        return this.rowToArtifact(this.store.getById(id)!);
+        return await this.rowToArtifact(this.store.getById(id)!);
       }
       throw new Error(`Artifact with id "${id}" already exists`);
     }
@@ -185,7 +185,7 @@ export class ArtifactService {
 
   // ── Creation ──
 
-  createArtifact(
+  async createArtifact(
     params: {
       space_id: string;
       label: string;
@@ -196,7 +196,7 @@ export class ArtifactService {
       source_origin?: "manual" | "discovered" | "ai_generated";
     },
     userlandDir: string,
-  ): Artifact {
+  ): Promise<Artifact> {
     const label = params.label.trim();
     const space_id = params.space_id.trim();
     if (!label) throw new Error("label must not be empty");
@@ -226,7 +226,7 @@ export class ArtifactService {
 
     // Register — best-effort rollback on DB failure
     try {
-      return this.registerArtifact(
+      return await this.registerArtifact(
         { path: absPath, space_id, label, artifact_kind: params.artifact_kind, group_name: params.group_name, id, source_origin: params.source_origin },
         [userlandDir],
       );

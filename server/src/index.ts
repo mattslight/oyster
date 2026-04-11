@@ -42,11 +42,23 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 const PORT = 4200;
 const OPENCODE_PORT = 4096;
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OPENCODE_BIN = join(__dirname, "..", "node_modules", ".bin", "opencode");
+
+// Find the package root by walking up from __dirname until we find .opencode/agents/
+function findPackageRoot(): string {
+  let dir = __dirname;
+  for (let i = 0; i < 10; i++) {
+    if (existsSync(join(dir, ".opencode", "agents"))) return dir;
+    dir = dirname(dir);
+  }
+  return process.cwd().replace(/\/server\/?$/, "");
+}
+
+const PACKAGE_ROOT = findPackageRoot();
+const OPENCODE_BIN = join(PACKAGE_ROOT, "server", "node_modules", ".bin", "opencode");
 const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
-const WORKSPACE = process.env.OYSTER_WORKSPACE || process.cwd();
-const PROJECT_ROOT = WORKSPACE.replace(/\/server\/?$/, "");
+const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
+const PROJECT_ROOT = PACKAGE_ROOT;
 const USERLAND_DIR = process.env.OYSTER_USERLAND || `${PROJECT_ROOT}/userland`;
 const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
 
@@ -473,6 +485,25 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res);
     return;
+  }
+
+  // ── Static web UI (production mode) ──
+  const webDistDir = join(PROJECT_ROOT, "web", "dist");
+  if (existsSync(webDistDir)) {
+    const urlPath = (url || "/").split("?")[0];
+    const candidates = [
+      join(webDistDir, urlPath),
+      join(webDistDir, "index.html"), // SPA fallback
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) {
+        const ext = extname(candidate);
+        const mime = MIME[ext] || "application/octet-stream";
+        res.writeHead(200, { "Content-Type": mime });
+        res.end(readFileSync(candidate));
+        return;
+      }
+    }
   }
 
   // Fallback — JSON body so MCP SDK OAuth discovery doesn't choke on plain text

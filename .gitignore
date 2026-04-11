@@ -8,3 +8,5 @@ dist/
 # User data (not project source)
 userland/
 server/registry.json
+shared/types.js
+server/dist/
