@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Desktop } from "./components/Desktop";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
@@ -39,7 +39,8 @@ export default function App() {
 
   const [activeSpace, setActiveSpace] = useState<string>(() => getUrlState().space);
 
-  // Cmd+K opens spotlight
+  // Global keyboard shortcuts
+  const chatInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -47,6 +48,12 @@ export default function App() {
         setSpotlightOpen((v) => !v);
       }
       if (e.key === "Escape") setSpotlightOpen(false);
+      // Any printable key focuses chat bar when not already in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "BUTTON" && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.length === 1) {
+        chatInputRef.current?.focus();
+        // Don't preventDefault — let the character appear in the input
+      }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
@@ -381,6 +388,7 @@ export default function App() {
         spaces={spaces}
         activeSpace={activeSpace}
         onSpaceChange={handleSpaceChange}
+        inputRef={chatInputRef}
         onAddSpace={() => setShowAddSpaceWizard(true)}
       />
 

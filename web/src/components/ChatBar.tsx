@@ -80,6 +80,7 @@ function ToolBlock({ tool }: { tool: ToolPart }) {
 
 const SLASH_COMMANDS = [
   { cmd: "/s", args: "<prefix>", desc: "Switch space", example: "/s bf → blunderfixer" },
+  { cmd: "#", args: "<space>", desc: "Quick switch", example: "#bf or #1" },
 ];
 
 interface Props {
@@ -89,9 +90,10 @@ interface Props {
   activeSpace?: string;
   onSpaceChange?: (space: string) => void;
   onAddSpace?: () => void;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace, inputRef: externalInputRef }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -102,7 +104,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const localInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = externalInputRef || localInputRef;
   const placeholder = useMemo(() => placeholders[Math.floor(Math.random() * placeholders.length)], []);
   const isHero = !!isHeroProp;
 
@@ -118,18 +121,36 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   }, []);
 
   const slashItems = useMemo(() => {
-    if (!input.startsWith("/")) return [];
     const lower = input.toLowerCase().trim();
-    const spaceArgMatch = lower.match(/^\/s(\s+(.*))?$/);
 
+    // # prefix — space switcher
+    if (input.startsWith("#")) {
+      const q = lower.slice(1);
+      const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
+      const ordered = [
+        { id: "home", displayName: "Home", hint: "#h" },
+        { id: "__all__", displayName: "All", hint: "#0" },
+        ...userSpaces.map((s, i) => ({ ...s, hint: `#${i + 1}` })),
+      ];
+      return ordered
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || q === "all" && s.id === "__all__" || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .slice(0, 8)
+        .map(s => ({ key: s.id, label: `#${s.id === "__all__" ? "all" : s.id}`, desc: s.hint, type: "space" as const }));
+    }
+
+    if (!input.startsWith("/")) return [];
+
+    // /s prefix — space switcher (alias for #)
+    const spaceArgMatch = lower.match(/^\/s(\s+(.*))?$/);
     if (spaceArgMatch !== null && (lower === "/s" || lower.startsWith("/s "))) {
       const q = (spaceArgMatch[2] || "").trim();
       return spaces
-        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || q === "all" && s.id === "__all__" || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
         .map(s => ({ key: s.id, label: s.id, desc: s.displayName, type: "space" as const }));
     }
 
+    // / prefix — command list
     if (!input.includes(" ") && lower !== "/s") {
       return SLASH_COMMANDS
         .filter(c => c.cmd.startsWith(lower))
@@ -166,7 +187,38 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     if (!input.trim() || streaming || !sessionId) return;
     const content = input;
 
-    // ── Slash commands — instant, no LLM call ──
+    // ── # commands — instant space switch, no LLM call ──
+    if (content.trim().startsWith("#") && onSpaceChange) {
+      setInput("");
+      const q = content.trim().slice(1).toLowerCase();
+
+      // Special: #h = home, #a or #0 = all
+      if (q === "h") { onSpaceChange("home"); return; }
+      if (q === "a" || q === "0") { onSpaceChange("__all__"); return; }
+
+      // Positional: #1 to #N = spaces in pill order (excluding home and all)
+      const positional = q.match(/^(\d+)$/);
+      if (positional) {
+        const idx = parseInt(positional[1], 10);
+        const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
+        if (idx >= 1 && idx <= userSpaces.length) {
+          onSpaceChange(userSpaces[idx - 1].id);
+          return;
+        }
+      }
+
+      // Named: #all → __all__, #bf → blunderfixer
+      if (q === "all") { onSpaceChange("__all__"); return; }
+      const match = spaces.find(s => s.id === q)
+        || spaces.find(s => s.id.startsWith(q))
+        || spaces.find(s => s.displayName.toLowerCase().startsWith(q))
+        || spaces.find(s => subseq(q, s.id))
+        || spaces.find(s => subseq(q, s.displayName.toLowerCase()));
+      if (match) onSpaceChange(match.id);
+      return;
+    }
+
+    // ── / slash commands — instant, no LLM call ──
     // Nothing starting with "/" ever reaches the AI.
     if (content.trim().startsWith("/")) {
       setInput("");
@@ -176,13 +228,12 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         const q = arg.trim().toLowerCase();
 
         if (cmd === "s" && onSpaceChange) {
-          // Try: exact ID, then prefix, then subsequence on ID, then subsequence on display name
+          if (q === "all") { onSpaceChange("__all__"); return; }
           const match = spaces.find(s => s.id === q)
             || spaces.find(s => s.id.startsWith(q))
             || spaces.find(s => s.displayName.toLowerCase().startsWith(q))
             || spaces.find(s => subseq(q, s.id))
             || spaces.find(s => subseq(q, s.displayName.toLowerCase()));
-
           if (match) {
             onSpaceChange(match.id);
           } else {
