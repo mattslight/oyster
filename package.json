@@ -2,6 +2,7 @@
   "name": "oyster-os",
   "private": true,
   "scripts": {
+    "postinstall": "cd web && npm install && cd ../server && npm install",
     "dev": "npx concurrently -n web,server -c blue,green \"cd web && npm run dev\" \"cd server && npm run dev\"",
     "dev:web": "cd web && npm run dev",
     "dev:server": "cd server && npm run dev"
