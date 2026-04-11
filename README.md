@@ -1,71 +1,179 @@
-# Oyster OS
+# Oyster
 
-A modern workspace that connects all your systems, accumulates context over time, and lets you control everything from a single prompt.
+A prompt-controlled workspace for files, projects, and artefacts.
 
-Not another dashboard. Not another chat thread. A surface that joins dots across projects, tools, and sessions — so you can ask one question and get one answer, not three logins.
+Open the right thing, switch context quickly, and organise work from one chat bar.  
+Oyster is local-first, visual, and built for people juggling multiple projects, tools, and sessions.
 
-## What it does
+![Oyster desktop](docs/screenshots/desktop.png)
 
-**Prompt-driven navigation** — type "show me the competitor analysis" and it opens. Type "switch to blunderfixer" and it navigates. The chat bar is your command line for knowledge work.
+## Why Oyster
 
-**Artifact surface** — docs, diagrams, apps, presentations, and spreadsheets live as icons on a visual desktop. Organised by spaces (workspaces), searchable, and launchable.
+Most work is scattered across folders, repos, docs, tabs, and chat threads.
 
-**Instant commands** — `#bf` switches to blunderfixer. `#1` jumps to your first space. `/o competitor` opens the right artifact with token-scored search. No waiting for AI.
+Oyster puts that work on one surface and lets you control it with simple commands.
 
-**AI that controls the OS** — the agent can create artifacts, open files, switch spaces, and manage your surface via MCP tools. You describe what you need, it builds and organises.
+- **Open things fast**  
+  Type `/o competitor analysis` and open the right artefact without digging through folders.
 
-**Connect any project** — onboard a local repo and Oyster scans for apps, docs, and diagrams automatically. Your existing work becomes part of the surface.
+- **Switch context quickly**  
+  Jump between spaces with `/s blunderfixer` or `#bf`.
 
-## Who it's for
+- **Keep work visible**  
+  Docs, diagrams, apps, decks, and spreadsheets live together on a visual desktop.
 
-Anyone whose work is distributed across more than one system and one session. Builders, founders, consultants, project managers — if you context-switch between projects and tools daily, Oyster is your home screen.
+- **Let the agent act on the surface**  
+  Oyster can open artefacts, switch spaces, and organise the workspace through MCP tools.
 
-## Status
+## What works today
 
-Early v1 — local-first, single user. The surface works, prompt-driven navigation works, artifact management works. Cloud hosting and persistent memory are planned.
+- Prompt-driven navigation
+- Space switching
+- Artefact desktop with icons
+- Local repo onboarding
+- MCP-powered agent actions
+- Instant UI updates via SSE
+
+## Example
+
+Things you can type into Oyster:
+
+```text
+show me the competitor analysis
+switch to blunderfixer
+/o competitor analysis
+/s home
+#bf
+#1
+```
 
 ## Quick start
 
+### Requirements
+
+Node.js 22+
+
+### Install
+
 ```bash
-# Prerequisites: Node.js 22+
-git clone https://github.com/mattslight/oyster-os.git
-cd oyster-os
-npm install && cd web && npm install && cd ../server && npm install && cd ..
+git clone https://github.com/mattslight/oyster.git
+cd oyster
+npm install
 npm run dev
-# Opens at http://localhost:7337
 ```
 
-You'll need API keys in a `.env` file at the project root:
+Open:
+
+**http://localhost:7337**
+
+Create a `.env` file at the project root:
 
 ```
 ANTHROPIC_API_KEY=your-key
-FAL_KEY=your-key          # optional, for AI-generated icons
+FAL_KEY=your-key
 ```
 
-## Commands
+`FAL_KEY` is optional and only used for AI-generated icons.
+
+## Core commands
 
 | Command | What it does |
 |---|---|
-| `/s <prefix>` | Switch space by name |
-| `/o <search>` | Open artifact by name (token-scored) |
-| `#<space>` | Quick space switch (`#bf`, `#home`, `#all`) |
-| `#<number>` | Jump to nth space (`#1`, `#2`, `#0` = all) |
-| Just type... | Chat bar auto-focuses. Ask anything. |
+| `/s <space>` | Switch to a space |
+| `/o <query>` | Open an artefact by name |
+| `#<space>` | Quick space switch |
+| `#<number>` | Jump to a numbered space |
+| normal chat | Ask Oyster to navigate or organise work |
+
+Examples:
+
+```
+/s blunderfixer
+/o pricing deck
+#home
+#2
+```
+
+## Who it is for
+
+Oyster is for people working across more than one project, repo, or tool at a time, especially:
+
+- founders
+- builders
+- consultants
+- product teams
+- anyone tired of folder hunting and tab overload
+
+## Current status
+
+Early v1.  
+Local-first. Single-user. Built for fast iteration.
+
+**In scope now**
+- prompt-driven surface control
+- artefact management
+- repo onboarding
+- visual workspace
+
+**Planned later**
+- cloud hosting
+- persistent memory
+- richer plugins and integrations
 
 ## Architecture
 
 ```
-Oyster Server (4200)  ─── SQLite (artifacts, spaces)
-     │                         
-     ├── MCP tools (agent surface control)
-     ├── SSE push (instant UI updates)  
-     └── Chat proxy ──► OpenCode (4096) ──► LLM
-     
-Web UI (7337 dev)     ─── React + Vite
+Web UI (React + Vite)
+        |
+        v
+Oyster Server
+  - SQLite
+  - MCP tools
+  - SSE updates
+  - chat proxy
+        |
+        v
+OpenCode / LLM
 ```
 
-## License
+## Contributing
 
-All rights reserved. License TBD.
+Oyster is still early, but focused contributions are welcome.
+
+Good areas to help with:
+
+- onboarding and setup
+- slash commands
+- artefact search and ranking
+- UI polish
+- packaging and distribution
+
+If you want to contribute:
+
+1. Open an issue first
+2. Keep the scope tight
+3. Send a focused PR with a clear before and after
+
+## Roadmap
+
+**Short term priorities:**
+
+- smoother onboarding
+- stronger packaging and distribution
+- faster artefact opening and navigation
+- better repo import experience
+
+**Longer term:**
+
+- cloud and hybrid hosting
+- persistent memory
+- plugin ecosystem
+- richer cross-space search and automation
+
+## Licence
+
+[AGPL-3.0](LICENSE)
 
 Copyright (c) 2026 Matthew Slight
+
+You can use, modify, and distribute this software freely. If you run a modified version as a network service, you must make your source code available under the same licence.
