@@ -128,7 +128,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       const q = lower.slice(1);
       const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
       const ordered = [
-        { id: "home", displayName: "Home", hint: "#h" },
+        { id: "home", displayName: "Home", hint: "#." },
         { id: "__all__", displayName: "All", hint: "#0" },
         ...userSpaces.map((s, i) => ({ ...s, hint: `#${i + 1}` })),
       ];
@@ -192,9 +192,9 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       setInput("");
       const q = content.trim().slice(1).toLowerCase();
 
-      // Special: #h = home, #a or #0 = all
-      if (q === "h") { onSpaceChange("home"); return; }
-      if (q === "a" || q === "0") { onSpaceChange("__all__"); return; }
+      // Special: #. = home, #0 = all
+      if (q === ".") { onSpaceChange("home"); return; }
+      if (q === "0") { onSpaceChange("__all__"); return; }
 
       // Positional: #1 to #N = spaces in pill order (excluding home and all)
       const positional = q.match(/^(\d+)$/);
@@ -421,9 +421,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           value={input}
           onChange={(e) => {
             const val = e.target.value;
-            // Instant space switch for #0-#9 (digits are unambiguous — space names can't start with a number)
-            if (onSpaceChange && /^#[0-9]$/.test(val)) {
+            // Instant space switch for #0-#9 and #. (unambiguous — space names can't start with digit or dot)
+            if (onSpaceChange && /^#[0-9.]$/.test(val)) {
               const ch = val[1];
+              if (ch === ".") { setInput(""); onSpaceChange("home"); return; }
               if (ch === "0") { setInput(""); onSpaceChange("__all__"); return; }
               const idx = parseInt(ch, 10);
               const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
