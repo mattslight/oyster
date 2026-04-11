@@ -25,12 +25,13 @@
       z-index: 0;
     }
 
-    .container {
+    /* Hero */
+    .hero {
       position: relative;
       z-index: 1;
       max-width: 800px;
       margin: 0 auto;
-      padding: 80px 24px 60px;
+      padding: 100px 24px 40px;
       text-align: center;
     }
 
@@ -41,7 +42,6 @@
       margin-bottom: 20px;
       color: #fff;
     }
-
     h1 .dim { color: rgba(255, 255, 255, 0.45); }
 
     .subtitle {
@@ -49,16 +49,7 @@
       line-height: 1.6;
       color: rgba(255, 255, 255, 0.55);
       max-width: 560px;
-      margin: 0 auto 48px;
-    }
-
-    .hero-img {
-      width: 100%;
-      max-width: 760px;
-      border-radius: 16px;
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
-      margin: 0 auto 56px;
-      display: block;
+      margin: 0 auto 40px;
     }
 
     .cta-row {
@@ -66,7 +57,7 @@
       gap: 16px;
       justify-content: center;
       flex-wrap: wrap;
-      margin-bottom: 56px;
+      margin-bottom: 48px;
     }
 
     .cta {
@@ -80,121 +71,309 @@
       text-decoration: none;
       transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-
     .cta:hover { transform: translateY(-1px); }
-
-    .cta-primary {
-      background: #7c6bff;
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(124, 107, 255, 0.3);
-    }
-
+    .cta-primary { background: #7c6bff; color: #fff; box-shadow: 0 4px 20px rgba(124, 107, 255, 0.3); }
     .cta-primary:hover { box-shadow: 0 8px 32px rgba(124, 107, 255, 0.4); }
-
-    .cta-secondary {
-      background: rgba(255, 255, 255, 0.06);
-      color: rgba(255, 255, 255, 0.8);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
+    .cta-secondary { background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.8); }
     .cta-secondary:hover { background: rgba(255, 255, 255, 0.1); }
 
-    .features {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 24px;
-      text-align: left;
-      margin-bottom: 56px;
+    .hero-img {
+      width: 100%;
+      max-width: 760px;
+      border-radius: 16px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+      margin: 0 auto 0;
+      display: block;
     }
 
-    .feature {
-      padding: 24px;
-      background: rgba(255, 255, 255, 0.03);
-      border: none;
-      border-radius: 12px;
+    /* Feature sections */
+    .feature-section {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 80px 24px;
+      display: flex;
+      align-items: center;
+      gap: 48px;
+    }
+    .feature-section.reverse { flex-direction: row-reverse; }
+
+    @media (max-width: 700px) {
+      .feature-section, .feature-section.reverse { flex-direction: column; gap: 32px; }
     }
 
-    .feature h3 {
-      font-size: 15px;
-      font-weight: 600;
+    .feature-text { flex: 1; }
+    .feature-text h3 {
+      font-size: 24px;
+      font-weight: 700;
       color: #fff;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
     }
-
-    .feature p {
-      font-size: 14px;
+    .feature-text p {
+      font-size: 15px;
       color: rgba(255, 255, 255, 0.5);
-      line-height: 1.5;
+      line-height: 1.7;
     }
 
-    .feature code {
+    .feature-mock {
+      flex-shrink: 0;
+      width: 340px;
+      max-width: 100%;
+    }
+
+    /* Mock UI components */
+    .mock-panel {
+      background: rgba(13, 14, 26, 0.9);
+      backdrop-filter: blur(24px);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+    }
+
+    .mock-chatbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: rgba(13, 14, 26, 0.95);
+      border-radius: 9999px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    .mock-chatbar-icon {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      background: #7c6bff;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .mock-chatbar-icon svg { width: 14px; height: 14px; fill: #fff; }
+    .mock-chatbar-text {
+      flex: 1;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    .mock-chatbar-text code {
       background: rgba(124, 107, 255, 0.15);
       color: #a99eff;
-      padding: 2px 8px;
+      padding: 2px 6px;
       border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .mock-response {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+    .mock-response .label { color: #a99eff; font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+
+    .mock-pills {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+      justify-content: center;
+    }
+    .mock-pill {
+      padding: 5px 12px;
+      border-radius: 9999px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .mock-pill.active {
+      background: #7c6bff;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .mock-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .mock-artifact {
+      text-align: center;
+    }
+    .mock-artifact-icon {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      margin: 0 auto 6px;
+    }
+    .mock-artifact-label {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .mock-autocomplete {
+      margin-top: 8px;
+      background: rgba(13, 14, 26, 0.95);
+      border-radius: 12px;
+      padding: 4px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    .mock-autocomplete-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-radius: 8px;
       font-size: 13px;
     }
-
-.status-strip {
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.35);
-      margin-bottom: 48px;
+    .mock-autocomplete-item.active {
+      background: rgba(255, 255, 255, 0.06);
     }
+    .mock-autocomplete-item .name { color: #a99eff; font-weight: 500; }
+    .mock-autocomplete-item .space { color: rgba(255, 255, 255, 0.35); font-size: 12px; }
 
+    /* Footer */
     .footer {
+      position: relative;
+      z-index: 1;
+      text-align: center;
       font-size: 13px;
       color: rgba(255, 255, 255, 0.25);
-      padding-top: 40px;
-      border-top: none;
+      padding: 40px 24px 60px;
     }
-
-    .footer a {
-      color: rgba(255, 255, 255, 0.4);
-      text-decoration: none;
-    }
-
+    .footer a { color: rgba(255, 255, 255, 0.4); text-decoration: none; }
     .footer a:hover { color: rgba(255, 255, 255, 0.6); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp 0.6s ease forwards; }
   </style>
 </head>
 <body>
   <div class="bg"></div>
-  <div class="container">
-    <h1><span class="dim">The World's your</span> Oyster.</h1>
 
+  <!-- Hero -->
+  <div class="hero">
+    <h1><span class="dim">The World's your</span> Oyster.</h1>
     <p class="subtitle">
       A prompt-controlled workspace for your files, projects, and artefacts.<br>
       Open the right thing, switch context, and organise work from one chat bar.
     </p>
-
     <div class="cta-row">
       <a href="https://github.com/mattslight/oyster#quick-start" class="cta cta-primary">Get early access</a>
       <a href="https://github.com/mattslight/oyster" class="cta cta-secondary">View on GitHub</a>
     </div>
-
     <img src="screenshots/desktop.png" alt="Oyster desktop" class="hero-img">
+  </div>
 
-    <div class="features">
-      <div class="feature">
-        <h3>Open things fast</h3>
-        <p>Type <code>/o competitor analysis</code> and Oyster opens the artefact you need. No folder hunting.</p>
-      </div>
-      <div class="feature">
-        <h3>Switch context instantly</h3>
-        <p>Jump between spaces with <code>#research</code>, <code>#home</code>, or <code>#1</code>.</p>
-      </div>
-      <div class="feature">
-        <h3>One surface for your work</h3>
-        <p>Docs, apps, diagrams, decks, and spreadsheets live together on a visual desktop.</p>
-      </div>
-      <div class="feature">
-        <h3>Act, not just chat</h3>
-        <p>Oyster can open artefacts, switch spaces, and organise your workspace from the prompt bar.</p>
+  <!-- Feature 1: Open things fast -->
+  <div class="feature-section">
+    <div class="feature-text">
+      <h3>Open things fast</h3>
+      <p>Type what you're looking for and Oyster finds it. No folders, no tabs, no hunting. The right artefact opens instantly.</p>
+    </div>
+    <div class="feature-mock">
+      <div class="mock-panel">
+        <div class="mock-chatbar">
+          <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div class="mock-chatbar-text"><code>/o competitor analysis</code></div>
+        </div>
+        <div class="mock-autocomplete">
+          <div class="mock-autocomplete-item active">
+            <span class="name">Competitor Analysis</span>
+            <span class="space">tokinvest</span>
+          </div>
+          <div class="mock-autocomplete-item">
+            <span class="name">Competitor Landscape</span>
+            <span class="space">research</span>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="footer">
-      <p><a href="https://github.com/mattslight/oyster">GitHub</a> &middot; Copyright &copy; 2026 Matthew Slight</p>
+  <!-- Feature 2: Switch context instantly -->
+  <div class="feature-section reverse">
+    <div class="feature-text">
+      <h3>Switch context instantly</h3>
+      <p>Jump between project spaces with a single shortcut. Your brain switches context — your workspace should keep up.</p>
     </div>
+    <div class="feature-mock">
+      <div class="mock-panel">
+        <div class="mock-chatbar">
+          <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div class="mock-chatbar-text"><code>#research</code></div>
+        </div>
+        <div class="mock-pills">
+          <span class="mock-pill">home</span>
+          <span class="mock-pill active">research</span>
+          <span class="mock-pill">clients</span>
+          <span class="mock-pill">ops</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 3: One surface for your work -->
+  <div class="feature-section">
+    <div class="feature-text">
+      <h3>One surface for your work</h3>
+      <p>Docs, apps, diagrams, decks, and spreadsheets live together on a visual desktop. Everything is visible, searchable, and launchable.</p>
+    </div>
+    <div class="feature-mock">
+      <div class="mock-panel">
+        <div class="mock-grid">
+          <div class="mock-artifact">
+            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #ff6b9d, #c44dff);"></div>
+            <div class="mock-artifact-label">Q1 Report</div>
+          </div>
+          <div class="mock-artifact">
+            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #4dc9f6, #3b82f6);"></div>
+            <div class="mock-artifact-label">Architecture</div>
+          </div>
+          <div class="mock-artifact">
+            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #36d399, #059669);"></div>
+            <div class="mock-artifact-label">Pitch Deck</div>
+          </div>
+          <div class="mock-artifact">
+            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #fbbf24, #f59e0b);"></div>
+            <div class="mock-artifact-label">Expenses</div>
+          </div>
+          <div class="mock-artifact">
+            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #a78bfa, #7c3aed);"></div>
+            <div class="mock-artifact-label">Wireframes</div>
+          </div>
+          <div class="mock-artifact">
+            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #fb7185, #e11d48);"></div>
+            <div class="mock-artifact-label">Dashboard</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 4: Act, not just chat -->
+  <div class="feature-section reverse">
+    <div class="feature-text">
+      <h3>Act, not just chat</h3>
+      <p>Oyster doesn't just answer questions. It opens artefacts, switches spaces, creates documents, and manages your workspace from the prompt bar.</p>
+    </div>
+    <div class="feature-mock">
+      <div class="mock-panel">
+        <div class="mock-chatbar">
+          <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div class="mock-chatbar-text">create a summary of Q1</div>
+        </div>
+        <div class="mock-response">
+          <div class="label">Oyster</div>
+          Created "Q1 Summary" in the research space.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p><a href="https://github.com/mattslight/oyster">GitHub</a> &middot; Copyright &copy; 2026 Matthew Slight</p>
   </div>
 </body>
 </html>
