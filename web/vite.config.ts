@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5555,
+    port: 7337,
     proxy: {
       '/api/chat/events': {
         target: 'http://localhost:4200',
