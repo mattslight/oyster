@@ -18,9 +18,10 @@ interface Props {
   onArtifactStop?: (artifact: Artifact) => void;
   onGroupClick: (groupName: string) => void;
   onSpaceChange: (space: string) => void;
+  revealId?: string | null;
 }
 
-export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick }: Props) {
+export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, revealId }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Topbar auto-hide ──
@@ -263,6 +264,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                         index={i}
                         onClick={() => onArtifactClick(item.artifact)}
                         onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
+                        reveal={item.artifact.id === revealId}
                       />
                     )
                   ))}
@@ -290,6 +292,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                       index={i}
                       onClick={() => onArtifactClick(item.artifact)}
                       onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
+                      reveal={item.artifact.id === revealId}
                     />
                   )}
                 </div>

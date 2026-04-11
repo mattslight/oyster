@@ -53,16 +53,17 @@ interface Props {
   index: number;
   onClick: () => void;
   onStop?: () => void;
+  reveal?: boolean;
 }
 
-export function ArtifactIcon({ artifact, index, onClick, onStop }: Props) {
+export function ArtifactIcon({ artifact, index, onClick, onStop, reveal }: Props) {
   const config = typeConfig[artifact.artifactKind] || typeConfig.app;
   // Only show status indicators for managed apps (local_process runtime)
   const isManagedApp = artifact.runtimeKind === "local_process";
 
   return (
     <button
-      className={`artifact-icon ${artifact.status === "generating" ? "generating" : ""}`}
+      className={`artifact-icon ${artifact.status === "generating" ? "generating" : ""} ${reveal ? "reveal" : ""}`}
       style={{
         animationDelay: `${index * 0.05 + 0.05}s`,
         ...(artifact.status === "generating" ? { pointerEvents: "none" as const } : {}),
