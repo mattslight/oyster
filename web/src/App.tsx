@@ -64,12 +64,14 @@ export default function App() {
   const [openGroup, setOpenGroup] = useState<string | null>(() => getUrlState().groupName);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
+  const [connected, setConnected] = useState(true);
 
   // Fetch artifacts + spaces on mount; auto-open artifact if URL contains one
   useEffect(() => {
     fetchArtifacts().then((a) => {
       setArtifacts(a);
       setLoaded(true);
+      setConnected(true);
       const { artifactId } = getUrlState();
       if (artifactId) {
         const artifact = a.find((x) => x.id === artifactId);
@@ -78,8 +80,8 @@ export default function App() {
           dispatch({ type: "OPEN_VIEWER", title: artifact.label, path: artifact.url, fullscreen });
         }
       }
-    });
-    fetchSpaces().then(setSpaces);
+    }).catch((err) => { console.warn("[oyster] server unreachable:", err.message); setLoaded(true); setConnected(false); });
+    fetchSpaces().then(setSpaces).catch(() => setConnected(false));
   }, []);
 
   // Poll for status updates every 5 seconds; handle pending reveals
@@ -87,6 +89,7 @@ export default function App() {
     const interval = setInterval(() => {
       fetchArtifacts().then((arts) => {
         setArtifacts(arts);
+        setConnected(true);
         const revealed = arts.find((a) => a.pendingReveal);
         if (revealed) {
           setActiveSpace(revealed.spaceId);
@@ -95,8 +98,8 @@ export default function App() {
           setRevealId(revealed.id);
           setTimeout(() => setRevealId(null), 3000);
         }
-      });
-      fetchSpaces().then(setSpaces);
+      }).catch(() => setConnected(false));
+      fetchSpaces().then(setSpaces).catch(() => setConnected(false));
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -242,6 +245,12 @@ export default function App() {
 
   return (
     <div className="oyster-shell">
+      {!connected && (
+        <div className="connection-banner">
+          <span>Oyster server not connected</span>
+          <span className="connection-hint">Run <code>npm run dev</code> to start</span>
+        </div>
+      )}
       <Desktop
         space={activeSpace}
         spaces={spaces.map(s => s.id)}

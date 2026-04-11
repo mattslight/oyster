@@ -239,7 +239,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             </>
           ) : (
             <>
-              <span className="tagline-dim">Tools are dead.</span>{" "}
+              <span className="tagline-dim">Apps are dead.</span>{" "}
               <span className="tagline-bright">Welcome to your surface.</span>
             </>
           )}
