@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, renderMermaid } from "./renderers.js";
@@ -50,7 +51,7 @@ function findPackageRoot(): string {
     if (existsSync(join(dir, ".opencode", "agents"))) return dir;
     dir = dirname(dir);
   }
-  return process.cwd().replace(/\/server\/?$/, "");
+  return process.cwd().replace(/[\\/]server[\\/]?$/, "");
 }
 
 const PACKAGE_ROOT = findPackageRoot();
@@ -81,7 +82,7 @@ const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
-const USERLAND_DIR = process.env.OYSTER_USERLAND || `${PROJECT_ROOT}/userland`;
+const USERLAND_DIR = process.env.OYSTER_USERLAND || join(homedir(), ".oyster", "userland");
 const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
 
 // ── MIME types ──
@@ -515,13 +516,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     ? join(__dirname, "..", "..", "public")
     : join(PROJECT_ROOT, "web", "dist");
   if (existsSync(webDistDir)) {
-    const urlPath = (url || "/").split("?")[0];
+    const urlPath = decodeURIComponent((url || "/").split("?")[0]).replace(/^\/+/, "");
+    const resolved = join(webDistDir, urlPath);
+    // Security: prevent path traversal
+    if (!resolved.startsWith(webDistDir)) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
     const candidates = [
-      join(webDistDir, urlPath),
+      resolved,
       join(webDistDir, "index.html"), // SPA fallback
     ];
     for (const candidate of candidates) {
-      if (existsSync(candidate) && statSync(candidate).isFile()) {
+      if (candidate.startsWith(webDistDir) && existsSync(candidate) && statSync(candidate).isFile()) {
         const ext = extname(candidate);
         const mime = MIME[ext] || "application/octet-stream";
         res.writeHead(200, { "Content-Type": mime });

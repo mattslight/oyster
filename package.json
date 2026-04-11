@@ -1,6 +1,6 @@
 {
   "name": "oyster-os",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A modern workspace OS with AI at its core",
   "type": "module",
   "bin": {
@@ -16,7 +16,7 @@
     "prepublishOnly": "npm run build",
     "build:web": "cd web && npx vite build",
     "build:server": "cd server && npm run build",
-    "build": "npm run build:web && npm run build:server && cp -r web/dist server/dist/public",
+    "build": "npm run build:web && npm run build:server && node -e \"const fs=require('fs');fs.cpSync('web/dist','server/dist/public',{recursive:true})\"",
     "dev": "npx concurrently -n web,server -c blue,green \"cd web && npm run dev\" \"cd server && npm run dev\"",
     "dev:web": "cd web && npm run dev",
     "dev:server": "cd server && npm run dev"

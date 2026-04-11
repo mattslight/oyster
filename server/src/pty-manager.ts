@@ -67,6 +67,7 @@ export function attachWebSocket(httpServer: Server) {
 
     if (!ptyAvailable) {
       ws.send("\r\n\x1b[90m[terminal not available — node-pty not installed]\x1b[0m\r\n");
+      ws.on("close", () => { clients.delete(ws); });
       return;
     }
 
