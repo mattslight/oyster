@@ -151,16 +151,8 @@
       position: relative;
       overflow: hidden;
     }
-    .mock-panel::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
-      transform: translateX(-100%) skewX(-15deg);
-      pointer-events: none;
-    }
-    .mock-panel:hover::after {
-      animation: shimmer 1s ease-in-out 1 forwards;
+    .mock-panel {
+      transition: transform 0.15s ease;
     }
 
     .mock-chatbar {
@@ -425,5 +417,18 @@
   <div class="footer">
     <p>Built with <span class="heart">&hearts;</span> by Matthew Slight</p>
   </div>
+  <script>
+    document.querySelectorAll('.mock-panel').forEach(panel => {
+      panel.addEventListener('mousemove', e => {
+        const rect = panel.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        panel.style.transform = `perspective(600px) rotateY(${x * 8}deg) rotateX(${-y * 8}deg)`;
+      });
+      panel.addEventListener('mouseleave', () => {
+        panel.style.transform = 'perspective(600px) rotateY(0) rotateX(0)';
+      });
+    });
+  </script>
 </body>
 </html>
