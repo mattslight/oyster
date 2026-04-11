@@ -228,6 +228,7 @@
       border-radius: 14px;
       margin: 0 auto 8px;
       transition: transform 0.2s ease, box-shadow 0.2s ease;
+      object-fit: cover;
     }
     .mock-artifact:hover .mock-artifact-icon {
       transform: scale(1.1);
@@ -258,6 +259,75 @@
     }
     .mock-autocomplete-item .name { color: #a99eff; font-weight: 500; }
     .mock-autocomplete-item .space { color: rgba(255, 255, 255, 0.35); font-size: 12px; }
+
+    /* Typing animation */
+    .typing-text {
+      display: inline;
+      border-right: 2px solid #a99eff;
+      animation: blink 0.8s step-end infinite;
+    }
+    @keyframes blink {
+      50% { border-color: transparent; }
+    }
+
+    /* Staggered fade-in */
+    .fade-in { opacity: 0; animation: fadeIn 0.4s ease forwards; }
+    .fade-in-1 { animation-delay: 0.8s; }
+    .fade-in-2 { animation-delay: 1.2s; }
+    .fade-in-3 { animation-delay: 1.6s; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Building animation */
+    .mock-building {
+      margin-top: 16px;
+      overflow: hidden;
+    }
+    .build-progress {
+      height: 3px;
+      background: rgba(124, 107, 255, 0.15);
+      border-radius: 2px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .build-progress-bar {
+      height: 100%;
+      width: 0;
+      background: #7c6bff;
+      border-radius: 2px;
+      animation: buildFill 2s ease-in-out infinite;
+    }
+    @keyframes buildFill {
+      0% { width: 0; }
+      60% { width: 100%; }
+      100% { width: 100%; }
+    }
+    .build-artifact {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      opacity: 0;
+      animation: fadeIn 0.5s ease forwards;
+      animation-delay: 1.8s;
+    }
+    .build-artifact-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #36d399, #059669);
+      flex-shrink: 0;
+    }
+    .build-artifact-text { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+    .build-artifact-text strong { color: #fff; display: block; margin-bottom: 2px; }
+
+    /* Pill switch animation */
+    .pill-switch .mock-pill {
+      transition: all 0.3s ease;
+    }
 
     /* Bottom CTA */
     .bottom-cta {
@@ -306,17 +376,17 @@
       <p>Type what you're looking for and Oyster finds it. No folders, no tabs, no hunting. The right artefact opens instantly.</p>
     </div>
     <div class="feature-mock">
-      <div class="mock-panel">
+      <div class="mock-panel" id="mock-open">
         <div class="mock-chatbar">
           <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div class="mock-chatbar-text"><code>/o competitor analysis</code></div>
+          <div class="mock-chatbar-text"><code><span class="typing-text" data-text="/o competitor analysis"></span></code></div>
         </div>
         <div class="mock-autocomplete">
-          <div class="mock-autocomplete-item active">
+          <div class="mock-autocomplete-item active fade-in fade-in-1">
             <span class="name">Competitor Analysis</span>
             <span class="space">tokinvest</span>
           </div>
-          <div class="mock-autocomplete-item">
+          <div class="mock-autocomplete-item fade-in fade-in-2">
             <span class="name">Competitor Landscape</span>
             <span class="space">research</span>
           </div>
@@ -332,16 +402,16 @@
       <p>Jump between project spaces with a single shortcut. Your brain switches context — your workspace should keep up.</p>
     </div>
     <div class="feature-mock">
-      <div class="mock-panel">
+      <div class="mock-panel" id="mock-switch">
         <div class="mock-chatbar">
           <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div class="mock-chatbar-text"><code>#research</code></div>
+          <div class="mock-chatbar-text"><code><span class="typing-text" data-text="#research"></span></code></div>
         </div>
-        <div class="mock-pills">
-          <span class="mock-pill">home</span>
-          <span class="mock-pill active">research</span>
-          <span class="mock-pill">clients</span>
-          <span class="mock-pill">ops</span>
+        <div class="mock-pills pill-switch" id="pill-switch">
+          <span class="mock-pill active" data-idx="0">home</span>
+          <span class="mock-pill" data-idx="1">research</span>
+          <span class="mock-pill" data-idx="2">clients</span>
+          <span class="mock-pill" data-idx="3">ops</span>
         </div>
       </div>
     </div>
@@ -357,28 +427,28 @@
       <div class="mock-panel">
         <div class="mock-grid">
           <div class="mock-artifact">
-            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #ff6b9d, #c44dff);"></div>
-            <div class="mock-artifact-label">Q1 Report</div>
+            <img class="mock-artifact-icon" src="screenshots/icons/zombie-horde.png" alt="">
+            <div class="mock-artifact-label">Zombie Horde</div>
           </div>
           <div class="mock-artifact">
-            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #4dc9f6, #3b82f6);"></div>
-            <div class="mock-artifact-label">Architecture</div>
+            <img class="mock-artifact-icon" src="screenshots/icons/kanban.png" alt="">
+            <div class="mock-artifact-label">Kanban Board</div>
           </div>
           <div class="mock-artifact">
-            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #36d399, #059669);"></div>
+            <img class="mock-artifact-icon" src="screenshots/icons/deck.png" alt="">
             <div class="mock-artifact-label">Pitch Deck</div>
           </div>
           <div class="mock-artifact">
-            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #fbbf24, #f59e0b);"></div>
-            <div class="mock-artifact-label">Expenses</div>
+            <img class="mock-artifact-icon" src="screenshots/icons/car-racer.png" alt="">
+            <div class="mock-artifact-label">Neon Sprint</div>
           </div>
           <div class="mock-artifact">
-            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #a78bfa, #7c3aed);"></div>
-            <div class="mock-artifact-label">Wireframes</div>
+            <img class="mock-artifact-icon" src="screenshots/icons/blunderfixer.png" alt="">
+            <div class="mock-artifact-label">Project Brief</div>
           </div>
           <div class="mock-artifact">
-            <div class="mock-artifact-icon" style="background: linear-gradient(135deg, #fb7185, #e11d48);"></div>
-            <div class="mock-artifact-label">Dashboard</div>
+            <img class="mock-artifact-icon" src="screenshots/icons/capabilities.png" alt="">
+            <div class="mock-artifact-label">Capabilities</div>
           </div>
         </div>
       </div>
@@ -392,14 +462,20 @@
       <p>Oyster doesn't just answer questions. It opens artefacts, switches spaces, creates documents, and manages your workspace from the prompt bar.</p>
     </div>
     <div class="feature-mock">
-      <div class="mock-panel">
+      <div class="mock-panel" id="mock-act">
         <div class="mock-chatbar">
           <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div class="mock-chatbar-text">create a summary of Q1</div>
+          <div class="mock-chatbar-text"><span class="typing-text" data-text="create a summary of Q1"></span></div>
         </div>
-        <div class="mock-response">
-          <div class="label">Oyster</div>
-          Created "Q1 Summary" in the research space.
+        <div class="mock-building">
+          <div class="build-progress"><div class="build-progress-bar"></div></div>
+          <div class="build-artifact">
+            <div class="build-artifact-icon"></div>
+            <div class="build-artifact-text">
+              <strong>Q1 Summary</strong>
+              Added to research space
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -418,6 +494,7 @@
     <p>Built with <span class="heart">&hearts;</span> by Matthew Slight</p>
   </div>
   <script>
+    // 3D tilt on mock panels
     document.querySelectorAll('.mock-panel').forEach(panel => {
       panel.addEventListener('mousemove', e => {
         const rect = panel.getBoundingClientRect();
@@ -429,6 +506,48 @@
         panel.style.transform = 'perspective(600px) rotateY(0) rotateX(0)';
       });
     });
+
+    // Typing animation — types text when element scrolls into view
+    const typingEls = document.querySelectorAll('.typing-text');
+    const typed = new Set();
+
+    function typeText(el) {
+      const text = el.dataset.text;
+      let i = 0;
+      el.textContent = '';
+      const interval = setInterval(() => {
+        el.textContent = text.slice(0, ++i);
+        if (i >= text.length) clearInterval(interval);
+      }, 50);
+    }
+
+    // Pill switching animation
+    let pillIdx = 0;
+    const pillContainer = document.getElementById('pill-switch');
+    if (pillContainer) {
+      const pills = pillContainer.querySelectorAll('.mock-pill');
+      setInterval(() => {
+        pills.forEach(p => p.classList.remove('active'));
+        pillIdx = (pillIdx + 1) % pills.length;
+        pills[pillIdx].classList.add('active');
+      }, 2000);
+    }
+
+    // Intersection observer — trigger animations when visible
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          if (!typed.has(el)) {
+            typed.add(el);
+            const typingEl = el.querySelector('.typing-text');
+            if (typingEl) typeText(typingEl);
+          }
+        }
+      });
+    }, { threshold: 0.3 });
+
+    document.querySelectorAll('.mock-panel').forEach(p => observer.observe(p));
   </script>
 </body>
 </html>
