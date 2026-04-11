@@ -32,7 +32,7 @@ function getEnvVars() {
 
 async function ensureApiKey(env) {
   // Check for any supported provider key
-  const keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"];
+  const keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"];
   if (keys.some((k) => env[k])) return env;
 
   console.log("\n  🦪 Welcome to Oyster\n");
@@ -40,21 +40,32 @@ async function ensureApiKey(env) {
   console.log("  Supports: Anthropic, OpenAI, Gemini, Groq, Ollama\n");
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  const provider = await new Promise((resolve) => {
+    rl.question("  Provider [1] Anthropic  [2] OpenAI  [3] Other: ", resolve);
+  });
+
+  const providerMap = {
+    "1": { name: "ANTHROPIC_API_KEY", label: "Anthropic" },
+    "2": { name: "OPENAI_API_KEY", label: "OpenAI" },
+  };
+  const choice = providerMap[provider.trim()] || { name: "ANTHROPIC_API_KEY", label: "API" };
+
   const answer = await new Promise((resolve) => {
-    rl.question("  Enter your Anthropic API key: ", resolve);
+    rl.question(`  Enter your ${choice.label} API key: `, resolve);
   });
   rl.close();
 
   const key = answer.trim();
   if (!key) {
-    console.log("\n  No key provided. Set ANTHROPIC_API_KEY in your environment or ~/.oyster/.env\n");
+    console.log("\n  No key provided. Set your API key in ~/.oyster/.env\n");
     process.exit(1);
   }
 
   // Save to ~/.oyster/.env
   mkdirSync(OYSTER_HOME, { recursive: true });
   const envContent = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf8") : "";
-  writeFileSync(ENV_FILE, envContent + `ANTHROPIC_API_KEY=${key}\n`);
+  writeFileSync(ENV_FILE, envContent + `${choice.name}=${key}\n`);
   console.log(`\n  Saved to ${ENV_FILE}\n`);
 
   env.ANTHROPIC_API_KEY = key;
