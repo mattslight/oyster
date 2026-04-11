@@ -8,6 +8,7 @@ import { useChatSession } from "../hooks/useChatSession";
 import { useChatEvents } from "../hooks/useChatEvents";
 import type { ToolPart } from "../hooks/useChatSession";
 import type { Space } from "../../../shared/types";
+import type { Artifact } from "../data/artifacts-api";
 
 // Configure marked for inline chat use
 marked.setOptions({ breaks: true, gfm: true });
@@ -80,6 +81,7 @@ function ToolBlock({ tool }: { tool: ToolPart }) {
 
 const SLASH_COMMANDS = [
   { cmd: "/s", args: "<prefix>", desc: "Switch space", example: "/s bf → blunderfixer" },
+  { cmd: "/o", args: "<search>", desc: "Open artifact", example: "/o competitor analysis" },
   { cmd: "#", args: "<space>", desc: "Quick switch", example: "#bf or #1" },
 ];
 
@@ -91,9 +93,11 @@ interface Props {
   onSpaceChange?: (space: string) => void;
   onAddSpace?: () => void;
   inputRef?: React.RefObject<HTMLInputElement | null>;
+  artifacts?: Artifact[];
+  onArtifactOpen?: (artifact: Artifact) => void;
 }
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace, inputRef: externalInputRef }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace, inputRef: externalInputRef, artifacts = [], onArtifactOpen }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -148,6 +152,33 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || q === "all" && s.id === "__all__" || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
         .map(s => ({ key: s.id, label: s.id, desc: s.displayName, type: "space" as const }));
+    }
+
+    // /o prefix — artifact opener with token scoring
+    const artifactArgMatch = lower.match(/^\/o(\s+(.*))?$/);
+    if (artifactArgMatch !== null && (lower === "/o" || lower.startsWith("/o "))) {
+      const q = (artifactArgMatch[2] || "").trim();
+      if (!q) {
+        // No query — show current space artifacts, then others
+        const sorted = [...artifacts].sort((a, b) => (a.spaceId === activeSpace ? -1 : 1) - (b.spaceId === activeSpace ? -1 : 1));
+        return sorted.slice(0, 8).map(a => ({ key: a.id, label: a.label, desc: a.spaceId, type: "artifact" as const, score: 0 }));
+      }
+      const tokens = q.split(/\s+/);
+      const scored = artifacts.map(a => {
+        let score = 0;
+        const label = a.label.toLowerCase();
+        const id = a.id.toLowerCase();
+        const space = a.spaceId.toLowerCase();
+        for (const t of tokens) {
+          if (label.includes(t)) score += 5;
+          else if (subseq(t, label)) score += 3;
+          if (id.includes(t)) score += 4;
+          if (space.startsWith(t) || subseq(t, space)) score += 10;
+        }
+        if (a.spaceId === activeSpace) score += 3;
+        return { a, score };
+      }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+      return scored.slice(0, 8).map(x => ({ key: x.a.id, label: x.a.label, desc: x.a.spaceId, type: "artifact" as const, score: x.score }));
     }
 
     // / prefix — command list
@@ -240,6 +271,35 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             const available = spaces.map(s => s.id).join(", ");
             setMessages(prev => [...prev, { role: "assistant", content: `No space matching "${arg.trim()}". Available: ${available}` }]);
             setExpanded(true);
+          }
+        }
+
+        if (cmd === "o" && onArtifactOpen) {
+          const tokens = q.split(/\s+/);
+          const scored = artifacts.map(a => {
+            let score = 0;
+            const label = a.label.toLowerCase();
+            const id = a.id.toLowerCase();
+            const space = a.spaceId.toLowerCase();
+            for (const t of tokens) {
+              if (label.includes(t)) score += 5;
+              else if (subseq(t, label)) score += 3;
+              if (id.includes(t)) score += 4;
+              if (space.startsWith(t) || subseq(t, space)) score += 10;
+            }
+            if (a.spaceId === activeSpace) score += 3;
+            return { a, score };
+          }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+
+          if (scored.length === 0) {
+            setMessages(prev => [...prev, { role: "assistant", content: `No artifact matching "${arg.trim()}"` }]);
+            setExpanded(true);
+          } else if (scored.length === 1 || scored[0].score >= scored[1].score * 2) {
+            // Clear winner — open directly
+            onArtifactOpen(scored[0].a);
+          } else {
+            // Ambiguous — show as autocomplete (rewrite input to keep dropdown open)
+            setInput(`/o ${arg.trim()}`);
           }
         }
       }
@@ -387,6 +447,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                 onMouseDown={(e) => {
                   e.preventDefault();
                   if (item.type === "space") { setInput(""); onSpaceChange?.(item.key); }
+                  else if (item.type === "artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactOpen?.(a); }
                   else { setInput(item.label + ("args" in item && item.args ? " " : "")); inputRef.current?.focus(); }
                 }}
                 onMouseEnter={() => setSlashIndex(i)}

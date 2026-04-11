@@ -390,6 +390,8 @@ export default function App() {
         onSpaceChange={handleSpaceChange}
         inputRef={chatInputRef}
         onAddSpace={() => setShowAddSpaceWizard(true)}
+        artifacts={artifacts}
+        onArtifactOpen={handleArtifactClick}
       />
 
       {showAddSpaceWizard && (
