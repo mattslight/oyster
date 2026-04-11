@@ -405,7 +405,7 @@
       <div class="mock-panel" id="mock-switch">
         <div class="mock-chatbar">
           <div class="mock-chatbar-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div class="mock-chatbar-text"><code><span class="typing-text" data-text="#research"></span></code></div>
+          <div class="mock-chatbar-text"><code><span class="typing-text" id="switch-typing" data-text="#home"></span></code></div>
         </div>
         <div class="mock-pills pill-switch" id="pill-switch">
           <span class="mock-pill active" data-idx="0">home</span>
@@ -626,16 +626,42 @@
 
     document.querySelectorAll('.mock-panel[id]').forEach(animatePanel);
 
-    // Pill switching animation (loops independently)
-    let pillIdx = 0;
-    const pillContainer = document.getElementById('pill-switch');
-    if (pillContainer) {
-      const pills = pillContainer.querySelectorAll('.mock-pill');
-      setInterval(() => {
+    // Switch panel — cycles typing + pill through all spaces
+    const switchPanel = document.getElementById('mock-switch');
+    if (switchPanel) {
+      const pills = switchPanel.querySelectorAll('.mock-pill');
+      const typingEl = document.getElementById('switch-typing');
+      const names = ['#home', '#research', '#clients', '#ops'];
+      let idx = 0;
+
+      // Remove from generic animatePanel since we handle it here
+      function switchLoop() {
+        // Update pill
         pills.forEach(p => p.classList.remove('active'));
-        pillIdx = (pillIdx + 1) % pills.length;
-        pills[pillIdx].classList.add('active');
-      }, 2000);
+        pills[idx].classList.add('active');
+
+        // Type the name
+        const text = names[idx];
+        let i = 0;
+        typingEl.textContent = '';
+        typingEl.style.borderRight = '2px solid #a99eff';
+        const interval = setInterval(() => {
+          typingEl.textContent = text.slice(0, ++i);
+          if (i >= text.length) {
+            clearInterval(interval);
+            typingEl.style.borderRight = '2px solid transparent';
+          }
+        }, 60);
+
+        idx = (idx + 1) % names.length;
+        setTimeout(switchLoop, 2500);
+      }
+
+      // Start when visible
+      const switchObs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) { switchObs.disconnect(); switchLoop(); }
+      }, { threshold: 0.3 });
+      switchObs.observe(switchPanel);
     }
   </script>
 </body>
