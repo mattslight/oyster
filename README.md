@@ -26,7 +26,7 @@ Oyster puts that work on one surface and lets you control it with simple command
   Oyster can open artefacts, switch spaces, and organise the workspace through MCP tools.
 
 - **Bring your own AI**  
-  Oyster exposes an MCP server. Claude Code, Cursor, ChatGPT, or any MCP-compatible tool can control your workspace through a standard protocol. 12 tools available out of the box.
+  Oyster exposes an MCP server. Claude Code, Cursor, VS Code Copilot, ChatGPT, or any MCP-compatible tool can control your workspace through a standard protocol.
 
 ## What works today
 
