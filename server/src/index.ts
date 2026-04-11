@@ -54,7 +54,24 @@ function findPackageRoot(): string {
 }
 
 const PACKAGE_ROOT = findPackageRoot();
-const OPENCODE_BIN = join(PACKAGE_ROOT, "server", "node_modules", ".bin", "opencode");
+// OpenCode binary: walk up from PACKAGE_ROOT to find node_modules/.bin/opencode (handles npm hoisting)
+function findOpenCodeBin(): string {
+  const candidates = [
+    join(PACKAGE_ROOT, "server", "node_modules", ".bin", "opencode"),
+    join(PACKAGE_ROOT, "node_modules", ".bin", "opencode"),
+  ];
+  // Walk up for hoisted installs (npx, global)
+  let dir = PACKAGE_ROOT;
+  for (let i = 0; i < 5; i++) {
+    candidates.push(join(dir, "node_modules", ".bin", "opencode"));
+    dir = dirname(dir);
+  }
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return "opencode"; // fallback to PATH
+}
+const OPENCODE_BIN = findOpenCodeBin();
 const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
@@ -488,7 +505,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   // ── Static web UI (production mode) ──
-  const webDistDir = join(PROJECT_ROOT, "web", "dist");
+  // Check dist/public (published package) first, then web/dist (dev with build)
+  const webDistDir = existsSync(join(__dirname, "..", "..", "public"))
+    ? join(__dirname, "..", "..", "public")
+    : join(PROJECT_ROOT, "web", "dist");
   if (existsSync(webDistDir)) {
     const urlPath = (url || "/").split("?")[0];
     const candidates = [

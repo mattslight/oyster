@@ -9,15 +9,14 @@
   "files": [
     "bin/",
     "server/dist/",
-    "web/dist/",
-    "shared/",
     "builtins/",
     ".opencode/"
   ],
   "scripts": {
-    "postinstall": "cd web && npm install && cd ../server && npm install",
     "prepublishOnly": "npm run build",
-    "build": "cd web && npm run build && cd ../server && npm run build",
+    "build:web": "cd web && npx vite build",
+    "build:server": "cd server && npm run build",
+    "build": "npm run build:web && npm run build:server && cp -r web/dist server/dist/public",
     "dev": "npx concurrently -n web,server -c blue,green \"cd web && npm run dev\" \"cd server && npm run dev\"",
     "dev:web": "cd web && npm run dev",
     "dev:server": "cd server && npm run dev"
