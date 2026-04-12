@@ -258,9 +258,11 @@ ${candidateList.map(c => `- ${c}`).join("\n")}
 Rules:
 - Related repos (same product/project) should be grouped into one space
 - Look for naming patterns: shared prefixes, suffixes like -api, -web, -portal, -docs
-- Standalone projects get their own space
+- Standalone projects that look like real products/apps get their own space
+- Small utilities, configs, forks, or miscellaneous repos should go in a catch-all space called "other"
 - Use clean, lowercase names for spaces (e.g. "tokinvest" not "tokinvest-drc" or "Tokinvest")
 - Every folder must appear in exactly one space
+- Aim for fewer spaces rather than more — group aggressively
 
 Return ONLY valid JSON, no markdown, no explanation:
 [{"name": "Space Name", "folders": ["folder1", "folder2"]}, ...]`;
