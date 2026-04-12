@@ -7,8 +7,7 @@
 Oyster is now a published npm package. One command to install, one command to run.
 
 **CLI entry point (`bin/oyster.mjs`)**
-- Checks for API keys (Anthropic, OpenAI, Gemini, Groq); prompts on first run and saves to `~/.oyster/.env`
-- Auto-detects provider from key prefix (sk-ant → Anthropic, sk- → OpenAI, etc.)
+- Checks for OpenCode auth; runs `opencode providers login` inline on first run (OAuth in browser)
 - Spawns server process, opens browser to `http://localhost:4200`
 - Bootstraps `~/.oyster/userland/` with builtins (snake-game, the-worlds-your-oyster deck)
 - Handles SIGINT/SIGTERM cleanup
