@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" width="80" alt="Oyster" /></p>
+
 # Oyster
 
 A modern OS for knowledge work powered by MCP — connect your projects, control everything from a prompt. Bring your own LLM. Install as easy as `npm install oyster-os`
