@@ -48,7 +48,7 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
         await checkAndAddFolder(`~/${folderName}`);
       }
     } catch {
-      setFolders(prev => [...prev, `~/${folderName}`]);
+      await checkAndAddFolder(`~/${folderName}`);
     }
   }, [name, mode]);
 
@@ -77,7 +77,7 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
         setFolders(prev => prev.includes(data.path!) ? prev : [...prev, data.path!]);
       }
     } catch (err) {
-      setFolders(prev => [...prev, path]);
+      setFolders(prev => prev.includes(path) ? prev : [...prev, path]);
     } finally {
       setDiscovering(false);
     }

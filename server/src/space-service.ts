@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
+import { homedir } from "node:os";
 import crypto from "node:crypto";
 import type { SpaceStore, SpaceRow } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
@@ -76,7 +77,7 @@ export class SpaceService {
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
     const resolved = rawPath.startsWith("~/")
-      ? resolve(join(process.env.HOME ?? "", rawPath.slice(2)))
+      ? resolve(join(homedir(), rawPath.slice(2)))
       : resolve(rawPath);
 
     if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
@@ -131,8 +132,13 @@ export class SpaceService {
           result.errors.push(`Skipped missing folder: ${folderPath}`);
           continue;
         }
+        const folderSlug = folderPath.split(sep).pop() ?? folderPath;
         const candidates = this.walk(folderPath);
-        for (const c of candidates) this.upsertCandidate(spaceId, c, result);
+        for (const c of candidates) {
+          // Namespace sourceRef with folder name to avoid collisions across multiple paths
+          c.sourceRef = `${folderSlug}/${c.sourceRef}`;
+          this.upsertCandidate(spaceId, c, result);
+        }
       }
       this.spaceStore.update(spaceId, {
         scan_status: "complete",
@@ -271,8 +277,11 @@ export class SpaceService {
           }
         } catch { /* package.json unreadable — stay static_file */ }
       } else {
-        // Non-JS project (Go, Rust, Python, etc.) or standalone HTML
-        storageConfig = { path: absPath };
+        // Non-JS project or standalone HTML — point at a real file, not the directory
+        const candidateFiles = ["index.html", "go.mod", "Cargo.toml", "pyproject.toml",
+          "setup.py", "requirements.txt", "Gemfile", "pom.xml", "build.gradle", "Makefile"];
+        const storagePath = candidateFiles.map(f => join(absPath, f)).find(f => existsSync(f)) ?? absPath;
+        storageConfig = { path: storagePath };
       }
     }
 

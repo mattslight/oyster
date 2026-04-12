@@ -184,6 +184,12 @@ export async function handleSpacesRequest(
 
   // POST /api/discover — scan a folder, detect if container, return candidates + suggestions
   if (url === "/api/discover" && req.method === "POST") {
+    const discoverOrigin = req.headers.origin;
+    if (discoverOrigin && !discoverOrigin.startsWith("http://localhost") && !discoverOrigin.startsWith("http://127.0.0.1")) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return true;
+    }
     let body = "";
     req.on("data", (chunk: Buffer | string) => (body += chunk));
     req.on("end", () => {
