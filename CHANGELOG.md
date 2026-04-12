@@ -9,7 +9,7 @@ Oyster is now a published npm package. One command to install, one command to ru
 **CLI entry point (`bin/oyster.mjs`)**
 - Checks for OpenCode auth; runs `opencode providers login` inline on first run (OAuth in browser)
 - Spawns server process, opens browser to `http://localhost:4200`
-- Bootstraps `~/.oyster/userland/` with builtins (snake-game, the-worlds-your-oyster deck)
+- Bootstraps `~/.oyster/userland/` with builtins (zombie-horde, the-worlds-your-oyster deck)
 - Handles SIGINT/SIGTERM cleanup
 
 **Compiled server + static web serving**
