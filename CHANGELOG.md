@@ -2,6 +2,31 @@
 
 ## 2026-04-12
 
+### Multi-folder spaces and broader scanning
+
+**Multi-folder spaces**
+- A space can now have multiple folders (repos, project dirs, any folder)
+- New `space_paths` table — migrates existing `repo_path` values automatically
+- Add Space wizard: toggle between "New space" and "Existing space"
+- Drop multiple folders onto one space
+- API: `GET/POST/DELETE /api/spaces/:id/paths`
+
+**Broader scanner**
+- Finds artifacts in Go, Rust, Python, Ruby, Java projects (not just JS frameworks)
+- Root-level projects detected (single-repo projects, not just monorepo sub-dirs)
+- Any `.md` file discovered as notes (not just root README and `docs/`)
+- More JS frameworks: Angular, Nuxt, Astro, Remix, Solid
+- Non-JS projects stored correctly (no broken package.json references)
+- Apps grouped under "Apps", all notes/diagrams under "Docs"
+- Hidden dirs and tool dirs skipped to reduce noise
+- Folder resolution searches Dropbox, OneDrive, iCloud Drive, Downloads
+
+**Auth flow**
+- Removed API key prompt — runs `opencode providers login` inline on first run
+- Uses bundled OpenCode binary, no separate install step
+
+**Renamed builtin:** `snake-game` → `zombie-horde` (game was already Zombie Horde)
+
 ### Phase B: CLI packaging — `npm install -g oyster-os`
 
 Oyster is now a published npm package. One command to install, one command to run.

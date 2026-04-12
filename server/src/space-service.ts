@@ -211,9 +211,9 @@ export class SpaceService {
       // Diagrams — mermaid files
       } else if (entry.endsWith(".mmd") || entry.endsWith(".mermaid")) {
         results.push({ absPath, sourceRef: `${posixRelFile}:diagram`, kind: "diagram" });
-      // Standalone HTML files in src/ or root — potential apps/pages
+      // Standalone HTML files in non-root directories without package.json
       } else if (entry === "index.html" && depth > 0 && !entries.includes("package.json")) {
-        results.push({ absPath, sourceRef: `${posixRelFile}:app`, kind: "app" });
+        results.push({ absPath: dir, sourceRef: `${posixRelFile}:app`, kind: "app" });
       }
     }
     return results;
@@ -254,22 +254,26 @@ export class SpaceService {
     let runtimeConfig: Record<string, unknown> = {};
 
     if (kind === "app") {
-      // Always point storage at package.json (a real file), not the directory itself.
-      // Detection guarantees scripts.dev || scripts.start exists — use whichever is present.
       const pkgPath = join(absPath, "package.json");
-      storageConfig = { path: pkgPath };
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-        const startCmd = pkg.scripts?.dev
-          ? "npm run dev"
-          : pkg.scripts?.start
-          ? "npm start"
-          : null;
-        if (startCmd) {
-          runtimeKind = "local_process";
-          runtimeConfig = { command: startCmd, cwd: absPath };
-        }
-      } catch { /* package.json unreadable — stay static_file, path already set */ }
+      if (existsSync(pkgPath)) {
+        // JS/TS project — use package.json for runtime config
+        storageConfig = { path: pkgPath };
+        try {
+          const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+          const startCmd = pkg.scripts?.dev
+            ? "npm run dev"
+            : pkg.scripts?.start
+            ? "npm start"
+            : null;
+          if (startCmd) {
+            runtimeKind = "local_process";
+            runtimeConfig = { command: startCmd, cwd: absPath };
+          }
+        } catch { /* package.json unreadable — stay static_file */ }
+      } else {
+        // Non-JS project (Go, Rust, Python, etc.) or standalone HTML
+        storageConfig = { path: absPath };
+      }
     }
 
     const group_name = this.deriveGroup(sourceRef, kind);

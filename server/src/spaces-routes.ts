@@ -1,4 +1,5 @@
 import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "./space-service.js";
 
@@ -28,7 +29,12 @@ export async function handleSpacesRequest(
       res.end(JSON.stringify({ error: "name is required" }));
       return true;
     }
-    const home = process.env.HOME ?? "";
+    const home = process.env.HOME || homedir();
+    if (!home) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Cannot determine home directory" }));
+      return true;
+    }
     const searchRoots = [
       // Home
       home,
