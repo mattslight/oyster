@@ -8,8 +8,14 @@ interface Props {
   onComplete: () => void;
 }
 
+interface Suggestion {
+  name: string;
+  folders: string[];
+  enabled: boolean;
+}
+
 export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
-  const [step, setStep] = useState<"name-path" | "results">("name-path");
+  const [step, setStep] = useState<"name-path" | "discovery" | "results">("name-path");
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [name, setName] = useState("");
   const [existingSpaceId, setExistingSpaceId] = useState("");
@@ -20,6 +26,13 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  // Discovery state
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [discovering, setDiscovering] = useState(false);
+  const [importResult, setImportResult] = useState<Array<{ name: string; scanned: number }> | null>(null);
+  const [dragItem, setDragItem] = useState<{ fromIdx: number; folder: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
+
   const resolveFolder = useCallback(async (folderName: string) => {
     if (mode === "new" && !name.trim()) setName(folderName);
     setPathAmbiguous([]);
@@ -27,23 +40,115 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
       const res = await fetch(`/api/resolve-folder?name=${encodeURIComponent(folderName)}`);
       const data = await res.json() as { matches: string[] };
       if (data.matches.length === 1) {
-        setFolders(prev => prev.includes(data.matches[0]) ? prev : [...prev, data.matches[0]]);
+        await checkAndAddFolder(data.matches[0]);
       } else if (data.matches.length > 1) {
         setPathAmbiguous(data.matches);
       } else {
-        setFolders(prev => [...prev, `~/${folderName}`]);
+        await checkAndAddFolder(`~/${folderName}`);
       }
     } catch {
       setFolders(prev => [...prev, `~/${folderName}`]);
     }
   }, [name, mode]);
 
+  async function checkAndAddFolder(path: string) {
+    // Check if this is a container (like ~/Dev) with multiple projects
+    setDiscovering(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      const data = await res.json() as {
+        container: boolean;
+        path?: string;
+        suggestions?: Array<{ name: string; folders: string[] }>;
+      };
+
+      if (data.container && data.suggestions) {
+        // Switch to discovery flow
+        setSuggestions(data.suggestions.map(s => ({ ...s, enabled: true })));
+        setStep("discovery");
+      } else {
+        // Single project — add to folders list
+        setFolders(prev => prev.includes(data.path!) ? prev : [...prev, data.path!]);
+      }
+    } catch (err) {
+      setFolders(prev => [...prev, path]);
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
+    // Only close on backdrop click if we're on the first step with no progress
+    if (e.target === e.currentTarget && step === "name-path" && folders.length === 0 && suggestions.length === 0) {
+      onClose();
+    }
   }
 
   function removeFolder(path: string) {
     setFolders(prev => prev.filter(p => p !== path));
+  }
+
+  function toggleSuggestion(idx: number) {
+    setSuggestions(prev => prev.map((s, i) => i === idx ? { ...s, enabled: !s.enabled } : s));
+  }
+
+  function renameSuggestion(idx: number, newName: string) {
+    setSuggestions(prev => prev.map((s, i) => i === idx ? { ...s, name: newName } : s));
+  }
+
+  function moveFolder(fromIdx: number, folder: string, target: string) {
+    setSuggestions(prev => {
+      let toIdx = parseInt(target);
+
+      // "new" = create a new group
+      if (target === "new") {
+        const newGroup: Suggestion = { name: "Other", folders: [folder], enabled: true };
+        const next = prev.map((s, i) => ({
+          ...s,
+          folders: i === fromIdx ? s.folders.filter(f => f !== folder) : s.folders,
+        }));
+        return [...next.filter(s => s.folders.length > 0), newGroup];
+      }
+
+      if (isNaN(toIdx)) return prev;
+
+      const next = prev.map((s, i) => ({
+        ...s,
+        folders: i === fromIdx ? s.folders.filter(f => f !== folder)
+               : i === toIdx ? [...s.folders, folder]
+               : s.folders,
+      }));
+      return next.filter(s => s.folders.length > 0);
+    });
+  }
+
+  async function handleImportDiscovery() {
+    setScanning(true);
+    setError(null);
+    try {
+      const enabled = suggestions.filter(s => s.enabled);
+      const res = await fetch("/api/discover/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spaces: enabled.map(s => ({ name: s.name, folders: s.folders })) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { imported: Array<{ name: string; scanned: number }> };
+      setImportResult(data.imported);
+      setStep("results");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setScanning(false);
+    }
   }
 
   async function handleScan() {
@@ -64,12 +169,10 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
         createdNew = true;
       }
 
-      // Add all folders to the space
       for (const folder of folders) {
         await addPath(spaceId, folder);
       }
 
-      // Scan
       const result = await triggerScan(spaceId);
       setScanResult(result);
       setStep("results");
@@ -84,171 +187,313 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
     }
   }
 
-  const appItems = scanResult?.artifacts.filter(a => a.kind === "app") ?? [];
-  const docItems = scanResult?.artifacts.filter(a => a.kind !== "app") ?? [];
-  const totalFound = (scanResult?.discovered ?? 0) + (scanResult?.resurfaced ?? 0);
-
   const existingSpaces = spaces.filter(s => s.id !== "__all__");
 
+  // ── Discovery preview step ──
+  if (step === "discovery") {
+    const enabledCount = suggestions.filter(s => s.enabled).length;
+    const totalFolders = suggestions.filter(s => s.enabled).reduce((n, s) => n + s.folders.length, 0);
+
+    return (
+      <div className="add-space-overlay" onClick={handleBackdrop}>
+        <div className="add-space-modal add-space-modal--wide">
+          <div className="add-space-stepper">
+            {[1, 2, 3].map(n => (
+              <div key={n} className={`add-space-step-bar ${n === 2 ? "active" : n < 2 ? "done" : "future"}`} />
+            ))}
+          </div>
+
+          <div className="add-space-title">
+            Create {suggestions.length} spaces
+          </div>
+          <div className="add-space-subtitle">
+            {suggestions.reduce((n, s) => n + s.folders.length, 0)} folders grouped into spaces. Edit, move, or untick to skip.
+          </div>
+
+          <div className="discovery-list">
+            {suggestions.map((s, idx) => (
+              <div
+                key={idx}
+                className={`discovery-group ${s.enabled ? "" : "discovery-group--disabled"} ${dropTarget === idx ? "discovery-group--drop" : ""}`}
+                onDragOver={e => { e.preventDefault(); setDropTarget(idx); }}
+                onDragLeave={() => setDropTarget(null)}
+                onDrop={e => {
+                  e.preventDefault();
+                  setDropTarget(null);
+                  if (dragItem && dragItem.fromIdx !== idx) {
+                    moveFolder(dragItem.fromIdx, dragItem.folder, String(idx));
+                  }
+                  setDragItem(null);
+                }}
+              >
+                <div className="discovery-group-header">
+                  <label className="discovery-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={s.enabled}
+                      onChange={() => toggleSuggestion(idx)}
+                    />
+                  </label>
+                  <input
+                    className="discovery-group-name"
+                    value={s.name}
+                    onChange={e => renameSuggestion(idx, e.target.value)}
+                    disabled={!s.enabled}
+                    placeholder="space name"
+                  />
+                </div>
+                <div className="discovery-chips">
+                  {s.folders.map(f => {
+                    const folderName = f.split("/").pop() ?? f;
+                    return (
+                      <div
+                        key={f}
+                        className="discovery-chip"
+                        draggable
+                        onDragStart={() => setDragItem({ fromIdx: idx, folder: f })}
+                        onDragEnd={() => { setDragItem(null); setDropTarget(null); }}
+                      >
+                        {folderName}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div
+              className={`discovery-new-group ${dropTarget === -1 ? "discovery-new-group--drop" : ""}`}
+              onDragOver={e => { e.preventDefault(); setDropTarget(-1); }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={e => {
+                e.preventDefault();
+                setDropTarget(null);
+                if (dragItem) {
+                  moveFolder(dragItem.fromIdx, dragItem.folder, "new");
+                  setDragItem(null);
+                }
+              }}
+              onClick={() => {
+                setSuggestions(prev => [...prev, { name: "other", folders: [], enabled: true }]);
+              }}
+            >
+              + new space
+            </div>
+          </div>
+
+          {error && <div className="add-space-error">{error}</div>}
+          <div className="discovery-actions">
+            <button className="add-space-btn-secondary" onClick={() => { setStep("name-path"); setSuggestions([]); }}>
+              Back
+            </button>
+            <button
+              className="add-space-btn-primary"
+              onClick={handleImportDiscovery}
+              disabled={scanning || enabledCount === 0}
+            >
+              {scanning ? "Importing…" : `Import ${enabledCount} space${enabledCount !== 1 ? "s" : ""} (${totalFolders} folders)`}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Results step ──
+  if (step === "results") {
+    // Discovery import results
+    if (importResult) {
+      const totalScanned = importResult.reduce((n, r) => n + r.scanned, 0);
+      return (
+        <div className="add-space-overlay" onClick={handleBackdrop}>
+          <div className="add-space-modal">
+            <div className="add-space-stepper">
+              {[1, 2, 3].map(n => (
+                <div key={n} className={`add-space-step-bar ${n <= 3 ? "done" : "future"}`} />
+              ))}
+            </div>
+            <div className="add-space-found-count">{importResult.length} spaces created</div>
+            <div className="add-space-found-label">{totalScanned} artifacts discovered</div>
+            <div className="add-space-found-list">
+              {importResult.map(r => (
+                <div key={r.name} className="add-space-found-item">
+                  <div className="add-space-item-dot add-space-item-dot--app" />
+                  <span className="add-space-item-name">{r.name}</span>
+                  <span className="add-space-item-kind">{r.scanned} items</span>
+                </div>
+              ))}
+            </div>
+            <button className="add-space-btn-primary" onClick={onComplete}>Done</button>
+          </div>
+        </div>
+      );
+    }
+
+    // Single space scan results
+    const appItems = scanResult?.artifacts.filter(a => a.kind === "app") ?? [];
+    const docItems = scanResult?.artifacts.filter(a => a.kind !== "app") ?? [];
+    const totalFound = (scanResult?.discovered ?? 0) + (scanResult?.resurfaced ?? 0);
+
+    return (
+      <div className="add-space-overlay" onClick={handleBackdrop}>
+        <div className="add-space-modal">
+          <div className="add-space-stepper">
+            {[1, 2, 3].map(n => (
+              <div key={n} className={`add-space-step-bar ${n <= 2 ? "done" : "future"}`} />
+            ))}
+          </div>
+          <div className="add-space-found-count">{totalFound} {totalFound === 1 ? "item" : "items"}</div>
+          <div className="add-space-found-label">
+            {totalFound === 0
+              ? "Nothing detected — add artifacts manually from the desktop."
+              : "Added to your surface"}
+          </div>
+          {totalFound > 0 && (
+            <div className="add-space-found-list">
+              {appItems.length > 0 && (
+                <>
+                  <div className="add-space-section-label">Apps</div>
+                  {appItems.map(a => (
+                    <div key={a.id} className="add-space-found-item">
+                      <div className="add-space-item-dot add-space-item-dot--app" />
+                      <span className="add-space-item-name">{a.label}</span>
+                      <span className="add-space-item-kind">App</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              {docItems.length > 0 && (
+                <>
+                  <div className="add-space-section-label">Docs</div>
+                  {docItems.map(a => (
+                    <div key={a.id} className="add-space-found-item">
+                      <div className="add-space-item-dot add-space-item-dot--doc" />
+                      <span className="add-space-item-name">{a.label}</span>
+                      <span className="add-space-item-kind">
+                        {a.kind === "diagram" ? "Diagram" : "Notes"}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+          <button className="add-space-btn-primary" onClick={onComplete}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Name/path step ──
   return (
     <div className="add-space-overlay" onClick={handleBackdrop}>
       <div className="add-space-modal">
         <div className="add-space-stepper">
-          {[1, 2, 3].map((n) => {
-            const currentStep = step === "name-path" ? 1 : 2;
-            const active = n === currentStep;
-            const done = n < currentStep;
-            return <div key={n} className={`add-space-step-bar ${active ? "active" : done ? "done" : "future"}`} />;
-          })}
+          {[1, 2, 3].map((n) => (
+            <div key={n} className={`add-space-step-bar ${n === 1 ? "active" : "future"}`} />
+          ))}
         </div>
 
-        {step === "name-path" && (
-          <>
-            <div className="add-space-title">Add space</div>
-            <div className="add-space-fields">
+        <div className="add-space-title">Add space</div>
+        <div className="add-space-fields">
 
-              {/* Toggle: new vs existing */}
-              {existingSpaces.length > 0 && (
-                <div className="add-space-mode-toggle">
-                  <button
-                    className={`add-space-mode-btn ${mode === "new" ? "active" : ""}`}
-                    onClick={() => setMode("new")}
-                  >New space</button>
-                  <button
-                    className={`add-space-mode-btn ${mode === "existing" ? "active" : ""}`}
-                    onClick={() => setMode("existing")}
-                  >Existing space</button>
-                </div>
-              )}
+          {existingSpaces.length > 0 && (
+            <div className="add-space-mode-toggle">
+              <button
+                className={`add-space-mode-btn ${mode === "new" ? "active" : ""}`}
+                onClick={() => setMode("new")}
+              >New space</button>
+              <button
+                className={`add-space-mode-btn ${mode === "existing" ? "active" : ""}`}
+                onClick={() => setMode("existing")}
+              >Existing space</button>
+            </div>
+          )}
 
-              {mode === "new" ? (
-                <input
-                  className="add-space-input"
-                  placeholder="Name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && !scanning && handleScan()}
-                  autoFocus
-                />
-              ) : (
-                <select
-                  className="add-space-input"
-                  value={existingSpaceId}
-                  onChange={e => setExistingSpaceId(e.target.value)}
-                >
-                  <option value="">Pick a space…</option>
-                  {existingSpaces.map(s => (
-                    <option key={s.id} value={s.id}>{s.displayName}</option>
-                  ))}
-                </select>
-              )}
+          {mode === "new" ? (
+            <input
+              className="add-space-input"
+              placeholder="Name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !scanning && !discovering && handleScan()}
+              autoFocus
+            />
+          ) : (
+            <select
+              className="add-space-input"
+              value={existingSpaceId}
+              onChange={e => setExistingSpaceId(e.target.value)}
+            >
+              <option value="">Pick a space…</option>
+              {existingSpaces.map(s => (
+                <option key={s.id} value={s.id}>{s.displayName}</option>
+              ))}
+            </select>
+          )}
 
-              <div
-                className={`add-space-drop-zone${dragging ? " add-space-drop-zone--over" : ""}${folders.length > 0 ? " add-space-drop-zone--filled" : ""}`}
-                onDragOver={e => { e.preventDefault(); setDragging(true); }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={e => {
-                  e.preventDefault();
-                  setDragging(false);
-                  for (let i = 0; i < e.dataTransfer.items.length; i++) {
-                    const entry = e.dataTransfer.items[i].webkitGetAsEntry?.();
-                    if (entry?.isDirectory) {
-                      resolveFolder(entry.name);
-                    }
-                  }
-                }}
-              >
-                {folders.length > 0 ? (
-                  <div className="add-space-folder-list">
-                    {folders.map(f => (
-                      <div key={f} className="add-space-folder-item">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0, opacity: 0.7 }}>
-                          <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
-                        </svg>
-                        <span className="add-space-drop-path">{f}</span>
-                        <button className="add-space-drop-clear" onClick={() => removeFolder(f)}>×</button>
-                      </div>
-                    ))}
-                    <div className="add-space-drop-more">Drop another folder to add</div>
-                  </div>
-                ) : (
-                  <div className="add-space-drop-empty">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.2 }}>
+          <div
+            className={`add-space-drop-zone${dragging ? " add-space-drop-zone--over" : ""}${folders.length > 0 ? " add-space-drop-zone--filled" : ""}`}
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setDragging(false);
+              for (let i = 0; i < e.dataTransfer.items.length; i++) {
+                const entry = e.dataTransfer.items[i].webkitGetAsEntry?.();
+                if (entry?.isDirectory) {
+                  resolveFolder(entry.name);
+                }
+              }
+            }}
+          >
+            {discovering ? (
+              <div className="add-space-drop-empty">
+                <span>Analysing folder…</span>
+              </div>
+            ) : folders.length > 0 ? (
+              <div className="add-space-folder-list">
+                {folders.map(f => (
+                  <div key={f} className="add-space-folder-item">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0, opacity: 0.7 }}>
                       <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
                     </svg>
-                    <span>Drop project folder to import</span>
+                    <span className="add-space-drop-path">{f}</span>
+                    <button className="add-space-drop-clear" onClick={() => removeFolder(f)}>×</button>
                   </div>
-                )}
+                ))}
+                <div className="add-space-drop-more">Drop another folder to add</div>
               </div>
-              {pathAmbiguous.length > 1 && (
-                <div className="add-space-ambiguous">
-                  <div className="add-space-ambiguous-label">Multiple matches — pick one:</div>
-                  {pathAmbiguous.map(p => (
-                    <button key={p} className="add-space-ambiguous-option" onClick={() => {
-                      setFolders(prev => prev.includes(p) ? prev : [...prev, p]);
-                      setPathAmbiguous([]);
-                    }}>
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {error && <div className="add-space-error">{error}</div>}
-            <button
-              className="add-space-btn-primary"
-              onClick={handleScan}
-              disabled={scanning || (mode === "new" ? !name.trim() : !existingSpaceId)}
-            >
-              {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Add"}
-            </button>
-          </>
-        )}
-
-        {step === "results" && scanResult && (
-          <>
-            <div className="add-space-found-count">{totalFound} {totalFound === 1 ? "item" : "items"}</div>
-            <div className="add-space-found-label">
-              {totalFound === 0
-                ? "Nothing detected — add artifacts manually from the desktop."
-                : "Added to your surface"}
-            </div>
-            {totalFound > 0 && (
-              <div className="add-space-found-list">
-                {appItems.length > 0 && (
-                  <>
-                    <div className="add-space-section-label">Apps</div>
-                    {appItems.map(a => (
-                      <div key={a.id} className="add-space-found-item">
-                        <div className="add-space-item-dot add-space-item-dot--app" />
-                        <span className="add-space-item-name">{a.label}</span>
-                        <span className="add-space-item-kind">App</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-                {docItems.length > 0 && (
-                  <>
-                    <div className="add-space-section-label">Docs</div>
-                    {docItems.map(a => (
-                      <div key={a.id} className="add-space-found-item">
-                        <div className="add-space-item-dot add-space-item-dot--doc" />
-                        <span className="add-space-item-name">{a.label}</span>
-                        <span className="add-space-item-kind">
-                          {a.kind === "diagram" ? "Diagram" : "Notes"}
-                        </span>
-                      </div>
-                    ))}
-                  </>
-                )}
+            ) : (
+              <div className="add-space-drop-empty">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.2 }}>
+                  <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
+                </svg>
+                <span>Drop project folder to import</span>
               </div>
             )}
-            <button className="add-space-btn-primary" onClick={onComplete}>
-              Done
-            </button>
-          </>
-        )}
-
+          </div>
+          {pathAmbiguous.length > 1 && (
+            <div className="add-space-ambiguous">
+              <div className="add-space-ambiguous-label">Multiple matches — pick one:</div>
+              {pathAmbiguous.map(p => (
+                <button key={p} className="add-space-ambiguous-option" onClick={() => {
+                  checkAndAddFolder(p);
+                  setPathAmbiguous([]);
+                }}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {error && <div className="add-space-error">{error}</div>}
+        <button
+          className="add-space-btn-primary"
+          onClick={handleScan}
+          disabled={scanning || discovering || (mode === "new" ? !name.trim() : !existingSpaceId) || folders.length === 0}
+        >
+          {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Add"}
+        </button>
       </div>
     </div>
   );
