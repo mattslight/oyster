@@ -16,6 +16,13 @@ export interface SpaceRow {
   updated_at: string;
 }
 
+export interface SpacePath {
+  space_id: string;
+  path: string;
+  label: string | null;
+  added_at: string;
+}
+
 export interface SpaceStore {
   getAll(): SpaceRow[];
   getById(id: string): SpaceRow | undefined;
@@ -23,6 +30,10 @@ export interface SpaceStore {
   insert(row: Omit<SpaceRow, "created_at" | "updated_at">): void;
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void;
   delete(id: string): void;
+  getPaths(spaceId: string): SpacePath[];
+  addPath(spaceId: string, path: string, label?: string): void;
+  removePath(spaceId: string, path: string): void;
+  getSpaceByPath(path: string): SpaceRow | undefined;
 }
 
 export class SqliteSpaceStore implements SpaceStore {
@@ -31,6 +42,10 @@ export class SqliteSpaceStore implements SpaceStore {
     getById: Database.Statement;
     getByRepoPath: Database.Statement;
     insert: Database.Statement;
+    getPaths: Database.Statement;
+    addPath: Database.Statement;
+    removePath: Database.Statement;
+    getSpaceByPath: Database.Statement;
   };
 
   constructor(private db: Database.Database) {
@@ -49,6 +64,10 @@ export class SqliteSpaceStore implements SpaceStore {
           @ai_job_status, @ai_job_error
         )
       `),
+      getPaths: db.prepare("SELECT * FROM space_paths WHERE space_id = ? ORDER BY added_at"),
+      addPath: db.prepare("INSERT OR IGNORE INTO space_paths (space_id, path, label) VALUES (?, ?, ?)"),
+      removePath: db.prepare("DELETE FROM space_paths WHERE space_id = ? AND path = ?"),
+      getSpaceByPath: db.prepare("SELECT s.* FROM spaces s JOIN space_paths sp ON s.id = sp.space_id WHERE sp.path = ?"),
     };
   }
 
@@ -56,7 +75,14 @@ export class SqliteSpaceStore implements SpaceStore {
   getById(id: string): SpaceRow | undefined { return this.stmts.getById.get(id) as SpaceRow | undefined; }
   getByRepoPath(repoPath: string): SpaceRow | undefined { return this.stmts.getByRepoPath.get(repoPath) as SpaceRow | undefined; }
   insert(row: Omit<SpaceRow, "created_at" | "updated_at">): void { this.stmts.insert.run(row); }
-  delete(id: string): void { this.db.prepare("DELETE FROM spaces WHERE id = ?").run(id); }
+  delete(id: string): void {
+    this.db.prepare("DELETE FROM space_paths WHERE space_id = ?").run(id);
+    this.db.prepare("DELETE FROM spaces WHERE id = ?").run(id);
+  }
+  getPaths(spaceId: string): SpacePath[] { return this.stmts.getPaths.all(spaceId) as SpacePath[]; }
+  addPath(spaceId: string, path: string, label?: string): void { this.stmts.addPath.run(spaceId, path, label ?? null); }
+  removePath(spaceId: string, path: string): void { this.stmts.removePath.run(spaceId, path); }
+  getSpaceByPath(path: string): SpaceRow | undefined { return this.stmts.getSpaceByPath.get(path) as SpaceRow | undefined; }
 
   private static readonly UPDATABLE_COLUMNS = new Set([
     "display_name", "repo_path", "color", "parent_id", "scan_status",

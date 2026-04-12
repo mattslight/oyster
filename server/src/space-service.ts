@@ -56,30 +56,48 @@ export class SpaceService {
     if (!id) throw new Error("name must contain at least one alphanumeric character");
     if (this.spaceStore.getById(id)) throw new Error(`Space "${id}" already exists`);
 
-    let repoPath: string | null = null;
-    if (params.repoPath) {
-      const raw = params.repoPath.startsWith("~/")
-        ? join(process.env.HOME ?? "", params.repoPath.slice(2))
-        : params.repoPath;
-      repoPath = resolve(raw);
-      // Note: resolve() does not follow symlinks. Two symlinked paths to the
-      // same repo will produce different normalised strings and bypass this check.
-      // This is a known limitation — document it; Phase 4 can add fs.realpath().
-
-      // Friendly duplicate check before hitting the UNIQUE constraint
-      const existing = this.spaceStore.getByRepoPath(repoPath);
-      if (existing) {
-        throw new Error(`Repo path is already attached to space "${existing.id}"`);
-      }
-    }
-
     const color = SPACE_PALETTE[hashStr(id) % SPACE_PALETTE.length];
     this.spaceStore.insert({
-      id, display_name: displayName, repo_path: repoPath, color, parent_id: null,
+      id, display_name: displayName, repo_path: null, color, parent_id: null,
       scan_status: "none", scan_error: null, last_scanned_at: null,
       last_scan_summary: null, ai_job_status: null, ai_job_error: null,
     });
+
+    // If a path was provided, add it to space_paths
+    if (params.repoPath) {
+      this.addPath(id, params.repoPath);
+    }
+
     return rowToSpace(this.spaceStore.getById(id)!);
+  }
+
+  addPath(spaceId: string, rawPath: string): string {
+    const row = this.spaceStore.getById(spaceId);
+    if (!row) throw new Error(`Space "${spaceId}" not found`);
+
+    const resolved = rawPath.startsWith("~/")
+      ? resolve(join(process.env.HOME ?? "", rawPath.slice(2)))
+      : resolve(rawPath);
+
+    if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
+    if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
+
+    // Check if this path is already attached to another space
+    const existing = this.spaceStore.getSpaceByPath(resolved);
+    if (existing && existing.id !== spaceId) {
+      throw new Error(`Path is already attached to space "${existing.display_name}"`);
+    }
+
+    this.spaceStore.addPath(spaceId, resolved);
+    return resolved;
+  }
+
+  removePath(spaceId: string, path: string): void {
+    this.spaceStore.removePath(spaceId, path);
+  }
+
+  getPaths(spaceId: string): string[] {
+    return this.spaceStore.getPaths(spaceId).map(p => p.path);
   }
 
   listSpaces(): Space[] { return this.spaceStore.getAll().map(rowToSpace); }
@@ -95,10 +113,12 @@ export class SpaceService {
   async scanSpace(spaceId: string): Promise<ScanResult> {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
-    if (!row.repo_path) throw new Error(`Space "${spaceId}" has no repo_path`);
-    const repoPath = row.repo_path;
-    if (!existsSync(repoPath)) throw new Error(`repo_path does not exist: ${repoPath}`);
-    if (!statSync(repoPath).isDirectory()) throw new Error(`repo_path is not a directory: ${repoPath}`);
+
+    const paths = this.spaceStore.getPaths(spaceId).map(p => p.path);
+    // Fall back to legacy repo_path if no space_paths yet
+    if (paths.length === 0 && row.repo_path) paths.push(row.repo_path);
+    if (paths.length === 0) throw new Error(`Space "${spaceId}" has no folders`);
+
     if (this.scanning.has(spaceId)) throw new Error(`Scan already in progress for space "${spaceId}"`);
 
     this.scanning.add(spaceId);
@@ -106,8 +126,14 @@ export class SpaceService {
 
     const result: ScanResult = { discovered: 0, skipped: 0, resurfaced: 0, errors: [], artifacts: [] };
     try {
-      const candidates = this.walk(repoPath);
-      for (const c of candidates) this.upsertCandidate(spaceId, c, result);
+      for (const folderPath of paths) {
+        if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+          result.errors.push(`Skipped missing folder: ${folderPath}`);
+          continue;
+        }
+        const candidates = this.walk(folderPath);
+        for (const c of candidates) this.upsertCandidate(spaceId, c, result);
+      }
       this.spaceStore.update(spaceId, {
         scan_status: "complete",
         last_scanned_at: new Date().toISOString(),

@@ -32,3 +32,17 @@ export async function deleteSpace(spaceId: string): Promise<void> {
   await fetch(`/api/spaces/${spaceId}`, { method: "DELETE" });
   // best-effort — ignore errors (wizard uses this only for cleanup)
 }
+
+export async function addPath(spaceId: string, path: string): Promise<string> {
+  const res = await fetch(`/api/spaces/${spaceId}/paths`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
+  const data = await res.json() as { path: string };
+  return data.path;
+}

@@ -108,6 +108,58 @@ export async function handleSpacesRequest(
     return true;
   }
 
+  // GET /api/spaces/:id/paths — list folders for a space
+  const spacePathsMatch = url.match(/^\/api\/spaces\/([^/]+)\/paths$/);
+  if (spacePathsMatch && req.method === "GET") {
+    try {
+      const paths = spaceService.getPaths(spacePathsMatch[1]);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ paths }));
+    } catch (err) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return true;
+  }
+
+  // POST /api/spaces/:id/paths — add a folder to a space
+  if (spacePathsMatch && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer | string) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { path } = JSON.parse(body);
+        if (!path) throw new Error("path is required");
+        const resolved = spaceService.addPath(spacePathsMatch[1], path);
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ path: resolved }));
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return true;
+  }
+
+  // DELETE /api/spaces/:id/paths — remove a folder from a space
+  if (spacePathsMatch && req.method === "DELETE") {
+    let body = "";
+    req.on("data", (chunk: Buffer | string) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { path } = JSON.parse(body);
+        if (!path) throw new Error("path is required");
+        spaceService.removePath(spacePathsMatch[1], path);
+        res.writeHead(204);
+        res.end();
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return true;
+  }
+
   // POST /api/spaces/:id/scan
   const spaceScanMatch = url.match(/^\/api\/spaces\/([^/]+)\/scan$/);
   if (spaceScanMatch && req.method === "POST") {

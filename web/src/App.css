@@ -2156,6 +2156,7 @@ body {
   box-sizing: border-box;
 }
 .add-space-input::placeholder { color: rgba(255, 255, 255, 0.2); }
+select.add-space-input { appearance: none; cursor: pointer; }
 .add-space-input--mono { font-family: "SF Mono", monospace; font-size: 11px; }
 .add-space-folder-card {
   display: flex;
@@ -2269,13 +2270,55 @@ body {
   letter-spacing: 0.01em;
 }
 .add-space-drop-zone--filled {
-  flex-direction: row;
-  height: 44px;
-  padding: 0 14px;
-  gap: 10px;
+  flex-direction: column;
+  height: auto;
+  min-height: 44px;
+  padding: 8px 14px;
+  gap: 4px;
   border-style: solid;
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.05);
+}
+.add-space-mode-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.add-space-mode-btn {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.add-space-mode-btn.active {
+  background: rgba(124, 107, 255, 0.15);
+  color: rgba(255, 255, 255, 0.85);
+}
+.add-space-mode-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.06);
+}
+.add-space-folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.add-space-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.add-space-drop-more {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.2);
+  text-align: center;
+  padding-top: 4px;
 }
 .add-space-drop-path {
   flex: 1;

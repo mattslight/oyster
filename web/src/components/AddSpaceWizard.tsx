@@ -1,16 +1,19 @@
 import { useState, useCallback } from "react";
-import type { ScanResult } from "../../../shared/types";
-import { createSpace, triggerScan, deleteSpace } from "../data/spaces-api";
+import type { Space, ScanResult } from "../../../shared/types";
+import { createSpace, addPath, triggerScan, deleteSpace } from "../data/spaces-api";
 
 interface Props {
+  spaces: Space[];
   onClose: () => void;
   onComplete: () => void;
 }
 
-export function AddSpaceWizard({ onClose, onComplete }: Props) {
+export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
   const [step, setStep] = useState<"name-path" | "results">("name-path");
+  const [mode, setMode] = useState<"new" | "existing">("new");
   const [name, setName] = useState("");
-  const [repoPath, setRepoPath] = useState("");
+  const [existingSpaceId, setExistingSpaceId] = useState("");
+  const [folders, setFolders] = useState<string[]>([]);
   const [pathAmbiguous, setPathAmbiguous] = useState<string[]>([]);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,40 +21,63 @@ export function AddSpaceWizard({ onClose, onComplete }: Props) {
   const [dragging, setDragging] = useState(false);
 
   const resolveFolder = useCallback(async (folderName: string) => {
-    if (!name.trim()) setName(folderName);
+    if (mode === "new" && !name.trim()) setName(folderName);
     setPathAmbiguous([]);
     try {
       const res = await fetch(`/api/resolve-folder?name=${encodeURIComponent(folderName)}`);
       const data = await res.json() as { matches: string[] };
       if (data.matches.length === 1) {
-        setRepoPath(data.matches[0]);
+        setFolders(prev => prev.includes(data.matches[0]) ? prev : [...prev, data.matches[0]]);
       } else if (data.matches.length > 1) {
         setPathAmbiguous(data.matches);
       } else {
-        setRepoPath(`~/${folderName}`);
+        setFolders(prev => [...prev, `~/${folderName}`]);
       }
     } catch {
-      setRepoPath(`~/${folderName}`);
+      setFolders(prev => [...prev, `~/${folderName}`]);
     }
-  }, [name]);
+  }, [name, mode]);
 
   function handleBackdrop(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onClose();
   }
 
+  function removeFolder(path: string) {
+    setFolders(prev => prev.filter(p => p !== path));
+  }
+
   async function handleScan() {
-    if (!name.trim()) { setError("Name is required"); return; }
     setError(null);
     setScanning(true);
-    let createdSpaceId: string | null = null;
+
+    let spaceId: string;
+    let createdNew = false;
+
     try {
-      const space = await createSpace({ name: name.trim(), repoPath: repoPath.trim() || undefined });
-      createdSpaceId = space.id;
-      const result = await triggerScan(space.id);
+      if (mode === "existing") {
+        if (!existingSpaceId) { setError("Pick a space"); setScanning(false); return; }
+        spaceId = existingSpaceId;
+      } else {
+        if (!name.trim()) { setError("Name is required"); setScanning(false); return; }
+        const space = await createSpace({ name: name.trim() });
+        spaceId = space.id;
+        createdNew = true;
+      }
+
+      // Add all folders to the space
+      for (const folder of folders) {
+        await addPath(spaceId, folder);
+      }
+
+      // Scan
+      const result = await triggerScan(spaceId);
       setScanResult(result);
       setStep("results");
     } catch (err) {
-      if (createdSpaceId) await deleteSpace(createdSpaceId);
+      if (createdNew && mode === "new") {
+        const id = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+        await deleteSpace(id);
+      }
       setError((err as Error).message);
     } finally {
       setScanning(false);
@@ -61,6 +87,8 @@ export function AddSpaceWizard({ onClose, onComplete }: Props) {
   const appItems = scanResult?.artifacts.filter(a => a.kind === "app") ?? [];
   const docItems = scanResult?.artifacts.filter(a => a.kind !== "app") ?? [];
   const totalFound = (scanResult?.discovered ?? 0) + (scanResult?.resurfaced ?? 0);
+
+  const existingSpaces = spaces.filter(s => s.id !== "__all__");
 
   return (
     <div className="add-space-overlay" onClick={handleBackdrop}>
@@ -78,43 +106,77 @@ export function AddSpaceWizard({ onClose, onComplete }: Props) {
           <>
             <div className="add-space-title">Add space</div>
             <div className="add-space-fields">
-              <input
-                className="add-space-input"
-                placeholder="Name"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !scanning && handleScan()}
-                autoFocus
-              />
+
+              {/* Toggle: new vs existing */}
+              {existingSpaces.length > 0 && (
+                <div className="add-space-mode-toggle">
+                  <button
+                    className={`add-space-mode-btn ${mode === "new" ? "active" : ""}`}
+                    onClick={() => setMode("new")}
+                  >New space</button>
+                  <button
+                    className={`add-space-mode-btn ${mode === "existing" ? "active" : ""}`}
+                    onClick={() => setMode("existing")}
+                  >Existing space</button>
+                </div>
+              )}
+
+              {mode === "new" ? (
+                <input
+                  className="add-space-input"
+                  placeholder="Name"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && !scanning && handleScan()}
+                  autoFocus
+                />
+              ) : (
+                <select
+                  className="add-space-input"
+                  value={existingSpaceId}
+                  onChange={e => setExistingSpaceId(e.target.value)}
+                >
+                  <option value="">Pick a space…</option>
+                  {existingSpaces.map(s => (
+                    <option key={s.id} value={s.id}>{s.displayName}</option>
+                  ))}
+                </select>
+              )}
+
               <div
-                className={`add-space-drop-zone${dragging ? " add-space-drop-zone--over" : ""}${repoPath ? " add-space-drop-zone--filled" : ""}`}
+                className={`add-space-drop-zone${dragging ? " add-space-drop-zone--over" : ""}${folders.length > 0 ? " add-space-drop-zone--filled" : ""}`}
                 onDragOver={e => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={e => {
                   e.preventDefault();
                   setDragging(false);
-                  const item = e.dataTransfer.items[0];
-                  if (!item) return;
-                  const entry = item.webkitGetAsEntry?.();
-                  if (entry?.isDirectory) {
-                    resolveFolder(entry.name);
+                  for (let i = 0; i < e.dataTransfer.items.length; i++) {
+                    const entry = e.dataTransfer.items[i].webkitGetAsEntry?.();
+                    if (entry?.isDirectory) {
+                      resolveFolder(entry.name);
+                    }
                   }
                 }}
               >
-                {repoPath ? (
-                  <>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0, opacity: 0.7 }}>
-                      <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
-                    </svg>
-                    <span className="add-space-drop-path">{repoPath}</span>
-                    <button className="add-space-drop-clear" onClick={() => { setRepoPath(""); setPathAmbiguous([]); }}>×</button>
-                  </>
+                {folders.length > 0 ? (
+                  <div className="add-space-folder-list">
+                    {folders.map(f => (
+                      <div key={f} className="add-space-folder-item">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0, opacity: 0.7 }}>
+                          <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
+                        </svg>
+                        <span className="add-space-drop-path">{f}</span>
+                        <button className="add-space-drop-clear" onClick={() => removeFolder(f)}>×</button>
+                      </div>
+                    ))}
+                    <div className="add-space-drop-more">Drop another folder to add</div>
+                  </div>
                 ) : (
                   <div className="add-space-drop-empty">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.2 }}>
                       <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
                     </svg>
-                    <span>Drop project or repo folder to import</span>
+                    <span>Drop project folder to import</span>
                   </div>
                 )}
               </div>
@@ -122,7 +184,10 @@ export function AddSpaceWizard({ onClose, onComplete }: Props) {
                 <div className="add-space-ambiguous">
                   <div className="add-space-ambiguous-label">Multiple matches — pick one:</div>
                   {pathAmbiguous.map(p => (
-                    <button key={p} className="add-space-ambiguous-option" onClick={() => { setRepoPath(p); setPathAmbiguous([]); }}>
+                    <button key={p} className="add-space-ambiguous-option" onClick={() => {
+                      setFolders(prev => prev.includes(p) ? prev : [...prev, p]);
+                      setPathAmbiguous([]);
+                    }}>
                       {p}
                     </button>
                   ))}
@@ -133,9 +198,9 @@ export function AddSpaceWizard({ onClose, onComplete }: Props) {
             <button
               className="add-space-btn-primary"
               onClick={handleScan}
-              disabled={scanning || !name.trim()}
+              disabled={scanning || (mode === "new" ? !name.trim() : !existingSpaceId)}
             >
-              {scanning ? (repoPath ? "Scanning…" : "Adding…") : repoPath ? "Scan" : "Add"}
+              {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Add"}
             </button>
           </>
         )}
