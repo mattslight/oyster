@@ -1,5 +1,101 @@
 # Changelog
 
+## 2026-04-12
+
+### Phase B: CLI packaging — `npm install -g oyster-os`
+
+Oyster is now a published npm package. One command to install, one command to run.
+
+**CLI entry point (`bin/oyster.mjs`)**
+- Checks for API keys (Anthropic, OpenAI, Gemini, Groq); prompts on first run and saves to `~/.oyster/.env`
+- Auto-detects provider from key prefix (sk-ant → Anthropic, sk- → OpenAI, etc.)
+- Spawns server process, opens browser to `http://localhost:4200`
+- Bootstraps `~/.oyster/userland/` with builtins (snake-game, the-worlds-your-oyster deck)
+- Handles SIGINT/SIGTERM cleanup
+
+**Compiled server + static web serving**
+- Server compiles to JS via tsc (no tsx at runtime)
+- Web build copied into `server/dist/public/` — one runtime root, one port
+- Package is ~2.2 MB unpacked, 6 runtime dependencies
+- `node-pty` moved to optionalDependencies with graceful fallback when unavailable
+
+**Cross-platform**
+- Windows support: finds `opencode.cmd`, uses `shell: true` for spawn on win32
+- Path traversal protection on static file serving
+- Userland defaults to `~/.oyster/userland/` (writable), not package dir
+
+### Documentation overhaul
+
+- CLAUDE.md rewritten to match shipped product — one server on 4200, OpenCode internal, `~/.oyster/userland/`, npm workflow
+- Design doc updated: architecture diagrams show OpenCode as internal subprocess, Graphiti deferred to v2
+- `opencode.json` model fixed to `anthropic/claude-sonnet-4-20250514`
+- README rewrite for npm — quick start is `npm install -g oyster-os`, not `git clone`; full loop from install to MCP to onboard
+
+### Landing page polish
+
+- Terminal window mockup with traffic light dots for `npm install` section
+- Mac/Windows OS toggle with pill-shaped sliding active state
+- `npx oyster-os` alternative with gold "no install?" note
+- Feature sections reordered: surface first, then navigate, then get started
+
+## 2026-04-11
+
+### Phase A: prompt-driven surface control + slash commands
+
+The chat bar now controls the OS. Dropped Graphiti dependency (memory deferred to v2), added SSE command channel for instant UI push events.
+
+**New MCP tools**
+- `open_artifact(id)` — opens viewer via SSE push, instant
+- `switch_space(id)` — navigates desktop via SSE push, instant
+- `list_artifacts` gains `search` and `limit` params for LLM-based resolution
+
+**Slash commands (client-side, no LLM call)**
+- `/s <prefix>` — instant space switch with subsequence matching
+- `/o <query>` — token-scored artifact open with autocomplete dropdown
+- Autocomplete on `/` with keyboard nav (↑↓ Enter Tab Escape)
+- Messages panel dims when autocomplete is open
+
+**# prefix shortcuts**
+- `#<name>` — space switch (Enter to confirm)
+- `#<digit>` — instant space switch (no Enter needed)
+- `#.` = home (like `cd .`), `#0` = all
+- "No match" feedback for unmatched `#` commands
+- Auto-focus chat input on any keypress
+
+**SSE command channel**
+- `GET /api/ui/events` — server pushes `open_artifact`, `switch_space`, `artifact.created` events
+- React subscribes on mount; viewer and desktop respond to push commands instantly
+
+**Bug fixes**
+- `source_origin` threaded through artifact creation
+- Artifact kind inference improvements
+- Stale closures fixed in ChatBar (missing `useCallback` deps)
+- Duplicated scoring logic extracted to shared `scoreArtifacts()` function
+- Silent failures on unmatched commands now show feedback
+
+### UX polish — connection banner, tagline, alignment toggle
+
+- Red glassmorphic connection banner with pulsing dot when server is unreachable
+- Tagline changed to "Apps are dead. Welcome to your surface."
+- Alignment toggle (left/center/right) available on all spaces, not just __all__
+- Agent instructions updated: navigation commands are instant, no deliberation
+- Dev port changed from 5555 to 7337
+
+### Landing page — full marketing site
+
+Built a GitHub Pages landing page with interactive mock UI:
+
+- Hero section with animated typing, space switching, and build progress
+- 3D tilt effect on mock panels (follows mouse cursor)
+- Real FAL-generated artifact icons
+- "Import your projects" section showing repo onboarding scan results
+- "Bring your own AI" section — MCP as a feature, tool names as pills (open, create, organise, search, navigate, import)
+- "UI that adapts to the job" section — dynamic UI carousel (kanban/chart/list cycling) with Coming Soon ribbon
+- "From zero to workspace in one command" — `npm install` section with animated space pills
+- Subtitle: "A modern workspace OS with AI at its core"
+- Space Grotesk + IBM Plex Mono typography
+- Bottom CTAs and footer
+
 ## 2026-03-30
 
 ### View toggle — always visible alongside kind filter
@@ -9,6 +105,11 @@
 - Toggle and pill share a `.filter-bar` flex wrapper, centered at the top of the surface
 - Kind switcher dropdown (▾) only shown when multiple kinds exist in the space
 - Fixed bug: clicking a kind option in the dropdown had no effect — `pointerdown` outside-click handler was unmounting the dropdown before the `click` could fire; fixed by stopping propagation on dropdown option `pointerdown`
+
+### Spaces hierarchy + list view polish
+
+- `parent_id` column added to spaces table for UI navigation hierarchy (nullable, top-level spaces are NULL)
+- List view space tags restyled: solid tinted background, soft white text, lighter font weight
 
 ## 2026-03-29
 
