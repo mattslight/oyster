@@ -13,6 +13,7 @@ export interface Candidate {
   path: string;
   markers: string[];
   framework?: string;
+  subProjects?: string[];
 }
 
 export interface SuggestedSpace {
@@ -86,7 +87,39 @@ export function discoverCandidates(containerPath: string): Candidate[] {
       framework = "java";
     }
 
-    candidates.push({ name: entry, path: sub, markers, framework });
+    // Detect monorepo — sub-dirs (depth 1-2) with their own project markers
+    const subProjects: string[] = [];
+    const WORKSPACE_DIRS = new Set(["apps", "packages", "services", "libs", "modules", "tools"]);
+    for (const subEntry of subEntries) {
+      if (subEntry.startsWith(".") || subEntry === "node_modules" || subEntry === "dist" || subEntry === "build") continue;
+      const subSub = join(sub, subEntry);
+      try {
+        if (!statSync(subSub).isDirectory()) continue;
+        const subSubEntries = readdirSync(subSub);
+        if (PROJECT_MARKERS.some(m => subSubEntries.includes(m))) {
+          subProjects.push(subEntry);
+        }
+        // Check one level deeper for workspace patterns (apps/web, packages/shared)
+        if (WORKSPACE_DIRS.has(subEntry)) {
+          for (const nested of subSubEntries) {
+            const nestedPath = join(subSub, nested);
+            try {
+              if (!statSync(nestedPath).isDirectory()) continue;
+              const nestedEntries = readdirSync(nestedPath);
+              if (PROJECT_MARKERS.some(m => nestedEntries.includes(m))) {
+                subProjects.push(`${subEntry}/${nested}`);
+              }
+            } catch { continue; }
+          }
+        }
+      } catch { continue; }
+    }
+
+    // Also flag pnpm/yarn/lerna workspaces as monorepos even if sub-project scan missed them
+    const isWorkspace = subEntries.includes("pnpm-workspace.yaml") || subEntries.includes("lerna.json");
+    const hasSubProjects = subProjects.length > 0 || isWorkspace;
+
+    candidates.push({ name: entry, path: sub, markers, framework, subProjects: hasSubProjects ? (subProjects.length > 0 ? subProjects : ["(workspace)"]) : undefined });
   }
 
   return candidates;
@@ -247,10 +280,11 @@ export async function groupWithLLM(candidates: Candidate[]): Promise<SuggestedSp
   const candidateList = candidates.map(c => {
     let desc = c.name;
     if (c.framework) desc += ` (${c.framework})`;
+    if (c.subProjects?.length) desc += ` [monorepo: ${c.subProjects.join(", ")}]`;
     return desc;
   });
 
-  const prompt = `You are organising a developer's workspace. Given these project folder names found in their dev directory, group them into logical workspaces/spaces.
+  const prompt = `You are organising a developer's workspace. Given these project folders found in their dev directory, group them into logical spaces.
 
 Project folders:
 ${candidateList.map(c => `- ${c}`).join("\n")}
@@ -258,11 +292,11 @@ ${candidateList.map(c => `- ${c}`).join("\n")}
 Rules:
 - Related repos (same product/project) should be grouped into one space
 - Look for naming patterns: shared prefixes, suffixes like -api, -web, -portal, -docs
-- Standalone projects that look like real products/apps get their own space
-- Small utilities, configs, forks, or miscellaneous repos should go in a catch-all space called "other"
-- Use clean, lowercase names for spaces (e.g. "tokinvest" not "tokinvest-drc" or "Tokinvest")
+- Monorepos (marked with [monorepo:]) are already self-contained — they should get their own space, not go in "other"
+- Projects that look like real products or apps should get their own space
+- Only put genuinely miscellaneous things (tiny configs, forks, one-off scripts) in "other"
+- Use clean, lowercase names for spaces (e.g. "tokinvest" not "tokinvest-drc")
 - Every folder must appear in exactly one space
-- Aim for fewer spaces rather than more — group aggressively
 
 Return ONLY valid JSON, no markdown, no explanation:
 [{"name": "Space Name", "folders": ["folder1", "folder2"]}, ...]`;
