@@ -37,9 +37,7 @@ npm install -g oyster-os
 oyster
 ```
 
-That's it. Oyster starts, your browser opens to **http://localhost:4200**, and you're on the surface.
-
-On first run, Oyster will ask for your API key. Paste it and it's saved to `~/.oyster/.env`.
+That's it. On first run, Oyster connects you to an AI provider (opens your browser to sign in). Then your workspace opens at **http://localhost:4200**.
 
 ### Connect your AI
 

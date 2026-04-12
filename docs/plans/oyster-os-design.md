@@ -31,7 +31,7 @@ Oyster's surface accumulates context across all your systems and sessions — so
 
 Oyster is a visual surface where generated outputs — documents, diagrams, apps, notes — appear as artifacts you can open, organise, and build on. A unified chat bar is the single entry point: chat to build, search to find, type to navigate. Each output replaces a separate tool.
 
-The engine is OpenCode (`opencode serve`). Persistent memory is Graphiti (a temporal knowledge graph running locally via Docker). Product behaviour is steered by `.opencode/agents/oyster.md`. The user never sees OpenCode or the graph — the engine is invisible.
+The engine is OpenCode (`opencode serve`), spawned internally by the server. Persistent memory is deferred to v2. Product behaviour is steered by `.opencode/agents/oyster.md`. The user never sees OpenCode — the engine is invisible.
 
 **One-liner:** A surface that remembers. An AI that connects the dots.
 
@@ -112,7 +112,7 @@ The UI, API, and MCP server all run on port 4200. OpenCode is spawned internally
 
 The artifact contract is the central abstraction in Oyster's architecture. Every output Oyster creates — a document, a game, a presentation, a full web app — conforms to one contract. The contract is stable; the runtime backend behind it is swappable.
 
-This means the product model does not depend on how artifacts are executed. Today artifacts are served as static files. Tomorrow they could run in Docker containers or Firecracker microVMs. The artifact itself doesn't know or care.
+This means the product model does not depend on how artifacts are executed. Today artifacts are served as static files. Tomorrow the runtime backend could change. The artifact itself doesn't know or care.
 
 #### Folder structure
 
@@ -183,15 +183,13 @@ The `runtime` field determines how the artifact is served and executed. Runtime 
 |---------|-------------|-------------|
 | `static` | Serve files directly via HTTP. No build step, no process. | HTML files, markdown, presentations, diagrams, simple games, spreadsheets |
 | `vite` | Run `npm install` + `npx vite` in the artifact's `src/` directory. Manage the process and port. | Full React/TS apps that need a build toolchain |
-| `docker` | Build and run a Docker container from a Dockerfile in `src/`. | Apps needing isolated dependencies, different runtimes, or server-side logic |
+| `docker` | (Future) Build and run a container from a Dockerfile in `src/`. | Apps needing isolated dependencies, different runtimes, or server-side logic |
 
 **Tier 1 (now):** Only `static` is implemented. All artifacts are single HTML files or markdown, served directly.
 
 **Tier 2 (later):** Add `vite` runtime class. The serving layer reads the manifest, sees `runtime: "vite"`, runs the build, manages the process.
 
-**Tier 3 (production):** Add `docker` runtime class. Same manifest, different execution backend.
-
-This is additive. Tier 1 artifacts continue working unchanged when Tier 2 and 3 are added. The manifest is the contract; the runtime is the implementation.
+This is additive. Tier 1 artifacts continue working unchanged when Tier 2 is added. The manifest is the contract; the runtime is the implementation.
 
 #### What the AI agent sees
 
@@ -231,7 +229,7 @@ spaces (id, display_name, repo_path, color, parent_id,
 
 Persistent memory (cross-session context, entity graphs, relationship tracking) is planned but not active in v1. The v1 surface works without it — the agent is stateless between sessions.
 
-**v2 options under evaluation:** Graphiti (FalkorDB, Docker), opencode-plugin-simple-memory, forgetful (SQLite + embeddings), or custom Oyster-native SQLite FTS5. See issue #70 for details.
+**v2 options under evaluation:** Graphiti (FalkorDB), opencode-plugin-simple-memory, forgetful (SQLite + embeddings), or custom Oyster-native SQLite FTS5. See issue #70 for details and [`docs/research/memory-layer-evaluation.md`](../research/memory-layer-evaluation.md) for the full evaluation.
 
 ### App-Specific Data
 
@@ -384,135 +382,17 @@ Add the `vite` runtime class. When a user asks for something that needs a build 
 
 **Infrastructure cost:** Process management, port allocation, npm install times. This is the current `registry.json` + `process-manager.ts` pattern generalised to work from manifests instead of a hand-curated registry.
 
-### Tier 3: Containerised Runtimes (Multi-Tenant Production)
+### Deployment
 
-Add the `docker` runtime class. For artifacts that need isolated dependencies, different language runtimes, or untrusted code execution.
+Everything runs on one machine today — the surface, OpenCode, generated artifacts, SQLite. This is the right model for v1 and for self-hosted power users.
 
-**Options evaluated:**
+How Oyster deploys in a cloud or multi-tenant environment is TBD. The important thing now is that the artifact contract (manifest + folder structure) is independent of the deployment boundary, and the frontend communicates with the server via HTTP/SSE APIs — not filesystem coupling. That keeps future options open without committing to a specific infrastructure stack.
 
-| Technology | What it is | When it's relevant |
-|------------|-----------|-------------------|
-| **Docker Compose** | Define and run multi-container applications from one YAML config. Each artifact with `runtime: "docker"` gets its own container with declared ports and volumes. | First step beyond process isolation. Reasonable for managed single-user or small multi-tenant deployments. |
-| **gVisor** | Google's container sandbox. Intercepts system calls to provide stronger isolation than standard Docker without the overhead of a full VM. Used by Google Cloud Run. | Middle ground between Docker and full VM isolation. Good if you need untrusted code execution without microVM complexity. |
-| **Kata Containers** | Lightweight VMs that run containers inside per-container virtual machines. Stronger isolation than gVisor, lighter than traditional VMs. | Similar use case to Firecracker but with a more standard container workflow. |
-| **Firecracker** | AWS's microVM technology. KVM-based virtual machines with ~125ms boot time and ~5MB memory overhead per VM. Powers Lambda and Fargate. | Strongest isolation with surprisingly low overhead. Relevant if Oyster becomes a managed platform running user workloads on shared hosts. What Fly.io uses under the hood. |
-| **Kubernetes** | Container orchestration across multiple machines. Auto-scaling, service discovery, rolling deployments. | Overkill unless Oyster is running hundreds of containers across a cluster. Not relevant for single-host or small-scale deployment. |
+Early research on containerisation options and deployment models is captured in [`docs/research/containerisation-evaluation.md`](../research/containerisation-evaluation.md).
 
-**Recommendation:** Start with Docker Compose. Move to Firecracker or gVisor only when multi-tenant untrusted code execution becomes a real security requirement. Do not use Kubernetes unless operating at significant scale across multiple machines.
+### Note
 
-### Deployment Models
-
-How does Oyster deploy as a product? There are several models, and the artifact contract supports all of them because the product boundary (manifests, folder structure, agent visibility) is independent of the deployment boundary.
-
-#### Model A: Single Machine (PoC, Power Users)
-
-Everything runs on one machine — the surface, OpenCode, generated artifacts, the database. This is the current state and is correct for the PoC.
-
-```
-┌─────────────── One Machine ──────────────┐
-│  Oyster Surface (web UI)                 │
-│  Oyster Server (artifact serving, proxy) │
-│  OpenCode (AI engine)                    │
-│  /artifacts/ (all generated outputs)     │
-│  Postgres (knowledge graph + app data)   │
-└──────────────────────────────────────────┘
-```
-
-Also the model for power users who want to self-host and modify Oyster locally. The upgrade path is theirs to manage.
-
-#### Model B: Control Plane + Distributed Runtimes
-
-Separate what's shared (UI, auth, billing) from what's per-tenant (AI engine, artifacts, data).
-
-```
-┌── Control Plane (SaaS, one deployment) ──┐
-│  Oyster Surface (React app on CDN)       │
-│  Auth / Billing / User management        │
-│  Tenant router                           │
-│  Runtime version manager                 │
-└────────────────┬─────────────────────────┘
-                 │
-    ┌────────────▼────────────┐
-    │  Oyster Runtime (per    │
-    │  tenant, versioned      │
-    │  image)                 │
-    │                         │
-    │  OpenCode               │
-    │  /artifacts/            │
-    │  Postgres               │
-    │  Artifact runtimes      │
-    └─────────────────────────┘
-```
-
-**Control Plane** is a conventional SaaS backend deployed once and serving all users:
-- The Oyster Surface frontend — a static React app served from a CDN
-- Auth, billing, user management
-- A tenant router that directs requests to the right runtime
-- A runtime version manager that controls which image version each tenant runs (for canary rollouts and gradual upgrades)
-- A shared database for user accounts, billing, and tenant metadata
-- It knows nothing about any user's projects, artifacts, or knowledge graph
-
-**Oyster Runtime** is the per-tenant environment where all work happens:
-- OpenCode with full filesystem access to all artifacts
-- The knowledge graph (Postgres)
-- All generated artifact files and their runtimes
-- Conversation history and AI memory
-
-The runtime is a **versioned container image** controlled by the platform team. Upgrading Oyster means building a new image and rolling tenants onto it — blue-green, canary, or instant. The user doesn't SSH into anything. From their perspective, Oyster just gets better.
-
-This model preserves tenant-scoped agent visibility: OpenCode inside a runtime sees everything for that tenant, nothing for other tenants. The isolation boundary is between tenants, which is exactly where it should be.
-
-#### Model C: Central AI + Distributed Data (Future Option)
-
-An alternative to per-tenant runtimes: centralise the AI compute and give workers on-demand access to tenant data.
-
-```
-┌── Control Plane ─────────────────────┐
-│  Oyster Surface (CDN)                │
-│  Auth / Billing                      │
-│  AI Compute Pool                     │
-│  ├── OpenCode worker (User A)        │
-│  ├── OpenCode worker (User B)        │
-│  └── OpenCode worker (idle)          │
-└───────────┬──────────────────────────┘
-            │
-  ┌─────────▼──────────┐
-  │  Data Layer         │
-  │  (per-tenant)       │
-  │                     │
-  │  User A: PG + files │
-  │  User B: PG + files │
-  └─────────────────────┘
-```
-
-When a user sends a message, the control plane grabs an available worker from the pool, connects it to that user's data layer, the worker does its job, and releases back to the pool.
-
-**Advantages:** No idle AI compute per tenant. 100 users might only need 10 workers. Upgrading OpenCode is redeploying the worker pool — instant, every user gets it.
-
-**Disadvantages:** The worker needs access to user data over a network (latency). More complex data layer abstraction — OpenCode currently assumes local filesystem access.
-
-**When this becomes relevant:** When the cost of idle per-tenant runtimes becomes significant, or when AI compute is the dominant cost and pooling it saves money.
-
-**Key constraint:** OpenCode currently assumes local filesystem access. Moving to this model requires abstracting file operations behind an API — reading from object storage, writing via API. This is real engineering work, not a config change.
-
-#### What to choose when
-
-| Situation | Model |
-|-----------|-------|
-| PoC, single user, validating the product | Model A (single machine) |
-| First paying users, managed service | Model B (control plane + per-tenant runtime) |
-| Scale (hundreds of users, cost optimisation) | Model C (central AI + distributed data) |
-| Self-hosted power users | Model A (they run it locally) |
-
-The artifact contract is the same in all models. The manifest schema, folder conventions, and agent instructions don't change. The differences are purely in how the runtime is provisioned, how OpenCode accesses files, and how artifacts are served.
-
-### The Footgun to Avoid
-
-Do not treat "single HTML file" as the product model. It is one runtime class (`static`) — the simplest one. The product model is the artifact contract: folder, manifest, declared runtime, declared storage, declared capabilities. When persistence, auth, file uploads, collaboration, or proper data models are needed, they are expressed in the manifest's `storage` and `capabilities` fields, and handled by the appropriate runtime class.
-
-### Key Decision That Matters Now
-
-Do not couple the frontend to the runtime's filesystem. The Oyster Surface communicates with OpenCode and the artifact registry via HTTP/SSE APIs. As long as that boundary stays clean, splitting into control plane and data plane later is a clean cut, not a rewrite. The current server architecture already has this boundary — the frontend fetches from `/api/artifacts` and streams from `/api/chat/events`.
+The product model is the artifact contract (folder, manifest, declared runtime/storage/capabilities) — not "single HTML file." Static is the first runtime class, not the only one. The manifest fields (`runtime`, `storage`, `capabilities`, `ports`) exist now so new runtime backends can be added without changing the artifact model.
 
 ---
 
@@ -595,39 +475,13 @@ PoC input is chat only. Imports are sprint 2+. Live connectors are later.
 
 ---
 
-## Provisioning (Production Path)
+## Provisioning
 
-### Per-user runtime model
+TBD. Cloud hosting and multi-tenant provisioning are future concerns. The important constraints to respect now:
 
-Each user gets an isolated Oyster Runtime with:
-- OpenCode (`opencode serve`)
-- Local Postgres (app data only)
-- Persistent volume (filesystem, artifacts, OpenCode sessions/config, local DB)
-- Connection to central Supabase (knowledge graph)
-
-### Signup flow
-1. User signs up → Supabase Auth creates account
-2. Control plane provisions runtime from versioned base image
-3. Local Postgres initialises (empty, for app data)
-4. Runtime gets persistent volume
-5. User connects via HTTP/SSE through tenant router
-
-### Schema migrations
-- Central Supabase schema: one migration, all users updated instantly
-- Local app schemas: owned by OpenCode, no fleet-wide migrations needed
-- Runtime image updates: build new version, roll tenants gradually (blue-green or canary)
-- This split is why the central/local separation exists
-
-### Upgrade model
-- **Control plane (UI, auth, billing):** Standard SaaS deployment. Deploy to CDN + backend services. All users get updates immediately.
-- **Oyster Runtime (OpenCode, artifact serving):** Versioned container image. Build new image, roll tenants to it. Their data persists on volumes; only the engine changes.
-- **Artifact runtimes:** User-controlled. The AI creates and manages them within the tenant's runtime.
-
-### PoC constraints to respect for production readiness
-- Use `$DATABASE_URL` and `$OYSTER_WORKSPACE` env vars, not hardcoded paths
-- Keep `.opencode/agents/oyster.md`, schema migrations, and config in one repo (future Docker image source)
-- No user identity in the knowledge graph schema for PoC, but the column is defined for production
+- Use `$OYSTER_WORKSPACE` env var, not hardcoded paths
 - Keep the frontend → server boundary as HTTP/SSE APIs (not filesystem coupling)
+- Keep `.opencode/agents/oyster.md`, schema migrations, and config in one repo
 
 ---
 
@@ -700,8 +554,7 @@ Each user gets an isolated Oyster Runtime with:
 - Seeded starter artifacts on first use (sample content for personal/kps spaces added)
 - Advanced graph visualisation
 - Tier 2 runtime (`vite` runtime class for full project artifacts)
-- Tier 3 runtime (Docker / Firecracker containerised artifacts)
-- Control plane / data plane split for multi-tenant deployment
+- Cloud / multi-tenant deployment (TBD)
 
 ---
 

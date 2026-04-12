@@ -1,6 +1,6 @@
 # Memory Layer Evaluation — March 2026
 
-> **STATUS: Decision made (Graphiti) but deferred to v2.** Current v1 has no persistent memory. The agent is stateless between sessions. See issue #70 for v2 options.
+> **STATUS (2026-03): Decision made (Graphiti) but deferred to v2.** Current v1 has no persistent memory. The agent is stateless between sessions. See issue #70 for v2 options. Revisit when persistent memory moves from "planned" to "in progress."
 
 ## Context
 

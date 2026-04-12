@@ -3,15 +3,15 @@
 import { spawn, execSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { createInterface } from "node:readline";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
-const OYSTER_HOME = join(process.env.HOME || "~", ".oyster");
+const OYSTER_HOME = join(homedir(), ".oyster");
 const ENV_FILE = join(OYSTER_HOME, ".env");
 
-// ── Resolve API key ──
+// ── Resolve env vars ──
 
 function loadEnvFile(path, env) {
   if (!existsSync(path)) return;
@@ -24,53 +24,81 @@ function loadEnvFile(path, env) {
 
 function getEnvVars() {
   const env = { ...process.env };
-  // Check project root .env, then ~/.oyster/.env
   loadEnvFile(join(PACKAGE_ROOT, ".env"), env);
   loadEnvFile(ENV_FILE, env);
   return env;
 }
 
-async function ensureApiKey(env) {
-  // Check for any supported provider key
-  const keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"];
-  if (keys.some((k) => env[k])) return env;
+// ── Find bundled OpenCode binary ──
 
-  console.log("\n  🦪 Welcome to Oyster\n");
-  console.log("  You need an Anthropic API key to get started.");
-  console.log("  Get one at: https://console.anthropic.com/settings/keys\n");
-
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise((resolve) => {
-    rl.question("  Paste your Anthropic API key: ", resolve);
-  });
-  rl.close();
-
-  const key = answer.trim();
-  if (!key) {
-    console.log("\n  No key provided. Set your API key in ~/.oyster/.env\n");
-    process.exit(1);
+function findOpenCodeBin() {
+  const isWin = process.platform === "win32";
+  const names = isWin ? ["opencode.cmd", "opencode.ps1", "opencode"] : ["opencode"];
+  const roots = [
+    join(PACKAGE_ROOT, "node_modules", ".bin"),
+    join(PACKAGE_ROOT, "server", "node_modules", ".bin"),
+  ];
+  // Walk up for hoisted installs (npx, global)
+  let dir = PACKAGE_ROOT;
+  for (let i = 0; i < 5; i++) {
+    roots.push(join(dir, "node_modules", ".bin"));
+    dir = dirname(dir);
   }
+  for (const root of roots) {
+    for (const name of names) {
+      const candidate = join(root, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return "opencode"; // fallback to PATH
+}
 
-  // Detect provider from key prefix
-  let envVar = "ANTHROPIC_API_KEY";
-  if (key.startsWith("sk-ant-")) envVar = "ANTHROPIC_API_KEY";
-  else if (key.startsWith("sk-")) envVar = "OPENAI_API_KEY";
-  else if (key.startsWith("gsk_")) envVar = "GROQ_API_KEY";
+// ── Check OpenCode auth ──
 
-  // Save to ~/.oyster/.env
-  mkdirSync(OYSTER_HOME, { recursive: true });
-  const envContent = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf8") : "";
-  writeFileSync(ENV_FILE, envContent + `${envVar}=${key}\n`);
-  console.log(`\n  Saved as ${envVar} to ${ENV_FILE}\n`);
+function hasAuth(opencodeBin) {
+  try {
+    const result = execSync(`"${opencodeBin}" providers list`, {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 10000,
+      shell: true,
+    });
+    return result.toString().includes("●");
+  } catch {
+    return false;
+  }
+}
 
-  env.ANTHROPIC_API_KEY = key;
-  return env;
+function runLogin(opencodeBin) {
+  return new Promise((resolve) => {
+    const child = spawn(opencodeBin, ["providers", "login"], {
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    });
+    child.on("exit", (code) => resolve(code === 0));
+  });
 }
 
 // ── Main ──
 
 async function main() {
-  const env = await ensureApiKey(getEnvVars());
+  const env = getEnvVars();
+  const opencodeBin = findOpenCodeBin();
+
+  // Ensure userland dir exists
+  mkdirSync(join(OYSTER_HOME, "userland"), { recursive: true });
+
+  // Check auth — if none, run login inline
+  if (!hasAuth(opencodeBin)) {
+    console.log("\n  🦪 Welcome to Oyster\n");
+    console.log("  First, let's connect an AI provider.\n");
+
+    const ok = await runLogin(opencodeBin);
+    if (!ok || !hasAuth(opencodeBin)) {
+      console.log("\n  No provider configured. Run `oyster` again to retry.\n");
+      process.exit(1);
+    }
+    console.log("\n  Provider connected. Starting Oyster...\n");
+  }
 
   // Set workspace to cwd
   env.OYSTER_WORKSPACE = env.OYSTER_WORKSPACE || PACKAGE_ROOT;

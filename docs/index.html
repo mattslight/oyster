@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-padding-top: 60px; }
 
     body {
       font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -370,10 +371,49 @@
     .footer .heart { color: #e25555; }
     .footer a { color: rgba(255, 255, 255, 0.4); text-decoration: none; }
     .footer a:hover { color: rgba(255, 255, 255, 0.6); }
+
+
+    /* Nav */
+    .nav {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      background: rgba(20, 22, 40, 0.9);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 9999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    }
+    .nav a {
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.7);
+      text-decoration: none;
+      padding: 7px 18px;
+      border-radius: 9999px;
+      transition: color 0.2s ease, background 0.2s ease;
+    }
+    .nav a:hover {
+      color: #fff;
+      background: rgba(124, 107, 255, 0.15);
+    }
   </style>
 </head>
 <body>
   <div class="bg"></div>
+
+  <!-- Nav -->
+  <nav class="nav" id="nav">
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/mattslight/oyster" target="_blank" rel="noopener noreferrer">GitHub</a>
+  </nav>
 
   <!-- Hero -->
   <div class="hero">
@@ -382,14 +422,14 @@
       A modern workspace OS with AI at its core. Open the right thing, switch context, create documents, and organise work — all from one prompt. Oyster doesn't just hold your files. It understands them.
     </p>
     <div class="cta-row">
-      <a href="https://github.com/mattslight/oyster#quick-start" class="cta cta-primary">Get early access</a>
+      <a href="#install" class="cta cta-primary">Get started</a>
       <a href="https://github.com/mattslight/oyster" class="cta cta-secondary">View on GitHub</a>
     </div>
     <img src="screenshots/desktop.png" alt="Oyster desktop" class="hero-img">
   </div>
 
   <!-- Feature 1: One surface. All your work. -->
-  <div class="feature-section">
+  <div class="feature-section" id="features">
     <div class="feature-text">
       <h3>One surface. All your work.</h3>
       <p>Docs, apps, diagrams, decks, and spreadsheets live together on a visual desktop. Everything is visible, searchable, and launchable.</p>
@@ -640,7 +680,7 @@
   </div>
 
   <!-- npx install -->
-  <div class="bottom-cta" style="padding-bottom: 0;">
+  <div class="bottom-cta" id="install" style="padding-bottom: 0;">
     <h3 style="font-size: clamp(28px, 4vw, 40px); font-weight: 700; color: #fff; margin-bottom: 16px;">From zero to workspace in one command</h3>
     <p style="font-size: 16px; color: rgba(255,255,255,0.45); margin-bottom: 40px; max-width: 460px; margin-left: auto; margin-right: auto;">No sign-ups, no config files, no onboarding flow. Your surface opens in the browser, ready to go.</p>
     <div style="display: inline-flex; flex-direction: column; align-items: center; gap: 16px;">
@@ -673,8 +713,8 @@
   <!-- Bottom CTA -->
   <div class="bottom-cta">
     <div class="cta-row">
-      <a href="https://github.com/mattslight/oyster#quick-start" class="cta cta-primary">Get early access</a>
-      <a href="https://github.com/mattslight/oyster" class="cta cta-secondary">View on GitHub</a>
+      <a href="https://github.com/mattslight/oyster#quick-start" target="_blank" rel="noopener noreferrer" class="cta cta-primary">README.md</a>
+      <a href="https://github.com/mattslight/oyster" target="_blank" rel="noopener noreferrer" class="cta cta-secondary">View on GitHub</a>
     </div>
   </div>
 
@@ -683,6 +723,15 @@
     <p>Built with <span class="heart">&hearts;</span> by <a href="https://github.com/mattslight">Matthew Slight</a></p>
   </div>
   <script>
+    // Smooth scroll for nav links
+    document.getElementById('nav').querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
     // 3D tilt on mock panels
     document.querySelectorAll('.mock-panel').forEach(panel => {
       panel.addEventListener('mousemove', e => {
