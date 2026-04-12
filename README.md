@@ -37,6 +37,12 @@ npm install -g oyster-os
 oyster
 ```
 
+Or try without installing:
+
+```bash
+npx oyster-os
+```
+
 That's it. On first run, Oyster connects you to an AI provider (opens your browser to sign in). Then your workspace opens at **http://localhost:4200**.
 
 ### Connect your AI
