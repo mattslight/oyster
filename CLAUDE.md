@@ -37,7 +37,7 @@ Browser → http://localhost:4200
 
 ## Key Files
 
-- `bin/oyster.mjs` — CLI entry point (API key prompt, browser open)
+- `bin/oyster.mjs` — CLI entry point (auth check, browser open)
 - `server/src/index.ts` — HTTP server, all API routes, SSE, static serving, MCP
 - `server/src/mcp-server.ts` — MCP tool definitions
 - `server/src/artifact-store.ts` / `artifact-service.ts` — artifact CRUD
