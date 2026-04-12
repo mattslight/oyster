@@ -643,16 +643,27 @@
   <div class="bottom-cta" style="padding-bottom: 0;">
     <h3 style="font-size: clamp(28px, 4vw, 40px); font-weight: 700; color: #fff; margin-bottom: 16px;">From zero to workspace in one command</h3>
     <p style="font-size: 16px; color: rgba(255,255,255,0.45); margin-bottom: 40px; max-width: 460px; margin-left: auto; margin-right: auto;">No sign-ups, no config files, no onboarding flow. Your surface opens in the browser, ready to go.</p>
+    <!-- OS toggle -->
+    <div style="display: flex; gap: 4px; justify-content: center; margin-bottom: 16px;">
+      <button onclick="setOS('mac')" id="os-mac" style="padding: 5px 14px; border-radius: 8px; font-size: 12px; border: none; cursor: pointer; background: #7c6bff; color: #fff; font-family: inherit; font-weight: 500;">macOS / Linux</button>
+      <button onclick="setOS('win')" id="os-win" style="padding: 5px 14px; border-radius: 8px; font-size: 12px; border: none; cursor: pointer; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5); font-family: inherit; font-weight: 500;">Windows</button>
+    </div>
     <div style="display: inline-block; background: rgba(30,32,50,0.95); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,0.5); overflow: hidden; min-width: 420px; max-width: 100%;">
-      <div style="display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: rgba(255,255,255,0.06);">
-        <span style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f57;"></span>
-        <span style="width: 10px; height: 10px; border-radius: 50%; background: #febc2e;"></span>
-        <span style="width: 10px; height: 10px; border-radius: 50%; background: #28c840;"></span>
-        <span style="flex: 1; text-align: center; font-size: 11px; color: rgba(255,255,255,0.25); font-family: 'IBM Plex Mono', monospace;">terminal</span>
+      <div style="position: relative; display: flex; align-items: center; padding: 10px 14px; background: rgba(255,255,255,0.06);">
+        <div id="dots-mac" style="display: flex; gap: 6px;">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f57;"></span>
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #febc2e;"></span>
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #28c840;"></span>
+        </div>
+        <div id="dots-win" style="display: none; gap: 6px;">
+          <span style="font-size: 11px; color: rgba(255,255,255,0.3); font-family: 'IBM Plex Mono', monospace;">C:\&gt;</span>
+        </div>
+        <span style="position: absolute; left: 0; right: 0; text-align: center; font-size: 11px; color: rgba(255,255,255,0.25); font-family: 'IBM Plex Mono', monospace; pointer-events: none;" id="term-title">terminal</span>
       </div>
-      <div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 8px;">
-        <div><span style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">npm install -g oyster-os</code></div>
-        <div><span style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">oyster</code></div>
+      <div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 10px;">
+        <div><span id="prompt-char" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">npm install -g oyster-os</code></div>
+        <div><span id="prompt-char2" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">oyster</code></div>
+        <div style="margin-top: 4px; font-size: 12px; color: rgba(255,255,255,0.25); font-family: 'IBM Plex Mono', monospace;">or: <span style="color: rgba(169,158,255,0.5);">npx oyster-os</span></div>
       </div>
     </div>
   </div>
@@ -814,6 +825,19 @@
       }, { threshold: 0.3 });
       duiObs.observe(duiCarousel);
     }
+    // OS toggle for terminal mockup
+    window.setOS = function(os) {
+      const mac = os === 'mac';
+      document.getElementById('dots-mac').style.display = mac ? 'flex' : 'none';
+      document.getElementById('dots-win').style.display = mac ? 'none' : 'flex';
+      document.getElementById('term-title').textContent = mac ? 'terminal' : 'cmd.exe';
+      document.getElementById('prompt-char').textContent = mac ? '$ ' : 'C:\\> ';
+      document.getElementById('prompt-char2').textContent = mac ? '$ ' : 'C:\\> ';
+      document.getElementById('os-mac').style.background = mac ? '#7c6bff' : 'rgba(255,255,255,0.06)';
+      document.getElementById('os-mac').style.color = mac ? '#fff' : 'rgba(255,255,255,0.5)';
+      document.getElementById('os-win').style.background = mac ? 'rgba(255,255,255,0.06)' : '#7c6bff';
+      document.getElementById('os-win').style.color = mac ? 'rgba(255,255,255,0.5)' : '#fff';
+    };
   </script>
 </body>
 </html>
