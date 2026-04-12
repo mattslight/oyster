@@ -26,7 +26,8 @@ export function spawnSession(
   if (!ptyAvailable) return;
 
   console.log(`Spawning ${shell} in ${cwd}`);
-  proc = ptyModule.default.spawn(shell, shellArgs, {
+  const pty = ptyModule.default ?? ptyModule;
+  proc = pty.spawn(shell, shellArgs, {
     name: "xterm-256color",
     cols: 120,
     rows: 40,

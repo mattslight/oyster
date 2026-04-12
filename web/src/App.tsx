@@ -396,6 +396,7 @@ export default function App() {
 
       {showAddSpaceWizard && (
         <AddSpaceWizard
+          spaces={spaces}
           onClose={() => setShowAddSpaceWizard(false)}
           onComplete={() => {
             setShowAddSpaceWizard(false);

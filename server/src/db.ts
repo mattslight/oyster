@@ -50,6 +50,23 @@ export function initDb(userlandDir: string): Database.Database {
     try { db.exec(sql); } catch { /* already exists */ }
   }
 
+  // space_paths — a space can have multiple folders
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS space_paths (
+      space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+      path     TEXT NOT NULL,
+      label    TEXT,
+      added_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (space_id, path)
+    )
+  `);
+
+  // Migrate: move existing repo_path values into space_paths
+  db.exec(`
+    INSERT OR IGNORE INTO space_paths (space_id, path)
+    SELECT id, repo_path FROM spaces WHERE repo_path IS NOT NULL
+  `);
+
   try {
     db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS artifacts_space_source_ref_uq
