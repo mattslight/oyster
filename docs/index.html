@@ -663,7 +663,7 @@
       <div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 10px;">
         <div><span id="prompt-char" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">npm install -g oyster-os</code></div>
         <div><span id="prompt-char2" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">oyster</code></div>
-        <div style="margin-top: 4px; font-size: 12px; color: rgba(255,255,255,0.25); font-family: 'IBM Plex Mono', monospace;">or: <span style="color: rgba(169,158,255,0.5);">npx oyster-os</span></div>
+        <div style="margin-top: 4px; font-size: 12px; color: rgba(255,255,255,0.25); font-family: 'IBM Plex Mono', monospace;">no install? try: <span id="prompt-char3" style="color: rgba(255,255,255,0.35);">$ </span><span style="color: rgba(169,158,255,0.6);">npx oyster-os</span></div>
       </div>
     </div>
   </div>
@@ -833,6 +833,7 @@
       document.getElementById('term-title').textContent = mac ? 'terminal' : 'cmd.exe';
       document.getElementById('prompt-char').textContent = mac ? '$ ' : 'C:\\> ';
       document.getElementById('prompt-char2').textContent = mac ? '$ ' : 'C:\\> ';
+      document.getElementById('prompt-char3').textContent = mac ? '$ ' : 'C:\\> ';
       document.getElementById('os-mac').style.background = mac ? '#7c6bff' : 'rgba(255,255,255,0.06)';
       document.getElementById('os-mac').style.color = mac ? '#fff' : 'rgba(255,255,255,0.5)';
       document.getElementById('os-win').style.background = mac ? 'rgba(255,255,255,0.06)' : '#7c6bff';
