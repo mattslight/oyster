@@ -98,20 +98,12 @@ Oyster scans the folder for documents, apps, and diagrams and adds them to the s
 
 | Command | What it does |
 |---|---|
-| `/s <space>` | Switch to a space |
-| `/o <query>` | Open an artefact by name |
-| `#<space>` | Quick space switch |
-| `#<number>` | Jump to a numbered space |
-| normal chat | Ask Oyster to navigate or organise work |
-
-Examples:
-
-```
-/s blunderfixer
-/o pricing deck
-#home
-#2
-```
+| `/s <space>` | Switch to a space — `/s blunderfixer` opens that space |
+| `/o <query>` | Open an artefact by name — `/o pricing deck` finds and opens it |
+| `#<space>` | Quick space switch — `#home` goes home, `#bf` matches blunderfixer |
+| `#<number>` | Jump to a numbered space — `#1` switches to first space |
+| `#.` | Go to the home screen |
+| normal chat | Ask Oyster anything — navigate, organise, or create work |
 
 ## The full loop
 
