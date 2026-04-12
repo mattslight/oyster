@@ -34,11 +34,12 @@ function rowToSpace(row: SpaceRow): Space {
   };
 }
 
-const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage", ".cache"]);
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage", ".cache", ".claude", ".opencode", ".vscode", ".idea", "__pycache__", ".tox", "venv", ".venv", "target", "vendor"]);
 const SKIP_FILE_PATTERNS = [/\.lock$/, /\.log$/];
 const MAX_DEPTH = 4;
-const APP_DIR_NAMES = new Set(["web", "admin", "app", "client", "frontend"]);
-const APP_DEP_KEYWORDS = ["react", "vue", "next", "vite", "svelte"];
+const APP_DIR_NAMES = new Set(["web", "admin", "app", "client", "frontend", "ui", "dashboard", "portal", "site"]);
+const APP_DEP_KEYWORDS = ["react", "vue", "next", "vite", "svelte", "angular", "nuxt", "astro", "remix", "solid"];
+const PROJECT_MARKERS = ["go.mod", "Cargo.toml", "pyproject.toml", "setup.py", "requirements.txt", "Gemfile", "pom.xml", "build.gradle"];
 
 export class SpaceService {
   private scanning = new Set<string>();
@@ -150,27 +151,38 @@ export class SpaceService {
       } catch { /* malformed package.json */ }
     }
 
+    // Non-JS project detection (depth > 0)
+    if (depth > 0) {
+      for (const marker of PROJECT_MARKERS) {
+        if (entries.includes(marker)) {
+          results.push({ absPath: dir, sourceRef: `${posixRelDir}/:app`, kind: "app" });
+          break;
+        }
+      }
+    }
+
     for (const entry of entries) {
       const absPath = join(dir, entry);
       let stat: ReturnType<typeof statSync>;
       try { stat = statSync(absPath); } catch { continue; }
 
       if (stat.isDirectory()) {
-        if (!SKIP_DIRS.has(entry)) results.push(...this.walk(absPath, depth + 1, root));
+        if (!SKIP_DIRS.has(entry) && !entry.startsWith(".")) results.push(...this.walk(absPath, depth + 1, root));
         continue;
       }
       if (SKIP_FILE_PATTERNS.some((p) => p.test(entry))) continue;
 
       const posixRelFile = (posixRelDir ? posixRelDir + "/" : "") + entry;
 
-      if (depth === 0 && entry === "README.md") {
-        results.push({ absPath, sourceRef: "README.md:notes", kind: "notes" });
-      } else if (depth === 0 && entry === "CHANGELOG.md") {
-        results.push({ absPath, sourceRef: "CHANGELOG.md:notes", kind: "notes" });
-      } else if (posixRelDir.startsWith("docs") && entry.endsWith(".md")) {
+      // Markdown files — any .md anywhere
+      if (entry.endsWith(".md")) {
         results.push({ absPath, sourceRef: `${posixRelFile}:notes`, kind: "notes" });
+      // Diagrams — mermaid files
       } else if (entry.endsWith(".mmd") || entry.endsWith(".mermaid")) {
         results.push({ absPath, sourceRef: `${posixRelFile}:diagram`, kind: "diagram" });
+      // Standalone HTML files in src/ or root — potential apps/pages
+      } else if (entry === "index.html" && depth > 0 && !entries.includes("package.json")) {
+        results.push({ absPath, sourceRef: `${posixRelFile}:app`, kind: "app" });
       }
     }
     return results;

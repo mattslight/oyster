@@ -29,8 +29,22 @@ export async function handleSpacesRequest(
       return true;
     }
     const home = process.env.HOME ?? "";
-    const searchRoots = [home, `${home}/Dev`, `${home}/dev`, `${home}/Projects`, `${home}/projects`,
-      `${home}/code`, `${home}/Code`, `${home}/repos`, `${home}/Repos`, `${home}/Documents`, `${home}/Desktop`];
+    const searchRoots = [
+      // Home
+      home,
+      // Dev folders
+      `${home}/Dev`, `${home}/dev`, `${home}/Projects`, `${home}/projects`,
+      `${home}/code`, `${home}/Code`, `${home}/repos`, `${home}/Repos`,
+      `${home}/src`, `${home}/workspace`, `${home}/Workspace`,
+      // OS folders
+      `${home}/Documents`, `${home}/Desktop`, `${home}/Downloads`, `${home}/Sites`,
+      // Cloud sync
+      `${home}/Dropbox`, `${home}/OneDrive`, `${home}/OneDrive - Personal`,
+      `${home}/Library/Mobile Documents/com~apple~CloudDocs`, // iCloud Drive
+      `${home}/Google Drive`, `${home}/My Drive`,
+      // Go
+      `${home}/go/src`,
+    ];
     const seenInodes = new Set<number>();
     const matches: string[] = [];
     for (const root of searchRoots) {
