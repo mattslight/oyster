@@ -237,28 +237,40 @@ export async function handleSpacesRequest(
         const results: Array<{ spaceId: string; name: string; scanned: number }> = [];
 
         for (const s of spaceList) {
-          // Create or find existing space
-          let space;
-          try {
-            space = spaceService.createSpace({ name: s.name });
-          } catch {
-            // Space might already exist
-            space = spaceService.getSpace(s.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
-            if (!space) throw new Error(`Could not create or find space "${s.name}"`);
-          }
+          // "__home__" = import without a space, scan into home
+          const isHome = s.name === "__home__";
+          let spaceId = "home";
 
-          // Add folders
-          for (const folder of s.folders) {
+          if (!isHome) {
+            let space;
             try {
-              spaceService.addPath(space.id, folder);
-            } catch { /* path might already be added */ }
+              space = spaceService.createSpace({ name: s.name });
+            } catch {
+              space = spaceService.getSpace(s.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
+              if (!space) throw new Error(`Could not create or find space "${s.name}"`);
+            }
+            spaceId = space.id;
+
+            for (const folder of s.folders) {
+              try {
+                spaceService.addPath(spaceId, folder);
+              } catch { /* path might already be added */ }
+            }
           }
 
-          // Scan
-          const scanResult = await spaceService.scanSpace(space.id);
+          // Scan — for home, add paths temporarily then scan
+          if (isHome) {
+            // Ensure home space exists
+            try { spaceService.createSpace({ name: "home" }); } catch {}
+            for (const folder of s.folders) {
+              try { spaceService.addPath("home", folder); } catch {}
+            }
+          }
+
+          const scanResult = await spaceService.scanSpace(spaceId);
           results.push({
-            spaceId: space.id,
-            name: s.name,
+            spaceId,
+            name: isHome ? "home" : s.name,
             scanned: scanResult.discovered + scanResult.resurfaced,
           });
         }

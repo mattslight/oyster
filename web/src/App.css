@@ -2183,6 +2183,16 @@ body {
   border-bottom-color: rgba(124, 107, 255, 0.5);
 }
 .discovery-group-count { display: none; }
+.discovery-loose {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.discovery-loose-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  font-style: italic;
+}
 .discovery-new-group {
   border: 1px dashed rgba(255, 255, 255, 0.1);
   border-radius: 10px;

@@ -30,8 +30,9 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [discovering, setDiscovering] = useState(false);
   const [importResult, setImportResult] = useState<Array<{ name: string; scanned: number }> | null>(null);
-  const [dragItem, setDragItem] = useState<{ fromIdx: number; folder: string } | null>(null);
-  const [dropTarget, setDropTarget] = useState<number | null>(null);
+  const [dragItem, setDragItem] = useState<{ fromIdx: number | "loose"; folder: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<number | "loose" | "new" | null>(null);
+  const [looseFolders, setLooseFolders] = useState<string[]>([]);
 
   const resolveFolder = useCallback(async (folderName: string) => {
     if (mode === "new" && !name.trim()) setName(folderName);
@@ -101,41 +102,41 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
     setSuggestions(prev => prev.map((s, i) => i === idx ? { ...s, name: newName } : s));
   }
 
-  function moveFolder(fromIdx: number, folder: string, target: string) {
-    setSuggestions(prev => {
-      let toIdx = parseInt(target);
+  function moveFolderTo(from: number | "loose", folder: string, target: number | "loose" | "new") {
+    // Remove from source
+    if (from === "loose") {
+      setLooseFolders(prev => prev.filter(f => f !== folder));
+    } else {
+      setSuggestions(prev => {
+        const next = prev.map((s, i) => i === from ? { ...s, folders: s.folders.filter(f => f !== folder) } : s);
+        return next.filter(s => s.folders.length > 0);
+      });
+    }
 
-      // "new" = create a new group
-      if (target === "new") {
-        const newGroup: Suggestion = { name: "Other", folders: [folder], enabled: true };
-        const next = prev.map((s, i) => ({
-          ...s,
-          folders: i === fromIdx ? s.folders.filter(f => f !== folder) : s.folders,
-        }));
-        return [...next.filter(s => s.folders.length > 0), newGroup];
-      }
-
-      if (isNaN(toIdx)) return prev;
-
-      const next = prev.map((s, i) => ({
-        ...s,
-        folders: i === fromIdx ? s.folders.filter(f => f !== folder)
-               : i === toIdx ? [...s.folders, folder]
-               : s.folders,
-      }));
-      return next.filter(s => s.folders.length > 0);
-    });
+    // Add to target
+    if (target === "loose") {
+      setLooseFolders(prev => [...prev, folder]);
+    } else if (target === "new") {
+      setSuggestions(prev => [...prev, { name: "new space", folders: [folder], enabled: true }]);
+    } else {
+      setSuggestions(prev => prev.map((s, i) => i === target ? { ...s, folders: [...s.folders, folder] } : s));
+    }
   }
 
   async function handleImportDiscovery() {
     setScanning(true);
     setError(null);
     try {
-      const enabled = suggestions.filter(s => s.enabled);
+      const enabled = suggestions.filter(s => s.enabled && s.folders.length > 0);
+      // Include loose folders as "home" (no space name — server handles as home)
+      const allSpaces = [
+        ...enabled.map(s => ({ name: s.name, folders: s.folders })),
+        ...(looseFolders.length > 0 ? [{ name: "__home__", folders: looseFolders }] : []),
+      ];
       const res = await fetch("/api/discover/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spaces: enabled.map(s => ({ name: s.name, folders: s.folders })) }),
+        body: JSON.stringify({ spaces: allSpaces }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -191,8 +192,8 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
 
   // ── Discovery preview step ──
   if (step === "discovery") {
-    const enabledCount = suggestions.filter(s => s.enabled).length;
-    const totalFolders = suggestions.filter(s => s.enabled).reduce((n, s) => n + s.folders.length, 0);
+    const enabledCount = suggestions.filter(s => s.enabled && s.folders.length > 0).length;
+    const totalFolders = suggestions.filter(s => s.enabled).reduce((n, s) => n + s.folders.length, 0) + looseFolders.length;
 
     return (
       <div className="add-space-overlay" onClick={handleBackdrop}>
@@ -220,8 +221,8 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
                 onDrop={e => {
                   e.preventDefault();
                   setDropTarget(null);
-                  if (dragItem && dragItem.fromIdx !== idx) {
-                    moveFolder(dragItem.fromIdx, dragItem.folder, String(idx));
+                  if (dragItem && !(dragItem.fromIdx === idx)) {
+                    moveFolderTo(dragItem.fromIdx, dragItem.folder, idx);
                   }
                   setDragItem(null);
                 }}
@@ -260,21 +261,58 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
                 </div>
               </div>
             ))}
+
+            {/* Import without a space — lands on home */}
             <div
-              className={`discovery-new-group ${dropTarget === -1 ? "discovery-new-group--drop" : ""}`}
-              onDragOver={e => { e.preventDefault(); setDropTarget(-1); }}
+              className={`discovery-group discovery-loose ${dropTarget === "loose" ? "discovery-group--drop" : ""}`}
+              onDragOver={e => { e.preventDefault(); setDropTarget("loose"); }}
               onDragLeave={() => setDropTarget(null)}
               onDrop={e => {
                 e.preventDefault();
                 setDropTarget(null);
                 if (dragItem) {
-                  moveFolder(dragItem.fromIdx, dragItem.folder, "new");
+                  moveFolderTo(dragItem.fromIdx, dragItem.folder, "loose");
                   setDragItem(null);
                 }
               }}
-              onClick={() => {
-                setSuggestions(prev => [...prev, { name: "other", folders: [], enabled: true }]);
+            >
+              <div className="discovery-group-header">
+                <span className="discovery-loose-label">import without a space</span>
+              </div>
+              {looseFolders.length > 0 && (
+                <div className="discovery-chips">
+                  {looseFolders.map(f => {
+                    const folderName = f.split("/").pop() ?? f;
+                    return (
+                      <div
+                        key={f}
+                        className="discovery-chip"
+                        draggable
+                        onDragStart={() => setDragItem({ fromIdx: "loose", folder: f })}
+                        onDragEnd={() => { setDragItem(null); setDropTarget(null); }}
+                      >
+                        {folderName}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Create a brand new space */}
+            <div
+              className={`discovery-new-group ${dropTarget === "new" ? "discovery-new-group--drop" : ""}`}
+              onDragOver={e => { e.preventDefault(); setDropTarget("new"); }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={e => {
+                e.preventDefault();
+                setDropTarget(null);
+                if (dragItem) {
+                  moveFolderTo(dragItem.fromIdx, dragItem.folder, "new");
+                  setDragItem(null);
+                }
               }}
+              onClick={() => setSuggestions(prev => [...prev, { name: "new space", folders: [], enabled: true }])}
             >
               + new space
             </div>
