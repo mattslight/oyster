@@ -162,8 +162,9 @@ export class SpaceService {
     const relDir = relative(root, dir);
     const posixRelDir = relDir.replace(/\\/g, "/");
 
-    // Directory-level app detection (depth > 0 only — skip root itself)
-    if (depth > 0 && entries.includes("package.json")) {
+    // Directory-level app detection — including root (the project itself can be an app)
+    let isAppDir = false;
+    if (entries.includes("package.json")) {
       try {
         const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
         const scripts = pkg.scripts ?? {};
@@ -172,16 +173,20 @@ export class SpaceService {
         const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) });
         const hasFramework = APP_DEP_KEYWORDS.some((kw) => deps.some((d) => d.includes(kw)));
         if (hasDev && (APP_DIR_NAMES.has(dirName) || hasFramework)) {
-          results.push({ absPath: dir, sourceRef: `${posixRelDir}/:app`, kind: "app" });
+          const ref = posixRelDir ? `${posixRelDir}/:app` : ":app";
+          results.push({ absPath: dir, sourceRef: ref, kind: "app" });
+          isAppDir = true;
         }
       } catch { /* malformed package.json */ }
     }
 
-    // Non-JS project detection (depth > 0)
-    if (depth > 0) {
+    // Non-JS project detection — including root
+    if (!isAppDir && !entries.includes("package.json")) {
       for (const marker of PROJECT_MARKERS) {
         if (entries.includes(marker)) {
-          results.push({ absPath: dir, sourceRef: `${posixRelDir}/:app`, kind: "app" });
+          const ref = posixRelDir ? `${posixRelDir}/:app` : ":app";
+          results.push({ absPath: dir, sourceRef: ref, kind: "app" });
+          isAppDir = true;
           break;
         }
       }
@@ -200,7 +205,7 @@ export class SpaceService {
 
       const posixRelFile = (posixRelDir ? posixRelDir + "/" : "") + entry;
 
-      // Markdown files — any .md anywhere
+      // Markdown files
       if (entry.endsWith(".md")) {
         results.push({ absPath, sourceRef: `${posixRelFile}:notes`, kind: "notes" });
       // Diagrams — mermaid files
@@ -214,15 +219,9 @@ export class SpaceService {
     return results;
   }
 
-  private deriveGroup(sourceRef: string, kind: "app" | "notes" | "diagram"): string | null {
+  private deriveGroup(_sourceRef: string, kind: "app" | "notes" | "diagram"): string | null {
     if (kind === "app") return "Apps";
-    const pathPart = sourceRef.split(":")[0];
-    const parts = pathPart.split("/").filter(Boolean);
-    // Root-level files (README.md, CHANGELOG.md) — no group
-    if (parts.length <= 1) return null;
-    // Use the top-level directory as the group, capitalised
-    const topDir = parts[0];
-    return topDir.charAt(0).toUpperCase() + topDir.slice(1);
+    return "Docs";
   }
 
   private upsertCandidate(
@@ -247,7 +246,8 @@ export class SpaceService {
     // Derive label from path stem
     const pathPart = sourceRef.split(":")[0];
     const stem = pathPart.replace(/\/$/, "").split("/").pop() ?? pathPart;
-    const label = stem.replace(/\.[^.]+$/, "");
+    // For root-level artifacts (sourceRef = ":app"), use the folder name
+    const label = stem ? stem.replace(/\.[^.]+$/, "") : absPath.split(sep).pop() ?? "project";
 
     let runtimeKind = "static_file";
     let storageConfig: Record<string, unknown> = { path: absPath };
