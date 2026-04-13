@@ -185,7 +185,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       .replace(/[^\w\s]/g, "")
       .split(/\s+/)
       .filter((t) => t.length > 1);
-    if (terms.length === 0) return this.list(spaceId ?? undefined);
+    if (terms.length === 0) return [];
     const ftsQuery = terms.join(" OR ");
 
     let sql: string;
