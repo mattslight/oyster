@@ -59,14 +59,16 @@ export default function App() {
       }
     }
     document.addEventListener("keydown", handleKeyDown);
-    // Prevent browser from opening dropped files/folders
-    function preventDrop(e: DragEvent) { e.preventDefault(); }
-    document.addEventListener("dragover", preventDrop);
-    document.addEventListener("drop", preventDrop);
+    // Prevent browser from opening dropped files/folders (but allow text drops)
+    function preventFileDrop(e: DragEvent) {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    }
+    document.addEventListener("dragover", preventFileDrop);
+    document.addEventListener("drop", preventFileDrop);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("dragover", preventDrop);
-      document.removeEventListener("drop", preventDrop);
+      document.removeEventListener("dragover", preventFileDrop);
+      document.removeEventListener("drop", preventFileDrop);
     };
   }, []);
 

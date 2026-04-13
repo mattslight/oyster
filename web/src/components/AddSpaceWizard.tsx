@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { Space, ScanResult } from "../../../shared/types";
 import { createSpace, addPath, triggerScan, deleteSpace } from "../data/spaces-api";
 
@@ -54,9 +54,13 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
   }, [name, mode]);
 
   // Auto-resolve folder dropped on the surface
+  const resolved = useRef(false);
   useEffect(() => {
-    if (initialFolder) resolveFolder(initialFolder);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (initialFolder && !resolved.current) {
+      resolved.current = true;
+      resolveFolder(initialFolder);
+    }
+  }, [initialFolder, resolveFolder]);
 
   async function checkAndAddFolder(path: string) {
     // Check if this is a container (like ~/Dev) with multiple projects
@@ -79,11 +83,13 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
         setSuggestions(data.suggestions.map(s => ({ ...s, enabled: true })));
         setStep("discovery");
       } else {
-        // Single project — add to folders list
+        // Single project — go back to name-path step with folder loaded
         setFolders(prev => prev.includes(data.path!) ? prev : [...prev, data.path!]);
+        setStep("name-path");
       }
     } catch (err) {
       setFolders(prev => prev.includes(path) ? prev : [...prev, path]);
+      setStep("name-path");
     } finally {
       setDiscovering(false);
     }
