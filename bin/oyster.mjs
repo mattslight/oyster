@@ -100,8 +100,11 @@ async function main() {
     console.log("\n  Provider connected. Starting Oyster...\n");
   }
 
-  // Set workspace to cwd
-  env.OYSTER_WORKSPACE = env.OYSTER_WORKSPACE || PACKAGE_ROOT;
+  // Mark as installed (not running from source)
+  env.OYSTER_INSTALLED = "1";
+
+  // Terminal opens in user's home directory
+  env.OYSTER_WORKSPACE = env.OYSTER_WORKSPACE || homedir();
 
   const serverEntry = join(PACKAGE_ROOT, "server", "dist", "server", "src", "index.js");
 

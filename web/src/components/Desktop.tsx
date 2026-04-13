@@ -323,6 +323,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
           </div>
         )}
       </div>
+      <div className="version-badge">v{__APP_VERSION__} · {__APP_ENV__}</div>
     </div>
   );
 }

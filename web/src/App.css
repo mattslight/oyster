@@ -158,6 +158,18 @@ body {
   overflow: hidden;
 }
 
+.version-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.25;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .topbar-hover-zone {
   position: absolute;
   top: 0;

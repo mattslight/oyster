@@ -1,11 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'fs'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 
+const __dirname = dirname(fileURLToPath(import.meta.url))
 const serverPort = process.env.OYSTER_PORT ?? '4444'
 const target = `http://localhost:${serverPort}`
+const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf8'))
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_ENV__: JSON.stringify(mode === 'production' ? 'prod' : 'dev'),
+  },
   server: {
     port: 7337,
     proxy: {
@@ -22,4 +31,4 @@ export default defineConfig({
       '/artifacts': target,
     }
   }
-})
+}))
