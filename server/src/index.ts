@@ -84,9 +84,10 @@ const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
-// Dev mode: use ./userland in the project. Prod (npm -g): use ~/.oyster/userland
-const isDev = existsSync(join(PACKAGE_ROOT, "web", "vite.config.ts"));
-const USERLAND_DIR = process.env.OYSTER_USERLAND || (isDev ? join(PACKAGE_ROOT, "userland") : join(homedir(), ".oyster", "userland"));
+// Installed via npm -g → PACKAGE_ROOT is inside a node_modules tree → prod
+// Running from source → PACKAGE_ROOT is the repo checkout → dev
+const isInstalledPackage = PACKAGE_ROOT.includes("node_modules");
+const USERLAND_DIR = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
 const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
 
 // ── MIME types ──
