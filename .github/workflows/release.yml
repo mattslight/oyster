@@ -1,4 +1,4 @@
-name: Create GitHub Release
+name: Release & Publish
 
 on:
   push:
@@ -14,11 +14,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract changelog for this version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: |
+          cd web && npm ci && cd ..
+          cd server && npm ci && cd ..
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Extract changelog
         id: changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Extract section matching this version from CHANGELOG.md
           NOTES=$(awk "/^## /{if(found)exit; if(/## $VERSION/||/## [0-9]{4}-/){found=1; next}} found" CHANGELOG.md 2>/dev/null || echo "Release $GITHUB_REF_NAME")
           if [ -z "$NOTES" ]; then
             NOTES="Release $GITHUB_REF_NAME"
@@ -27,7 +44,7 @@ jobs:
           echo "$NOTES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Create release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
