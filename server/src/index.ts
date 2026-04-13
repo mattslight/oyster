@@ -583,12 +583,9 @@ const opencodeConfig = readFileSync(join(PROJECT_ROOT, ".opencode", "config.toml
 writeFileSync(join(USERLAND_DIR, ".opencode", "config.toml"), opencodeConfig);
 
 // Also write opencode.json (OpenCode reads this from cwd)
-const opencodeJson = {
-  "$schema": "https://opencode.ai/config.json",
-  model: "anthropic/claude-sonnet-4-20250514",
-  mcp: { oyster: { type: "remote", url: `http://localhost:${port}/mcp/` } },
-};
-writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(opencodeJson, null, 2) + "\n");
+const sourceOpencode = JSON.parse(readFileSync(join(PROJECT_ROOT, "opencode.json"), "utf8"));
+sourceOpencode.mcp = { oyster: { type: "remote", url: `http://localhost:${port}/mcp/` } };
+writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode, null, 2) + "\n");
 
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);

@@ -35,6 +35,7 @@ export interface MemoryProvider {
   list(space_id?: string): Promise<Memory[]>;
   exportMemories(): Promise<Memory[]>;
   importMemories(memories: Memory[]): Promise<void>;
+  close(): void;
 }
 
 // ── SQLite FTS5 provider ──────────────────────────────────────
