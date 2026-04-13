@@ -105,10 +105,6 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const [focused, setFocused] = useState(false);
   const [tagline, setTagline] = useState<{ dim: string; bright: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(
-    () => localStorage.getItem("oyster-onboarding-dismissed") === "1",
-  );
-  const [onboardingFading, setOnboardingFading] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const taglineIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -346,18 +342,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     <div ref={wrapperRef} className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
       {/* Hero tagline — one block, three states */}
       {isHero && (
-        <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}${onboardingFading ? " tagline-hidden" : ""}`}>
-          {isFirstRun && !onboardingDismissed ? (
+        <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}`}>
+          {isFirstRun ? (
             <>
               <span className="tagline-bright">Drop a folder to get started</span>
-              <button
-                className="tagline-dismiss"
-                onClick={() => {
-                  localStorage.setItem("oyster-onboarding-dismissed", "1");
-                  setOnboardingFading(true);
-                  setTimeout(() => { setOnboardingFading(false); setOnboardingDismissed(true); }, 600);
-                }}
-              >×</button>
               <br />
               <div className="chatbar-onboarding-hint" style={{ marginTop: "8px" }}>
                 We'll organise your projects into spaces
@@ -611,7 +599,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       {/* Onboarding hint */}
       {isFirstRun && isHero && (
         <div className="chatbar-onboarding-hint">
-          click <code>+</code> to add your projects
+          or click <code>+</code> to add your projects
         </div>
       )}
 
