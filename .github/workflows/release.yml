@@ -12,13 +12,13 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: npm
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: |
@@ -28,10 +28,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Publish to npm (Trusted Publishing)
-        run: npm publish --access public --provenance
+      - name: Configure npm for provenance publishing
+        run: |
+          echo "//registry.npmjs.org/:_authToken=" > ~/.npmrc
+          npm config set provenance true
+
+      - name: Publish to npm
+        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
 
       - name: Extract changelog
         id: changelog
