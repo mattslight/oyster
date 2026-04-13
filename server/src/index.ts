@@ -547,7 +547,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 // ── HTTP + WebSocket server ──
 
 const httpServer = createServer(handleHttpRequest);
-attachWebSocket(httpServer);
 
 function tryListen(port: number, maxAttempts = 10): void {
   httpServer.once("error", (err: NodeJS.ErrnoException) => {
@@ -560,6 +559,7 @@ function tryListen(port: number, maxAttempts = 10): void {
     }
   });
   httpServer.listen(port, () => {
+    attachWebSocket(httpServer);
     console.log(`Oyster server listening on http://localhost:${port}`);
     console.log(`  WebSocket: ws://localhost:${port}`);
     console.log(`  API:       http://localhost:${port}/api/artifacts`);
