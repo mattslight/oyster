@@ -5,14 +5,21 @@ let shuttingDown = false;
 let opencodeRestarts = 0;
 const MAX_RESTARTS = 10;
 
+let resolvedPort = 0;
+
+export function getOpenCodePort(): number {
+  return resolvedPort;
+}
+
 export function spawnOpenCodeServe(
   opencodeBin: string,
   opencodePort: number,
   userlandDir: string,
   cleanEnv: Record<string, string>,
 ) {
-  console.log(`Spawning opencode serve on port ${opencodePort} in ${userlandDir}`);
-  const child = spawn(opencodeBin, ["serve", "--port", String(opencodePort)], {
+  // Use port 0 to let the OS pick an available port
+  console.log(`Spawning opencode serve in ${userlandDir}`);
+  const child = spawn(opencodeBin, ["serve", "--port", "0"], {
     cwd: userlandDir,
     env: cleanEnv,
     stdio: ["ignore", "pipe", "pipe"],
@@ -20,7 +27,14 @@ export function spawnOpenCodeServe(
   });
 
   child.stdout?.on("data", (data: Buffer) => {
-    console.log(`[opencode-serve] ${data.toString().trim()}`);
+    const text = data.toString().trim();
+    console.log(`[opencode-serve] ${text}`);
+    // Parse actual port from output: "opencode server listening on http://127.0.0.1:XXXXX"
+    const match = text.match(/listening on http:\/\/127\.0\.0\.1:(\d+)/);
+    if (match && !resolvedPort) {
+      resolvedPort = parseInt(match[1], 10);
+      console.log(`[opencode-serve] resolved to port ${resolvedPort}`);
+    }
   });
 
   child.stderr?.on("data", (data: Buffer) => {
@@ -55,10 +69,16 @@ export function isShuttingDown() {
 // and auto-approves any permission.asked events.
 
 export function startAutoApprover(
-  opencodePort: number,
+  getPort: () => number,
   onFileEdited: (file: string) => void,
 ) {
   async function connect() {
+    const opencodePort = getPort();
+    if (!opencodePort) {
+      // Port not resolved yet, retry
+      setTimeout(connect, 3000);
+      return;
+    }
     try {
       const res = await fetch(`http://127.0.0.1:${opencodePort}/event`, {
         headers: { Accept: "text/event-stream" },

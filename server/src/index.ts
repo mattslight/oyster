@@ -29,6 +29,7 @@ import {
 } from "./artifact-detector.js";
 import {
   spawnOpenCodeServe,
+  getOpenCodePort,
   markShuttingDown,
   startAutoApprover,
   proxyToOpenCode,
@@ -162,9 +163,7 @@ const pendingReveals = new Set<string>();
 
 spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 
-// Find available port for OpenCode before spawning
-const opencodePort = await findPort(OPENCODE_PORT);
-spawnOpenCodeServe(OPENCODE_BIN, opencodePort, USERLAND_DIR, cleanEnv);
+spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 
 // Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path)
@@ -180,7 +179,7 @@ startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
     if (entry) artifactService.reconcileGeneratedArtifact(entry, filePath, USERLAND_DIR);
   }
 });
-startAutoApprover(opencodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
+startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
 process.on("SIGTERM", () => { markShuttingDown(); db.close(); process.exit(0); });
 process.on("SIGINT", () => { markShuttingDown(); db.close(); process.exit(0); });
@@ -352,51 +351,51 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url === "/api/chat/events" || url.startsWith("/api/chat/events?")) {
-    await proxySSE(req, res, "/event", opencodePort);
+    await proxySSE(req, res, "/event", getOpenCodePort());
     return;
   }
 
   if (url === "/api/chat/doc") {
-    await proxyToOpenCode(req, res, "/doc", opencodePort);
+    await proxyToOpenCode(req, res, "/doc", getOpenCodePort());
     return;
   }
 
   if (url === "/api/chat/session" && req.method === "POST") {
-    await proxyToOpenCode(req, res, "/session", opencodePort);
+    await proxyToOpenCode(req, res, "/session", getOpenCodePort());
     return;
   }
 
   if (url === "/api/chat/session" && req.method === "GET") {
-    await proxyToOpenCode(req, res, "/session", opencodePort);
+    await proxyToOpenCode(req, res, "/session", getOpenCodePort());
     return;
   }
 
   const msgMatch = url.match(/^\/api\/chat\/session\/([^/]+)\/message$/);
   if (msgMatch && (req.method === "POST" || req.method === "GET")) {
-    await proxyToOpenCode(req, res, `/session/${msgMatch[1]}/message`, opencodePort);
+    await proxyToOpenCode(req, res, `/session/${msgMatch[1]}/message`, getOpenCodePort());
     return;
   }
 
   const sessionMatch = url.match(/^\/api\/chat\/session\/([^/]+)$/);
   if (sessionMatch && req.method === "GET") {
-    await proxyToOpenCode(req, res, `/session/${sessionMatch[1]}`, opencodePort);
+    await proxyToOpenCode(req, res, `/session/${sessionMatch[1]}`, getOpenCodePort());
     return;
   }
 
   const abortMatch = url.match(/^\/api\/chat\/session\/([^/]+)\/abort$/);
   if (abortMatch && req.method === "POST") {
-    await proxyToOpenCode(req, res, `/session/${abortMatch[1]}/abort`, opencodePort);
+    await proxyToOpenCode(req, res, `/session/${abortMatch[1]}/abort`, getOpenCodePort());
     return;
   }
 
   if (url === "/api/chat/permission" && req.method === "GET") {
-    await proxyToOpenCode(req, res, "/permission", opencodePort);
+    await proxyToOpenCode(req, res, "/permission", getOpenCodePort());
     return;
   }
 
   const questionMatch = url.match(/^\/api\/chat\/question\/([^/]+)\/reply$/);
   if (questionMatch && req.method === "POST") {
-    await proxyToOpenCode(req, res, `/question/${questionMatch[1]}/reply`, opencodePort);
+    await proxyToOpenCode(req, res, `/question/${questionMatch[1]}/reply`, getOpenCodePort());
     return;
   }
 
