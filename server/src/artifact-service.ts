@@ -360,11 +360,16 @@ export class ArtifactService {
         }
       }
 
-      // Fall back to icon.png alongside the source file
+      // Fall back to icon.png alongside the source file or one level up (artifact root)
       const dir = dirname(filePath);
       const iconPath = join(dir, "icon.png");
       if (existsSync(iconPath)) {
         return { icon: `/artifacts/${basename(dir)}/icon.png`, iconStatus: "ready" };
+      }
+      const parentDir = dirname(dir);
+      const parentIconPath = join(parentDir, "icon.png");
+      if (existsSync(parentIconPath)) {
+        return { icon: `/artifacts/${basename(parentDir)}/icon.png`, iconStatus: "ready" };
       }
     } catch {}
     return {};
