@@ -4,7 +4,7 @@
   "mcp": {
     "oyster": {
       "type": "remote",
-      "url": "http://localhost:4200/mcp/"
+      "url": "http://localhost:4444/mcp/"
     }
   }
 }

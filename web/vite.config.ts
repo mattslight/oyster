@@ -7,16 +7,16 @@ export default defineConfig({
     port: 7337,
     proxy: {
       '/api/chat/events': {
-        target: 'http://localhost:4200',
+        target: 'http://localhost:4444',
         headers: { Accept: 'text/event-stream' },
       },
       '/api/ui/events': {
-        target: 'http://localhost:4200',
+        target: 'http://localhost:4444',
         headers: { Accept: 'text/event-stream' },
       },
-      '/api': 'http://localhost:4200',
-      '/docs': 'http://localhost:4200',
-      '/artifacts': 'http://localhost:4200',
+      '/api': 'http://localhost:4444',
+      '/docs': 'http://localhost:4444',
+      '/artifacts': 'http://localhost:4444',
     }
   }
 })

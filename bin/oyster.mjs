@@ -113,24 +113,33 @@ async function main() {
   console.log("\n  🦪 Starting Oyster...\n");
 
   const child = spawn("node", [serverEntry], {
-    stdio: "inherit",
+    stdio: ["inherit", "pipe", "inherit"],
     env,
     cwd: PACKAGE_ROOT,
   });
 
-  // Wait a moment then open browser
-  setTimeout(() => {
-    const url = "http://localhost:4200";
-    console.log(`\n  Open: ${url}\n`);
-    try {
-      const platform = process.platform;
-      if (platform === "darwin") execSync(`open ${url}`);
-      else if (platform === "linux") execSync(`xdg-open ${url}`);
-      else if (platform === "win32") execSync(`start ${url}`);
-    } catch {
-      // Browser open is best-effort
+  // Watch stdout for the listening message to get the actual port
+  let opened = false;
+  child.stdout.on("data", (data) => {
+    const text = data.toString();
+    process.stdout.write(text);
+    if (!opened) {
+      const match = text.match(/listening on (http:\/\/localhost:\d+)/);
+      if (match) {
+        opened = true;
+        const url = match[1];
+        console.log(`\n  Open: ${url}\n`);
+        try {
+          const platform = process.platform;
+          if (platform === "darwin") execSync(`open ${url}`);
+          else if (platform === "linux") execSync(`xdg-open ${url}`);
+          else if (platform === "win32") execSync(`start ${url}`);
+        } catch {
+          // Browser open is best-effort
+        }
+      }
     }
-  }, 3000);
+  });
 
   // Forward signals
   process.on("SIGINT", () => { child.kill("SIGINT"); process.exit(0); });

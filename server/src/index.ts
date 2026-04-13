@@ -40,8 +40,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 // ── Config ──
 
-const PORT = 4200;
-const OPENCODE_PORT = 4096;
+const PREFERRED_PORT = parseInt(process.env.OYSTER_PORT ?? "4444", 10);
+const OPENCODE_PORT = parseInt(process.env.OYSTER_OPENCODE_PORT ?? "4096", 10);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Find the package root by walking up from __dirname until we find .opencode/agents/
@@ -446,7 +446,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // ── No-op OAuth for MCP SDK (localhost only, no real auth) ──
 
-  const BASE = `http://localhost:${PORT}`;
+  const BASE = `http://localhost:${PREFERRED_PORT}`;
   const json = (res: ServerResponse, data: unknown, status = 200) => {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
@@ -500,7 +500,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       return;
     }
     // Override the wildcard CORS header set at the top of handleHttpRequest
-    res.setHeader("Access-Control-Allow-Origin", origin || "http://localhost:4200");
+    res.setHeader("Access-Control-Allow-Origin", origin || `http://localhost:${PREFERRED_PORT}`);
 
     const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator, spaceService, pendingReveals, broadcastUiEvent });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -549,8 +549,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
 
-httpServer.listen(PORT, () => {
-  console.log(`Oyster server listening on http://localhost:${PORT}`);
-  console.log(`  WebSocket: ws://localhost:${PORT}`);
-  console.log(`  API:       http://localhost:${PORT}/api/artifacts`);
-});
+function tryListen(port: number, maxAttempts = 10): void {
+  httpServer.once("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE" && maxAttempts > 1) {
+      console.log(`  Port ${port} in use, trying ${port + 1}...`);
+      tryListen(port + 1, maxAttempts - 1);
+    } else {
+      console.error(`  Error: could not find an available port (tried ${port - 10 + maxAttempts}-${port})`);
+      process.exit(1);
+    }
+  });
+  httpServer.listen(port, () => {
+    console.log(`Oyster server listening on http://localhost:${port}`);
+    console.log(`  WebSocket: ws://localhost:${port}`);
+    console.log(`  API:       http://localhost:${port}/api/artifacts`);
+  });
+}
+tryListen(PREFERRED_PORT);

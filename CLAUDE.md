@@ -2,14 +2,14 @@
 
 ## What Oyster Is
 
-A prompt-controlled workspace OS. Users install it with `npm install -g oyster-os`, run `oyster`, and get a visual surface at `http://localhost:4200` where they organise files, projects, and artefacts — controlled from a chat bar and slash commands.
+A prompt-controlled workspace OS. Users install it with `npm install -g oyster-os`, run `oyster`, and get a visual surface at `http://localhost:4444` where they organise files, projects, and artefacts — controlled from a chat bar and slash commands.
 
 ## Architecture
 
 One server does everything:
 
 ```
-Browser → http://localhost:4200
+Browser → http://localhost:4444
               |
         Oyster Server
          - SQLite (artefacts, spaces)
@@ -64,7 +64,7 @@ node server/dist/server/src/index.js
 
 # Published package
 npm install -g oyster-os
-oyster                   # Starts server, opens browser to localhost:4200
+oyster                   # Starts server, opens browser to localhost:4444
 ```
 
 ## Conventions

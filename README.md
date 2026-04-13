@@ -45,7 +45,7 @@ Or try without installing:
 npx oyster-os
 ```
 
-That's it. On first run, Oyster connects you to an AI provider (opens your browser to sign in). Then your workspace opens at **http://localhost:4200**.
+That's it. On first run, Oyster connects you to an AI provider (opens your browser to sign in). Then your workspace opens at **http://localhost:4444**.
 
 ### Connect your AI
 
@@ -54,7 +54,7 @@ Oyster is an MCP server. Any MCP-compatible tool can control your workspace.
 **Claude Code:**
 
 ```bash
-claude mcp add --transport http oyster http://localhost:4200/mcp/
+claude mcp add --transport http oyster http://localhost:4444/mcp/
 ```
 
 **Cursor / VS Code / other MCP clients** — add to your MCP config:
@@ -63,7 +63,7 @@ claude mcp add --transport http oyster http://localhost:4200/mcp/
 {
   "oyster": {
     "type": "http",
-    "url": "http://localhost:4200/mcp/"
+    "url": "http://localhost:4444/mcp/"
   }
 }
 ```
@@ -117,10 +117,10 @@ npm install -g oyster-os
 
 # 2. Start it
 oyster
-# → browser opens to http://localhost:4200
+# → browser opens to http://localhost:4444
 
 # 3. Connect Claude Code (or any MCP client)
-claude mcp add --transport http oyster http://localhost:4200/mcp/
+claude mcp add --transport http oyster http://localhost:4444/mcp/
 
 # 4. From Claude Code, onboard a project
 > onboard_space(name: "My App", repo_path: "~/Dev/my-app")
@@ -166,7 +166,7 @@ Local-first. Single-user. Built for fast iteration.
 ## Architecture
 
 ```
-Browser → http://localhost:4200
+Browser → http://localhost:4444
               |
         Oyster Server
          - SQLite (artefacts, spaces)
