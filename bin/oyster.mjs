@@ -103,8 +103,8 @@ async function main() {
   // Mark as installed (not running from source)
   env.OYSTER_INSTALLED = "1";
 
-  // Set workspace to cwd
-  env.OYSTER_WORKSPACE = env.OYSTER_WORKSPACE || PACKAGE_ROOT;
+  // Terminal opens in user's home directory
+  env.OYSTER_WORKSPACE = env.OYSTER_WORKSPACE || homedir();
 
   const serverEntry = join(PACKAGE_ROOT, "server", "dist", "server", "src", "index.js");
 
