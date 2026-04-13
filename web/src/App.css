@@ -2134,10 +2134,23 @@ body {
 
 /* ── Surface drop highlight ── */
 
-.desktop-scroll--drop {
-  outline: 2px dashed var(--accent);
+.shell-drag-over .desktop {
+  outline: 2px solid var(--accent);
   outline-offset: -8px;
-  border-radius: 12px;
+  background: rgba(124, 107, 255, 0.04);
+  box-shadow: inset 0 0 120px rgba(124, 107, 255, 0.08);
+}
+
+.icon-grid,
+.list-view,
+.chatbar-wrapper {
+  transition: opacity 0.15s;
+}
+
+.shell-drag-over .icon-grid,
+.shell-drag-over .list-view,
+.shell-drag-over .chatbar-wrapper {
+  opacity: 0.3;
 }
 
 /* ── Add Space Wizard ── */

@@ -24,6 +24,9 @@ export default function App() {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [showAddSpaceWizard, setShowAddSpaceWizard] = useState(false);
+  const [droppedFolder, setDroppedFolder] = useState<string | undefined>();
+  const [shellDragOver, setShellDragOver] = useState(false);
+  const dragCounter = useRef(0);
   const getUrlState = useCallback((): { space: string; artifactId: string | null; groupName: string | null; hash: string } => {
     const artifactMatch = window.location.pathname.match(/^\/s\/([^/]+)\/a\/([^/]+)$/);
     if (artifactMatch) {
@@ -56,7 +59,17 @@ export default function App() {
       }
     }
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    // Prevent browser from opening dropped files/folders (but allow text drops)
+    function preventFileDrop(e: DragEvent) {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    }
+    document.addEventListener("dragover", preventFileDrop);
+    document.addEventListener("drop", preventFileDrop);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("dragover", preventFileDrop);
+      document.removeEventListener("drop", preventFileDrop);
+    };
   }, []);
 
   // Redirect bare `/` to `/s/home` so every space has a uniform URL
@@ -252,7 +265,35 @@ export default function App() {
   }
 
   return (
-    <div className="oyster-shell">
+    <div
+      className={`oyster-shell${shellDragOver ? " shell-drag-over" : ""}`}
+      onDragEnter={(e) => {
+        if (e.dataTransfer.types.includes("Files")) {
+          dragCounter.current++;
+          setShellDragOver(true);
+        }
+      }}
+      onDragLeave={() => {
+        dragCounter.current--;
+        if (dragCounter.current <= 0) {
+          dragCounter.current = 0;
+          setShellDragOver(false);
+        }
+      }}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        dragCounter.current = 0;
+        setShellDragOver(false);
+        const entry = e.dataTransfer.items[0]?.webkitGetAsEntry?.();
+        if (entry?.isDirectory) {
+          setDroppedFolder(entry.name);
+          setShowAddSpaceWizard(true);
+        }
+      }}
+    >
       {!connected && (
         <div className="connection-banner">
           <span>Oyster server not connected</span>
@@ -271,8 +312,9 @@ export default function App() {
           window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
         }}
         onSpaceChange={handleSpaceChange}
-        onAddSpace={() => setShowAddSpaceWizard(true)}
+        onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         isFirstRun={isFirstRun}
+        dragOver={shellDragOver}
         revealId={revealId}
       />
 
@@ -401,9 +443,11 @@ export default function App() {
       {showAddSpaceWizard && (
         <AddSpaceWizard
           spaces={spaces}
-          onClose={() => setShowAddSpaceWizard(false)}
+          initialFolder={droppedFolder}
+          onClose={() => { setShowAddSpaceWizard(false); setDroppedFolder(undefined); }}
           onComplete={() => {
             setShowAddSpaceWizard(false);
+            setDroppedFolder(undefined);
             fetchSpaces().then(setSpaces);
             fetchArtifacts().then(setArtifacts);
           }}

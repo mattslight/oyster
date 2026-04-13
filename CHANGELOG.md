@@ -2,6 +2,23 @@
 
 ## 2026-04-13
 
+### Drop-to-import
+
+- Drop a folder anywhere on the surface to import projects
+- Full-page drop zone — works on the chat bar, icons, anywhere
+- Background animates on drag (Grainient speeds up)
+- Icons and chat dim during drag to focus attention
+- Wizard skips straight to scanning when folder is dropped
+- Browser no longer navigates away on accidental file drops
+
+### Dev / prod separation
+
+- Dev server uses port 3333, prod uses 4444 — can run side by side
+- Dev uses `./userland`, prod uses `~/.oyster/userland`
+- `OYSTER_INSTALLED` flag from CLI controls which environment
+- Version badge on surface shows version + env (dev/prod)
+- Icon resolution fix: checks artifact root dir for `icon.png`
+
 ### Persistent memory
 
 - AI agent remembers across sessions — preferences, decisions, context
