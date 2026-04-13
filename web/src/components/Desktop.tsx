@@ -18,11 +18,16 @@ interface Props {
   onArtifactStop?: (artifact: Artifact) => void;
   onGroupClick: (groupName: string) => void;
   onSpaceChange: (space: string) => void;
+  onAddSpace?: () => void;
+  isFirstRun?: boolean;
   revealId?: string | null;
 }
 
-export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, revealId }: Props) {
+export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, revealId }: Props) {
   const isAllSpace = space === "__all__";
+
+  // ── Surface drop-to-import ──
+  const [surfaceDragOver, setSurfaceDragOver] = useState(false);
 
   // ── Topbar auto-hide ──
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -163,7 +168,26 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
         <div className="topbar-right" />
       </div>
 
-      <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
+      <div
+        className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}${surfaceDragOver ? " desktop-scroll--drop" : ""}`}
+        onDragOver={(e) => {
+          if (onAddSpace && e.dataTransfer.types.includes("Files")) {
+            e.preventDefault();
+            setSurfaceDragOver(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          const related = e.relatedTarget as Node | null;
+          if (related && e.currentTarget.contains(related)) return;
+          setSurfaceDragOver(false);
+        }}
+        onDrop={(e) => {
+          setSurfaceDragOver(false);
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          if (onAddSpace) onAddSpace();
+        }}
+      >
         <div className="filter-bar">
           {activeKind && (
             <div className="filter-notice">

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-04-13
+
+### Persistent memory
+
+- AI agent remembers across sessions — preferences, decisions, context
+- `MemoryProvider` interface: async, storage-agnostic, swappable backends
+- First provider: SQLite FTS5 — separate `memory.db`, full-text search
+- 4 MCP tools: `remember`, `recall`, `forget`, `list_memories`
+- Export/import for provider migration
+- Explicit writes only — agent stores memory when asked, not automatically
+
+### First-run onboarding
+
+- New users see "Drop a folder to get started" on the home surface
+- Subtitle: "We'll organise your projects into spaces"
+- Hint below space pills: "click + to add your projects"
+- Hides during chat, returns when clicking out
+- Disappears once first space is created
+- Surface accepts folder drops to trigger discovery
+
+### Port resilience
+
+- OpenCode config written dynamically with actual server port
+- OpenCode spawned after server listens (fixes MCP connection race)
+- Vite proxy reads `OYSTER_PORT` env var instead of hardcoding 4444
+
+### Chat bar polish
+
+- Input placeholder now cycles on blur (was static per session)
+- Agent sessions use `oyster` agent (was defaulting to `build`)
+
 ## 2026-04-12
 
 ### Multi-folder spaces and broader scanning

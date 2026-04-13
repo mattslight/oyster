@@ -95,9 +95,10 @@ interface Props {
   inputRef?: React.RefObject<HTMLInputElement | null>;
   artifacts?: Artifact[];
   onArtifactOpen?: (artifact: Artifact) => void;
+  isFirstRun?: boolean;
 }
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace, inputRef: externalInputRef, artifacts = [], onArtifactOpen }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace, inputRef: externalInputRef, artifacts = [], onArtifactOpen, isFirstRun }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -110,7 +111,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const wrapperRef = useRef<HTMLDivElement>(null);
   const localInputRef = useRef<HTMLInputElement>(null);
   const inputRef = externalInputRef || localInputRef;
-  const placeholder = useMemo(() => placeholders[Math.floor(Math.random() * placeholders.length)], []);
+  const [placeholder, setPlaceholder] = useState(() => placeholders[Math.floor(Math.random() * placeholders.length)]);
+  const placeholderIndexRef = useRef(0);
   const isHero = !!isHeroProp;
 
   const { messages, setMessages, sessionId, expanded, setExpanded, pushSessionUrl } = useChatSession();
@@ -338,10 +340,18 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
 
   return (
     <div ref={wrapperRef} className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
-      {/* Hero tagline — only shows before any messages, fades on focus */}
-      {isHero && messages.length === 0 && (
-        <div className={`chatbar-hero-tagline ${focused ? "tagline-hidden" : ""}`}>
-          {tagline ? (
+      {/* Hero tagline — one block, three states */}
+      {isHero && (
+        <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}`}>
+          {isFirstRun ? (
+            <>
+              <span className="tagline-bright">Drop a folder to get started</span>
+              <br />
+              <div className="chatbar-onboarding-hint" style={{ marginTop: "8px" }}>
+                We'll organise your projects into spaces
+              </div>
+            </>
+          ) : tagline ? (
             <>
               <span className="tagline-dim">{tagline.dim}</span>{" "}
               <span className="tagline-bright">{tagline.bright}</span>
@@ -516,6 +526,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
               setFocused(false);
               setTagline(taglines[taglineIndexRef.current % taglines.length]);
               taglineIndexRef.current++;
+              setPlaceholder(placeholders[placeholderIndexRef.current % placeholders.length]);
+              placeholderIndexRef.current++;
             }
           }}
           placeholder={streaming ? "" : (isHero && !focused ? "" : placeholder)}
@@ -581,6 +593,13 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             )}
           </div>
           </LayoutGroup>
+        </div>
+      )}
+
+      {/* Onboarding hint */}
+      {isFirstRun && isHero && (
+        <div className="chatbar-onboarding-hint">
+          or click <code>+</code> to add your projects
         </div>
       )}
 
