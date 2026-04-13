@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Space, ScanResult } from "../../../shared/types";
 import { createSpace, addPath, triggerScan, deleteSpace } from "../data/spaces-api";
 
 interface Props {
   spaces: Space[];
+  initialFolder?: string;
   onClose: () => void;
   onComplete: () => void;
 }
@@ -14,8 +15,8 @@ interface Suggestion {
   enabled: boolean;
 }
 
-export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
-  const [step, setStep] = useState<"name-path" | "discovery" | "results">("name-path");
+export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: Props) {
+  const [step, setStep] = useState<"name-path" | "discovery" | "results">(initialFolder ? "discovery" : "name-path");
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [name, setName] = useState("");
   const [existingSpaceId, setExistingSpaceId] = useState("");
@@ -28,7 +29,7 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
 
   // Discovery state
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [discovering, setDiscovering] = useState(false);
+  const [discovering, setDiscovering] = useState(!!initialFolder);
   const [importResult, setImportResult] = useState<Array<{ name: string; scanned: number }> | null>(null);
   const [dragItem, setDragItem] = useState<{ fromIdx: number | "loose"; folder: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<number | "loose" | "new" | null>(null);
@@ -51,6 +52,11 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
       await checkAndAddFolder(`~/${folderName}`);
     }
   }, [name, mode]);
+
+  // Auto-resolve folder dropped on the surface
+  useEffect(() => {
+    if (initialFolder) resolveFolder(initialFolder);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function checkAndAddFolder(path: string) {
     // Check if this is a container (like ~/Dev) with multiple projects
@@ -205,13 +211,18 @@ export function AddSpaceWizard({ spaces, onClose, onComplete }: Props) {
           </div>
 
           <div className="add-space-title">
-            Create {suggestions.length} spaces
+            {discovering ? "Scanning…" : `Create ${enabledCount} spaces`}
           </div>
           <div className="add-space-subtitle">
-            {suggestions.reduce((n, s) => n + s.folders.length, 0)} folders grouped into spaces. Edit, move, or untick to skip.
+            {discovering ? "Looking for projects in your folder" : `${totalFolders} folders grouped into spaces. Edit, move, or untick to skip.`}
           </div>
 
           <div className="discovery-list">
+            {discovering && suggestions.length === 0 && (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-dim)", fontSize: "13px" }}>
+                Scanning for projects…
+              </div>
+            )}
             {suggestions.map((s, idx) => (
               <div
                 key={idx}

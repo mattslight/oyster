@@ -18,16 +18,14 @@ interface Props {
   onArtifactStop?: (artifact: Artifact) => void;
   onGroupClick: (groupName: string) => void;
   onSpaceChange: (space: string) => void;
-  onAddSpace?: () => void;
+  onAddSpace?: (folderName?: string) => void;
   isFirstRun?: boolean;
+  dragOver?: boolean;
   revealId?: string | null;
 }
 
-export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, revealId }: Props) {
+export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, dragOver, revealId }: Props) {
   const isAllSpace = space === "__all__";
-
-  // ── Surface drop-to-import ──
-  const [surfaceDragOver, setSurfaceDragOver] = useState(false);
 
   // ── Topbar auto-hide ──
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -78,7 +76,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
           color1="#07060f"
           color2="#7c6bff"
           color3="#5227FF"
-          timeSpeed={0.15}
+          timeSpeed={dragOver ? 2 : 0.15}
           colorBalance={0}
           warpStrength={2}
           warpFrequency={6.5}
@@ -168,26 +166,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
         <div className="topbar-right" />
       </div>
 
-      <div
-        className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}${surfaceDragOver ? " desktop-scroll--drop" : ""}`}
-        onDragOver={(e) => {
-          if (onAddSpace && e.dataTransfer.types.includes("Files")) {
-            e.preventDefault();
-            setSurfaceDragOver(true);
-          }
-        }}
-        onDragLeave={(e) => {
-          const related = e.relatedTarget as Node | null;
-          if (related && e.currentTarget.contains(related)) return;
-          setSurfaceDragOver(false);
-        }}
-        onDrop={(e) => {
-          setSurfaceDragOver(false);
-          if (!e.dataTransfer.types.includes("Files")) return;
-          e.preventDefault();
-          if (onAddSpace) onAddSpace();
-        }}
-      >
+      <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
         <div className="filter-bar">
           {activeKind && (
             <div className="filter-notice">
