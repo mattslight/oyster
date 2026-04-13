@@ -10,7 +10,8 @@
     "bin/",
     "server/dist/",
     "builtins/",
-    ".opencode/"
+    ".opencode/",
+    "opencode.json"
   ],
   "scripts": {
     "prepublishOnly": "npm run build",
