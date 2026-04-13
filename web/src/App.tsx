@@ -169,6 +169,7 @@ export default function App() {
   }, []);
 
   const isHero = activeSpace === "home";
+  const isFirstRun = spaces.filter(s => s.id !== "home" && s.id !== "__all__").length === 0;
 
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
@@ -270,6 +271,8 @@ export default function App() {
           window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
         }}
         onSpaceChange={handleSpaceChange}
+        onAddSpace={() => setShowAddSpaceWizard(true)}
+        isFirstRun={isFirstRun}
         revealId={revealId}
       />
 
@@ -392,6 +395,7 @@ export default function App() {
         onAddSpace={() => setShowAddSpaceWizard(true)}
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
+        isFirstRun={isFirstRun}
       />
 
       {showAddSpaceWizard && (
