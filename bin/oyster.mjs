@@ -132,7 +132,7 @@ async function main() {
         opened = true;
         const url = match[1];
         console.log(`\n  👉 Open: ${url} 👈\n`);
-        console.log(`  🔗 Connect your AI:`);
+        console.log(`  🔗 Bring your own AI:`);
         console.log(`     claude mcp add --transport http oyster ${url}/mcp/\n`);
         console.log(`  What you can do:`);
         console.log(`  • "Create a deck about our roadmap" → appears on your surface`);

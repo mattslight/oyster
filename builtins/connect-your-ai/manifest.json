@@ -1,6 +1,6 @@
 {
   "id": "connect-your-ai",
-  "name": "Connect your AI",
+  "name": "Bring Your Own AI",
   "type": "notes",
   "runtime": "static",
   "entrypoint": "src/index.html",
