@@ -19,7 +19,8 @@
     "build": "npm run build:web && npm run build:server && node -e \"const fs=require('fs');fs.cpSync('web/dist','server/dist/public',{recursive:true})\"",
     "dev": "npx concurrently -n web,server -c blue,green \"cd web && npm run dev\" \"cd server && npm run dev\"",
     "dev:web": "cd web && npm run dev",
-    "dev:server": "cd server && npm run dev"
+    "dev:server": "cd server && npm run dev",
+    "release": "npm version patch && git push && git push --tags && npm publish --access public"
   },
   "keywords": [
     "ai",

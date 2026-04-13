@@ -65,6 +65,9 @@ node server/dist/server/src/index.js
 # Published package
 npm install -g oyster-os
 oyster                   # Starts server, opens browser to localhost:4444
+
+# Release (bump version, push tag, publish to npm, GitHub release auto-created)
+npm run release          # runs: npm version patch && git push && git push --tags && npm publish --access public
 ```
 
 ## Conventions
