@@ -37,6 +37,7 @@ import {
 } from "./opencode-manager.js";
 import { spawnSession, attachWebSocket } from "./pty-manager.js";
 import { createMcpServer } from "./mcp-server.js";
+import { SqliteFtsMemoryProvider } from "./memory-store.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 // ── Config ──
@@ -155,6 +156,8 @@ const store = new SqliteArtifactStore(db);
 const artifactService = new ArtifactService(store, USERLAND_DIR);
 const spaceStore = new SqliteSpaceStore(db);
 const spaceService = new SpaceService(spaceStore, store);
+const memoryProvider = new SqliteFtsMemoryProvider(USERLAND_DIR);
+await memoryProvider.init();
 
 // ── Initialize subsystems ──
 
@@ -163,7 +166,7 @@ const pendingReveals = new Set<string>();
 
 spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 
-spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
+// OpenCode spawn is deferred until after port resolution (see below)
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 
 // Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path)
@@ -181,8 +184,8 @@ startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
 });
 startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
-process.on("SIGTERM", () => { markShuttingDown(); db.close(); process.exit(0); });
-process.on("SIGINT", () => { markShuttingDown(); db.close(); process.exit(0); });
+process.on("SIGTERM", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
+process.on("SIGINT", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
 
 // ── UI push events (SSE) ──
 
@@ -504,7 +507,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     // Override the wildcard CORS header set at the top of handleHttpRequest
     res.setHeader("Access-Control-Allow-Origin", origin || `http://localhost:${PREFERRED_PORT}`);
 
-    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator, spaceService, pendingReveals, broadcastUiEvent });
+    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator, spaceService, memoryProvider, pendingReveals, broadcastUiEvent });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close(); mcpServer.close(); });
     await mcpServer.connect(transport);
@@ -571,10 +574,26 @@ function findPort(preferred: number, maxAttempts = 10): Promise<number> {
 }
 
 const port = await findPort(PREFERRED_PORT);
+
+// Write OpenCode config with the actual port so MCP URL is always correct
+const opencodeConfig = readFileSync(join(PROJECT_ROOT, ".opencode", "config.toml"), "utf8")
+  .replace(/# MCP config is written dynamically.*/, "")
+  .trimEnd()
+  + `\n\n[mcp.oyster]\ntype = "remote"\nurl = "http://localhost:${port}/mcp/"\n`;
+writeFileSync(join(USERLAND_DIR, ".opencode", "config.toml"), opencodeConfig);
+
+// Also write opencode.json (OpenCode reads this from cwd)
+const sourceOpencode = JSON.parse(readFileSync(join(PROJECT_ROOT, "opencode.json"), "utf8"));
+sourceOpencode.mcp = { oyster: { type: "remote", url: `http://localhost:${port}/mcp/` } };
+writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode, null, 2) + "\n");
+
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
 httpServer.listen(port, () => {
   console.log(`Oyster server listening on http://localhost:${port}`);
   console.log(`  WebSocket: ws://localhost:${port}`);
   console.log(`  API:       http://localhost:${port}/api/artifacts`);
+
+  // Spawn OpenCode AFTER server is listening so MCP connection succeeds
+  spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
 });

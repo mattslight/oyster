@@ -16,6 +16,7 @@ export async function createSession(): Promise<ChatSession> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       title: "oyster",
+      agent: "oyster",
       permission: [
         { permission: "read", pattern: "*", action: "allow" },
         { permission: "write", pattern: "*", action: "allow" },
@@ -57,6 +58,7 @@ export async function sendMessage(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       parts: [{ type: "text", text }],
+      agent: "oyster",
     }),
   });
   if (!res.ok) throw new Error(`sendMessage failed: ${res.status}`);

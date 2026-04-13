@@ -8,7 +8,5 @@ id = "claude-sonnet-4-20250514"
 provider = "anthropic"
 id = "claude-sonnet-4-20250514"
 
-[mcp.oyster]
-type = "remote"
-url = "http://localhost:4200/mcp/"
+# MCP config is written dynamically by the server with the actual port
 

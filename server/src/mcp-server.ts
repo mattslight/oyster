@@ -6,6 +6,8 @@ import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { IconGenerator } from "./icon-generator.js";
 import type { SpaceService } from "./space-service.js";
+import type { MemoryProvider } from "./memory-store.js";
+import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
@@ -115,6 +117,7 @@ interface McpDeps {
   userlandDir: string;
   iconGenerator: IconGenerator;
   spaceService: SpaceService;
+  memoryProvider: MemoryProvider;
   pendingReveals: Set<string>;
   broadcastUiEvent: (event: UiCommand) => void;
 }
@@ -559,6 +562,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
       };
     },
   );
+
+  // ── Memory tools ──
+  registerMemoryTools(server, deps.memoryProvider);
 
   return server;
 }
