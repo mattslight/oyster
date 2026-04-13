@@ -23,7 +23,7 @@ interface Props {
   revealId?: string | null;
 }
 
-export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, isFirstRun, revealId }: Props) {
+export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, revealId }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Surface drop-to-import ──
@@ -176,10 +176,15 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
             setSurfaceDragOver(true);
           }
         }}
-        onDragLeave={() => setSurfaceDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
+        onDragLeave={(e) => {
+          const related = e.relatedTarget as Node | null;
+          if (related && e.currentTarget.contains(related)) return;
           setSurfaceDragOver(false);
+        }}
+        onDrop={(e) => {
+          setSurfaceDragOver(false);
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
           if (onAddSpace) onAddSpace();
         }}
       >

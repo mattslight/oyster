@@ -16,7 +16,7 @@
 - New users see "Drop a folder to get started" on the home surface
 - Subtitle: "We'll organise your projects into spaces"
 - Hint below space pills: "click + to add your projects"
-- Dismissable with ×, hides during chat, returns when clicking out
+- Hides during chat, returns when clicking out
 - Disappears once first space is created
 - Surface accepts folder drops to trigger discovery
 

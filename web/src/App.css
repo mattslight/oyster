@@ -2096,15 +2096,6 @@ body {
 
 /* ── Onboarding ── */
 
-.tagline-code {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  background: rgba(124, 107, 255, 0.12);
-  padding: 2px 7px;
-  border-radius: 4px;
-  color: var(--text);
-}
-
 .chatbar-onboarding-hint {
   display: flex;
   align-items: center;
