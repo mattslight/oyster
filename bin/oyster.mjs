@@ -100,6 +100,9 @@ async function main() {
     console.log("\n  Provider connected. Starting Oyster...\n");
   }
 
+  // Mark as installed (not running from source)
+  env.OYSTER_INSTALLED = "1";
+
   // Set workspace to cwd
   env.OYSTER_WORKSPACE = env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 
