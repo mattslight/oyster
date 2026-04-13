@@ -128,7 +128,7 @@ async function main() {
       if (match) {
         opened = true;
         const url = match[1];
-        console.log(`\n  👉 ${url} 👈\n`);
+        console.log(`\n  👉 Open: ${url} 👈\n`);
         try {
           const platform = process.platform;
           if (platform === "darwin") execSync(`open ${url}`);
