@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-04-14
+
+### MCP onboarding
+
+- "Connect your AI" builtin artifact on home surface
+- Tabbed connection guide: Claude Code, Cursor, VS Code, Windsurf
+- Examples of what MCP enables + full tool reference
+- CLI startup prints MCP connect command and examples
+- New landing page at oyster.to/mcp with matching design
+
+### Quick Start guide
+
+- "Quick Start" builtin artifact on home surface
+- 60-second overview: prompt bar, slash commands, spaces, artifacts
+- Links to MCP connection guide and drop-to-import
+
+### Landing page updates
+
+- MCP section: real client-specific connection snippets with tabs
+- Actual tool names (create_artifact, onboard_space, etc.)
+- Nav: replaced GitHub link with MCP page link
+- Mobile fix: terminal mockup no longer overflows on small screens
+
 ## 2026-04-13
 
 ### Drop-to-import

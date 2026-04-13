@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick Start</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      background: #0a0b14;
+      color: #c8c8d0;
+      min-height: 100vh;
+      padding: 60px 24px;
+      line-height: 1.6;
+    }
+    .page { max-width: 640px; margin: 0 auto; }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 15px;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 48px;
+    }
+
+    h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #7c6bff;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      margin-top: 48px;
+    }
+    h2:first-of-type { margin-top: 0; }
+
+    p {
+      font-size: 14px;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 16px;
+      line-height: 1.7;
+    }
+
+    /* Shortcuts table */
+    .shortcuts {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .shortcut {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .shortcut:last-child { border-bottom: none; }
+    .shortcut-key {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      color: #a99eff;
+      min-width: 140px;
+      flex-shrink: 0;
+    }
+    .shortcut-desc {
+      font-size: 13px;
+      color: rgba(255,255,255,0.45);
+    }
+
+    /* Cards */
+    .card {
+      background: rgba(13, 14, 26, 0.9);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .card p { margin-bottom: 0; }
+
+    code {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      background: rgba(124,107,255,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #a99eff;
+    }
+
+    .link {
+      color: #7c6bff;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .link:hover { text-decoration: underline; }
+
+    @media (max-width: 500px) {
+      .shortcut { flex-direction: column; gap: 2px; }
+      .shortcut-key { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Quick Start</h1>
+    <p class="subtitle">Everything you need to know in 60 seconds.</p>
+
+    <h2>The prompt bar</h2>
+    <p>Type anything into the prompt bar to talk to Oyster. Ask it to create documents, organise your work, or answer questions about your projects. Any printable key focuses the prompt bar automatically.</p>
+
+    <h2>Slash commands</h2>
+    <div class="shortcuts">
+      <div class="shortcut">
+        <span class="shortcut-key">/s &lt;name&gt;</span>
+        <span class="shortcut-desc">Switch space. Fuzzy matches. <code>/s bf</code> finds "blunderfixer".</span>
+      </div>
+      <div class="shortcut">
+        <span class="shortcut-key">/o &lt;search&gt;</span>
+        <span class="shortcut-desc">Open an artifact by name. <code>/o pitch</code> opens your pitch deck.</span>
+      </div>
+      <div class="shortcut">
+        <span class="shortcut-key">#1 #2 #3</span>
+        <span class="shortcut-desc">Jump to a space by position. <code>#.</code> for home, <code>#0</code> for all.</span>
+      </div>
+      <div class="shortcut">
+        <span class="shortcut-key">Cmd+K</span>
+        <span class="shortcut-desc">Spotlight search across all artifacts.</span>
+      </div>
+    </div>
+
+    <h2>Spaces</h2>
+    <p>Spaces are workspaces — one per project, client, or topic. Switch between them using the pills below the prompt bar, or with <code>#name</code> and <code>/s name</code>.</p>
+    <p>Click <code>+</code> to add a new space, or drop a folder anywhere on the surface to import a project automatically.</p>
+
+    <h2>Artifacts</h2>
+    <p>Everything on the surface is an artifact — notes, decks, diagrams, apps, tables, wireframes. Click an icon to open it. The topbar (hover near the top) has sort, filter, and view controls.</p>
+
+    <h2>Get more from Oyster</h2>
+    <div class="card">
+      <div class="card-title">Connect your AI</div>
+      <p>Oyster is an MCP server. Connect Claude Code, Cursor, or VS Code and control your surface from any AI. <a class="link" href="/artifacts/connect-your-ai/src/index.html">Read the guide</a></p>
+    </div>
+    <div class="card">
+      <div class="card-title">Drop to import</div>
+      <p>Drag a folder like <code>~/Dev</code> onto the surface. Oyster scans it, finds projects, and creates spaces for each one.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">The lightning bolt</div>
+      <p>Click the bolt icon in the prompt bar to open the shell. Full terminal access — talk directly to the AI engine with no guardrails.</p>
+    </div>
+  </div>
+</body>
+</html>

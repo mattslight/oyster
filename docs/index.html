@@ -412,6 +412,11 @@
       color: #fff;
       background: rgba(124, 107, 255, 0.15);
     }
+    @media (max-width: 480px) {
+      .nav { gap: 2px; padding: 6px 4px; }
+      .nav a { padding: 7px 10px; font-size: 12px; }
+      .nav-logo { margin: 2px 2px 2px 8px; }
+    }
   </style>
 </head>
 <body>
@@ -422,7 +427,7 @@
     <img src="logo.png" alt="Oyster" class="nav-logo" />
     <a href="#features">Features</a>
     <a href="#install">Install</a>
-    <a href="https://github.com/mattslight/oyster" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <a href="/mcp">MCP</a>
   </nav>
 
   <!-- Hero -->
@@ -585,29 +590,59 @@
   <div class="feature-section reverse">
     <div class="feature-text">
       <h3>Built on MCP. Bring your own AI.</h3>
-      <p>Oyster is an MCP server. That means any AI that speaks the protocol — Claude, ChatGPT, Gemini, or your own — can control your workspace. Open files, create documents, organise spaces. One standard, any AI.</p>
+      <p>Oyster is an MCP server. That means any AI that speaks the protocol — Claude Code, Cursor, VS Code, Windsurf, or your own — can control your workspace. Create documents, organise spaces, open artefacts. One standard, any AI.</p>
     </div>
     <div class="feature-mock">
-      <div class="mock-panel">
-        <div style="display: flex; flex-direction: column; gap: 14px; text-align: center;">
-          <div style="display: flex; align-items: center; gap: 10px; justify-content: center;">
-            <span style="font-size: 18px;">🔌</span>
-            <span style="font-size: 14px; font-weight: 600; color: #fff;">MCP Server</span>
+      <div class="mock-panel" style="padding: 0; overflow: hidden;">
+        <div style="display: flex; gap: 2px; padding: 6px 6px 0; background: rgba(255,255,255,0.02);">
+          <button onclick="showMcpTab('claude-code')" class="mcp-tab mcp-tab-active" style="padding: 8px 14px; font-size: 11px; font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: rgba(255,255,255,0.4); background: none; border: none; cursor: pointer; border-radius: 6px 6px 0 0; transition: all 0.15s;">Claude Code</button>
+          <button onclick="showMcpTab('cursor')" class="mcp-tab" style="padding: 8px 14px; font-size: 11px; font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: rgba(255,255,255,0.4); background: none; border: none; cursor: pointer; border-radius: 6px 6px 0 0; transition: all 0.15s;">Cursor</button>
+          <button onclick="showMcpTab('vscode')" class="mcp-tab" style="padding: 8px 14px; font-size: 11px; font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: rgba(255,255,255,0.4); background: none; border: none; cursor: pointer; border-radius: 6px 6px 0 0; transition: all 0.15s;">VS Code</button>
+          <button onclick="showMcpTab('windsurf')" class="mcp-tab" style="padding: 8px 14px; font-size: 11px; font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: rgba(255,255,255,0.4); background: none; border: none; cursor: pointer; border-radius: 6px 6px 0 0; transition: all 0.15s;">Windsurf</button>
+        </div>
+        <div style="padding: 16px;">
+          <div id="mcp-claude-code" class="mcp-panel" style="display: block;">
+            <div style="font-size: 10px; color: rgba(255,255,255,0.3); font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px;">terminal</div>
+            <pre style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e0e0e8; white-space: pre-wrap; margin: 0;">claude mcp add --transport http oyster http://localhost:4444/mcp/</pre>
           </div>
-          <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-            <span style="padding: 6px 14px; border-radius: 8px; font-size: 12px; color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06);">Claude</span>
-            <span style="padding: 6px 14px; border-radius: 8px; font-size: 12px; color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06);">ChatGPT</span>
-            <span style="padding: 6px 14px; border-radius: 8px; font-size: 12px; color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06);">Gemini</span>
-            <span style="padding: 6px 14px; border-radius: 8px; font-size: 12px; color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06);">Ollama</span>
+          <div id="mcp-cursor" class="mcp-panel" style="display: none;">
+            <div style="font-size: 10px; color: rgba(255,255,255,0.3); font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px;">.cursor/mcp.json</div>
+            <pre style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e0e0e8; white-space: pre-wrap; margin: 0;">{
+  "mcpServers": {
+    "oyster": {
+      "url": "http://localhost:4444/mcp/"
+    }
+  }
+}</pre>
           </div>
-          <div style="font-size: 12px; color: rgba(255,255,255,0.3); margin-bottom: 4px;">or any AI that speaks MCP</div>
-          <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;">
-            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">open_file</span>
-            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">create_doc</span>
-            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">organise_space</span>
-            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">search</span>
-            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">navigate</span>
-            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">import_project</span>
+          <div id="mcp-vscode" class="mcp-panel" style="display: none;">
+            <div style="font-size: 10px; color: rgba(255,255,255,0.3); font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px;">.vscode/mcp.json</div>
+            <pre style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e0e0e8; white-space: pre-wrap; margin: 0;">{
+  "servers": {
+    "oyster": {
+      "type": "http",
+      "url": "http://localhost:4444/mcp/"
+    }
+  }
+}</pre>
+          </div>
+          <div id="mcp-windsurf" class="mcp-panel" style="display: none;">
+            <div style="font-size: 10px; color: rgba(255,255,255,0.3); font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px;">~/.codeium/windsurf/mcp_config.json</div>
+            <pre style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e0e0e8; white-space: pre-wrap; margin: 0;">{
+  "mcpServers": {
+    "oyster": {
+      "serverUrl": "http://localhost:4444/mcp/"
+    }
+  }
+}</pre>
+          </div>
+          <div style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 14px;">
+            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">create_artifact</span>
+            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">onboard_space</span>
+            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">open_artifact</span>
+            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">switch_space</span>
+            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">remember</span>
+            <span style="padding: 4px 10px; border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.4); background: rgba(124,107,255,0.1); font-family: 'IBM Plex Mono', monospace;">scan_space</span>
           </div>
         </div>
       </div>
@@ -699,7 +734,7 @@
       <button onclick="setOS('mac')" id="os-mac" style="padding: 6px 18px; border-radius: 9999px; font-size: 12px; border: none; cursor: pointer; background: #7c6bff; color: #fff; font-family: inherit; font-weight: 500; transition: all 0.2s ease;">macOS / Linux</button>
       <button onclick="setOS('win')" id="os-win" style="padding: 6px 18px; border-radius: 9999px; font-size: 12px; border: none; cursor: pointer; background: transparent; color: rgba(255,255,255,0.5); font-family: inherit; font-weight: 500; transition: all 0.2s ease;">Windows</button>
     </div>
-    <div style=" background: rgba(30,32,50,0.95); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,0.5); overflow: hidden; min-width: 420px; max-width: 100%;">
+    <div style=" background: rgba(30,32,50,0.95); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,0.5); overflow: hidden; width: 100%; max-width: 420px;">
       <div style="position: relative; display: flex; align-items: center; padding: 10px 14px; background: rgba(255,255,255,0.06);">
         <div id="dots-mac" style="display: flex; gap: 6px;">
           <span style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f57;"></span>
@@ -711,10 +746,10 @@
         </div>
         <span style="position: absolute; left: 0; right: 0; text-align: center; font-size: 11px; color: rgba(255,255,255,0.25); font-family: 'IBM Plex Mono', monospace; pointer-events: none;" id="term-title">terminal</span>
       </div>
-      <div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 10px;">
-        <div><span id="prompt-char" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">npm install -g oyster-os</code></div>
-        <div><span id="prompt-char2" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff;">oyster</code></div>
-        <div style="margin-top: 6px; font-size: 12px; font-family: 'IBM Plex Mono', monospace;"><span style="color: #fbbf24; font-weight: 500;">no install?</span> <span style="color: rgba(255,255,255,0.35);">try:</span> <span id="prompt-char3" style="color: rgba(255,255,255,0.35);">$ </span><span style="color: #a99eff;">npx oyster-os</span></div>
+      <div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 10px; text-align: left;">
+        <div style="white-space: nowrap;"><span id="prompt-char" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(14px, 2.5vw, 20px); color: #a99eff;">npm install -g oyster-os</code></div>
+        <div><span id="prompt-char2" style="color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px;">$ </span><code style="font-family: 'IBM Plex Mono', monospace; font-size: clamp(14px, 2.5vw, 20px); color: #a99eff;">oyster</code></div>
+        <div style="margin-top: 6px; font-size: 12px; font-family: 'IBM Plex Mono', monospace; white-space: nowrap;"><span style="color: #fbbf24; font-weight: 500;">no install?</span> <span style="color: rgba(255,255,255,0.35);">try:</span> <span id="prompt-char3" style="color: rgba(255,255,255,0.35);">$ </span><span style="color: #a99eff;">npx oyster-os</span></div>
       </div>
     </div>
     </div>
@@ -900,6 +935,23 @@
       document.getElementById('os-win').style.background = mac ? 'transparent' : '#7c6bff';
       document.getElementById('os-win').style.color = mac ? 'rgba(255,255,255,0.5)' : '#fff';
     };
+
+    // MCP client tabs
+    function showMcpTab(name) {
+      document.querySelectorAll('.mcp-panel').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.mcp-tab').forEach(t => {
+        t.classList.remove('mcp-tab-active');
+        t.style.color = 'rgba(255,255,255,0.4)';
+        t.style.background = 'none';
+      });
+      document.getElementById('mcp-' + name).style.display = 'block';
+      event.target.classList.add('mcp-tab-active');
+      event.target.style.color = '#fff';
+      event.target.style.background = 'rgba(124,107,255,0.15)';
+    }
+    // Set initial active tab style
+    document.querySelector('.mcp-tab-active').style.color = '#fff';
+    document.querySelector('.mcp-tab-active').style.background = 'rgba(124,107,255,0.15)';
   </script>
 </body>
 </html>

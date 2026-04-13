@@ -1,0 +1,14 @@
+{
+  "id": "quick-start",
+  "name": "Quick Start",
+  "type": "notes",
+  "runtime": "static",
+  "entrypoint": "src/index.html",
+  "ports": [],
+  "storage": "none",
+  "capabilities": [],
+  "status": "ready",
+  "builtin": true,
+  "created_at": "2026-04-14T00:00:00.000Z",
+  "updated_at": "2026-04-14T00:00:00.000Z"
+}

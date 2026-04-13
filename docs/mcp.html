@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect your AI — Oyster</title>
+  <meta name="description" content="Connect Claude Code, Cursor, VS Code, Windsurf or any MCP-compatible AI to your Oyster workspace.">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0b14;
+      color: #e0e0e0;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .bg {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at 30% 20%, rgba(88, 60, 180, 0.25) 0%, transparent 60%),
+                  radial-gradient(ellipse at 70% 80%, rgba(40, 50, 160, 0.2) 0%, transparent 60%),
+                  #0a0b14;
+      z-index: 0;
+    }
+
+    /* Back nav */
+    .back-nav {
+      position: fixed;
+      top: 16px;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+    }
+    .back-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      background: rgba(13, 14, 26, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 9999px;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.5);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .back-link:hover { color: #fff; }
+
+    /* Hero */
+    .hero {
+      position: relative;
+      z-index: 1;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 120px 24px 0;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 700;
+      line-height: 1.15;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      line-height: 1.7;
+      color: rgba(255, 255, 255, 0.5);
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    /* Sections */
+    .section {
+      position: relative;
+      z-index: 1;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #7c6bff;
+      margin-bottom: 20px;
+      margin-top: 80px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 12px 12px 0 0;
+      padding: 4px 4px 0;
+      overflow-x: auto;
+    }
+    .tab {
+      padding: 12px 20px;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+      color: rgba(255,255,255,0.35);
+      background: none;
+      border: none;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      white-space: nowrap;
+      transition: color 0.15s, background 0.15s;
+    }
+    .tab:hover { color: rgba(255,255,255,0.7); }
+    .tab.active {
+      color: #fff;
+      background: rgba(124,107,255,0.12);
+    }
+
+    /* Code panels */
+    .panels {
+      background: rgba(13, 14, 26, 0.9);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-top: none;
+      border-radius: 0 0 16px 16px;
+      padding: 24px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .panel-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: 10px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    pre {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #e0e0e8;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(124,107,255,0.12);
+      border: 1px solid rgba(124,107,255,0.2);
+      color: rgba(255,255,255,0.5);
+      font-size: 11px;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-btn:hover {
+      background: rgba(124,107,255,0.25);
+      color: #fff;
+    }
+    .copy-btn.copied {
+      background: rgba(80,200,120,0.15);
+      border-color: rgba(80,200,120,0.3);
+      color: rgba(80,200,120,0.8);
+    }
+
+    /* Examples */
+    .examples {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .example {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .example:last-child { border-bottom: none; }
+    .example-prompt {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      color: #a99eff;
+      flex-shrink: 0;
+    }
+    .example-arrow {
+      color: rgba(255,255,255,0.15);
+      flex-shrink: 0;
+    }
+    .example-result {
+      color: rgba(255,255,255,0.45);
+      font-size: 14px;
+    }
+
+    /* Tools grid */
+    .tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tool {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: rgba(124,107,255,0.08);
+      border: 1px solid rgba(124,107,255,0.08);
+      color: rgba(255,255,255,0.45);
+      transition: all 0.15s;
+    }
+    .tool:hover {
+      background: rgba(124,107,255,0.15);
+      color: rgba(255,255,255,0.7);
+    }
+
+    .note {
+      font-size: 14px;
+      color: rgba(255,255,255,0.35);
+      margin-top: 16px;
+      line-height: 1.7;
+    }
+
+    /* Install CTA */
+    .install-section {
+      position: relative;
+      z-index: 1;
+      max-width: 640px;
+      margin: 80px auto 0;
+      padding: 0 24px 100px;
+      text-align: center;
+    }
+    .install-label {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 24px;
+    }
+    .terminal {
+      background: rgba(13, 14, 26, 0.95);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      overflow: hidden;
+      text-align: left;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      position: relative;
+    }
+    .terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .terminal-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .terminal-title {
+      position: absolute;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255,255,255,0.25);
+      font-family: 'IBM Plex Mono', monospace;
+      pointer-events: none;
+    }
+    .terminal-body {
+      padding: 20px 24px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .terminal-line .prompt { color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px; }
+    .terminal-line code { font-family: 'IBM Plex Mono', monospace; font-size: clamp(16px, 2.5vw, 20px); color: #a99eff; }
+    .terminal-hint {
+      margin-top: 6px;
+      font-size: 12px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .terminal-hint .yellow { color: #fbbf24; font-weight: 500; }
+    .terminal-hint .dim { color: rgba(255,255,255,0.35); }
+
+    /* Footer */
+    .footer {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.3);
+      padding: 0 24px 60px;
+    }
+    .footer .heart { color: #e25555; }
+    .footer a { color: rgba(255, 255, 255, 0.4); text-decoration: none; }
+    .footer a:hover { color: rgba(255, 255, 255, 0.6); }
+
+    @media (max-width: 600px) {
+      .example { flex-direction: column; gap: 4px; }
+      .example-arrow { display: none; }
+      .hero { padding-top: 100px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <div class="back-nav">
+    <div class="back-bar">
+      <a class="back-link" href="/">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+        </svg>
+        oyster.to
+      </a>
+    </div>
+  </div>
+
+  <div class="hero">
+    <h1>Connect your AI</h1>
+    <p class="subtitle">Oyster is an MCP server. Any AI that speaks the protocol can control your workspace.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Quick start</div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('claude')">Claude Code</button>
+      <button class="tab" onclick="showTab('cursor')">Cursor</button>
+      <button class="tab" onclick="showTab('vscode')">VS Code</button>
+      <button class="tab" onclick="showTab('windsurf')">Windsurf</button>
+    </div>
+    <div class="panels">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+
+      <div id="panel-claude" class="panel active">
+        <div class="panel-label">run in your terminal</div>
+        <pre>claude mcp add --transport http oyster http://localhost:4444/mcp/</pre>
+      </div>
+
+      <div id="panel-cursor" class="panel">
+        <div class="panel-label">.cursor/mcp.json</div>
+        <pre>{
+  "mcpServers": {
+    "oyster": {
+      "url": "http://localhost:4444/mcp/"
+    }
+  }
+}</pre>
+      </div>
+
+      <div id="panel-vscode" class="panel">
+        <div class="panel-label">.vscode/mcp.json</div>
+        <pre>{
+  "servers": {
+    "oyster": {
+      "type": "http",
+      "url": "http://localhost:4444/mcp/"
+    }
+  }
+}</pre>
+      </div>
+
+      <div id="panel-windsurf" class="panel">
+        <div class="panel-label">~/.codeium/windsurf/mcp_config.json</div>
+        <pre>{
+  "mcpServers": {
+    "oyster": {
+      "serverUrl": "http://localhost:4444/mcp/"
+    }
+  }
+}</pre>
+      </div>
+    </div>
+
+    <div class="section-label">What you can do</div>
+    <div class="examples">
+      <div class="example">
+        <span class="example-prompt">"Create a deck about Q2 results"</span>
+        <span class="example-arrow">&rarr;</span>
+        <span class="example-result">appears on your surface</span>
+      </div>
+      <div class="example">
+        <span class="example-prompt">"Scan ~/Dev/my-project"</span>
+        <span class="example-arrow">&rarr;</span>
+        <span class="example-result">new space with apps, docs, and diagrams discovered</span>
+      </div>
+      <div class="example">
+        <span class="example-prompt">"Open the competitor analysis"</span>
+        <span class="example-arrow">&rarr;</span>
+        <span class="example-result">opens it in the viewer</span>
+      </div>
+      <div class="example">
+        <span class="example-prompt">"Move the pitch deck to the clients space"</span>
+        <span class="example-arrow">&rarr;</span>
+        <span class="example-result">reassigned instantly</span>
+      </div>
+      <div class="example">
+        <span class="example-prompt">"Remember the deadline is Friday"</span>
+        <span class="example-arrow">&rarr;</span>
+        <span class="example-result">stored in memory, recalled later</span>
+      </div>
+    </div>
+
+    <div class="section-label">Available tools</div>
+    <div class="tools">
+      <span class="tool">create_artifact</span>
+      <span class="tool">list_artifacts</span>
+      <span class="tool">read_artifact</span>
+      <span class="tool">update_artifact</span>
+      <span class="tool">open_artifact</span>
+      <span class="tool">remove_artifact</span>
+      <span class="tool">onboard_space</span>
+      <span class="tool">scan_space</span>
+      <span class="tool">list_spaces</span>
+      <span class="tool">switch_space</span>
+      <span class="tool">remember</span>
+      <span class="tool">recall</span>
+      <span class="tool">gather_repo_context</span>
+      <span class="tool">regenerate_icon</span>
+    </div>
+    <p class="note">Your AI can chain these together. Ask it to onboard a project, scan for artifacts, create a summary, and organise everything into spaces — all from one prompt.</p>
+  </div>
+
+  <div class="install-section">
+    <div class="install-label">Don't have Oyster yet?</div>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="terminal-dots">
+          <span style="background: #ff5f57;"></span>
+          <span style="background: #febc2e;"></span>
+          <span style="background: #28c840;"></span>
+        </div>
+        <span class="terminal-title">terminal</span>
+      </div>
+      <div class="terminal-body">
+        <div class="terminal-line"><span class="prompt">$ </span><code>npm install -g oyster-os</code></div>
+        <div class="terminal-line"><span class="prompt">$ </span><code>oyster</code></div>
+        <div class="terminal-hint"><span class="yellow">no install?</span> <span class="dim">try:</span> <span class="dim">$ </span><span style="color: #a99eff;">npx oyster-os</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>Built with <span class="heart">&hearts;</span> by <a href="https://github.com/mattslight">Matthew Slight</a></p>
+  </div>
+
+  <script>
+    function showTab(name) {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+      event.target.classList.add('active');
+      document.getElementById('panel-' + name).classList.add('active');
+      var btn = document.querySelector('.copy-btn');
+      btn.textContent = 'copy';
+      btn.classList.remove('copied');
+    }
+
+    function copyCode(btn) {
+      var active = document.querySelector('.panel.active pre');
+      navigator.clipboard.writeText(active.textContent).then(function() {
+        btn.textContent = 'copied';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
