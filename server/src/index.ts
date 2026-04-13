@@ -161,7 +161,10 @@ const iconGenerator = new IconGenerator(updateGeneratedArtifact);
 const pendingReveals = new Set<string>();
 
 spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
-spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
+
+// Find available port for OpenCode before spawning
+const opencodePort = await findPort(OPENCODE_PORT);
+spawnOpenCodeServe(OPENCODE_BIN, opencodePort, USERLAND_DIR, cleanEnv);
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 
 // Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path)
@@ -177,7 +180,7 @@ startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
     if (entry) artifactService.reconcileGeneratedArtifact(entry, filePath, USERLAND_DIR);
   }
 });
-startAutoApprover(OPENCODE_PORT, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
+startAutoApprover(opencodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
 process.on("SIGTERM", () => { markShuttingDown(); db.close(); process.exit(0); });
 process.on("SIGINT", () => { markShuttingDown(); db.close(); process.exit(0); });
@@ -349,51 +352,51 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url === "/api/chat/events" || url.startsWith("/api/chat/events?")) {
-    await proxySSE(req, res, "/event", OPENCODE_PORT);
+    await proxySSE(req, res, "/event", opencodePort);
     return;
   }
 
   if (url === "/api/chat/doc") {
-    await proxyToOpenCode(req, res, "/doc", OPENCODE_PORT);
+    await proxyToOpenCode(req, res, "/doc", opencodePort);
     return;
   }
 
   if (url === "/api/chat/session" && req.method === "POST") {
-    await proxyToOpenCode(req, res, "/session", OPENCODE_PORT);
+    await proxyToOpenCode(req, res, "/session", opencodePort);
     return;
   }
 
   if (url === "/api/chat/session" && req.method === "GET") {
-    await proxyToOpenCode(req, res, "/session", OPENCODE_PORT);
+    await proxyToOpenCode(req, res, "/session", opencodePort);
     return;
   }
 
   const msgMatch = url.match(/^\/api\/chat\/session\/([^/]+)\/message$/);
   if (msgMatch && (req.method === "POST" || req.method === "GET")) {
-    await proxyToOpenCode(req, res, `/session/${msgMatch[1]}/message`, OPENCODE_PORT);
+    await proxyToOpenCode(req, res, `/session/${msgMatch[1]}/message`, opencodePort);
     return;
   }
 
   const sessionMatch = url.match(/^\/api\/chat\/session\/([^/]+)$/);
   if (sessionMatch && req.method === "GET") {
-    await proxyToOpenCode(req, res, `/session/${sessionMatch[1]}`, OPENCODE_PORT);
+    await proxyToOpenCode(req, res, `/session/${sessionMatch[1]}`, opencodePort);
     return;
   }
 
   const abortMatch = url.match(/^\/api\/chat\/session\/([^/]+)\/abort$/);
   if (abortMatch && req.method === "POST") {
-    await proxyToOpenCode(req, res, `/session/${abortMatch[1]}/abort`, OPENCODE_PORT);
+    await proxyToOpenCode(req, res, `/session/${abortMatch[1]}/abort`, opencodePort);
     return;
   }
 
   if (url === "/api/chat/permission" && req.method === "GET") {
-    await proxyToOpenCode(req, res, "/permission", OPENCODE_PORT);
+    await proxyToOpenCode(req, res, "/permission", opencodePort);
     return;
   }
 
   const questionMatch = url.match(/^\/api\/chat\/question\/([^/]+)\/reply$/);
   if (questionMatch && req.method === "POST") {
-    await proxyToOpenCode(req, res, `/question/${questionMatch[1]}/reply`, OPENCODE_PORT);
+    await proxyToOpenCode(req, res, `/question/${questionMatch[1]}/reply`, opencodePort);
     return;
   }
 
@@ -546,23 +549,33 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
 // ── HTTP + WebSocket server ──
 
-const httpServer = createServer(handleHttpRequest);
-
-function tryListen(port: number, maxAttempts = 10): void {
-  httpServer.once("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE" && maxAttempts > 1) {
-      console.log(`  Port ${port} in use, trying ${port + 1}...`);
-      tryListen(port + 1, maxAttempts - 1);
-    } else {
-      console.error(`  Error: could not find an available port (tried ${port - 10 + maxAttempts}-${port})`);
-      process.exit(1);
+function findPort(preferred: number, maxAttempts = 10): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    function tryPort(port: number) {
+      const testServer = createServer();
+      testServer.once("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE" && attempt < maxAttempts) {
+          attempt++;
+          console.log(`  Port ${port} in use, trying ${port + 1}...`);
+          tryPort(port + 1);
+        } else {
+          reject(new Error(`No available port found (tried ${preferred}-${port})`));
+        }
+      });
+      testServer.listen(port, () => {
+        testServer.close(() => resolve(port));
+      });
     }
-  });
-  httpServer.listen(port, () => {
-    attachWebSocket(httpServer);
-    console.log(`Oyster server listening on http://localhost:${port}`);
-    console.log(`  WebSocket: ws://localhost:${port}`);
-    console.log(`  API:       http://localhost:${port}/api/artifacts`);
+    tryPort(preferred);
   });
 }
-tryListen(PREFERRED_PORT);
+
+const port = await findPort(PREFERRED_PORT);
+const httpServer = createServer(handleHttpRequest);
+attachWebSocket(httpServer);
+httpServer.listen(port, () => {
+  console.log(`Oyster server listening on http://localhost:${port}`);
+  console.log(`  WebSocket: ws://localhost:${port}`);
+  console.log(`  API:       http://localhost:${port}/api/artifacts`);
+});
