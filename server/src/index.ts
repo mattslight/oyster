@@ -84,7 +84,9 @@ const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
-const USERLAND_DIR = process.env.OYSTER_USERLAND || join(homedir(), ".oyster", "userland");
+// Dev mode: use ./userland in the project. Prod (npm -g): use ~/.oyster/userland
+const isDev = existsSync(join(PACKAGE_ROOT, "web", "vite.config.ts"));
+const USERLAND_DIR = process.env.OYSTER_USERLAND || (isDev ? join(PACKAGE_ROOT, "userland") : join(homedir(), ".oyster", "userland"));
 const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
 
 // ── MIME types ──
