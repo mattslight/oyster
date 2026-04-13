@@ -6,11 +6,11 @@ const serverPort = process.env.OYSTER_PORT ?? '4444'
 const target = `http://localhost:${serverPort}`
 const pkg = JSON.parse(readFileSync('../package.json', 'utf8'))
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
-    __APP_ENV__: JSON.stringify(process.env.NODE_ENV === 'production' ? 'prod' : 'dev'),
+    __APP_ENV__: JSON.stringify(mode === 'production' ? 'prod' : 'dev'),
   },
   server: {
     port: 7337,
@@ -28,4 +28,4 @@ export default defineConfig({
       '/artifacts': target,
     }
   }
-})
+}))
