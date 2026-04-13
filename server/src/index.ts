@@ -42,7 +42,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 // ── Config ──
 
-const PREFERRED_PORT = parseInt(process.env.OYSTER_PORT ?? "4444", 10);
+const isInstalledPackage = !!process.env.OYSTER_INSTALLED;
+const PREFERRED_PORT = parseInt(process.env.OYSTER_PORT ?? (isInstalledPackage ? "4444" : "3333"), 10);
 const OPENCODE_PORT = parseInt(process.env.OYSTER_OPENCODE_PORT ?? "4096", 10);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -84,10 +85,8 @@ const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
-// OYSTER_INSTALLED is set by bin/oyster.mjs (the CLI entry point).
-// If set → user installed via npm/brew/apt → use ~/.oyster/userland
-// If not set → developer running from source → use ./userland
-const USERLAND_DIR = process.env.OYSTER_USERLAND || (process.env.OYSTER_INSTALLED ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
+// Installed → ~/.oyster/userland, dev → ./userland
+const USERLAND_DIR = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
 const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
 
 // ── MIME types ──

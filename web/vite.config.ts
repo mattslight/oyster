@@ -5,7 +5,7 @@ import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const serverPort = process.env.OYSTER_PORT ?? '4444'
+const serverPort = process.env.OYSTER_PORT ?? '3333'
 const target = `http://localhost:${serverPort}`
 const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf8'))
 
