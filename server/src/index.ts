@@ -27,6 +27,7 @@ import {
   clearSeenArtifact,
   inferName,
 } from "./artifact-detector.js";
+import { runStartupBackup } from "./backup.js";
 import {
   spawnOpenCodeServe,
   getOpenCodePort,
@@ -140,6 +141,9 @@ function bootstrapUserland() {
     }
   }
 }
+
+// ── Auto-backup userland before bootstrap/upgrade and before touching the DB ──
+runStartupBackup(USERLAND_DIR);
 
 bootstrapUserland();
 
@@ -591,6 +595,7 @@ writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode
 
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
+
 httpServer.listen(port, () => {
   console.log(`Oyster server listening on http://localhost:${port}`);
   console.log(`  WebSocket: ws://localhost:${port}`);
