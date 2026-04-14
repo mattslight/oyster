@@ -32,7 +32,7 @@ Three API endpoints:
 Banner appears on the surface with two CTAs:
 - "Import from AI" → opens the import wizard artifact
 - "Scan my machine" → placeholder for future local discovery (#108), disabled in V1
-- "skip for now" → dismisses, doesn't return
+- "skip for now" → dismisses banner (persisted in localStorage). The builtin "Import from AI" card remains on the surface for later use.
 
 Banner component: `web/src/components/OnboardingBanner.tsx` (new).
 Rendered by Desktop when `isFirstRun && !dismissed`.
@@ -45,18 +45,21 @@ Rendered by Desktop when `isFirstRun && !dismissed`.
 
 Self-contained HTML at `builtins/import-from-ai/src/index.html`. Three steps:
 
-### Step 1: Copy prompt
+### Step 1: Select provider & copy prompt
 
-- Page loads, fetches `GET /api/import/prompt`
-- Displays the generated prompt in a code block
+- User selects their AI provider: ChatGPT, Claude, Gemini, Other
+- Page fetches `GET /api/import/prompt?provider={provider}`
+- Displays the generated prompt in a code block (prompt includes provider-specific wording and demands raw JSON only — no markdown fences, no prose before or after)
 - "Copy to clipboard" button
-- Instruction: "Paste this into ChatGPT, Claude, or Gemini"
+- Instruction: "Paste this into {provider}"
+- Selected provider is carried through to Step 2 for provenance
 
 ### Step 2: Paste response
 
 - Textarea for the AI's JSON response
 - "Preview import" button
-- Sends `POST /api/import/preview` with the raw pasted text
+- Sends `POST /api/import/preview` with the raw pasted text and selected provider
+- Strips markdown fences (```json ... ```) if present — AIs frequently wrap JSON despite being told not to
 - Shows validation errors inline if JSON is malformed
 
 ### Step 3: Review & approve
@@ -111,8 +114,9 @@ What the user's AI outputs:
 
 Rules:
 - `schema_version`: always `1` for now
-- `mode`: `"fresh"` or `"augment"` — set by the prompt, informs merge behaviour
-- `source`: provider name and when the AI generated the response
+- `mode`: advisory only — the AI outputs `"fresh"` or `"augment"` but the server derives the real mode from Oyster state (has spaces → augment, no spaces → fresh). The payload value is ignored for logic; it exists so the AI's intent is visible in the raw data.
+- `source.provider`: set by the wizard based on user's selection in Step 1, not trusted from the AI output
+- `source.generated_at`: when the AI generated the response
 - `spaces[].projects`: nested inside spaces, every project belongs to exactly one space
 - `summaries[].space`: must reference a space name from the `spaces` array or an existing space
 - `memories[].space`: optional — global if omitted
@@ -120,29 +124,39 @@ Rules:
 
 ## Prompt Generation
 
-`GET /api/import/prompt` returns a plain text prompt built from a deterministic template + live Oyster context.
+`GET /api/import/prompt?provider={provider}` returns a plain text prompt built from a deterministic template + live Oyster context. The server derives the real mode from state — the AI's `mode` field in the response is advisory only.
 
 ### Template logic
 
-- **Fresh install** (no spaces): blank-slate prompt asking the AI to suggest full organisation
+- **Fresh install** (no user-created spaces): blank-slate prompt asking the AI to suggest full organisation
 - **Existing workspace**: augment prompt listing current spaces and known projects, asking AI to map into existing spaces and suggest additions
-- **Re-import**: includes `last_import_date` (stored as a key in SQLite `metadata` table or a simple JSON file at `~/.oyster/import-state.json`), asks AI to only include items newer than that date
+- **Re-import**: includes `last_import_date` (stored in `~/.oyster/import-state.json` per provider), asks AI to only include items newer than that date
 
 ### What the template includes
 
-- The JSON schema (so the AI knows the exact output format)
+- The exact JSON schema (so the AI knows the output format)
 - Existing space names (if any)
-- Existing project names per space (if any)
-- Last import timestamp (if any)
+- Existing project names per space (from previous imports — artifacts with `source_ref` matching `import:*`)
+- Last import timestamp for this provider (if any)
 - Instructions: durable items only, no prose, no one-off conversational details
+- Explicit instruction: output one valid JSON object only, no markdown fences, no prose before or after
+- Provider-specific wording where relevant
 
 ## Import Plan
 
-`POST /api/import/preview` accepts the raw pasted text and returns:
+`POST /api/import/preview` accepts the raw pasted text and selected provider, and returns:
 
 ```json
 {
   "plan_id": "imp_abc123",
+  "counts": {
+    "new": 4,
+    "merge": 1,
+    "skipped": 1
+  },
+  "warnings": [
+    "Space 'Build' already exists and will be merged."
+  ],
   "actions": [
     {
       "action_id": "act_1",
@@ -162,15 +176,17 @@ Rules:
       "space": "Work",
       "name": "KPS",
       "summary": "Main operating work.",
-      "status": "new"
+      "status": "new",
+      "depends_on": "act_1"
     },
     {
       "action_id": "act_4",
-      "type": "create_summary",
+      "type": "create_space_overview",
       "space": "Work",
       "title": "Work overview",
       "content": "Active focus is KPS and Digital Mart.",
-      "status": "new"
+      "status": "new",
+      "depends_on": "act_1"
     },
     {
       "action_id": "act_5",
@@ -190,12 +206,30 @@ Rules:
 }
 ```
 
-Action statuses:
+### Action types
+
+- `create_space` — create a new space
+- `create_project_summary` — create a notes artifact summarising a project within a space
+- `create_space_overview` — one per space, replaces if exists. The canonical summary of what a space is about.
+- `create_memory` — store a durable memory, optionally scoped to a space
+
+### Action statuses
+
 - `new` — will be created
-- `exists_will_merge` — space exists, projects/summaries will be added to it
+- `exists_will_merge` — space exists, projects/overviews will be added to it
 - `duplicate_skipped` — already exists, recommended to skip
 
-The plan is held in memory on the server (keyed by `plan_id`), valid for a short TTL (e.g. 10 minutes).
+### Action dependencies
+
+Actions can have a `depends_on` field referencing another action's `action_id`. This creates parent-child relationships:
+
+- If a user unticks a `create_space` action, the UI auto-unticks all actions that depend on it
+- The server rejects orphaned actions on execute (e.g. a project summary for a space that wasn't approved)
+- Exception: `exists_will_merge` spaces don't need to be ticked — the space already exists, so children are valid regardless
+
+### Plan TTL
+
+The plan is held in memory on the server (keyed by `plan_id`), valid for 10 minutes.
 
 ## Merge Rules
 
@@ -204,19 +238,23 @@ Every import is a merge. Rules per type:
 | Type | Match key | Behaviour |
 |------|-----------|-----------|
 | Space | Slug (normalised name) | If exists: merge projects into it. If new: create. |
-| Project summary | Space slug + project name | If exists in space: skip. If new: create notes artifact. |
-| Summary | Space slug + "summary" | One per space. If exists: replace content. If new: create. |
+| Project summary | Space slug + project name slug | If exists in space: skip. If new: create notes artifact. |
+| Space overview | Space slug + `source_ref` containing `overview` | One per space. If exists: replace content. If new: create. |
 | Memory | Exact content match in same scope | If exact match: skip. If new: create. |
+
+### "Known projects" definition
+
+The prompt includes existing project names per space. In V1, "known projects" = notes artifacts with `source_ref` matching `import:*` within the space. These are the project summaries created by previous imports. Not arbitrary artifacts.
 
 ## Provenance
 
 Every created item carries import provenance for dedup on re-import:
 
 - **Artifacts**: `source_origin: "ai_generated"`, `source_ref: "import:{provider}:{generated_at}"` (e.g. `import:chatgpt:2026-04-14T18:00:00Z`)
-- **Memories**: tagged with `import:{provider}:{generated_at}` (e.g. `import:chatgpt:2026-04-14`)
+- **Memories**: tagged with reserved prefix `_import:{provider}:{generated_at}` (e.g. `_import:chatgpt:2026-04-14`). The `_` prefix marks these as system tags — not displayed in the UI alongside semantic user tags.
 - **All items**: `imported_at` timestamp set at creation time (uses existing `created_at` field)
 
-On re-import, merge logic checks `source_ref` / tags before creating to avoid duplicates across import runs.
+On re-import, merge logic checks `source_ref` / `_import:*` tags before creating to avoid duplicates across import runs.
 
 ## Execution
 
@@ -249,9 +287,9 @@ Execution is best-effort:
 ### What gets created
 
 - **Spaces** → `spaceService.createSpace({ name })` (existing code)
-- **Project summaries** → `artifactService.createArtifact({ space_id, label: name, artifact_kind: "notes", content: summary, source_origin: "ai_generated" })`
-- **Summaries** → same as project summaries but with the summary title as label
-- **Memories** → `memoryProvider.remember({ content, tags, space_id })`
+- **Project summaries** → `artifactService.createArtifact({ space_id, label: name, artifact_kind: "notes", content: summary, source_origin: "ai_generated", source_ref: "import:{provider}:{generated_at}" })`
+- **Space overviews** → same as project summaries but with overview title as label, `source_ref` includes `overview` marker for dedup
+- **Memories** → `memoryProvider.remember({ content, tags: [...userTags, "_import:{provider}:{generated_at}"], space_id })`
 
 ## Privacy
 
