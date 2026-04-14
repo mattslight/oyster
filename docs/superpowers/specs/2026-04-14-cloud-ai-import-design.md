@@ -32,7 +32,7 @@ Three API endpoints:
 Banner appears on the surface with two CTAs:
 - "Import from AI" → opens the import wizard artifact
 - "Scan my machine" → placeholder for future local discovery (#108), disabled in V1
-- "skip for now" → dismisses banner (persisted in localStorage). The builtin "Import from AI" card remains on the surface for later use.
+- "skip for now" → dismisses, doesn't return
 
 Banner component: `web/src/components/OnboardingBanner.tsx` (new).
 Rendered by Desktop when `isFirstRun && !dismissed`.
@@ -45,31 +45,26 @@ Rendered by Desktop when `isFirstRun && !dismissed`.
 
 Self-contained HTML at `builtins/import-from-ai/src/index.html`. Three steps:
 
-### Step 1: Select provider & copy prompt
+### Step 1: Copy prompt
 
-- User selects their AI provider: ChatGPT, Claude, Gemini, Other
-- Page fetches `GET /api/import/prompt?provider={provider}`
-- Displays the generated prompt in a code block (prompt includes provider-specific wording and demands raw JSON only — no markdown fences, no prose before or after)
+- Page loads, fetches `GET /api/import/prompt`
+- Displays the generated prompt in a code block
 - "Copy to clipboard" button
-- Instruction: "Paste this into {provider}"
-- Selected provider is carried through to Step 2 for provenance
+- Instruction: "Paste this into ChatGPT, Claude, or Gemini"
 
 ### Step 2: Paste response
 
 - Textarea for the AI's JSON response
 - "Preview import" button
-- Sends `POST /api/import/preview` with the raw pasted text and selected provider
-- Server attempts three-stage JSON recovery before failing:
-  1. **Regex cleanup** (no tokens): strip markdown fences, leading/trailing prose, BOM
-  2. **AI repair** (cheap call): if still invalid, send to OpenCode with "Fix this JSON, return only valid JSON"
-  3. **Error**: if repair fails, show the parse error inline with the problematic section highlighted
-- The user almost never sees a parse failure
+- Sends `POST /api/import/preview` with the raw pasted text
+- Shows validation errors inline if JSON is malformed
 
 ### Step 3: Review & approve
 
-- Shows a summary: spaces with their projects, overview and memory counts
-- "Import everything" button (imports all non-skipped actions)
-- Sends `POST /api/import/execute` with `plan_id` and all non-skipped `action_ids`
+- Renders the import plan as a checklist
+- Each action has a checkbox (pre-checked for `new` and `exists_will_merge`, unchecked for `duplicate_skipped`)
+- "Import selected" button
+- Sends `POST /api/import/execute` with `plan_id` and `approved_action_ids`
 
 ### Post-import
 
@@ -116,50 +111,38 @@ What the user's AI outputs:
 
 Rules:
 - `schema_version`: always `1` for now
-- `mode`: advisory only — the AI outputs `"fresh"` or `"augment"` but the server derives the real mode from Oyster state (has spaces → augment, no spaces → fresh). The payload value is ignored for logic; it exists so the AI's intent is visible in the raw data.
-- `source.provider`: set by the wizard based on user's selection in Step 1, not trusted from the AI output
-- `source.generated_at`: best-effort — if missing or invalid, server falls back to import time for provenance and state tracking
+- `mode`: `"fresh"` or `"augment"` — set by the prompt, informs merge behaviour
+- `source`: provider name and when the AI generated the response
 - `spaces[].projects`: nested inside spaces, every project belongs to exactly one space
-- `summaries[]`: maps to `create_space_overview` actions in the import plan. Each summary becomes the canonical overview artifact for its space.
 - `summaries[].space`: must reference a space name from the `spaces` array or an existing space
 - `memories[].space`: optional — global if omitted
 - Parser must be forgiving: skip malformed items, don't reject the whole payload
 
 ## Prompt Generation
 
-`GET /api/import/prompt?provider={provider}` returns a plain text prompt built from a deterministic template + live Oyster context. The server derives the real mode from state — the AI's `mode` field in the response is advisory only.
+`GET /api/import/prompt` returns a plain text prompt built from a deterministic template + live Oyster context.
 
 ### Template logic
 
-- **Fresh install** (no user-created spaces): blank-slate prompt asking the AI to suggest full organisation
+- **Fresh install** (no spaces): blank-slate prompt asking the AI to suggest full organisation
 - **Existing workspace**: augment prompt listing current spaces and known projects, asking AI to map into existing spaces and suggest additions
-- **Re-import**: includes `last_import_date` (stored in `~/.oyster/import-state.json` per provider, written only after successful execute — not after preview), asks AI to only include items newer than that date
+- **Re-import**: includes `last_import_date` (stored as a key in SQLite `metadata` table or a simple JSON file at `~/.oyster/import-state.json`), asks AI to only include items newer than that date
 
 ### What the template includes
 
-- The exact JSON schema (so the AI knows the output format)
+- The JSON schema (so the AI knows the exact output format)
 - Existing space names (if any)
-- Existing project names per space (from previous imports — artifacts with `source_ref` matching `import:*`)
-- Last import timestamp for this provider (if any)
+- Existing project names per space (if any)
+- Last import timestamp (if any)
 - Instructions: durable items only, no prose, no one-off conversational details
-- Explicit instruction: output YAML only, no markdown fences, no prose before or after (YAML saves output tokens; the server converts to JSON via OpenCode)
-- Provider-specific wording where relevant
 
 ## Import Plan
 
-`POST /api/import/preview` accepts the raw pasted text and selected provider, and returns:
+`POST /api/import/preview` accepts the raw pasted text and returns:
 
 ```json
 {
   "plan_id": "imp_abc123",
-  "counts": {
-    "new": 4,
-    "merge": 1,
-    "skipped": 1
-  },
-  "warnings": [
-    "Space 'Build' already exists and will be merged."
-  ],
   "actions": [
     {
       "action_id": "act_1",
@@ -179,17 +162,15 @@ Rules:
       "space": "Work",
       "name": "KPS",
       "summary": "Main operating work.",
-      "status": "new",
-      "depends_on": "act_1"
+      "status": "new"
     },
     {
       "action_id": "act_4",
-      "type": "create_space_overview",
+      "type": "create_summary",
       "space": "Work",
       "title": "Work overview",
       "content": "Active focus is KPS and Digital Mart.",
-      "status": "new",
-      "depends_on": "act_1"
+      "status": "new"
     },
     {
       "action_id": "act_5",
@@ -209,30 +190,12 @@ Rules:
 }
 ```
 
-### Action types
-
-- `create_space` — create a new space
-- `create_project_summary` — create a notes artifact summarising a project within a space
-- `create_space_overview` — one per space, replaces if exists. The canonical summary of what a space is about.
-- `create_memory` — store a durable memory, optionally scoped to a space
-
-### Action statuses
-
+Action statuses:
 - `new` — will be created
-- `exists_will_merge` — space exists, projects/overviews will be added to it
+- `exists_will_merge` — space exists, projects/summaries will be added to it
 - `duplicate_skipped` — already exists, recommended to skip
 
-### Action dependencies
-
-Actions can have a `depends_on` field referencing another action's `action_id`. This creates parent-child relationships:
-
-- If a user unticks a `create_space` action, the UI auto-unticks all actions that depend on it
-- The server rejects orphaned actions on execute (e.g. a project summary for a space that wasn't approved)
-- Exception: `exists_will_merge` spaces don't need to be ticked — the space already exists, so children are valid regardless
-
-### Plan TTL
-
-The plan is held in memory on the server (keyed by `plan_id`), valid for 30 minutes.
+The plan is held in memory on the server (keyed by `plan_id`), valid for a short TTL (e.g. 10 minutes).
 
 ## Merge Rules
 
@@ -241,23 +204,19 @@ Every import is a merge. Rules per type:
 | Type | Match key | Behaviour |
 |------|-----------|-----------|
 | Space | Slug (normalised name) | If exists: merge projects into it. If new: create. |
-| Project summary | Space slug + project name slug | If exists in space: skip. If new: create notes artifact. |
-| Space overview | Space slug + `source_ref` containing `overview` | One per space. If exists: replace content. If new: create. |
+| Project summary | Space slug + project name | If exists in space: skip. If new: create notes artifact. |
+| Summary | Space slug + "summary" | One per space. If exists: replace content. If new: create. |
 | Memory | Exact content match in same scope | If exact match: skip. If new: create. |
-
-### "Known projects" definition
-
-The prompt includes existing project names per space. In V1, "known projects" = notes artifacts with `source_ref` matching `import:*` within the space. These are the project summaries created by previous imports. Not arbitrary artifacts.
 
 ## Provenance
 
 Every created item carries import provenance for dedup on re-import:
 
 - **Artifacts**: `source_origin: "ai_generated"`, `source_ref: "import:{provider}:{generated_at}"` (e.g. `import:chatgpt:2026-04-14T18:00:00Z`)
-- **Memories**: tagged with reserved prefix `_import:{provider}:{generated_at}` (e.g. `_import:chatgpt:2026-04-14`). The `_` prefix marks these as system tags — not displayed in the UI alongside semantic user tags.
+- **Memories**: tagged with `import:{provider}:{generated_at}` (e.g. `import:chatgpt:2026-04-14`)
 - **All items**: `imported_at` timestamp set at creation time (uses existing `created_at` field)
 
-On re-import, merge logic checks `source_ref` / `_import:*` tags before creating to avoid duplicates across import runs.
+On re-import, merge logic checks `source_ref` / tags before creating to avoid duplicates across import runs.
 
 ## Execution
 
@@ -290,9 +249,9 @@ Execution is best-effort:
 ### What gets created
 
 - **Spaces** → `spaceService.createSpace({ name })` (existing code)
-- **Project summaries** → `artifactService.createArtifact({ space_id, label: name, artifact_kind: "notes", content: summary, source_origin: "ai_generated", source_ref: "import:{provider}:{generated_at}" })`
-- **Space overviews** → same as project summaries but with overview title as label, `source_ref` includes `overview` marker for dedup
-- **Memories** → `memoryProvider.remember({ content, tags: [...userTags, "_import:{provider}:{generated_at}"], space_id })`
+- **Project summaries** → `artifactService.createArtifact({ space_id, label: name, artifact_kind: "notes", content: summary, source_origin: "ai_generated" })`
+- **Summaries** → same as project summaries but with the summary title as label
+- **Memories** → `memoryProvider.remember({ content, tags, space_id })`
 
 ## Privacy
 
@@ -326,7 +285,7 @@ Execution is best-effort:
 1. Fresh install → onboarding banner shows → click "Import from AI" → wizard opens
 2. Copy prompt → includes no existing spaces (fresh mode)
 3. Paste valid JSON → preview shows plan with checkboxes
-4. Approve → spaces, project summaries, space overviews, memories created
+4. Approve → spaces, project summaries, summaries, memories created
 5. Post-import → switches to first new space
 6. Run import again with same data → duplicates detected and skipped
 7. Existing user → prompt includes current spaces (augment mode)
