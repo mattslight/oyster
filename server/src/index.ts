@@ -29,6 +29,16 @@ import {
 } from "./artifact-detector.js";
 import { runStartupBackup } from "./backup.js";
 import {
+  generatePrompt,
+  parseImportJSON,
+  buildImportPlan,
+  executeImportPlan,
+  getPlan,
+  type PromptContext,
+  type PreviewDeps,
+  type ExecuteDeps,
+} from "./import.js";
+import {
   spawnOpenCodeServe,
   getOpenCodePort,
   markShuttingDown,
@@ -454,6 +464,110 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // ── Spaces API ──
 
   if (await handleSpacesRequest(url, req, res, spaceService)) return;
+
+  // ── Import routes ──
+
+  if (url.startsWith("/api/import/prompt") && req.method === "GET") {
+    const params = new URL(url, "http://localhost").searchParams;
+    const provider = params.get("provider") || "chatgpt";
+
+    const allSpaces = spaceStore.getAll()
+      .filter((s) => s.id !== "home" && s.id !== "__all__")
+      .map((s) => ({ id: s.id, displayName: s.display_name }));
+
+    const knownProjects = new Map<string, string[]>();
+    for (const s of allSpaces) {
+      const artifacts = store.getBySpaceId(s.id)
+        .filter((a) => a.source_ref?.startsWith("import:") && !a.removed_at);
+      if (artifacts.length > 0) {
+        knownProjects.set(s.id, artifacts.map((a) => a.label));
+      }
+    }
+
+    const prompt = generatePrompt({ provider, spaces: allSpaces, knownProjects });
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end(prompt);
+    return;
+  }
+
+  if (url === "/api/import/preview" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const { raw, provider } = JSON.parse(body) as { raw: string; provider: string };
+
+        const parseResult = await parseImportJSON(raw);
+        if (!parseResult.success || !parseResult.payload) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: parseResult.error }));
+          return;
+        }
+
+        const generatedAt = parseResult.payload.source?.generated_at || new Date().toISOString();
+
+        const previewDeps: PreviewDeps = {
+          getSpaceBySlug: (slug) => {
+            const row = spaceStore.getAll().find((s) => s.id === slug);
+            return row ? { id: row.id, displayName: row.display_name } : null;
+          },
+          getArtifactsBySpace: (spaceId) => {
+            return store.getBySpaceId(spaceId)
+              .filter((a) => !a.removed_at)
+              .map((a) => ({ source_ref: a.source_ref, label: a.label }));
+          },
+          findMemory: (content, spaceId) => {
+            return memoryProvider.findExact(content, spaceId ?? undefined);
+          },
+        };
+
+        const plan = buildImportPlan(parseResult.payload, provider, generatedAt, previewDeps);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(plan));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return;
+  }
+
+  if (url === "/api/import/execute" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const { plan_id, approved_action_ids } = JSON.parse(body) as {
+          plan_id: string;
+          approved_action_ids: string[];
+        };
+
+        if (!getPlan(plan_id)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Plan not found or expired" }));
+          return;
+        }
+
+        const executeDeps: ExecuteDeps = {
+          createSpace: (name) => spaceService.createSpace({ name }),
+          createArtifact: (params) => artifactService.createArtifact(params, USERLAND_DIR),
+          remember: (input) => memoryProvider.remember(input),
+          getSpaceBySlug: (slug) => {
+            const row = spaceStore.getAll().find((s) => s.id === slug);
+            return row ? { id: row.id } : null;
+          },
+        };
+
+        const result = await executeImportPlan(plan_id, approved_action_ids, executeDeps);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return;
+  }
 
   // ── No-op OAuth for MCP SDK (localhost only, no real auth) ──
 

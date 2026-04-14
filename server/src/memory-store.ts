@@ -159,6 +159,11 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     };
   }
 
+  findExact(content: string, spaceId?: string): boolean {
+    const sid = spaceId ?? null;
+    return !!(this.stmts.findExact.get(content, sid, sid) as MemoryRow | undefined);
+  }
+
   async remember(input: RememberInput): Promise<Memory> {
     const spaceId = input.space_id ?? null;
     const tags = JSON.stringify(input.tags ?? []);
