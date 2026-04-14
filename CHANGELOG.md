@@ -16,6 +16,14 @@
 - 60-second overview: prompt bar, slash commands, spaces, artifacts
 - Links to MCP connection guide and drop-to-import
 
+### Auto-backup
+
+- Userland auto-backed up on every startup to `~/oyster-backups/auto/`
+- One backup per day — repeated restarts reuse the same slot
+- Rotates to last 5 days of history
+- Runs before bootstrap/migration — captures pre-upgrade state
+- Best-effort: never crashes server startup
+
 ### Landing page updates
 
 - MCP section: real client-specific connection snippets with tabs
