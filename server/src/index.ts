@@ -89,6 +89,8 @@ const PROJECT_ROOT = PACKAGE_ROOT;
 // Installed → ~/.oyster/userland, dev → ./userland
 const USERLAND_DIR = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
 const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
+const OYSTER_HOME = join(homedir(), ".oyster");
+const PID_FILE = join(OYSTER_HOME, "oyster.pid");
 
 // ── MIME types ──
 
@@ -144,6 +146,10 @@ function bootstrapUserland() {
 
 bootstrapUserland();
 
+// ── PID file — written early so backup/restore CLI detects us during startup ──
+mkdirSync(OYSTER_HOME, { recursive: true });
+writeFileSync(PID_FILE, String(process.pid));
+
 // ── Auto-backup userland before touching the DB ──
 runStartupBackup(USERLAND_DIR);
 
@@ -192,7 +198,7 @@ startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DI
 
 function cleanup() {
   markShuttingDown();
-  try { unlinkSync(join(homedir(), ".oyster", "oyster.pid")); } catch {}
+  try { unlinkSync(PID_FILE); } catch {}
   db.close();
   memoryProvider.close();
   process.exit(0);
@@ -602,15 +608,11 @@ writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode
 
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
-const PID_FILE = join(homedir(), ".oyster", "oyster.pid");
 
 httpServer.listen(port, () => {
   console.log(`Oyster server listening on http://localhost:${port}`);
   console.log(`  WebSocket: ws://localhost:${port}`);
   console.log(`  API:       http://localhost:${port}/api/artifacts`);
-
-  // Write PID file so CLI commands (backup/restore) can detect a running server
-  writeFileSync(PID_FILE, String(process.pid));
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);

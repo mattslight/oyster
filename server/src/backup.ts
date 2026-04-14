@@ -7,8 +7,16 @@ const MAX_BACKUPS = 5;
 
 function getAppVersion(): string {
   try {
-    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json");
-    return JSON.parse(readFileSync(pkgPath, "utf8")).version;
+    let dir = dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 10; i++) {
+      const candidate = join(dir, "package.json");
+      if (existsSync(candidate)) {
+        const pkg = JSON.parse(readFileSync(candidate, "utf8"));
+        if (pkg.name === "oyster-os") return pkg.version;
+      }
+      dir = dirname(dir);
+    }
+    return "unknown";
   } catch {
     return "unknown";
   }
