@@ -30,7 +30,7 @@ import {
 import { runStartupBackup } from "./backup.js";
 import {
   generatePrompt,
-  parseImportJSON,
+  parseImportPayload,
   buildImportPlan,
   executeImportPlan,
   getPlan,
@@ -497,7 +497,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       try {
         const { raw, provider } = JSON.parse(body) as { raw: string; provider: string };
 
-        const parseResult = await parseImportJSON(raw);
+        const parseResult = await parseImportPayload(raw);
         if (!parseResult.success || !parseResult.payload) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: parseResult.error }));

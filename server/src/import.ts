@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { parse as parseYAML } from "yaml";
 
 // ── Types ──
 
@@ -115,36 +116,24 @@ export function writeImportDate(provider: string): void {
 
 // ── Prompt Generation ──
 
-const JSON_SCHEMA_EXAMPLE = `{
-  "schema_version": 1,
-  "mode": "fresh",
-  "source": {
-    "provider": "chatgpt",
-    "generated_at": "2026-04-14T18:00:00Z"
-  },
-  "spaces": [
-    {
-      "name": "Work",
-      "projects": [
-        { "name": "Project Name", "summary": "One sentence about this project." }
-      ]
-    }
-  ],
-  "summaries": [
-    {
-      "space": "Work",
-      "title": "Work overview",
-      "content": "2-3 sentences summarising this space."
-    }
-  ],
-  "memories": [
-    {
-      "content": "A durable fact, preference, or constraint worth remembering.",
-      "tags": ["preference"],
-      "space": "Work"
-    }
-  ]
-}`;
+const SCHEMA_EXAMPLE = `schema_version: 1
+mode: fresh
+source:
+  provider: chatgpt
+  generated_at: "2026-04-14T18:00:00Z"
+spaces:
+  - name: Work
+    projects:
+      - name: Project Name
+        summary: One sentence about this project.
+summaries:
+  - space: Work
+    title: Work overview
+    content: 2-3 sentences summarising this space.
+memories:
+  - content: A durable fact, preference, or constraint worth remembering.
+    tags: [preference]
+    space: Work`;
 
 export interface PromptContext {
   provider: string;
@@ -185,30 +174,23 @@ export function generatePrompt(ctx: PromptContext): string {
 - Memories: durable facts, preferences, or constraints. Not opinions or emotional colour from a single conversation.
 
 OUTPUT FORMAT:
-- Output one valid JSON object only.
-- No markdown fences. No prose before or after. No explanation.
+- Output YAML only. No markdown fences. No prose before or after. No explanation.
 - Set mode to "${mode}".
 - Set source.provider to "${ctx.provider}".
 - Set source.generated_at to the current time in ISO 8601 format.
 
-JSON SCHEMA:
-${JSON_SCHEMA_EXAMPLE}`;
+SCHEMA:
+${SCHEMA_EXAMPLE}`;
 
   return prompt;
 }
 
-// ── JSON Parsing & Recovery ──
+// ── Parsing (YAML/JSON + AI fallback) ──
 
-function stripMarkdownFences(raw: string): string {
-  let s = raw.trim();
-  s = s.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
-  const firstBrace = s.indexOf("{");
-  const lastBrace = s.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    s = s.slice(firstBrace, lastBrace + 1);
-  }
-  s = s.replace(/^\uFEFF/, "");
-  return s;
+function stripFences(raw: string): string {
+  let s = raw.trim().replace(/^\uFEFF/, "");
+  s = s.replace(/^```(?:json|yaml|yml)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
+  return s.trim();
 }
 
 export interface ParseResult {
@@ -218,32 +200,44 @@ export interface ParseResult {
   recovered?: boolean;
 }
 
-export async function parseImportJSON(
+export async function parseImportPayload(
   raw: string,
   aiRepairFn?: (broken: string) => Promise<string | null>,
 ): Promise<ParseResult> {
-  const cleaned = stripMarkdownFences(raw);
+  const cleaned = stripFences(raw);
+
+  // Try JSON first, then YAML (YAML is a superset of JSON so this order is safe)
+  try {
+    return { success: true, payload: JSON.parse(cleaned) as ImportPayload };
+  } catch {}
 
   try {
-    const parsed = JSON.parse(cleaned);
-    return { success: true, payload: parsed as ImportPayload };
-  } catch (e1) {
-    if (aiRepairFn) {
-      try {
-        const repaired = await aiRepairFn(cleaned);
-        if (repaired) {
-          const repairedCleaned = stripMarkdownFences(repaired);
-          const parsed = JSON.parse(repairedCleaned);
-          return { success: true, payload: parsed as ImportPayload, recovered: true };
-        }
-      } catch {}
+    const parsed = parseYAML(cleaned);
+    if (parsed && typeof parsed === "object") {
+      return { success: true, payload: parsed as ImportPayload };
     }
+  } catch {}
 
-    return {
-      success: false,
-      error: `Invalid JSON: ${(e1 as Error).message}`,
-    };
+  // Hand off to AI for repair
+  if (aiRepairFn) {
+    try {
+      const repaired = await aiRepairFn(cleaned);
+      if (repaired) {
+        const repairedCleaned = stripFences(repaired);
+        try {
+          return { success: true, payload: JSON.parse(repairedCleaned) as ImportPayload, recovered: true };
+        } catch {}
+        try {
+          const parsed = parseYAML(repairedCleaned);
+          if (parsed && typeof parsed === "object") {
+            return { success: true, payload: parsed as ImportPayload, recovered: true };
+          }
+        } catch {}
+      }
+    } catch {}
   }
+
+  return { success: false, error: "Could not parse the response. Check the format and try again." };
 }
 
 // ── Preview (Plan Building) ──

@@ -272,13 +272,13 @@
       </div>
 
       <div class="prompt-box">
-        <button class="copy-btn" onclick="copyPrompt(this)">copy</button>
         <div id="prompt-content"><div class="prompt-loading">Loading prompt...</div></div>
       </div>
       <p class="hint">This prompt is tailored to your workspace. Paste it into your AI of choice.</p>
 
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="goToStep(2)">Next</button>
+        <button class="btn btn-primary" onclick="copyPromptAndAdvance()">Copy prompt</button>
+        <button class="btn btn-secondary" onclick="goToStep(2)" style="font-size:13px">Next &rarr;</button>
       </div>
     </div>
 
@@ -343,11 +343,11 @@
       }
     }
 
-    function copyPrompt(btn) {
+    function copyPromptAndAdvance() {
+      const btn = document.querySelector('.btn-primary');
       navigator.clipboard.writeText(currentPrompt).then(() => {
-        btn.textContent = 'copied';
-        btn.classList.add('copied');
-        setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 2000);
+        btn.textContent = 'Copied!';
+        setTimeout(() => goToStep(2), 800);
       });
     }
 
