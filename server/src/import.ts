@@ -206,19 +206,19 @@ export async function parseImportPayload(
 ): Promise<ParseResult> {
   const cleaned = stripFences(raw);
 
-  // Try JSON first, then YAML (YAML is a superset of JSON so this order is safe)
+  // Try JSON first, then YAML
   try {
     return { success: true, payload: JSON.parse(cleaned) as ImportPayload };
   } catch {}
 
   try {
     const parsed = parseYAML(cleaned);
-    if (parsed && typeof parsed === "object") {
+    if (parsed && typeof parsed === "object" && (parsed as ImportPayload).spaces) {
       return { success: true, payload: parsed as ImportPayload };
     }
   } catch {}
 
-  // Hand off to AI for repair
+  // Hand off to AI for repair — this is the expected path for most real AI output
   if (aiRepairFn) {
     try {
       const repaired = await aiRepairFn(cleaned);

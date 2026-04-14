@@ -497,7 +497,38 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       try {
         const { raw, provider } = JSON.parse(body) as { raw: string; provider: string };
 
-        const parseResult = await parseImportPayload(raw);
+        const aiRepair = async (broken: string): Promise<string | null> => {
+          try {
+            const port = getOpenCodePort();
+            // Create a session
+            const sessRes = await fetch(`http://localhost:${port}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            const sess = await sessRes.json() as { id: string };
+            // Send repair message
+            const msgRes = await fetch(`http://localhost:${port}/session/${sess.id}/message`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: `Convert this text into valid JSON matching the Oyster import schema. Output ONLY the JSON, nothing else.\n\nThe schema has: schema_version (number), mode (string), source (object with provider and generated_at), spaces (array of {name, projects: [{name, summary}]}), summaries (array of {space, title, content}), memories (array of {content, tags, space}).\n\nText to convert:\n${broken.slice(0, 8000)}` }),
+            });
+            // Read the streamed response
+            const text = await msgRes.text();
+            // Extract assistant content from the SSE stream
+            const lines = text.split("\n").filter(l => l.startsWith("data: "));
+            for (const line of lines.reverse()) {
+              try {
+                const evt = JSON.parse(line.slice(6));
+                if (evt.type === "message.completed" || evt.type === "text") {
+                  const content = evt.content || evt.text || "";
+                  if (content.includes("{")) return content;
+                }
+              } catch {}
+            }
+          } catch (err) {
+            console.error("[import] AI repair failed:", err);
+          }
+          return null;
+        };
+
+        const parseResult = await parseImportPayload(raw, aiRepair);
         if (!parseResult.success || !parseResult.payload) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: parseResult.error }));
