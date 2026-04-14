@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,7 @@ import {
   clearSeenArtifact,
   inferName,
 } from "./artifact-detector.js";
+import { runStartupBackup } from "./backup.js";
 import {
   spawnOpenCodeServe,
   getOpenCodePort,
@@ -143,6 +144,9 @@ function bootstrapUserland() {
 
 bootstrapUserland();
 
+// ── Auto-backup userland before touching the DB ──
+runStartupBackup(USERLAND_DIR);
+
 // ── Clean environment (no OpenAI key leak to subprocesses) ──
 
 const cleanEnv: Record<string, string> = {};
@@ -186,8 +190,15 @@ startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
 });
 startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
-process.on("SIGTERM", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
-process.on("SIGINT", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
+function cleanup() {
+  markShuttingDown();
+  try { unlinkSync(join(homedir(), ".oyster", "oyster.pid")); } catch {}
+  db.close();
+  memoryProvider.close();
+  process.exit(0);
+}
+process.on("SIGTERM", cleanup);
+process.on("SIGINT", cleanup);
 
 // ── UI push events (SSE) ──
 
@@ -591,10 +602,15 @@ writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode
 
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
+const PID_FILE = join(homedir(), ".oyster", "oyster.pid");
+
 httpServer.listen(port, () => {
   console.log(`Oyster server listening on http://localhost:${port}`);
   console.log(`  WebSocket: ws://localhost:${port}`);
   console.log(`  API:       http://localhost:${port}/api/artifacts`);
+
+  // Write PID file so CLI commands (backup/restore) can detect a running server
+  writeFileSync(PID_FILE, String(process.pid));
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
