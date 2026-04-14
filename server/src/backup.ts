@@ -35,6 +35,14 @@ export function runStartupBackup(userlandDir: string): void {
   const autoDir = join(homedir(), "oyster-backups", "auto");
   mkdirSync(autoDir, { recursive: true });
 
+  // One backup per day — if today already has one, skip
+  const today = new Date().toISOString().slice(0, 10); // "2026-04-14"
+  const existing = readdirSync(autoDir).filter((e) => e.startsWith(`backup-${today}`));
+  if (existing.length > 0) {
+    console.log(`[backup] already backed up today (${existing[0]}), skipping`);
+    return;
+  }
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const dest = join(autoDir, `backup-${timestamp}`);
 
