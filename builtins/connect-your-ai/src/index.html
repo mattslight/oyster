@@ -218,10 +218,10 @@
 
     <div style="margin-bottom:12px">
       <div class="tab-track">
-        <button class="tab-btn active" onclick="showTab('claude')">Claude Code</button>
-        <button class="tab-btn" onclick="showTab('cursor')">Cursor</button>
-        <button class="tab-btn" onclick="showTab('vscode')">VS Code</button>
-        <button class="tab-btn" onclick="showTab('windsurf')">Windsurf</button>
+        <button class="tab-btn active" onclick="showTab('claude',this)">Claude Code</button>
+        <button class="tab-btn" onclick="showTab('cursor',this)">Cursor</button>
+        <button class="tab-btn" onclick="showTab('vscode',this)">VS Code</button>
+        <button class="tab-btn" onclick="showTab('windsurf',this)">Windsurf</button>
       </div>
     </div>
 
@@ -329,9 +329,9 @@
   }
 }`;
 
-    function showTab(name) {
+    function showTab(name, el) {
       document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
+      el.classList.add('active');
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       document.getElementById('panel-' + name).classList.add('active');
       document.getElementById('panel-label').textContent = labels[name];

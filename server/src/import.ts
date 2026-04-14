@@ -58,7 +58,7 @@ export interface ExecuteResult {
   counts: { created: number; failed: number };
 }
 
-// ── Plan Store (in-memory, TTL 10 min) ──
+// ── Plan Store (in-memory, TTL 30 min) ──
 
 const plans = new Map<string, { plan: ImportPlan; payload: ImportPayload; expires: number }>();
 const PLAN_TTL = 30 * 60 * 1000;
@@ -208,7 +208,7 @@ export async function parseImportPayload(
   // Fast path: already valid JSON
   try {
     const parsed = JSON.parse(cleaned);
-    if (parsed && Array.isArray(parsed.spaces)) {
+    if (parsed && typeof parsed === "object" && (Array.isArray(parsed.spaces) || Array.isArray(parsed.summaries) || Array.isArray(parsed.memories))) {
       return { success: true, payload: parsed as ImportPayload };
     }
   } catch (err) {
@@ -224,7 +224,7 @@ export async function parseImportPayload(
         console.log("[import] AI returned:", converted.slice(0, 200));
         const json = stripFences(converted);
         const parsed = JSON.parse(json);
-        if (parsed && Array.isArray(parsed.spaces)) {
+        if (parsed && typeof parsed === "object" && (Array.isArray(parsed.spaces) || Array.isArray(parsed.summaries) || Array.isArray(parsed.memories))) {
           return { success: true, payload: parsed as ImportPayload };
         }
         console.log("[import] AI response parsed but spaces is not an array");
@@ -315,12 +315,14 @@ export function buildImportPlan(
     if (!summary.space || !summary.content) continue;
     const slug = slugify(summary.space);
     const existing = deps.getSpaceBySlug(slug);
+    const parentActionId = spaceActionIds.get(summary.space);
+    // Skip if space doesn't exist and isn't being created in this import
+    if (!existing && !parentActionId) continue;
     const spaceId = existing?.id ?? slug;
     const existingArtifacts = deps.getArtifactsBySpace(spaceId);
     const hasOverview = existingArtifacts.some(
       (a) => a.source_ref?.includes("overview"),
     );
-    const parentActionId = spaceActionIds.get(summary.space);
 
     actions.push({
       action_id: nextId(),

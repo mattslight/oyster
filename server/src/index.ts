@@ -492,7 +492,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   if (url === "/api/import/preview" && req.method === "POST") {
     let body = "";
-    req.on("data", (chunk: Buffer) => (body += chunk));
+    req.on("data", (chunk: Buffer) => {
+      body += chunk;
+      if (body.length > 500_000) { res.writeHead(413); res.end("Payload too large"); req.destroy(); }
+    });
     req.on("end", async () => {
       try {
         const { raw, provider } = JSON.parse(body) as { raw: string; provider: string };
@@ -581,7 +584,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   if (url === "/api/import/execute" && req.method === "POST") {
     let body = "";
-    req.on("data", (chunk: Buffer) => (body += chunk));
+    req.on("data", (chunk: Buffer) => {
+      body += chunk;
+      if (body.length > 100_000) { res.writeHead(413); res.end("Payload too large"); req.destroy(); }
+    });
     req.on("end", async () => {
       try {
         const { plan_id, approved_action_ids } = JSON.parse(body) as {

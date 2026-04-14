@@ -613,15 +613,6 @@
         if (!detail) detail = 'Everything was already imported';
         document.getElementById('successDetail').textContent = detail + '.';
         go(4);
-        // Switch to first new space
-        const created = d.results.find(r => r.status === 'created' && plan.actions.find(a => a.action_id === r.action_id && a.type === 'create_space'));
-        if (created) {
-          const act = plan.actions.find(a => a.action_id === created.action_id);
-          if (act?.name) {
-            const slug = act.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-            try { window.parent.postMessage({ type: 'switch_space', space: slug }, '*'); } catch {}
-          }
-        }
       } catch { btn.innerHTML = 'Retry'; btn.disabled = false; }
     }
 
