@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import from AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      background: #0a0b14;
+      color: #c8c8d0;
+      min-height: 100vh;
+      padding: 60px 24px;
+      line-height: 1.6;
+    }
+    .page { max-width: 640px; margin: 0 auto; }
+
+    h1 { font-size: 28px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+    .subtitle { font-size: 15px; color: rgba(255,255,255,0.45); margin-bottom: 40px; }
+
+    /* Steps indicator */
+    .steps {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    .step-dot {
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.25);
+      cursor: default;
+    }
+    .step-dot.active { color: #7c6bff; }
+    .step-dot.done { color: rgba(124,107,255,0.5); }
+    .step-dot .num {
+      display: inline-flex;
+      width: 22px; height: 22px;
+      align-items: center; justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.1);
+      font-size: 11px;
+      margin-right: 6px;
+    }
+    .step-dot.active .num {
+      border-color: #7c6bff;
+      background: rgba(124,107,255,0.15);
+    }
+    .step-dot.done .num {
+      border-color: rgba(124,107,255,0.3);
+      background: rgba(124,107,255,0.1);
+    }
+
+    /* Panels */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Provider selector */
+    .providers {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .provider-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: rgba(255,255,255,0.5);
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .provider-btn:hover {
+      border-color: rgba(124,107,255,0.3);
+      color: rgba(255,255,255,0.8);
+    }
+    .provider-btn.selected {
+      border-color: #7c6bff;
+      background: rgba(124,107,255,0.12);
+      color: #fff;
+    }
+
+    /* Prompt display */
+    .prompt-box {
+      background: rgba(30,32,50,0.6);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 20px;
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .prompt-box pre {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #e0e0e8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .prompt-loading {
+      color: rgba(255,255,255,0.3);
+      font-size: 13px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: #7c6bff;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #6b5ce6; }
+    .btn-primary:disabled {
+      background: rgba(124,107,255,0.3);
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.6);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .btn-success {
+      background: #4ade80;
+      color: #000;
+      font-weight: 600;
+    }
+    .btn-success:hover { background: #3bc96e; }
+    .btn-row { display: flex; gap: 8px; margin-top: 16px; }
+
+    .copy-btn {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: rgba(124,107,255,0.15);
+      border: 1px solid rgba(124,107,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 11px;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: rgba(124,107,255,0.3); color: #fff; }
+    .copy-btn.copied { background: rgba(80,200,120,0.2); border-color: rgba(80,200,120,0.3); color: rgba(80,200,120,0.8); }
+
+    /* Textarea */
+    .paste-area {
+      width: 100%;
+      min-height: 200px;
+      background: rgba(30,32,50,0.6);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      color: #e0e0e8;
+      resize: vertical;
+      line-height: 1.5;
+    }
+    .paste-area:focus {
+      outline: none;
+      border-color: rgba(124,107,255,0.4);
+    }
+    .paste-area::placeholder { color: rgba(255,255,255,0.2); }
+
+    /* Error / warning */
+    .error { color: #f87171; font-size: 13px; margin-top: 8px; }
+    .warning { color: #fbbf24; font-size: 13px; margin-bottom: 12px; }
+
+    /* Counts */
+    .counts {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .count-badge {
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 6px;
+    }
+    .count-new { background: rgba(74,222,128,0.12); color: #4ade80; }
+    .count-merge { background: rgba(251,191,36,0.12); color: #fbbf24; }
+    .count-skip { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); }
+
+    /* Action list */
+    .action-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .action-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+      font-size: 13px;
+    }
+    .action-item.indent { margin-left: 28px; }
+    .action-item input[type="checkbox"] { accent-color: #7c6bff; margin-top: 3px; flex-shrink: 0; }
+    .action-type {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: rgba(124,107,255,0.7);
+      min-width: 90px;
+      flex-shrink: 0;
+    }
+    .action-label { color: rgba(255,255,255,0.7); flex: 1; }
+    .action-status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .status-new { background: rgba(74,222,128,0.1); color: #4ade80; }
+    .status-merge { background: rgba(251,191,36,0.1); color: #fbbf24; }
+    .status-skip { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.3); }
+
+    /* Success */
+    .success-msg {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .success-msg h2 { font-size: 22px; color: #4ade80; margin-bottom: 8px; }
+    .success-msg p { color: rgba(255,255,255,0.5); font-size: 14px; margin-bottom: 24px; }
+
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(124,107,255,0.3);
+      border-top-color: #7c6bff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hint { font-size: 12px; color: rgba(255,255,255,0.3); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Import from AI</h1>
+    <p class="subtitle">Bring your projects and context from ChatGPT, Claude, or Gemini.</p>
+
+    <div class="steps">
+      <span class="step-dot active" id="step1-dot"><span class="num">1</span>Copy prompt</span>
+      <span class="step-dot" id="step2-dot"><span class="num">2</span>Paste response</span>
+      <span class="step-dot" id="step3-dot"><span class="num">3</span>Review</span>
+    </div>
+
+    <!-- Step 1: Provider + Copy -->
+    <div class="panel active" id="panel-step1">
+      <div class="providers">
+        <button class="provider-btn selected" onclick="selectProvider('chatgpt', this)">ChatGPT</button>
+        <button class="provider-btn" onclick="selectProvider('claude', this)">Claude</button>
+        <button class="provider-btn" onclick="selectProvider('gemini', this)">Gemini</button>
+        <button class="provider-btn" onclick="selectProvider('other', this)">Other</button>
+      </div>
+
+      <div class="prompt-box">
+        <button class="copy-btn" onclick="copyPrompt(this)">copy</button>
+        <div id="prompt-content"><div class="prompt-loading">Loading prompt...</div></div>
+      </div>
+      <p class="hint">This prompt is tailored to your workspace. Paste it into your AI of choice.</p>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="goToStep(2)">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Paste -->
+    <div class="panel" id="panel-step2">
+      <textarea class="paste-area" id="paste-input" placeholder="Paste your AI's response here..."></textarea>
+      <div id="parse-error" class="error" style="display:none"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(1)">Back</button>
+        <button class="btn btn-primary" id="preview-btn" onclick="previewImport()">Preview import</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Review -->
+    <div class="panel" id="panel-step3">
+      <div id="plan-warnings"></div>
+      <div id="plan-counts" class="counts"></div>
+      <div id="plan-actions" class="action-list"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(2)">Back</button>
+        <button class="btn btn-success" id="import-btn" onclick="executeImport()">Import selected</button>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div class="panel" id="panel-success">
+      <div class="success-msg">
+        <h2>Import complete</h2>
+        <p id="success-detail"></p>
+        <button class="btn btn-primary" onclick="window.location.reload()">Import more</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const origin = window.location.origin;
+    let selectedProvider = 'chatgpt';
+    let currentPrompt = '';
+    let currentPlan = null;
+
+    // Load prompt on page load
+    loadPrompt();
+
+    function selectProvider(provider, btn) {
+      selectedProvider = provider;
+      document.querySelectorAll('.provider-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      loadPrompt();
+    }
+
+    async function loadPrompt() {
+      const el = document.getElementById('prompt-content');
+      el.innerHTML = '<div class="prompt-loading">Loading prompt...</div>';
+      try {
+        const res = await fetch(`${origin}/api/import/prompt?provider=${selectedProvider}`);
+        currentPrompt = await res.text();
+        el.innerHTML = `<pre>${escapeHtml(currentPrompt)}</pre>`;
+      } catch (err) {
+        el.innerHTML = `<div class="prompt-loading">Failed to load prompt</div>`;
+      }
+    }
+
+    function copyPrompt(btn) {
+      navigator.clipboard.writeText(currentPrompt).then(() => {
+        btn.textContent = 'copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+
+    function goToStep(step) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(`panel-step${step}`).classList.add('active');
+
+      for (let i = 1; i <= 3; i++) {
+        const dot = document.getElementById(`step${i}-dot`);
+        dot.className = 'step-dot';
+        if (i < step) dot.classList.add('done');
+        if (i === step) dot.classList.add('active');
+      }
+    }
+
+    async function previewImport() {
+      const raw = document.getElementById('paste-input').value.trim();
+      if (!raw) return;
+
+      const btn = document.getElementById('preview-btn');
+      const errEl = document.getElementById('parse-error');
+      btn.innerHTML = '<span class="spinner"></span>Previewing...';
+      btn.disabled = true;
+      errEl.style.display = 'none';
+
+      try {
+        const res = await fetch(`${origin}/api/import/preview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw, provider: selectedProvider }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          errEl.textContent = data.error || 'Preview failed';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        currentPlan = data;
+        renderPlan(data);
+        goToStep(3);
+      } catch (err) {
+        errEl.textContent = 'Network error: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.innerHTML = 'Preview import';
+        btn.disabled = false;
+      }
+    }
+
+    function renderPlan(plan) {
+      // Warnings
+      const warnEl = document.getElementById('plan-warnings');
+      warnEl.innerHTML = plan.warnings.map(w => `<div class="warning">${escapeHtml(w)}</div>`).join('');
+
+      // Counts
+      const countsEl = document.getElementById('plan-counts');
+      countsEl.innerHTML = `
+        <span class="count-badge count-new">${plan.counts.new} new</span>
+        <span class="count-badge count-merge">${plan.counts.merge} merge</span>
+        <span class="count-badge count-skip">${plan.counts.skipped} skipped</span>
+      `;
+
+      // Actions
+      const actionsEl = document.getElementById('plan-actions');
+      actionsEl.innerHTML = plan.actions.map(a => {
+        const checked = a.status !== 'duplicate_skipped' ? 'checked' : '';
+        const indent = a.depends_on ? ' indent' : '';
+        const statusClass = a.status === 'new' ? 'status-new' : a.status === 'exists_will_merge' ? 'status-merge' : 'status-skip';
+        const statusLabel = a.status === 'new' ? 'new' : a.status === 'exists_will_merge' ? 'merge' : 'skip';
+        const label = a.name || a.title || a.content?.slice(0, 60) || '';
+        const typeLabel = a.type.replace(/_/g, ' ');
+
+        return `<div class="action-item${indent}">
+          <input type="checkbox" ${checked} data-id="${a.action_id}" data-depends="${a.depends_on || ''}" onchange="handleCheck(this)">
+          <span class="action-type">${typeLabel}</span>
+          <span class="action-label">${escapeHtml(label)}</span>
+          <span class="action-status ${statusClass}">${statusLabel}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function handleCheck(cb) {
+      const id = cb.dataset.id;
+      if (!cb.checked) {
+        // Untick children
+        document.querySelectorAll(`input[data-depends="${id}"]`).forEach(child => {
+          child.checked = false;
+        });
+      }
+    }
+
+    async function executeImport() {
+      if (!currentPlan) return;
+
+      const approved = [];
+      document.querySelectorAll('#plan-actions input[type="checkbox"]:checked').forEach(cb => {
+        approved.push(cb.dataset.id);
+      });
+
+      const btn = document.getElementById('import-btn');
+      btn.innerHTML = '<span class="spinner"></span>Importing...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${origin}/api/import/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan_id: currentPlan.plan_id, approved_action_ids: approved }),
+        });
+
+        const data = await res.json();
+
+        // Show success
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('panel-success').classList.add('active');
+
+        const detail = document.getElementById('success-detail');
+        const failed = data.counts.failed;
+        detail.textContent = `${data.counts.created} items created${failed ? `, ${failed} failed` : ''}.`;
+
+        // Find first created space to switch to
+        const createdSpace = data.results.find(r => r.status === 'created' && currentPlan.actions.find(a => a.action_id === r.action_id && a.type === 'create_space'));
+        if (createdSpace) {
+          const action = currentPlan.actions.find(a => a.action_id === createdSpace.action_id);
+          if (action?.name) {
+            const slug = action.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            // Navigate parent to the new space
+            try { window.parent.postMessage({ type: 'switch_space', space: slug }, '*'); } catch {}
+          }
+        }
+      } catch (err) {
+        btn.innerHTML = 'Import failed - try again';
+        btn.disabled = false;
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
