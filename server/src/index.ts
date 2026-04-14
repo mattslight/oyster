@@ -142,10 +142,10 @@ function bootstrapUserland() {
   }
 }
 
-bootstrapUserland();
-
-// ── Auto-backup userland before touching the DB ──
+// ── Auto-backup userland before bootstrap/upgrade and before touching the DB ──
 runStartupBackup(USERLAND_DIR);
+
+bootstrapUserland();
 
 // ── Clean environment (no OpenAI key leak to subprocesses) ──
 
