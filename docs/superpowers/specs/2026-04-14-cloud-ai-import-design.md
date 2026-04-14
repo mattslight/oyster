@@ -59,8 +59,11 @@ Self-contained HTML at `builtins/import-from-ai/src/index.html`. Three steps:
 - Textarea for the AI's JSON response
 - "Preview import" button
 - Sends `POST /api/import/preview` with the raw pasted text and selected provider
-- Strips markdown fences (```json ... ```) if present — AIs frequently wrap JSON despite being told not to
-- Shows validation errors inline if JSON is malformed
+- Server attempts three-stage JSON recovery before failing:
+  1. **Regex cleanup** (no tokens): strip markdown fences, leading/trailing prose, BOM
+  2. **AI repair** (cheap call): if still invalid, send to OpenCode with "Fix this JSON, return only valid JSON"
+  3. **Error**: if repair fails, show the parse error inline with the problematic section highlighted
+- The user almost never sees a parse failure
 
 ### Step 3: Review & approve
 
