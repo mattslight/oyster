@@ -119,8 +119,9 @@ Rules:
 - `schema_version`: always `1` for now
 - `mode`: advisory only — the AI outputs `"fresh"` or `"augment"` but the server derives the real mode from Oyster state (has spaces → augment, no spaces → fresh). The payload value is ignored for logic; it exists so the AI's intent is visible in the raw data.
 - `source.provider`: set by the wizard based on user's selection in Step 1, not trusted from the AI output
-- `source.generated_at`: when the AI generated the response
+- `source.generated_at`: best-effort — if missing or invalid, server falls back to import time for provenance and state tracking
 - `spaces[].projects`: nested inside spaces, every project belongs to exactly one space
+- `summaries[]`: maps to `create_space_overview` actions in the import plan. Each summary becomes the canonical overview artifact for its space.
 - `summaries[].space`: must reference a space name from the `spaces` array or an existing space
 - `memories[].space`: optional — global if omitted
 - Parser must be forgiving: skip malformed items, don't reject the whole payload
@@ -133,7 +134,7 @@ Rules:
 
 - **Fresh install** (no user-created spaces): blank-slate prompt asking the AI to suggest full organisation
 - **Existing workspace**: augment prompt listing current spaces and known projects, asking AI to map into existing spaces and suggest additions
-- **Re-import**: includes `last_import_date` (stored in `~/.oyster/import-state.json` per provider), asks AI to only include items newer than that date
+- **Re-import**: includes `last_import_date` (stored in `~/.oyster/import-state.json` per provider, written only after successful execute — not after preview), asks AI to only include items newer than that date
 
 ### What the template includes
 
@@ -326,7 +327,7 @@ Execution is best-effort:
 1. Fresh install → onboarding banner shows → click "Import from AI" → wizard opens
 2. Copy prompt → includes no existing spaces (fresh mode)
 3. Paste valid JSON → preview shows plan with checkboxes
-4. Approve → spaces, project summaries, summaries, memories created
+4. Approve → spaces, project summaries, space overviews, memories created
 5. Post-import → switches to first new space
 6. Run import again with same data → duplicates detected and skipped
 7. Existing user → prompt includes current spaces (augment mode)
