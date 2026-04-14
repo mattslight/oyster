@@ -605,6 +605,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           createSpace: (name) => spaceService.createSpace({ name }),
           createArtifact: (params) => artifactService.createArtifact(params, USERLAND_DIR),
           remember: (input) => memoryProvider.remember(input),
+          findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
           getSpaceBySlug: (slug) => {
             const row = spaceStore.getAll().find((s) => s.id === slug);
             return row ? { id: row.id } : null;

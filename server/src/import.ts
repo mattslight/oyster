@@ -270,6 +270,7 @@ export function buildImportPlan(
   for (const space of payload.spaces ?? []) {
     if (!space.name) continue;
     const slug = slugify(space.name);
+    if (!slug) continue;
     const existing = deps.getSpaceBySlug(slug);
     const actionId = nextId();
     spaceActionIds.set(space.name, actionId);
@@ -376,6 +377,7 @@ export interface ExecuteDeps {
     source_ref: string;
   }) => Promise<{ id: string }>;
   remember: (input: { content: string; space_id?: string; tags?: string[] }) => Promise<{ id: string }>;
+  findMemory: (content: string, spaceId: string | null) => boolean;
   getSpaceBySlug: (slug: string) => { id: string } | null;
 }
 
@@ -472,14 +474,19 @@ export async function executeImportPlan(
           const spaceId = spaceSlug
             ? resolveSpaceId(action.space!, createdSpaces, deps)
             : undefined;
-          const importTag = `_import:${plan.provider}:${plan.generated_at.slice(0, 10)}`;
-          const tags = [...(action.tags || []), importTag];
-          await deps.remember({
-            content: action.content!,
-            space_id: spaceId,
-            tags,
-          });
-          results.push({ action_id: action.action_id, status: "created" });
+          // Check if already exists before creating
+          if (deps.findMemory && deps.findMemory(action.content!, spaceId ?? null)) {
+            results.push({ action_id: action.action_id, status: "skipped" });
+          } else {
+            const importTag = `_import:${plan.provider}:${plan.generated_at.slice(0, 10)}`;
+            const tags = [...(action.tags || []), importTag];
+            await deps.remember({
+              content: action.content!,
+              space_id: spaceId,
+              tags,
+            });
+            results.push({ action_id: action.action_id, status: "created" });
+          }
           break;
         }
       }

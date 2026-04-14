@@ -67,10 +67,9 @@ Self-contained HTML at `builtins/import-from-ai/src/index.html`. Three steps:
 
 ### Step 3: Review & approve
 
-- Renders the import plan as a checklist
-- Each action has a checkbox (pre-checked for `new` and `exists_will_merge`, unchecked for `duplicate_skipped`)
-- "Import selected" button
-- Sends `POST /api/import/execute` with `plan_id` and `approved_action_ids`
+- Shows a summary: spaces with their projects, overview and memory counts
+- "Import everything" button (imports all non-skipped actions)
+- Sends `POST /api/import/execute` with `plan_id` and all non-skipped `action_ids`
 
 ### Post-import
 
@@ -143,7 +142,7 @@ Rules:
 - Existing project names per space (from previous imports — artifacts with `source_ref` matching `import:*`)
 - Last import timestamp for this provider (if any)
 - Instructions: durable items only, no prose, no one-off conversational details
-- Explicit instruction: output one valid JSON object only, no markdown fences, no prose before or after
+- Explicit instruction: output YAML only, no markdown fences, no prose before or after (YAML saves output tokens; the server converts to JSON via OpenCode)
 - Provider-specific wording where relevant
 
 ## Import Plan
@@ -233,7 +232,7 @@ Actions can have a `depends_on` field referencing another action's `action_id`. 
 
 ### Plan TTL
 
-The plan is held in memory on the server (keyed by `plan_id`), valid for 10 minutes.
+The plan is held in memory on the server (keyed by `plan_id`), valid for 30 minutes.
 
 ## Merge Rules
 
