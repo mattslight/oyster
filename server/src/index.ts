@@ -497,38 +497,54 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       try {
         const { raw, provider } = JSON.parse(body) as { raw: string; provider: string };
 
-        const aiRepair = async (broken: string): Promise<string | null> => {
+        const convertFn = async (text: string): Promise<string | null> => {
           try {
             const port = getOpenCodePort();
-            // Create a session
-            const sessRes = await fetch(`http://localhost:${port}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            if (!port) {
+              console.log("[import] OpenCode not ready yet");
+              return null;
+            }
+
+            const sessRes = await fetch(`http://localhost:${port}/session`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
             const sess = await sessRes.json() as { id: string };
-            // Send repair message
+            console.log("[import] OpenCode session:", sess.id);
+
+            const prompt = `Convert this text into valid JSON. Output ONLY the raw JSON object, nothing else. No markdown fences. No explanation.\n\nRequired schema:\n{\n  "schema_version": 1,\n  "mode": "fresh" | "augment",\n  "source": { "provider": "string", "generated_at": "ISO string" },\n  "spaces": [{ "name": "string", "projects": [{ "name": "string", "summary": "string" }] }],\n  "summaries": [{ "space": "string", "title": "string", "content": "string" }],\n  "memories": [{ "content": "string", "tags": ["string"], "space": "string" }]\n}\n\nText to convert:\n${text.slice(0, 12000)}`;
+
             const msgRes = await fetch(`http://localhost:${port}/session/${sess.id}/message`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ content: `Convert this text into valid JSON matching the Oyster import schema. Output ONLY the JSON, nothing else.\n\nThe schema has: schema_version (number), mode (string), source (object with provider and generated_at), spaces (array of {name, projects: [{name, summary}]}), summaries (array of {space, title, content}), memories (array of {content, tags, space}).\n\nText to convert:\n${broken.slice(0, 8000)}` }),
+              body: JSON.stringify({ parts: [{ type: "text", text: prompt }], agent: "oyster" }),
             });
-            // Read the streamed response
-            const text = await msgRes.text();
-            // Extract assistant content from the SSE stream
-            const lines = text.split("\n").filter(l => l.startsWith("data: "));
-            for (const line of lines.reverse()) {
-              try {
-                const evt = JSON.parse(line.slice(6));
-                if (evt.type === "message.completed" || evt.type === "text") {
-                  const content = evt.content || evt.text || "";
-                  if (content.includes("{")) return content;
-                }
-              } catch {}
+
+            const resBody = await msgRes.json() as {
+              info?: { error?: unknown };
+              parts?: Array<{ type: string; text?: string }>;
+            };
+
+            if (resBody.info?.error) {
+              console.error("[import] OpenCode error:", JSON.stringify(resBody.info.error).slice(0, 300));
+              return null;
             }
+
+            for (const part of resBody.parts ?? []) {
+              if (part.type === "text" && part.text?.includes("{")) {
+                console.log("[import] AI conversion succeeded, length:", part.text.length);
+                return part.text;
+              }
+            }
+            console.log("[import] OpenCode returned", resBody.parts?.length ?? 0, "parts, none with JSON");
           } catch (err) {
-            console.error("[import] AI repair failed:", err);
+            console.error("[import] AI conversion failed:", err);
           }
           return null;
         };
 
-        const parseResult = await parseImportPayload(raw, aiRepair);
+        const parseResult = await parseImportPayload(raw, convertFn);
         if (!parseResult.success || !parseResult.payload) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: parseResult.error }));

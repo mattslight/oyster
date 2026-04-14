@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { parse as parseYAML } from "yaml";
 
 // ── Types ──
 
@@ -62,7 +61,7 @@ export interface ExecuteResult {
 // ── Plan Store (in-memory, TTL 10 min) ──
 
 const plans = new Map<string, { plan: ImportPlan; payload: ImportPayload; expires: number }>();
-const PLAN_TTL = 10 * 60 * 1000;
+const PLAN_TTL = 30 * 60 * 1000;
 
 export function storePlan(plan: ImportPlan, payload: ImportPayload): void {
   plans.set(plan.plan_id, { plan, payload, expires: Date.now() + PLAN_TTL });
@@ -202,42 +201,44 @@ export interface ParseResult {
 
 export async function parseImportPayload(
   raw: string,
-  aiRepairFn?: (broken: string) => Promise<string | null>,
+  convertFn?: (text: string) => Promise<string | null>,
 ): Promise<ParseResult> {
   const cleaned = stripFences(raw);
 
-  // Try JSON first, then YAML
+  // Fast path: already valid JSON
   try {
-    return { success: true, payload: JSON.parse(cleaned) as ImportPayload };
-  } catch {}
-
-  try {
-    const parsed = parseYAML(cleaned);
-    if (parsed && typeof parsed === "object" && (parsed as ImportPayload).spaces) {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && Array.isArray(parsed.spaces)) {
       return { success: true, payload: parsed as ImportPayload };
     }
-  } catch {}
-
-  // Hand off to AI for repair — this is the expected path for most real AI output
-  if (aiRepairFn) {
-    try {
-      const repaired = await aiRepairFn(cleaned);
-      if (repaired) {
-        const repairedCleaned = stripFences(repaired);
-        try {
-          return { success: true, payload: JSON.parse(repairedCleaned) as ImportPayload, recovered: true };
-        } catch {}
-        try {
-          const parsed = parseYAML(repairedCleaned);
-          if (parsed && typeof parsed === "object") {
-            return { success: true, payload: parsed as ImportPayload, recovered: true };
-          }
-        } catch {}
-      }
-    } catch {}
+  } catch (err) {
+    console.log("[import] JSON parse failed:", (err as Error).message);
   }
 
-  return { success: false, error: "Could not parse the response. Check the format and try again." };
+  // Convert through AI — the expected path for most real AI output
+  if (convertFn) {
+    try {
+      console.log("[import] Sending to AI for conversion...");
+      const converted = await convertFn(cleaned);
+      if (converted) {
+        console.log("[import] AI returned:", converted.slice(0, 200));
+        const json = stripFences(converted);
+        const parsed = JSON.parse(json);
+        if (parsed && Array.isArray(parsed.spaces)) {
+          return { success: true, payload: parsed as ImportPayload };
+        }
+        console.log("[import] AI response parsed but spaces is not an array");
+      } else {
+        console.log("[import] AI conversion returned null");
+      }
+    } catch (err) {
+      console.error("[import] AI conversion error:", err);
+    }
+  } else {
+    console.log("[import] No convertFn provided");
+  }
+
+  return { success: false, error: "Could not parse the response. Try pasting the full output from your AI." };
 }
 
 // ── Preview (Plan Building) ──
@@ -481,11 +482,12 @@ export async function executeImportPlan(
         }
       }
     } catch (err) {
-      results.push({
-        action_id: action.action_id,
-        status: "failed",
-        error: (err as Error).message,
-      });
+      const msg = (err as Error).message;
+      if (msg.includes("already exists")) {
+        results.push({ action_id: action.action_id, status: "skipped" });
+      } else {
+        results.push({ action_id: action.action_id, status: "failed", error: msg });
+      }
     }
   }
 

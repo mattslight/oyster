@@ -14,9 +14,8 @@
     "better-sqlite3": "^12.8.0",
     "marked": "^17.0.4",
     "node-pty": "1.0.0",
-    "opencode-ai": "^1.2.26",
-    "ws": "^8.18.0",
-    "yaml": "^2.8.3"
+    "opencode-ai": "^1.4.3",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

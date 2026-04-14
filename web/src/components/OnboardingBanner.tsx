@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 interface Props {
   onImportFromAI: () => void;
   onDismiss: () => void;

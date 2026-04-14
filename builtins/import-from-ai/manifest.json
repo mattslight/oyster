@@ -1,7 +1,7 @@
 {
   "id": "import-from-ai",
   "name": "Import from AI",
-  "type": "notes",
+  "type": "app",
   "runtime": "static",
   "entrypoint": "src/index.html",
   "ports": [],
