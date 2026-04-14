@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
 import { spawn, execSync } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { createManualBackup, restoreBackup, resolveUserlandDir } from "./backup-utils.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
@@ -82,25 +81,6 @@ function runLogin(opencodeBin) {
 // ── Main ──
 
 async function main() {
-  const command = process.argv[2];
-
-  if (command === "backup") {
-    const userlandDir = resolveUserlandDir();
-    createManualBackup(userlandDir);
-    process.exit(0);
-  }
-
-  if (command === "restore") {
-    const sourcePath = process.argv[3];
-    if (!sourcePath) {
-      console.error("\n  Usage: oyster restore <backup-path>\n");
-      process.exit(1);
-    }
-    const userlandDir = resolveUserlandDir();
-    restoreBackup(resolve(sourcePath), userlandDir);
-    process.exit(0);
-  }
-
   const env = getEnvVars();
   const opencodeBin = findOpenCodeBin();
 

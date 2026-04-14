@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, unlinkSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,8 +89,6 @@ const PROJECT_ROOT = PACKAGE_ROOT;
 // Installed → ~/.oyster/userland, dev → ./userland
 const USERLAND_DIR = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
 const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
-const OYSTER_HOME = join(homedir(), ".oyster");
-const PID_FILE = join(OYSTER_HOME, "oyster.pid");
 
 // ── MIME types ──
 
@@ -146,10 +144,6 @@ function bootstrapUserland() {
 
 bootstrapUserland();
 
-// ── PID file — written early so backup/restore CLI detects us during startup ──
-mkdirSync(OYSTER_HOME, { recursive: true });
-writeFileSync(PID_FILE, String(process.pid));
-
 // ── Auto-backup userland before touching the DB ──
 runStartupBackup(USERLAND_DIR);
 
@@ -196,16 +190,8 @@ startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
 });
 startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
-function cleanup() {
-  markShuttingDown();
-  try { unlinkSync(PID_FILE); } catch {}
-  db.close();
-  memoryProvider.close();
-  process.exit(0);
-}
-process.on("SIGTERM", cleanup);
-process.on("SIGINT", cleanup);
-process.on("exit", () => { try { unlinkSync(PID_FILE); } catch {} });
+process.on("SIGTERM", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
+process.on("SIGINT", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
 
 // ── UI push events (SSE) ──
 
