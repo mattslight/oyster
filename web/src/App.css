@@ -2543,3 +2543,67 @@ select.add-space-input { appearance: none; cursor: pointer; }
   text-align: left;
 }
 .add-space-ambiguous-option:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+/* ── Onboarding Banner ── */
+
+.onboarding-banner {
+  display: flex;
+  justify-content: center;
+  padding: 32px 16px 0;
+}
+.onboarding-banner-content {
+  max-width: 440px;
+  background: rgba(124, 107, 255, 0.06);
+  border: 1px solid rgba(124, 107, 255, 0.15);
+  border-radius: 16px;
+  padding: 28px 32px;
+  text-align: center;
+}
+.onboarding-banner-content h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.onboarding-banner-content p {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 20px;
+}
+.onboarding-banner-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.onboarding-btn-primary {
+  background: #7c6bff;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+.onboarding-btn-primary:hover { background: #6b5ce6; }
+.onboarding-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.4);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: not-allowed;
+  font-family: inherit;
+}
+.onboarding-dismiss {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.onboarding-dismiss:hover { color: rgba(255, 255, 255, 0.5); }

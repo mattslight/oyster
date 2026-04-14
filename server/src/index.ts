@@ -29,6 +29,16 @@ import {
 } from "./artifact-detector.js";
 import { runStartupBackup } from "./backup.js";
 import {
+  generatePrompt,
+  parseImportPayload,
+  buildImportPlan,
+  executeImportPlan,
+  getPlan,
+  type PromptContext,
+  type PreviewDeps,
+  type ExecuteDeps,
+} from "./import.js";
+import {
   spawnOpenCodeServe,
   getOpenCodePort,
   markShuttingDown,
@@ -454,6 +464,164 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // ── Spaces API ──
 
   if (await handleSpacesRequest(url, req, res, spaceService)) return;
+
+  // ── Import routes ──
+
+  if (url.startsWith("/api/import/prompt") && req.method === "GET") {
+    const params = new URL(url, "http://localhost").searchParams;
+    const provider = params.get("provider") || "chatgpt";
+
+    const allSpaces = spaceStore.getAll()
+      .filter((s) => s.id !== "home" && s.id !== "__all__")
+      .map((s) => ({ id: s.id, displayName: s.display_name }));
+
+    const knownProjects = new Map<string, string[]>();
+    for (const s of allSpaces) {
+      const artifacts = store.getBySpaceId(s.id)
+        .filter((a) => a.source_ref?.startsWith("import:") && !a.removed_at);
+      if (artifacts.length > 0) {
+        knownProjects.set(s.id, artifacts.map((a) => a.label));
+      }
+    }
+
+    const prompt = generatePrompt({ provider, spaces: allSpaces, knownProjects });
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end(prompt);
+    return;
+  }
+
+  if (url === "/api/import/preview" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer) => {
+      body += chunk;
+      if (body.length > 500_000) { res.writeHead(413); res.end("Payload too large"); req.destroy(); }
+    });
+    req.on("end", async () => {
+      try {
+        const { raw, provider } = JSON.parse(body) as { raw: string; provider: string };
+
+        const convertFn = async (text: string): Promise<string | null> => {
+          try {
+            const port = getOpenCodePort();
+            if (!port) {
+              console.log("[import] OpenCode not ready yet");
+              return null;
+            }
+
+            const sessRes = await fetch(`http://localhost:${port}/session`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            const sess = await sessRes.json() as { id: string };
+            console.log("[import] OpenCode session:", sess.id);
+
+            const prompt = `Convert this text into valid JSON. Output ONLY the raw JSON object, nothing else. No markdown fences. No explanation.\n\nRequired schema:\n{\n  "schema_version": 1,\n  "mode": "fresh" | "augment",\n  "source": { "provider": "string", "generated_at": "ISO string" },\n  "spaces": [{ "name": "string", "projects": [{ "name": "string", "summary": "string" }] }],\n  "summaries": [{ "space": "string", "title": "string", "content": "string" }],\n  "memories": [{ "content": "string", "tags": ["string"], "space": "string" }]\n}\n\nText to convert:\n${text.slice(0, 12000)}`;
+
+            const msgRes = await fetch(`http://localhost:${port}/session/${sess.id}/message`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ parts: [{ type: "text", text: prompt }], agent: "oyster" }),
+            });
+
+            const resBody = await msgRes.json() as {
+              info?: { error?: unknown };
+              parts?: Array<{ type: string; text?: string }>;
+            };
+
+            if (resBody.info?.error) {
+              console.error("[import] OpenCode error:", JSON.stringify(resBody.info.error).slice(0, 300));
+              return null;
+            }
+
+            for (const part of resBody.parts ?? []) {
+              if (part.type === "text" && part.text?.includes("{")) {
+                console.log("[import] AI conversion succeeded, length:", part.text.length);
+                return part.text;
+              }
+            }
+            console.log("[import] OpenCode returned", resBody.parts?.length ?? 0, "parts, none with JSON");
+          } catch (err) {
+            console.error("[import] AI conversion failed:", err);
+          }
+          return null;
+        };
+
+        const parseResult = await parseImportPayload(raw, convertFn);
+        if (!parseResult.success || !parseResult.payload) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: parseResult.error }));
+          return;
+        }
+
+        const generatedAt = parseResult.payload.source?.generated_at || new Date().toISOString();
+
+        const previewDeps: PreviewDeps = {
+          getSpaceBySlug: (slug) => {
+            const row = spaceStore.getAll().find((s) => s.id === slug);
+            return row ? { id: row.id, displayName: row.display_name } : null;
+          },
+          getArtifactsBySpace: (spaceId) => {
+            return store.getBySpaceId(spaceId)
+              .filter((a) => !a.removed_at)
+              .map((a) => ({ source_ref: a.source_ref, label: a.label }));
+          },
+          findMemory: (content, spaceId) => {
+            return memoryProvider.findExact(content, spaceId ?? undefined);
+          },
+        };
+
+        const plan = buildImportPlan(parseResult.payload, provider, generatedAt, previewDeps);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(plan));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return;
+  }
+
+  if (url === "/api/import/execute" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer) => {
+      body += chunk;
+      if (body.length > 100_000) { res.writeHead(413); res.end("Payload too large"); req.destroy(); }
+    });
+    req.on("end", async () => {
+      try {
+        const { plan_id, approved_action_ids } = JSON.parse(body) as {
+          plan_id: string;
+          approved_action_ids: string[];
+        };
+
+        if (!getPlan(plan_id)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Plan not found or expired" }));
+          return;
+        }
+
+        const executeDeps: ExecuteDeps = {
+          createSpace: (name) => spaceService.createSpace({ name }),
+          createArtifact: (params) => artifactService.createArtifact(params, USERLAND_DIR),
+          remember: (input) => memoryProvider.remember(input),
+          findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
+          getSpaceBySlug: (slug) => {
+            const row = spaceStore.getAll().find((s) => s.id === slug);
+            return row ? { id: row.id } : null;
+          },
+        };
+
+        const result = await executeImportPlan(plan_id, approved_action_ids, executeDeps);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return;
+  }
 
   // ── No-op OAuth for MCP SDK (localhost only, no real auth) ──
 

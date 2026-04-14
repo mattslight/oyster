@@ -134,6 +134,7 @@ export function ViewerWindow({
     function handleMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === "oyster-close") { onClose(); return; }
       if (event.data?.type !== "oyster-error") return;
       setError({
         message: event.data.error?.message || "Unknown error",
@@ -145,7 +146,7 @@ export function ViewerWindow({
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [fullscreen, onToggleFullscreen]);
+  }, [fullscreen, onToggleFullscreen, onClose]);
 
   // Track hash changes inside iframe (e.g., Reveal.js slide navigation)
   // Injects a MutationObserver + polling script into the iframe to detect

@@ -8,6 +8,7 @@ import { spaceColor } from "../utils/spaceColor";
 import { useDesktopPreferences } from "../hooks/useDesktopPreferences";
 import { useDesktopSections, kindLabel } from "../hooks/useDesktopSections";
 import { useDragOrder } from "../hooks/useDragOrder";
+import { OnboardingBanner } from "./OnboardingBanner";
 
 interface Props {
   space: string;
@@ -24,8 +25,17 @@ interface Props {
   revealId?: string | null;
 }
 
-export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, dragOver, revealId }: Props) {
+export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, dragOver, revealId, isFirstRun }: Props) {
   const isAllSpace = space === "__all__";
+
+  // ── Onboarding banner ──
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => localStorage.getItem("oyster-onboarding-dismissed") === "true"
+  );
+  const handleDismiss = () => {
+    localStorage.setItem("oyster-onboarding-dismissed", "true");
+    setBannerDismissed(true);
+  };
 
   // ── Topbar auto-hide ──
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -167,6 +177,15 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
       </div>
 
       <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
+        {isFirstRun && !bannerDismissed && (
+          <OnboardingBanner
+            onImportFromAI={() => {
+              const importArtifact = artifacts.find((a) => a.id === "import-from-ai");
+              if (importArtifact) onArtifactClick(importArtifact);
+            }}
+            onDismiss={handleDismiss}
+          />
+        )}
         <div className="filter-bar">
           {activeKind && (
             <div className="filter-notice">

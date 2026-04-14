@@ -4,149 +4,185 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bring Your Own AI</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --accent: #7c6bff;
+      --accent-bright: #a597ff;
+      --green: #4ade80;
+      --text: #f0f0f5;
+      --text-dim: rgba(232,233,240,0.45);
+      --text-muted: rgba(232,233,240,0.2);
+      --surface: rgba(12,13,28,0.85);
+      --border: rgba(124,107,255,0.15);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Space Grotesk', -apple-system, sans-serif;
-      background: #0a0b14;
-      color: #c8c8d0;
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
       min-height: 100vh;
-      padding: 60px 24px;
-      line-height: 1.6;
+      display: flex;
+      justify-content: center;
+      padding: 60px 24px 80px;
+      overflow-x: hidden;
     }
-    .page { max-width: 640px; margin: 0 auto; }
 
-    h1 {
-      font-size: 28px;
-      font-weight: 600;
-      color: #fff;
-      margin-bottom: 8px;
+    .glow {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,107,255,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 80% 90%, rgba(165,151,255,0.04) 0%, transparent 50%);
     }
-    .subtitle {
-      font-size: 15px;
-      color: rgba(255,255,255,0.45);
+
+    .page {
+      max-width: 600px;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+      animation: fadeUp 0.5s cubic-bezier(0.16,1,0.3,1);
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .page-header {
+      text-align: center;
       margin-bottom: 48px;
     }
-
-    h2 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #fff;
-      margin-bottom: 16px;
-      margin-top: 48px;
+    .page-header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
     }
-    h2:first-of-type { margin-top: 0; }
+    .page-header p {
+      font-size: 15px;
+      color: var(--text-dim);
+    }
+
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      margin-top: 40px;
+    }
+    .section-label:first-of-type { margin-top: 0; }
 
     /* Tabs */
-    .tabs {
+    .tab-track {
       display: flex;
       gap: 2px;
-      background: rgba(255,255,255,0.04);
-      border-radius: 10px 10px 0 0;
-      padding: 4px 4px 0;
-      overflow-x: auto;
+      padding: 3px 4px;
+      border-radius: 9999px;
+      background: rgba(13,14,26,0.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 0;
+      display: inline-flex;
     }
-    .tab {
-      padding: 10px 18px;
-      font-size: 13px;
-      font-family: inherit;
-      font-weight: 500;
-      color: rgba(255,255,255,0.4);
+    .tab-btn {
       background: none;
       border: none;
+      color: var(--text-dim);
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 18px;
+      border-radius: 9999px;
       cursor: pointer;
-      border-radius: 8px 8px 0 0;
+      transition: color 0.2s, background 0.2s;
       white-space: nowrap;
-      transition: color 0.15s, background 0.15s;
     }
-    .tab:hover { color: rgba(255,255,255,0.7); }
-    .tab.active {
-      color: #fff;
-      background: rgba(124,107,255,0.15);
+    .tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+    .tab-btn.active { background: rgba(124,107,255,0.25); color: #fff; }
+
+    /* Code card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      overflow: hidden;
+      margin-bottom: 12px;
     }
 
-    /* Code panels */
-    .panels {
-      background: rgba(30,32,50,0.6);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-top: none;
-      border-radius: 0 0 10px 10px;
+    .code-header {
+      padding: 12px 20px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .code-body {
       padding: 20px;
       position: relative;
     }
-    .panel { display: none; }
-    .panel.active { display: block; }
-
-    .panel-label {
-      font-size: 11px;
-      color: rgba(255,255,255,0.3);
-      margin-bottom: 8px;
-      font-family: 'IBM Plex Mono', monospace;
-    }
-
-    pre {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 13px;
-      line-height: 1.5;
-      color: #e0e0e8;
+    .code-body pre {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.75);
       white-space: pre-wrap;
       word-break: break-all;
     }
 
     .copy-btn {
-      position: absolute;
-      top: 12px;
-      right: 12px;
       background: rgba(124,107,255,0.15);
       border: 1px solid rgba(124,107,255,0.2);
-      color: rgba(255,255,255,0.6);
+      color: var(--text-dim);
       font-size: 11px;
-      font-family: 'IBM Plex Mono', monospace;
-      padding: 4px 10px;
-      border-radius: 6px;
+      font-family: var(--font-mono);
+      padding: 4px 12px;
+      border-radius: 9999px;
       cursor: pointer;
       transition: all 0.15s;
     }
-    .copy-btn:hover {
-      background: rgba(124,107,255,0.3);
-      color: #fff;
-    }
-    .copy-btn.copied {
-      background: rgba(80,200,120,0.2);
-      border-color: rgba(80,200,120,0.3);
-      color: rgba(80,200,120,0.8);
-    }
+    .copy-btn:hover { background: rgba(124,107,255,0.3); color: #fff; }
+    .copy-btn.copied { background: rgba(74,222,128,0.15); border-color: rgba(74,222,128,0.2); color: var(--green); }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
 
     /* Examples */
     .examples {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
       margin-top: 16px;
     }
     .example {
       display: flex;
       align-items: baseline;
       gap: 12px;
-      font-size: 14px;
+      font-size: 13px;
     }
     .example-prompt {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 13px;
-      color: rgba(124,107,255,0.8);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-bright);
       flex-shrink: 0;
     }
-    .example-arrow {
-      color: rgba(255,255,255,0.2);
-      flex-shrink: 0;
-    }
-    .example-result {
-      color: rgba(255,255,255,0.5);
-      font-size: 13px;
-    }
+    .example-arrow { color: var(--text-muted); flex-shrink: 0; }
+    .example-result { color: var(--text-dim); font-size: 13px; }
 
-    /* Tools grid */
+    /* Tools */
     .tools {
       display: flex;
       flex-wrap: wrap;
@@ -154,61 +190,55 @@
       margin-top: 16px;
     }
     .tool {
-      font-family: 'IBM Plex Mono', monospace;
+      font-family: var(--font-mono);
       font-size: 11px;
       padding: 5px 12px;
-      border-radius: 6px;
+      border-radius: 9999px;
       background: rgba(124,107,255,0.08);
-      color: rgba(255,255,255,0.5);
+      color: var(--text-dim);
     }
 
-    .note {
-      font-size: 13px;
-      color: rgba(255,255,255,0.3);
+    .desc {
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.7;
       margin-top: 12px;
     }
-
-    .accent { color: #7c6bff; }
   </style>
 </head>
 <body>
+  <div class="glow"></div>
   <div class="page">
-    <h1>Bring Your Own AI</h1>
-    <p class="subtitle">Oyster is an MCP server. Any AI that speaks the protocol can control your workspace.</p>
-
-    <h2>Quick start</h2>
-
-    <div class="tabs">
-      <button class="tab active" onclick="showTab('claude')">Claude Code</button>
-      <button class="tab" onclick="showTab('cursor')">Cursor</button>
-      <button class="tab" onclick="showTab('vscode')">VS Code</button>
-      <button class="tab" onclick="showTab('windsurf')">Windsurf</button>
+    <div class="page-header">
+      <h1>Bring Your Own AI.</h1>
+      <p>Oyster is an MCP server. Any AI that speaks the protocol can control your workspace.</p>
     </div>
-    <div class="panels">
-      <button class="copy-btn" onclick="copyCode(this)">copy</button>
 
-      <div id="panel-claude" class="panel active">
-        <div class="panel-label">run in your terminal</div>
-        <pre id="code-claude"></pre>
-      </div>
+    <div class="section-label">Quick start</div>
 
-      <div id="panel-cursor" class="panel">
-        <div class="panel-label">.cursor/mcp.json</div>
-        <pre id="code-cursor"></pre>
-      </div>
-
-      <div id="panel-vscode" class="panel">
-        <div class="panel-label">.vscode/mcp.json</div>
-        <pre id="code-vscode"></pre>
-      </div>
-
-      <div id="panel-windsurf" class="panel">
-        <div class="panel-label">~/.codeium/windsurf/mcp_config.json</div>
-        <pre id="code-windsurf"></pre>
+    <div style="margin-bottom:12px">
+      <div class="tab-track">
+        <button class="tab-btn active" onclick="showTab('claude',this)">Claude Code</button>
+        <button class="tab-btn" onclick="showTab('cursor',this)">Cursor</button>
+        <button class="tab-btn" onclick="showTab('vscode',this)">VS Code</button>
+        <button class="tab-btn" onclick="showTab('windsurf',this)">Windsurf</button>
       </div>
     </div>
 
-    <h2>What you can do</h2>
+    <div class="card">
+      <div class="code-header">
+        <span id="panel-label">run in your terminal</span>
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      </div>
+      <div class="code-body">
+        <div id="panel-claude" class="panel active"><pre id="code-claude"></pre></div>
+        <div id="panel-cursor" class="panel"><pre id="code-cursor"></pre></div>
+        <div id="panel-vscode" class="panel"><pre id="code-vscode"></pre></div>
+        <div id="panel-windsurf" class="panel"><pre id="code-windsurf"></pre></div>
+      </div>
+    </div>
+
+    <div class="section-label">What you can do</div>
     <div class="examples">
       <div class="example">
         <span class="example-prompt">"Create a deck about Q2 results"</span>
@@ -218,7 +248,7 @@
       <div class="example">
         <span class="example-prompt">"Scan ~/Dev/my-project"</span>
         <span class="example-arrow">&rarr;</span>
-        <span class="example-result">new space with apps, docs, and diagrams discovered</span>
+        <span class="example-result">new space with apps, docs, and diagrams</span>
       </div>
       <div class="example">
         <span class="example-prompt">"Open the competitor analysis"</span>
@@ -226,7 +256,7 @@
         <span class="example-result">opens it in the viewer</span>
       </div>
       <div class="example">
-        <span class="example-prompt">"Move the pitch deck to the clients space"</span>
+        <span class="example-prompt">"Move the pitch deck to clients"</span>
         <span class="example-arrow">&rarr;</span>
         <span class="example-result">reassigned instantly</span>
       </div>
@@ -237,7 +267,7 @@
       </div>
     </div>
 
-    <h2>Available tools</h2>
+    <div class="section-label">Available tools</div>
     <div class="tools">
       <span class="tool">create_artifact</span>
       <span class="tool">list_artifacts</span>
@@ -254,18 +284,25 @@
       <span class="tool">gather_repo_context</span>
       <span class="tool">regenerate_icon</span>
     </div>
-    <p class="note">Your AI can chain these together. Ask it to onboard a project, scan for artifacts, create a summary, and organise everything into spaces — all from one prompt.</p>
+    <p class="desc">Your AI can chain these together. Ask it to onboard a project, scan for artifacts, create a summary, and organise everything into spaces — all from one prompt.</p>
   </div>
 
   <script>
     const origin = window.location.origin;
     const mcpUrl = origin + '/mcp/';
 
+    const labels = {
+      claude: 'run in your terminal',
+      cursor: '.cursor/mcp.json',
+      vscode: '.vscode/mcp.json',
+      windsurf: '~/.codeium/windsurf/mcp_config.json',
+    };
+
     document.getElementById('code-claude').textContent =
       `claude mcp add --transport http oyster ${mcpUrl}`;
 
     document.getElementById('code-cursor').textContent =
-      `{
+`{
   "mcpServers": {
     "oyster": {
       "url": "${mcpUrl}"
@@ -274,7 +311,7 @@
 }`;
 
     document.getElementById('code-vscode').textContent =
-      `{
+`{
   "servers": {
     "oyster": {
       "type": "http",
@@ -284,7 +321,7 @@
 }`;
 
     document.getElementById('code-windsurf').textContent =
-      `{
+`{
   "mcpServers": {
     "oyster": {
       "serverUrl": "${mcpUrl}"
@@ -292,12 +329,12 @@
   }
 }`;
 
-    function showTab(name) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    function showTab(name, el) {
+      document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      event.target.classList.add('active');
       document.getElementById('panel-' + name).classList.add('active');
-      // Reset copy button
+      document.getElementById('panel-label').textContent = labels[name];
       const btn = document.querySelector('.copy-btn');
       btn.textContent = 'copy';
       btn.classList.remove('copied');

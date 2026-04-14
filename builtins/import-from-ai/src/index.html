@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import from AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #7c6bff;
+      --accent-bright: #a597ff;
+      --green: #4ade80;
+      --amber: #fbbf24;
+      --text: #f0f0f5;
+      --text-dim: rgba(232,233,240,0.45);
+      --text-muted: rgba(232,233,240,0.2);
+      --surface: rgba(12,13,28,0.85);
+      --border: rgba(124,107,255,0.15);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+      overflow-x: hidden;
+    }
+
+    /* ── Ambient glow ── */
+    .glow {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,107,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 20% 100%, rgba(124,107,255,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse 50% 35% at 80% 90%, rgba(165,151,255,0.04) 0%, transparent 50%);
+    }
+
+    .wizard {
+      width: 100%;
+      max-width: 560px;
+      position: relative;
+      z-index: 1;
+      animation: fadeUp 0.5s cubic-bezier(0.16,1,0.3,1);
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Header ── */
+    .wizard-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .wizard-header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .wizard-header p {
+      font-size: 15px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    /* ── Steps ── */
+    .steps {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 40px;
+    }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-num {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      border: 1.5px solid var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      transition: all 0.3s;
+      flex-shrink: 0;
+    }
+    .step-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      transition: color 0.3s;
+    }
+    .step-line {
+      width: 32px;
+      height: 1px;
+      background: var(--text-muted);
+      margin: 0 12px;
+      transition: background 0.3s;
+    }
+    .step-item.active .step-num {
+      border-color: var(--accent);
+      background: rgba(124,107,255,0.15);
+      color: var(--accent-bright);
+    }
+    .step-item.active .step-label { color: var(--accent-bright); }
+    .step-item.done .step-num {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+    .step-item.done .step-label { color: var(--text-dim); }
+    .step-line.done { background: var(--accent); }
+
+    /* ── Panels ── */
+    .panel { display: none; animation: fadeUp 0.4s cubic-bezier(0.16,1,0.3,1); }
+    .panel.active { display: block; }
+
+    /* ── Glass card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      overflow: hidden;
+    }
+
+    /* ── Provider pills (matches space-pills) ── */
+    .providers {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+    .providers-track {
+      display: flex;
+      gap: 2px;
+      padding: 3px 4px;
+      border-radius: 9999px;
+      background: rgba(13,14,26,0.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .provider-pill {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 18px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: color 0.2s, background 0.2s;
+      white-space: nowrap;
+    }
+    .provider-pill:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+    .provider-pill.selected {
+      background: rgba(124,107,255,0.25);
+      color: #fff;
+    }
+
+    /* ── Prompt code area ── */
+    .prompt-scroll {
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 24px;
+    }
+    .prompt-scroll pre {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.75);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .prompt-loading {
+      padding: 60px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    .btn {
+      font-family: var(--font-body);
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      padding: 14px 36px;
+      font-size: 15px;
+      border-radius: 999px;
+    }
+    .btn-primary:hover { background: #6b5ce6; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-dim);
+      padding: 14px 20px;
+      font-size: 13px;
+    }
+    .btn-ghost:hover { color: var(--text); }
+    .btn-import {
+      background: var(--green);
+      color: #050510;
+      padding: 16px 48px;
+      font-size: 16px;
+      border-radius: 9999px;
+    }
+    .btn-import:hover { background: #3bc96e; transform: translateY(-1px); }
+
+    /* ── Textarea ── */
+    .paste-area {
+      width: 100%;
+      min-height: 240px;
+      background: transparent;
+      border: none;
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+      resize: none;
+      line-height: 1.6;
+    }
+    .paste-area:focus { outline: none; }
+    .paste-area::placeholder { color: var(--text-muted); }
+
+    /* ── Error ── */
+    .error {
+      color: #f87171;
+      font-size: 13px;
+      padding: 12px 24px;
+      display: none;
+    }
+
+    /* ── Review summary ── */
+    .review-summary {
+      padding: 32px 28px;
+    }
+    .review-title {
+      font-size: clamp(1.2rem, 3vw, 1.6rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .review-sub {
+      font-size: 14px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .review-spaces {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .review-space {
+      background: rgba(255,255,255,0.03);
+      border-radius: 12px;
+      padding: 16px;
+      border: none;
+    }
+    .review-space-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .review-space-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .review-space-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+    }
+    .review-space-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      letter-spacing: 0.02em;
+    }
+    .badge-new { background: rgba(74,222,128,0.1); color: var(--green); }
+    .badge-merge { background: rgba(251,191,36,0.1); color: var(--amber); }
+    .review-projects {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding-left: 18px;
+    }
+    .review-project {
+      font-size: 12px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.05);
+      padding: 5px 12px;
+      border-radius: 9999px;
+    }
+    .review-bottom {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .review-bottom-stat {
+      text-align: center;
+    }
+    .review-bottom-num {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .review-bottom-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* ── Success ── */
+    .success-panel {
+      text-align: center;
+      padding: 64px 32px;
+    }
+    .success-icon {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: rgba(74,222,128,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 24px;
+    }
+    .success-panel h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .success-panel p {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="wizard">
+    <div class="wizard-header">
+      <h1>Import from AI.</h1>
+      <p>Bring your projects, context, and memories from any AI.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step-item active" id="s1"><span class="step-num">1</span><span class="step-label">Copy</span></div>
+      <div class="step-line" id="line1"></div>
+      <div class="step-item" id="s2"><span class="step-num">2</span><span class="step-label">Paste</span></div>
+      <div class="step-line" id="line2"></div>
+      <div class="step-item" id="s3"><span class="step-num">3</span><span class="step-label">Import</span></div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="panel active" id="p1">
+      <div class="providers">
+        <div class="providers-track">
+          <button class="provider-pill selected" onclick="pickProvider('chatgpt',this)">ChatGPT</button>
+          <button class="provider-pill" onclick="pickProvider('claude',this)">Claude</button>
+          <button class="provider-pill" onclick="pickProvider('gemini',this)">Gemini</button>
+          <button class="provider-pill" onclick="pickProvider('other',this)">Other</button>
+        </div>
+      </div>
+      <div class="card">
+        <div id="prompt-area"><div class="prompt-loading">Loading prompt...</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="copyAndNext()">Copy prompt</button>
+        <button class="btn btn-ghost" onclick="go(2)">Next &rarr;</button>
+      </div>
+      <p class="hint">Tailored to your workspace. Paste it into your AI.</p>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="panel" id="p2">
+      <div class="card">
+        <textarea class="paste-area" id="paste" placeholder="Paste your AI's response here..."></textarea>
+        <div id="err" class="error"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="go(1)">&larr; Back</button>
+        <button class="btn btn-primary" id="previewBtn" onclick="preview()">Preview import</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="panel" id="p3">
+      <div class="card">
+        <div class="review-summary">
+          <div class="review-title">Ready to import</div>
+          <div class="review-sub"></div>
+          <div class="review-stats" id="stats"></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="go(2)">&larr; Back</button>
+        <button class="btn btn-import" id="importBtn" onclick="run()">Import everything</button>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div class="panel" id="p4">
+      <div class="card">
+        <div class="success-panel">
+          <div class="success-icon">&#10003;</div>
+          <h2>You're all set</h2>
+          <p id="successDetail"></p>
+          <button class="btn btn-primary" onclick="window.parent.postMessage({type:'oyster-close'},'*')">Done</button>
+          <div style="margin-top:16px"><button class="btn btn-ghost" onclick="location.reload()">Import more &rarr;</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const O = window.location.origin;
+    let provider = 'chatgpt', prompt = '', plan = null;
+
+    loadPrompt();
+
+    async function loadPrompt() {
+      const el = document.getElementById('prompt-area');
+      el.innerHTML = '<div class="prompt-loading">Loading prompt...</div>';
+      try {
+        const r = await fetch(`${O}/api/import/prompt?provider=${provider}`);
+        prompt = await r.text();
+        el.innerHTML = `<div class="prompt-scroll"><pre>${esc(prompt)}</pre></div>`;
+      } catch { el.innerHTML = '<div class="prompt-loading">Failed to load</div>'; }
+    }
+
+    function pickProvider(p, el) {
+      provider = p;
+      document.querySelectorAll('.provider-pill').forEach(b => b.classList.remove('selected'));
+      el.classList.add('selected');
+      loadPrompt();
+    }
+
+    function copyAndNext() {
+      const btn = document.querySelector('.btn-primary');
+      navigator.clipboard.writeText(prompt).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => go(2), 600);
+      });
+    }
+
+    function go(step) {
+      for (let i = 1; i <= 4; i++) document.getElementById('p' + i).classList.remove('active');
+      document.getElementById('p' + step).classList.add('active');
+      ['s1','s2','s3'].forEach((id, idx) => {
+        const el = document.getElementById(id);
+        el.className = 'step-item' + (idx + 1 === step ? ' active' : idx + 1 < step ? ' done' : '');
+      });
+      ['line1','line2'].forEach((id, idx) => {
+        const el = document.getElementById(id);
+        el.className = 'step-line' + (idx + 1 < step ? ' done' : '');
+      });
+    }
+
+    async function preview() {
+      const raw = document.getElementById('paste').value.trim();
+      if (!raw) return;
+      const btn = document.getElementById('previewBtn');
+      const err = document.getElementById('err');
+      btn.innerHTML = '<span class="spinner"></span>Processing...';
+      btn.disabled = true;
+      err.style.display = 'none';
+      try {
+        const r = await fetch(`${O}/api/import/preview`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ raw, provider }),
+        });
+        const d = await r.json();
+        if (!r.ok) { err.textContent = d.error; err.style.display = 'block'; return; }
+        plan = d;
+        renderStats(d);
+        go(3);
+      } catch (e) {
+        err.textContent = 'Connection error'; err.style.display = 'block';
+      } finally {
+        btn.innerHTML = 'Preview import'; btn.disabled = false;
+      }
+    }
+
+    const SPACE_COLORS = ['#7c6bff','#4ade80','#fbbf24','#60a5fa','#f472b6','#a78bfa','#22d3ee','#fb923c'];
+
+    function renderStats(p) {
+      const a = p.actions;
+      const spaces = a.filter(x => x.type === 'create_space');
+      const projects = a.filter(x => x.type === 'create_project_summary');
+      const memories = a.filter(x => x.type === 'create_memory' && x.status !== 'duplicate_skipped').length;
+      const overviews = a.filter(x => x.type === 'create_space_overview').length;
+
+      // Build space cards with their projects
+      let spacesHtml = '<div class="review-spaces">';
+      spaces.forEach((sp, i) => {
+        const color = SPACE_COLORS[i % SPACE_COLORS.length];
+        const badge = sp.status === 'new'
+          ? '<span class="review-space-badge badge-new">new</span>'
+          : '<span class="review-space-badge badge-merge">update</span>';
+        const spProjects = projects.filter(pr => pr.space === sp.name);
+
+        spacesHtml += `<div class="review-space">
+          <div class="review-space-header">
+            <div class="review-space-dot" style="background:${color}"></div>
+            <span class="review-space-name">${esc(sp.name)}</span>
+            ${badge}
+          </div>
+          ${spProjects.length ? '<div class="review-projects">' + spProjects.map(pr =>
+            `<span class="review-project">${esc(pr.name)}</span>`
+          ).join('') + '</div>' : ''}
+        </div>`;
+      });
+      spacesHtml += '</div>';
+
+      // Bottom stats — only show non-zero
+      const bottomParts = [];
+      if (overviews) bottomParts.push(`<div class="review-bottom-stat"><div class="review-bottom-num" style="color:var(--text)">${overviews}</div><div class="review-bottom-label">overview${overviews !== 1 ? 's' : ''}</div></div>`);
+      if (memories) bottomParts.push(`<div class="review-bottom-stat"><div class="review-bottom-num" style="color:var(--accent-bright)">${memories}</div><div class="review-bottom-label">new memor${memories !== 1 ? 'ies' : 'y'}</div></div>`);
+
+      const skippedMemories = a.filter(x => x.type === 'create_memory' && x.status === 'duplicate_skipped').length;
+      if (skippedMemories) bottomParts.push(`<div class="review-bottom-stat"><div class="review-bottom-num" style="color:var(--text-muted)">${skippedMemories}</div><div class="review-bottom-label">already saved</div></div>`);
+
+      if (bottomParts.length) spacesHtml += `<div class="review-bottom">${bottomParts.join('')}</div>`;
+
+      const newItems = a.filter(x => x.status !== 'duplicate_skipped').length;
+      document.getElementById('stats').innerHTML = spacesHtml;
+      document.querySelector('.review-sub').textContent = newItems > 0
+        ? `${newItems} new items from ${provider} ready to import.`
+        : `Everything from ${provider} is already imported.`;
+    }
+
+    async function run() {
+      if (!plan) return;
+      const approved = plan.actions.filter(a => a.status !== 'duplicate_skipped').map(a => a.action_id);
+      const btn = document.getElementById('importBtn');
+      btn.innerHTML = '<span class="spinner"></span>Importing...';
+      btn.disabled = true;
+      try {
+        const r = await fetch(`${O}/api/import/execute`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ plan_id: plan.plan_id, approved_action_ids: approved }),
+        });
+        const d = await r.json();
+        const skipped = d.results.filter(r => r.status === 'skipped').length;
+        let detail = '';
+        if (d.counts.created > 0) detail += `${d.counts.created} imported`;
+        if (skipped > 0) detail += (detail ? ', ' : '') + `${skipped} already existed`;
+        if (d.counts.failed > 0) detail += (detail ? ', ' : '') + `${d.counts.failed} failed`;
+        if (!detail) detail = 'Everything was already imported';
+        document.getElementById('successDetail').textContent = detail + '.';
+        go(4);
+      } catch { btn.innerHTML = 'Retry'; btn.disabled = false; }
+    }
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  </script>
+
+</body>
+</html>
