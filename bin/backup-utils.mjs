@@ -1,4 +1,5 @@
-import { existsSync, cpSync, mkdirSync, realpathSync, renameSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, cpSync, mkdirSync, realpathSync, renameSync, rmSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -40,12 +41,26 @@ export function resolveUserlandDir() {
 }
 
 export function isOysterRunning() {
-  if (process.argv.includes("--force")) return false;
   if (!existsSync(PID_FILE)) return false;
   try {
     const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
-    if (isNaN(pid)) return false;
-    process.kill(pid, 0); // signal 0 = existence check
+    if (isNaN(pid)) { try { unlinkSync(PID_FILE); } catch {} return false; }
+    process.kill(pid, 0); // signal 0 = existence check — throws if dead
+
+    // PID is alive — verify it's actually Oyster's server, not a recycled PID
+    try {
+      const cmd = process.platform === "win32"
+        ? `wmic process where processid=${pid} get commandline 2>nul`
+        : `ps -p ${pid} -o args=`;
+      const output = execSync(cmd, { encoding: "utf8", timeout: 3000 });
+      if (!output.includes("index.ts") && !output.includes("index.js")) {
+        // PID is alive but not Oyster — stale file from recycled PID
+        try { unlinkSync(PID_FILE); } catch {}
+        return false;
+      }
+    } catch {
+      // Can't verify — assume it's Oyster to be safe
+    }
     return true;
   } catch {
     // Process is dead — clean up stale PID file
@@ -56,7 +71,7 @@ export function isOysterRunning() {
 
 export function createManualBackup(userlandDir) {
   if (isOysterRunning()) {
-    console.error("  Error: Oyster is running. Stop it first, then retry.\n  If this is a stale PID, use --force to override.");
+    console.error("  Error: Oyster is running. Stop it first, then retry.");
     process.exit(1);
   }
 
@@ -77,7 +92,7 @@ export function createManualBackup(userlandDir) {
 
 export function restoreBackup(sourcePath, userlandDir) {
   if (isOysterRunning()) {
-    console.error("  Error: Oyster is running. Stop it first, then retry.\n  If this is a stale PID, use --force to override.");
+    console.error("  Error: Oyster is running. Stop it first, then retry.");
     process.exit(1);
   }
 
