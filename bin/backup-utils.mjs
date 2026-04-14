@@ -40,6 +40,7 @@ export function resolveUserlandDir() {
 }
 
 export function isOysterRunning() {
+  if (process.argv.includes("--force")) return false;
   if (!existsSync(PID_FILE)) return false;
   try {
     const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
@@ -47,13 +48,15 @@ export function isOysterRunning() {
     process.kill(pid, 0); // signal 0 = existence check
     return true;
   } catch {
-    return false; // process doesn't exist or no permission
+    // Process is dead — clean up stale PID file
+    try { unlinkSync(PID_FILE); } catch {}
+    return false;
   }
 }
 
 export function createManualBackup(userlandDir) {
   if (isOysterRunning()) {
-    console.error("  Error: Oyster is running. Stop it first, then retry.");
+    console.error("  Error: Oyster is running. Stop it first, then retry.\n  If this is a stale PID, use --force to override.");
     process.exit(1);
   }
 
@@ -74,7 +77,7 @@ export function createManualBackup(userlandDir) {
 
 export function restoreBackup(sourcePath, userlandDir) {
   if (isOysterRunning()) {
-    console.error("  Error: Oyster is running. Stop it first, then retry.");
+    console.error("  Error: Oyster is running. Stop it first, then retry.\n  If this is a stale PID, use --force to override.");
     process.exit(1);
   }
 
