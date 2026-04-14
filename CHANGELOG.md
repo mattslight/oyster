@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-04-15
+
+### Cloud AI import
+
+- Import projects, context, and memories from ChatGPT, Claude, or Gemini
+- 3-step wizard: select provider, paste AI output, preview and import
+- Server converts any format to structured JSON via OpenCode
+- Merge-based: detects existing spaces, skips duplicates on re-import
+- First-run onboarding banner with "Import from AI" CTA
+
+### Builtin redesign
+
+- All builtins (Quick Start, Connect Your AI, Import from AI) redesigned with consistent design language
+- Glass cards, ambient glow, pill selectors, smooth animations
+- Iframe close support via postMessage
+
 ## 2026-04-14
 
 ### MCP onboarding
