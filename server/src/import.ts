@@ -480,8 +480,9 @@ export async function executeImportPlan(
 
   // When scoped to a target space, all space references resolve to it
   if (plan.target_space_id) {
-    const targetName = plan.actions.find(a => a.space)?.space;
-    if (targetName) createdSpaces.set(targetName, plan.target_space_id);
+    for (const action of plan.actions) {
+      if (action.space) createdSpaces.set(action.space, plan.target_space_id);
+    }
   }
 
   // Validate: reject orphaned actions
