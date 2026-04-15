@@ -516,7 +516,16 @@
 
   <script>
     const O = window.location.origin;
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetSpaceId = urlParams.get('spaceId');
+    const targetSpaceName = urlParams.get('spaceName');
     let provider = 'chatgpt', prompt = '', plan = null;
+
+    // Update title if space-scoped
+    if (targetSpaceName) {
+      document.querySelector('.wizard-header h1').textContent = `Import to ${targetSpaceName}.`;
+      document.querySelector('.wizard-header p').textContent = `Bring context and memories about ${targetSpaceName} from any AI.`;
+    }
 
     loadPrompt();
 
@@ -524,7 +533,9 @@
       const el = document.getElementById('prompt-area');
       el.innerHTML = '<div class="prompt-loading">Loading prompt...</div>';
       try {
-        const r = await fetch(`${O}/api/import/prompt?provider=${provider}`);
+        let url = `${O}/api/import/prompt?provider=${provider}`;
+        if (targetSpaceId) url += `&spaceId=${encodeURIComponent(targetSpaceId)}`;
+        const r = await fetch(url);
         prompt = await r.text();
         el.innerHTML = `<div class="prompt-scroll"><pre>${esc(prompt)}</pre></div>`;
       } catch { el.innerHTML = '<div class="prompt-loading">Failed to load</div>'; }
@@ -577,7 +588,7 @@
       try {
         const r = await fetch(`${O}/api/import/preview`, {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ raw, provider }),
+          body: JSON.stringify({ raw, provider, targetSpaceId }),
         });
         const d = await r.json();
         if (!r.ok) { err.textContent = d.error; err.style.display = 'block'; return; }

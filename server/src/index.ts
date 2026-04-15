@@ -472,6 +472,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (url.startsWith("/api/import/prompt") && req.method === "GET") {
     const params = new URL(url, "http://localhost").searchParams;
     const provider = params.get("provider") || "chatgpt";
+    const spaceId = params.get("spaceId");
 
     const allSpaces = spaceStore.getAll()
       .filter((s) => s.id !== "home" && s.id !== "__all__")
@@ -486,7 +487,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       }
     }
 
-    const prompt = generatePrompt({ provider, spaces: allSpaces, knownProjects });
+    const targetSpace = spaceId
+      ? allSpaces.find((s) => s.id === spaceId) ?? undefined
+      : undefined;
+
+    const prompt = generatePrompt({ provider, spaces: allSpaces, knownProjects, targetSpace });
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end(prompt);
     return;
@@ -500,7 +505,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     });
     req.on("end", async () => {
       try {
-        const { raw, provider } = JSON.parse(body) as { raw: string; provider: string };
+        const { raw, provider, targetSpaceId } = JSON.parse(body) as { raw: string; provider: string; targetSpaceId?: string };
 
         const convertFn = async (text: string): Promise<string | null> => {
           try {
@@ -573,7 +578,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           },
         };
 
-        const plan = buildImportPlan(parseResult.payload, provider, generatedAt, previewDeps);
+        const plan = buildImportPlan(parseResult.payload, provider, generatedAt, previewDeps, targetSpaceId);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(plan));
       } catch (err) {

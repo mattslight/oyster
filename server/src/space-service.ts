@@ -106,8 +106,41 @@ export class SpaceService {
     const row = this.spaceStore.getById(id);
     return row ? rowToSpace(row) : null;
   }
-  deleteSpace(id: string): void {
-    this.artifactStore.getBySpaceId(id).forEach(a => this.artifactStore.delete(a.id));
+  updateSpace(id: string, fields: { displayName?: string; color?: string }): Space {
+    const row = this.spaceStore.getById(id);
+    if (!row) throw new Error(`Space "${id}" not found`);
+    const dbFields: Record<string, string> = {};
+    if (fields.displayName !== undefined) {
+      const trimmed = fields.displayName.trim();
+      if (!trimmed) throw new Error("displayName must not be empty");
+      dbFields.display_name = trimmed;
+    }
+    if (fields.color !== undefined) {
+      if (!/^#[0-9a-fA-F]{6}$/.test(fields.color)) throw new Error("color must be a 6-digit hex string");
+      dbFields.color = fields.color;
+    }
+    this.spaceStore.update(id, dbFields);
+    return rowToSpace(this.spaceStore.getById(id)!);
+  }
+
+  convertFolderToSpace(sourceSpaceId: string, folderName: string, targetSpaceId: string): void {
+    const artifacts = this.artifactStore.getBySpaceId(sourceSpaceId)
+      .filter(a => a.group_name === folderName);
+    for (const a of artifacts) {
+      this.artifactStore.update(a.id, { space_id: targetSpaceId, group_name: null });
+    }
+  }
+
+  deleteSpace(id: string, folderNameOverride?: string): void {
+    if (id === "home" || id === "__all__") throw new Error(`Cannot delete reserved space "${id}"`);
+    const row = this.spaceStore.getById(id);
+    if (!row) throw new Error(`Space "${id}" not found`);
+    const folderName = folderNameOverride ?? row?.display_name ?? id;
+    const artifacts = this.artifactStore.getBySpaceId(id);
+    // Move orphaned artifacts to home in a folder named after the deleted space
+    for (const a of artifacts) {
+      this.artifactStore.update(a.id, { space_id: "home", group_name: folderName });
+    }
     this.spaceStore.delete(id);
   }
 

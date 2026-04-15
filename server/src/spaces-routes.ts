@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "./space-service.js";
+import { slugify } from "./utils.js";
 import { isContainer, discoverCandidates, groupWithLLM } from "./discovery.js";
 
 /**
@@ -70,6 +71,32 @@ export async function handleSpacesRequest(
     return true;
   }
 
+  // POST /api/spaces/from-folder — convert a folder group into a space
+  if (url === "/api/spaces/from-folder" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer | string) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { folderName, sourceSpaceId, merge } = JSON.parse(body);
+        if (!folderName) throw new Error("folderName is required");
+        let space: ReturnType<typeof spaceService.getSpace>;
+        const existing = spaceService.getSpace(slugify(folderName));
+        if (existing && merge) {
+          space = existing;
+        } else {
+          space = spaceService.createSpace({ name: folderName });
+        }
+        spaceService.convertFolderToSpace(sourceSpaceId ?? "home", folderName, space!.id);
+        res.writeHead(existing && merge ? 200 : 201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(space));
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return true;
+  }
+
   // POST /api/spaces — create space
   if (url === "/api/spaces" && req.method === "POST") {
     let body = "";
@@ -104,16 +131,41 @@ export async function handleSpacesRequest(
     res.end(JSON.stringify(space));
     return true;
   }
+  if (spaceIdMatch && req.method === "PATCH") {
+    return new Promise<boolean>((resolve) => {
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString(); });
+      req.on("end", () => {
+        try {
+          const { displayName, color } = JSON.parse(body);
+          const updated = spaceService.updateSpace(spaceIdMatch[1], { displayName, color });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(updated));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        }
+        resolve(true);
+      });
+    });
+  }
   if (spaceIdMatch && req.method === "DELETE") {
-    try {
-      spaceService.deleteSpace(spaceIdMatch[1]);
-      res.writeHead(204);
-      res.end();
-    } catch (err) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: (err as Error).message }));
-    }
-    return true;
+    return new Promise<boolean>((resolve) => {
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString(); });
+      req.on("end", () => {
+        try {
+          const parsed = body ? JSON.parse(body) : {};
+          spaceService.deleteSpace(spaceIdMatch[1], parsed.folderName);
+          res.writeHead(204);
+          res.end();
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        }
+        resolve(true);
+      });
+    });
   }
 
   // GET /api/spaces/:id/paths — list folders for a space

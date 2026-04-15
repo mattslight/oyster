@@ -6,9 +6,10 @@ interface Props {
   artifacts: Artifact[];
   index: number;
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function GroupIcon({ name, artifacts, index, onClick }: Props) {
+export function GroupIcon({ name, artifacts, index, onClick, onContextMenu }: Props) {
   // Take first 4 artifacts for the 2x2 preview
   const previews = artifacts.slice(0, 4);
 
@@ -16,7 +17,8 @@ export function GroupIcon({ name, artifacts, index, onClick }: Props) {
     <button
       className="artifact-icon"
       style={{ animationDelay: `${index * 0.05 + 0.05}s` }}
-      onClick={onClick}
+      onClick={(e) => { if (e.button === 0 && !e.ctrlKey) onClick(); }}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e); }}
     >
       <div className="group-thumb">
         <div className="group-grid">

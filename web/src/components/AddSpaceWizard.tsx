@@ -6,7 +6,7 @@ interface Props {
   spaces: Space[];
   initialFolder?: string;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (newSpaceId?: string) => void;
 }
 
 interface Suggestion {
@@ -166,6 +166,19 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
 
   async function handleScan() {
     setError(null);
+
+    // Empty space — just create and close, no scan
+    if (mode === "new" && folders.length === 0) {
+      if (!name.trim()) { setError("Name is required"); return; }
+      try {
+        const space = await createSpace({ name: name.trim() });
+        onComplete(space.id);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+      return;
+    }
+
     setScanning(true);
 
     let spaceId: string;
@@ -541,9 +554,9 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
         <button
           className="add-space-btn-primary"
           onClick={handleScan}
-          disabled={scanning || discovering || (mode === "new" ? !name.trim() : !existingSpaceId) || folders.length === 0}
+          disabled={scanning || discovering || (mode === "new" ? !name.trim() : !existingSpaceId || folders.length === 0)}
         >
-          {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Add"}
+          {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Create"}
         </button>
       </div>
     </div>
