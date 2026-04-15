@@ -13,11 +13,13 @@ let ptyModule: any;
 try {
   ptyModule = await import("@lydell/node-pty");
   ptyAvailable = true;
+  console.log("[pty] loaded @lydell/node-pty");
 } catch {
   try {
     // @ts-ignore — fallback, may not be installed
     ptyModule = await import("node-pty");
     ptyAvailable = true;
+    console.log("[pty] loaded node-pty");
   } catch {
     console.log("[pty] node-pty not available — terminal disabled");
   }
