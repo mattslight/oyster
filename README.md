@@ -10,7 +10,7 @@
 
 From prompt to workspace.
 
-A workspace that understands your files and acts from one prompt — powered by MCP so any AI can control it.
+The desktop that understands what you're working on.
 
 ```bash
 npm install -g oyster-os && oyster
