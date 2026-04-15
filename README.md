@@ -11,8 +11,13 @@
 **🦪 The OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.**
 
 ```bash
-npm install -g oyster-os   # install
-oyster                      # run
+# 1. Install
+npm install -g oyster-os
+
+# 2. Configure & Start
+oyster
+
+# 3. Open your browser to http://localhost:4444
 ```
 
 ## Why Oyster
