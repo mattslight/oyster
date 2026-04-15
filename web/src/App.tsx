@@ -200,9 +200,9 @@ export default function App() {
     }
   }, [activeSpace, handleSpaceChange]);
 
-  const handleConvertToSpace = useCallback(async (groupName: string, merge?: boolean) => {
+  const handleConvertToSpace = useCallback(async (groupName: string, merge?: boolean, sourceSpaceId?: string) => {
     try {
-      const newSpace = await convertFolderToSpace(groupName, activeSpace, merge);
+      const newSpace = await convertFolderToSpace(groupName, sourceSpaceId ?? activeSpace, merge);
       setSpaces((prev) => prev.some(s => s.id === newSpace.id) ? prev : [...prev, newSpace]);
       handleSpaceChange(newSpace.id);
     } catch (err) {

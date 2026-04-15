@@ -309,9 +309,9 @@ export function buildImportPlan(
 
     if (targetSpaceId) {
       // Space-scoped: skip create_space, remap projects into target
+      const existingArtifacts = deps.getArtifactsBySpace(targetSpaceId);
       for (const project of space.projects ?? []) {
         if (!project.name) continue;
-        const existingArtifacts = deps.getArtifactsBySpace(targetSpaceId);
         const isDupe = existingArtifacts.some(
           (a) => a.source_ref?.startsWith("import:") && slugify(a.label) === slugify(project.name),
         );

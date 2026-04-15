@@ -132,7 +132,9 @@ export class SpaceService {
   }
 
   deleteSpace(id: string, folderNameOverride?: string): void {
+    if (id === "home" || id === "__all__") throw new Error(`Cannot delete reserved space "${id}"`);
     const row = this.spaceStore.getById(id);
+    if (!row) throw new Error(`Space "${id}" not found`);
     const folderName = folderNameOverride ?? row?.display_name ?? id;
     const artifacts = this.artifactStore.getBySpaceId(id);
     // Move orphaned artifacts to home in a folder named after the deleted space

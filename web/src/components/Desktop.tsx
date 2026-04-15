@@ -21,7 +21,7 @@ interface Props {
   onGroupClick: (groupName: string) => void;
   onSpaceChange: (space: string) => void;
   onAddSpace?: (folderName?: string) => void;
-  onConvertToSpace?: (groupName: string, merge?: boolean) => void;
+  onConvertToSpace?: (groupName: string, merge?: boolean, sourceSpaceId?: string) => void;
   onImportFromAI?: (spaceId?: string) => void;
   isFirstRun?: boolean;
   dragOver?: boolean;
@@ -41,7 +41,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   };
 
   // ── Folder context menu ──
-  const [folderCtx, setFolderCtx] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [folderCtx, setFolderCtx] = useState<{ name: string; sourceSpaceId?: string; x: number; y: number } | null>(null);
   const folderCtxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!folderCtx) return;
@@ -316,7 +316,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 <div className="icon-grid icon-grid--inline" style={{ justifyContent: headerAlign === "left" ? "start" : headerAlign === "right" ? "end" : "center" }}>
                   {section.items.map((item, i) => (
                     item.type === "group" ? (
-                      <GroupIcon key={item.key} name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} onContextMenu={(e) => { e.preventDefault(); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }} />
+                      <GroupIcon key={item.key} name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} onContextMenu={(e) => { e.preventDefault(); setFolderCtx({ name: item.name, sourceSpaceId: section.spaceId, x: e.clientX, y: e.clientY }); }} />
                     ) : (
                       <ArtifactIcon
                         key={item.key}
@@ -376,17 +376,17 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               return (
                 <>
                   <span className="space-ctx-confirm" style={{ padding: "6px 12px" }}>"{folderCtx.name}" space exists.</span>
-                  <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name, true); setFolderCtx(null); }}>
+                  <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name, true, folderCtx.sourceSpaceId); setFolderCtx(null); }}>
                     Merge
                   </button>
-                  <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name + " (2)"); setFolderCtx(null); }}>
+                  <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name + " (2)", false, folderCtx.sourceSpaceId); setFolderCtx(null); }}>
                     Create "{folderCtx.name} (2)"
                   </button>
                 </>
               );
             }
             return (
-              <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name); setFolderCtx(null); }}>
+              <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name, false, folderCtx.sourceSpaceId); setFolderCtx(null); }}>
                 Convert to Space
               </button>
             );
