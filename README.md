@@ -1,6 +1,4 @@
-<p align="center"><img src="docs/logo.png" width="80" alt="Oyster" /></p>
-
-# Oyster
+<p align="center"><img src="docs/hero-banner.png" alt="Oyster — From prompt to workspace" /></p>
 
 [![Release](https://img.shields.io/github/v/release/mattslight/oyster?color=7c6bff)](https://github.com/mattslight/oyster/releases)
 [![npm](https://img.shields.io/npm/v/oyster-os?color=7c6bff)](https://www.npmjs.com/package/oyster-os)
