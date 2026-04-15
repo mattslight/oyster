@@ -6,7 +6,9 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-7c6bff)]()
 [![License](https://img.shields.io/badge/License-AGPL--3.0-7c6bff)](LICENSE)
 
-The OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.
+---
+
+**The OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.**
 
 ```bash
 npm install -g oyster-os && oyster
