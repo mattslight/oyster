@@ -33,7 +33,8 @@ export function runStartupBackup(userlandDir: string): void {
   if (!existsSync(join(userlandDir, "oyster.db"))) return;
 
   try {
-    const autoDir = join(homedir(), "oyster-backups", "auto");
+    const isInstalled = userlandDir.includes(join(homedir(), ".oyster"));
+    const autoDir = join(homedir(), "oyster-backups", isInstalled ? "auto" : "dev");
     mkdirSync(autoDir, { recursive: true });
 
     // One backup per day — stable name per date
