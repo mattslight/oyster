@@ -182,6 +182,12 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
         createdNew = true;
       }
 
+      if (folders.length === 0) {
+        // Empty space — no scan needed
+        onComplete();
+        return;
+      }
+
       for (const folder of folders) {
         await addPath(spaceId, folder);
       }
@@ -541,9 +547,9 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
         <button
           className="add-space-btn-primary"
           onClick={handleScan}
-          disabled={scanning || discovering || (mode === "new" ? !name.trim() : !existingSpaceId) || folders.length === 0}
+          disabled={scanning || discovering || (mode === "new" ? !name.trim() : !existingSpaceId || folders.length === 0)}
         >
-          {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Add"}
+          {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Create"}
         </button>
       </div>
     </div>
