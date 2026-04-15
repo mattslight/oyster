@@ -178,6 +178,26 @@
     }
 
     /* ── Prompt code area ── */
+    .prompt-card {
+      position: relative;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .prompt-card:hover { border-color: rgba(124,107,255,0.3); }
+    .prompt-card-label {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--accent-bright);
+      opacity: 0.5;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .prompt-card:hover .prompt-card-label { opacity: 1; }
     .prompt-scroll {
       max-height: 280px;
       overflow-y: auto;
@@ -241,18 +261,34 @@
     /* ── Textarea ── */
     .paste-area {
       width: 100%;
-      min-height: 240px;
+      height: 300px;
       background: transparent;
       border: none;
       padding: 24px;
       font-family: var(--font-mono);
-      font-size: 12px;
+      font-size: 13px;
       color: var(--text);
       resize: none;
       line-height: 1.6;
     }
     .paste-area:focus { outline: none; }
-    .paste-area::placeholder { color: var(--text-muted); }
+    .paste-area::placeholder {
+      color: var(--text-dim);
+      font-family: var(--font-body);
+      font-size: 16px;
+    }
+    .paste-hint {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      color: var(--text-dim);
+      font-size: 16px;
+      transition: opacity 0.2s;
+    }
+    .paste-wrap { position: relative; }
 
     /* ── Error ── */
     .error {
@@ -425,7 +461,8 @@
           <button class="provider-pill" onclick="pickProvider('other',this)">Other</button>
         </div>
       </div>
-      <div class="card" onclick="copyOnly()" style="cursor:pointer">
+      <div class="card prompt-card" onclick="copyOnly()">
+        <span class="prompt-card-label">click to copy</span>
         <div id="prompt-area"><div class="prompt-loading">Loading prompt...</div></div>
       </div>
       <div class="btn-row">
@@ -437,8 +474,9 @@
 
     <!-- Step 2 -->
     <div class="panel" id="p2">
-      <div class="card">
-        <textarea class="paste-area" id="paste" placeholder="Paste your AI's response here..."></textarea>
+      <div class="card paste-wrap">
+        <div class="paste-hint" id="pasteHint">Paste your AI's response here</div>
+        <textarea class="paste-area" id="paste" oninput="document.getElementById('pasteHint').style.opacity=this.value?'0':'1'"></textarea>
         <div id="err" class="error"></div>
       </div>
       <div class="btn-row">
@@ -458,7 +496,7 @@
       </div>
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="go(2)">&larr; Back</button>
-        <button class="btn btn-import" id="importBtn" onclick="run()">Import everything</button>
+        <button class="btn btn-primary" id="importBtn" onclick="run()">Import</button>
       </div>
     </div>
 
