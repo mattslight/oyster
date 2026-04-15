@@ -13,7 +13,7 @@ interface Props {
   onClose: () => void;
 }
 
-const WS_URL = "ws://localhost:4200";
+const WS_URL = `ws://${window.location.host}`;
 
 export function TerminalWindow({
   defaultX,
