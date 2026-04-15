@@ -36,7 +36,7 @@ export function runStartupBackup(userlandDir: string): void {
     const isDev = !userlandDir.includes(join(homedir(), ".oyster"));
     const autoDir = isDev
       ? join(homedir(), "oyster-backups", "dev")
-      : join(homedir(), "oyster-backups");
+      : join(homedir(), "oyster-backups", "auto");
     mkdirSync(autoDir, { recursive: true });
 
     // One backup per day — stable name per date
