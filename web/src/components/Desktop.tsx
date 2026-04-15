@@ -22,7 +22,7 @@ interface Props {
   onSpaceChange: (space: string) => void;
   onAddSpace?: (folderName?: string) => void;
   onConvertToSpace?: (groupName: string, merge?: boolean) => void;
-  onImportFromAI?: () => void;
+  onImportFromAI?: (spaceId?: string) => void;
   isFirstRun?: boolean;
   dragOver?: boolean;
   revealId?: string | null;
@@ -195,7 +195,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
         {isFirstRun && !bannerDismissed && (
           <OnboardingBanner
             onImportFromAI={() => {
-              const importArtifact = artifacts.find((a) => a.id === "import-from-ai");
+              const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
               if (importArtifact) onArtifactClick(importArtifact);
             }}
             onDismiss={handleDismiss}
@@ -252,7 +252,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             <div className="empty-space-hint">This space is empty</div>
             <div className="empty-space-actions">
               {onImportFromAI && (
-                <button className="empty-space-action" onClick={onImportFromAI}>
+                <button className="empty-space-action" onClick={() => onImportFromAI(space)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                     <polyline points="7 10 12 15 17 10" />
@@ -265,7 +265,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.7 }}>
                   <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
                 </svg>
-                Add a folder
+                Import folder
               </button>
             </div>
           </div>

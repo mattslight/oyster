@@ -6,7 +6,7 @@ interface Props {
   spaces: Space[];
   initialFolder?: string;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (newSpaceId?: string) => void;
 }
 
 interface Suggestion {
@@ -171,8 +171,8 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
     if (mode === "new" && folders.length === 0) {
       if (!name.trim()) { setError("Name is required"); return; }
       try {
-        await createSpace({ name: name.trim() });
-        onComplete();
+        const space = await createSpace({ name: name.trim() });
+        onComplete(space.id);
       } catch (err) {
         setError((err as Error).message);
       }

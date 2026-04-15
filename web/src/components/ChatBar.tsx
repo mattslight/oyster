@@ -716,11 +716,24 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           {confirmDelete && (() => {
             const sp = spaces.find(s => s.id === ctxMenu.spaceId);
             const folderName = sp?.displayName ?? ctxMenu.spaceId;
-            const hasConflict = artifacts.some(a => a.spaceId === "home" && a.groupName === folderName);
+            const spaceArtifacts = artifacts.filter(a => a.spaceId === ctxMenu.spaceId);
+            const isEmpty = spaceArtifacts.length === 0;
+            const hasConflict = !isEmpty && artifacts.some(a => a.spaceId === "home" && a.groupName === folderName);
             const altName = folderName + " (2)";
             return (
               <div className="space-ctx-confirm">
-                {hasConflict ? (
+                {isEmpty ? (
+                  <>
+                    <span>Remove this space?</span>
+                    <div className="space-ctx-confirm-actions">
+                      <button className="space-ctx-item" onClick={() => { setConfirmDelete(false); setCtxMenu(null); }}>Cancel</button>
+                      <button className="space-ctx-item space-ctx-delete" onClick={() => {
+                        onSpaceDelete?.(ctxMenu.spaceId);
+                        setCtxMenu(null); setConfirmDelete(false);
+                      }}>Remove</button>
+                    </div>
+                  </>
+                ) : hasConflict ? (
                   <>
                     <span>"{folderName}" folder exists on Home.</span>
                     <div className="space-ctx-confirm-actions">

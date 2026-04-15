@@ -343,9 +343,17 @@ export default function App() {
         onSpaceChange={handleSpaceChange}
         onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         onConvertToSpace={handleConvertToSpace}
-        onImportFromAI={() => {
-          const importArtifact = artifacts.find((a) => a.id === "import-from-ai");
-          if (importArtifact) handleArtifactClick(importArtifact);
+        onImportFromAI={(spaceId) => {
+          const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
+          if (!importArtifact) return;
+          if (spaceId) {
+            const sp = spaces.find((s) => s.id === spaceId);
+            const params = `?spaceId=${encodeURIComponent(spaceId)}&spaceName=${encodeURIComponent(sp?.displayName ?? spaceId)}`;
+            const scoped = { ...importArtifact, url: importArtifact.url + params };
+            handleArtifactClick(scoped);
+          } else {
+            handleArtifactClick(importArtifact);
+          }
         }}
         isFirstRun={isFirstRun}
         dragOver={shellDragOver}
@@ -481,11 +489,12 @@ export default function App() {
           spaces={spaces}
           initialFolder={droppedFolder}
           onClose={() => { setShowAddSpaceWizard(false); setDroppedFolder(undefined); }}
-          onComplete={() => {
+          onComplete={(newSpaceId) => {
             setShowAddSpaceWizard(false);
             setDroppedFolder(undefined);
             fetchSpaces().then(setSpaces);
             fetchArtifacts().then(setArtifacts);
+            if (newSpaceId) handleSpaceChange(newSpaceId);
           }}
         />
       )}

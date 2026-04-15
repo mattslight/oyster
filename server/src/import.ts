@@ -48,6 +48,7 @@ export interface ImportPlan {
   plan_id: string;
   provider: string;
   generated_at: string;
+  target_space_id?: string;
   counts: { new: number; merge: number; skipped: number };
   warnings: string[];
   actions: ImportAction[];
@@ -141,9 +142,37 @@ export interface PromptContext {
   provider: string;
   spaces: Array<{ id: string; displayName: string }>;
   knownProjects: Map<string, string[]>;
+  targetSpace?: { id: string; displayName: string };
 }
 
 export function generatePrompt(ctx: PromptContext): string {
+  // Space-scoped prompt — focused on one topic
+  if (ctx.targetSpace) {
+    const name = ctx.targetSpace.displayName;
+    const projects = ctx.knownProjects.get(ctx.targetSpace.id) || [];
+    let prompt = `Based on our past conversations, tell me everything you know about "${name}".\n\n`;
+    if (projects.length > 0) {
+      prompt += `I already have these projects tracked: ${projects.join(", ")}. Include any new ones.\n\n`;
+    }
+    prompt += `RULES:
+- Include: projects, key decisions, preferences, recurring themes, important context.
+- Exclude: one-off questions, ephemeral chat, anything not durable.
+- Use ONLY this one space: "${name}". Do not create other spaces.
+- Summaries: one for the space, 2-3 sentences.
+- Memories: durable facts and preferences related to ${name}.
+
+OUTPUT FORMAT:
+- Output YAML only. No markdown fences. No prose before or after.
+- Set mode to "augment".
+- Set source.provider to "${ctx.provider}".
+- Set source.generated_at to the current time in ISO 8601 format.
+
+SCHEMA:
+${SCHEMA_EXAMPLE}`;
+    return prompt;
+  }
+
+  // Global prompt — all workstreams
   const state = readImportState();
   const lastImport = state[ctx.provider]?.last_import_date;
   const hasSpaces = ctx.spaces.length > 0;
@@ -261,6 +290,7 @@ export function buildImportPlan(
   provider: string,
   generatedAt: string,
   deps: PreviewDeps,
+  targetSpaceId?: string,
 ): ImportPlan {
   const planId = `imp_${randomUUID().slice(0, 12)}`;
   const actions: ImportAction[] = [];
@@ -268,10 +298,35 @@ export function buildImportPlan(
   let actCounter = 0;
   const nextId = () => `act_${++actCounter}`;
 
+  // When scoped to a target space, resolve the display name for remapping
+  const targetSpaceRow = targetSpaceId ? deps.getSpaceBySlug(targetSpaceId) : null;
+  const targetSpaceName = targetSpaceRow?.displayName ?? targetSpaceId;
+
   const spaceActionIds = new Map<string, string>();
 
   for (const space of payload.spaces ?? []) {
     if (!space.name) continue;
+
+    if (targetSpaceId) {
+      // Space-scoped: skip create_space, remap projects into target
+      for (const project of space.projects ?? []) {
+        if (!project.name) continue;
+        const existingArtifacts = deps.getArtifactsBySpace(targetSpaceId);
+        const isDupe = existingArtifacts.some(
+          (a) => a.source_ref?.startsWith("import:") && slugify(a.label) === slugify(project.name),
+        );
+        actions.push({
+          action_id: nextId(),
+          type: "create_project_summary",
+          space: targetSpaceName!,
+          name: project.name,
+          summary: project.summary,
+          status: isDupe ? "duplicate_skipped" : "new",
+        });
+      }
+      continue;
+    }
+
     const slug = slugify(space.name);
     if (!slug) continue;
     const existing = deps.getSpaceBySlug(slug);
@@ -317,10 +372,24 @@ export function buildImportPlan(
 
   for (const summary of payload.summaries ?? []) {
     if (!summary.space || !summary.content) continue;
+
+    if (targetSpaceId) {
+      const existingArtifacts = deps.getArtifactsBySpace(targetSpaceId);
+      const hasOverview = existingArtifacts.some((a) => a.source_ref?.includes("overview"));
+      actions.push({
+        action_id: nextId(),
+        type: "create_space_overview",
+        space: targetSpaceName!,
+        title: summary.title || `${targetSpaceName} overview`,
+        content: summary.content,
+        status: hasOverview ? "exists_will_merge" : "new",
+      });
+      continue;
+    }
+
     const slug = slugify(summary.space);
     const existing = deps.getSpaceBySlug(slug);
     const parentActionId = spaceActionIds.get(summary.space);
-    // Skip if space doesn't exist and isn't being created in this import
     if (!existing && !parentActionId) continue;
     const spaceId = existing?.id ?? slug;
     const existingArtifacts = deps.getArtifactsBySpace(spaceId);
@@ -341,9 +410,7 @@ export function buildImportPlan(
 
   for (const memory of payload.memories ?? []) {
     if (!memory.content) continue;
-    const spaceSlug = memory.space ? slugify(memory.space) : null;
-    const existingSpace = spaceSlug ? deps.getSpaceBySlug(spaceSlug) : null;
-    const spaceId = existingSpace?.id ?? spaceSlug;
+    const spaceId = targetSpaceId ?? (memory.space ? (deps.getSpaceBySlug(slugify(memory.space))?.id ?? slugify(memory.space)) : null);
     const isDupe = deps.findMemory(memory.content, spaceId);
 
     actions.push({
@@ -351,7 +418,7 @@ export function buildImportPlan(
       type: "create_memory",
       content: memory.content,
       tags: memory.tags,
-      space: memory.space,
+      space: targetSpaceName ?? memory.space,
       status: isDupe ? "duplicate_skipped" : "new",
     });
   }
@@ -362,7 +429,7 @@ export function buildImportPlan(
     skipped: actions.filter((a) => a.status === "duplicate_skipped").length,
   };
 
-  const plan: ImportPlan = { plan_id: planId, provider, generated_at: generatedAt, counts, warnings, actions };
+  const plan: ImportPlan = { plan_id: planId, provider, generated_at: generatedAt, target_space_id: targetSpaceId, counts, warnings, actions };
   storePlan(plan, payload);
   return plan;
 }
@@ -410,6 +477,12 @@ export async function executeImportPlan(
   const approved = new Set(approvedIds);
   const results: ExecuteResult["results"] = [];
   const createdSpaces = new Map<string, string>();
+
+  // When scoped to a target space, all space references resolve to it
+  if (plan.target_space_id) {
+    const targetName = plan.actions.find(a => a.space)?.space;
+    if (targetName) createdSpaces.set(targetName, plan.target_space_id);
+  }
 
   // Validate: reject orphaned actions
   for (const action of plan.actions) {

@@ -119,7 +119,7 @@ export function ViewerWindow({
   const [fixLogOpen, setFixLogOpen] = useState(false);
   const fixLogEndRef = useRef<HTMLDivElement>(null);
   const unsubRef = useRef<(() => void) | null>(null);
-  const iframeSrc = useMemo(() => `${path}?t=${Date.now()}${initialHash ? initialHash : ""}`, [path, iframeKey]);
+  const iframeSrc = useMemo(() => `${path}${path.includes("?") ? "&" : "?"}t=${Date.now()}${initialHash ? initialHash : ""}`, [path, iframeKey]);
 
   // Auto-scroll fix log
   useEffect(() => {
