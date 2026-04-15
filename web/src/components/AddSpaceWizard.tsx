@@ -474,16 +474,12 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
               autoFocus
             />
           ) : (
-            <select
-              className="add-space-input"
+            <CustomSelect
               value={existingSpaceId}
-              onChange={e => setExistingSpaceId(e.target.value)}
-            >
-              <option value="">Pick a space…</option>
-              {existingSpaces.map(s => (
-                <option key={s.id} value={s.id}>{s.displayName}</option>
-              ))}
-            </select>
+              onChange={setExistingSpaceId}
+              placeholder="Pick a space…"
+              options={existingSpaces.map(s => ({ value: s.id, label: s.displayName }))}
+            />
           )}
 
           <div
@@ -550,6 +546,51 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
           {scanning ? "Scanning…" : folders.length > 0 ? "Scan" : "Add"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function CustomSelect({ value, onChange, placeholder, options }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  options: Array<{ value: string; label: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const selected = options.find(o => o.value === value);
+
+  return (
+    <div className="custom-select" ref={ref}>
+      <button className="custom-select-trigger add-space-input" onClick={() => setOpen(!open)} type="button">
+        <span style={{ opacity: selected ? 1 : 0.4 }}>{selected?.label || placeholder}</span>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <path d="M2 4l4 4 4-4" />
+        </svg>
+      </button>
+      {open && (
+        <div className="custom-select-menu">
+          {options.map(o => (
+            <button
+              key={o.value}
+              className={`custom-select-option${o.value === value ? " active" : ""}`}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+              type="button"
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
