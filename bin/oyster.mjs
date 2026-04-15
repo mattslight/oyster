@@ -55,14 +55,40 @@ function findOpenCodeBin() {
 
 // ── Check OpenCode auth ──
 
+function hasAuthFile() {
+  // Check the auth file directly — works on all platforms
+  const paths = process.platform === "win32"
+    ? [
+        join(process.env.LOCALAPPDATA || "", "opencode", "auth.json"),
+        join(process.env.APPDATA || "", "opencode", "auth.json"),
+        join(homedir(), ".local", "share", "opencode", "auth.json"),
+      ]
+    : [join(homedir(), ".local", "share", "opencode", "auth.json")];
+
+  for (const p of paths) {
+    if (!p || !existsSync(p)) continue;
+    try {
+      const data = JSON.parse(readFileSync(p, "utf8"));
+      // auth.json has provider keys with token values
+      if (Object.keys(data).length > 0) return true;
+    } catch { /* ignore */ }
+  }
+  return false;
+}
+
 function hasAuth(opencodeBin) {
+  // Fast path: check the auth file directly
+  if (hasAuthFile()) return true;
+  // Fallback: ask OpenCode CLI
   try {
     const result = execSync(`"${opencodeBin}" providers list`, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 10000,
       shell: true,
+      env: { ...process.env, FORCE_COLOR: "0" },
     });
-    return result.toString().includes("●");
+    const out = result.toString();
+    return out.includes("●") || out.includes("credential");
   } catch {
     return false;
   }
@@ -87,8 +113,11 @@ async function main() {
   // Ensure userland dir exists
   mkdirSync(join(OYSTER_HOME, "userland"), { recursive: true });
 
+  // Skip auth check if API key is already in env
+  const hasEnvKey = env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY;
+
   // Check auth — if none, run login inline
-  if (!hasAuth(opencodeBin)) {
+  if (!hasEnvKey && !hasAuth(opencodeBin)) {
     console.log("\n  🦪 Welcome to Oyster\n");
     console.log("  First, let's connect an AI provider.\n");
 
