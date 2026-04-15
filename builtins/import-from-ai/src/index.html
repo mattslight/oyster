@@ -425,7 +425,7 @@
           <button class="provider-pill" onclick="pickProvider('other',this)">Other</button>
         </div>
       </div>
-      <div class="card">
+      <div class="card" onclick="copyOnly()" style="cursor:pointer">
         <div id="prompt-area"><div class="prompt-loading">Loading prompt...</div></div>
       </div>
       <div class="btn-row">
@@ -499,9 +499,17 @@
       loadPrompt();
     }
 
-    function copyAndNext() {
-      const btn = document.querySelector('.btn-primary');
+    function copyOnly() {
       navigator.clipboard.writeText(prompt).then(() => {
+        const btn = document.querySelector('.btn-primary');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy prompt'; }, 2000);
+      });
+    }
+
+    function copyAndNext() {
+      navigator.clipboard.writeText(prompt).then(() => {
+        const btn = document.querySelector('.btn-primary');
         btn.textContent = 'Copied!';
         setTimeout(() => go(2), 600);
       });
