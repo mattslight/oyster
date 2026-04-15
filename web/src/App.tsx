@@ -343,6 +343,10 @@ export default function App() {
         onSpaceChange={handleSpaceChange}
         onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         onConvertToSpace={handleConvertToSpace}
+        onImportFromAI={() => {
+          const importArtifact = artifacts.find((a) => a.id === "import-from-ai");
+          if (importArtifact) handleArtifactClick(importArtifact);
+        }}
         isFirstRun={isFirstRun}
         dragOver={shellDragOver}
         revealId={revealId}

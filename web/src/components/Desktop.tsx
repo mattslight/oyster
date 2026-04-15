@@ -22,12 +22,13 @@ interface Props {
   onSpaceChange: (space: string) => void;
   onAddSpace?: (folderName?: string) => void;
   onConvertToSpace?: (groupName: string, merge?: boolean) => void;
+  onImportFromAI?: () => void;
   isFirstRun?: boolean;
   dragOver?: boolean;
   revealId?: string | null;
 }
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, dragOver, revealId, isFirstRun }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, dragOver, revealId, isFirstRun }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Onboarding banner ──
@@ -244,6 +245,31 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             </button>
           </div>
         </div>
+
+        {/* Empty space state */}
+        {!isHero && !isAllSpace && artifacts.length === 0 && (
+          <div className="empty-space-state">
+            <div className="empty-space-hint">This space is empty</div>
+            <div className="empty-space-actions">
+              {onImportFromAI && (
+                <button className="empty-space-action" onClick={onImportFromAI}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Import from AI
+                </button>
+              )}
+              <button className="empty-space-action" onClick={() => onAddSpace?.()}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.7 }}>
+                  <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
+                </svg>
+                Add a folder
+              </button>
+            </div>
+          </div>
+        )}
 
         {viewMode === "list" ? (
           <div className={`list-view${isAllSpace && groupBy === "kind" ? " list-view--no-badge" : ""}${!isAllSpace || groupBy === "space" ? " list-view--no-space" : ""}`}>
