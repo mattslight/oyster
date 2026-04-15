@@ -121,7 +121,7 @@ export class ArtifactService {
     // Validate path is under an approved root (skip if no roots specified — trusted caller)
     if (approvedRoots.length > 0) {
       const normalizedRoots = approvedRoots.map((r) => resolve(r));
-      const isApproved = normalizedRoots.some((root) => absPath.startsWith(root + "/") || absPath === root);
+      const isApproved = normalizedRoots.some((root) => absPath.startsWith(root + sep) || absPath === root);
       if (!isApproved) {
         throw new Error(
           `Path is not under an approved root. Allowed roots: ${normalizedRoots.join(", ")}`,

@@ -572,6 +572,7 @@ export async function executeImportPlan(
       if (msg.includes("already exists")) {
         results.push({ action_id: action.action_id, status: "skipped" });
       } else {
+        console.error(`[import] action ${action.action_id} (${action.type}) failed:`, msg);
         results.push({ action_id: action.action_id, status: "failed", error: msg });
       }
     }
