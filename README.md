@@ -103,11 +103,11 @@ Browser → http://localhost:4444
 
 Early v1. Local-first. Single-user. Built for fast iteration.
 
-**Now:** prompt-driven navigation, space switching, artefact desktop, repo onboarding, MCP server with 12 tools, slash commands, instant UI updates via SSE.
+**Now:** MCP powered workspace, bring your own AI, prompt-driven navigation, space switching, artefact desktop, repo onboarding, 12 MCP tools, slash commands, instant UI updates via SSE.
 
 **Next:** smoother onboarding, faster artefact navigation, better repo import.
 
-**Later:** dynamic UI that reshapes to fit the task, cloud hosting, persistent memory, plugin ecosystem.
+**Vision:** persistent memory, plugins, dynamic UI that reshapes to fit the task, build & share apps.
 
 ## Contributing
 
