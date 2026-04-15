@@ -2,6 +2,11 @@
 
 # Oyster
 
+[![npm version](https://img.shields.io/npm/v/oyster-os)](https://www.npmjs.com/package/oyster-os)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![npm downloads](https://img.shields.io/npm/dm/oyster-os)](https://www.npmjs.com/package/oyster-os)
+[![Platform: macOS | Linux | Windows](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)]()
+
 A modern OS for knowledge work powered by MCP — connect your projects, control everything from a prompt. Bring your own LLM. Install as easy as `npm install oyster-os`
 
 Open the right thing, switch context quickly, and organise work from one chat bar.  
