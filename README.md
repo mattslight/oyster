@@ -8,7 +8,7 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-7c6bff)]()
 [![License](https://img.shields.io/badge/License-AGPL--3.0-7c6bff)](LICENSE)
 
-One surface. All your work.
+From prompt to workspace.
 
 A workspace that understands your files and acts from one prompt — powered by MCP so any AI can control it.
 
