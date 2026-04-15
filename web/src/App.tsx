@@ -326,7 +326,7 @@ export default function App() {
       {!connected && (
         <div className="connection-banner">
           <span>Oyster server not connected</span>
-          <span className="connection-hint">Run <code>npm run dev</code> to start</span>
+          <span className="connection-hint">Run <code>oyster</code> to start</span>
         </div>
       )}
       <Desktop
