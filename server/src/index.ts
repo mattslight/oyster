@@ -579,6 +579,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         };
 
         const plan = buildImportPlan(parseResult.payload, provider, generatedAt, previewDeps, targetSpaceId);
+        if (plan.actions.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Nothing found to import. Make sure you pasted the AI's response, not the prompt you sent it." }));
+          return;
+        }
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(plan));
       } catch (err) {
