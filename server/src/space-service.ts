@@ -110,8 +110,15 @@ export class SpaceService {
     const row = this.spaceStore.getById(id);
     if (!row) throw new Error(`Space "${id}" not found`);
     const dbFields: Record<string, string> = {};
-    if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
-    if (fields.color !== undefined) dbFields.color = fields.color;
+    if (fields.displayName !== undefined) {
+      const trimmed = fields.displayName.trim();
+      if (!trimmed) throw new Error("displayName must not be empty");
+      dbFields.display_name = trimmed;
+    }
+    if (fields.color !== undefined) {
+      if (!/^#[0-9a-fA-F]{6}$/.test(fields.color)) throw new Error("color must be a 6-digit hex string");
+      dbFields.color = fields.color;
+    }
     this.spaceStore.update(id, dbFields);
     return rowToSpace(this.spaceStore.getById(id)!);
   }
@@ -120,7 +127,7 @@ export class SpaceService {
     const artifacts = this.artifactStore.getBySpaceId(sourceSpaceId)
       .filter(a => a.group_name === folderName);
     for (const a of artifacts) {
-      this.artifactStore.update(a.id, { space_id: targetSpaceId, group_name: null as unknown as string });
+      this.artifactStore.update(a.id, { space_id: targetSpaceId, group_name: null });
     }
   }
 

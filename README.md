@@ -8,42 +8,31 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-7c6bff)]()
 [![License](https://img.shields.io/badge/License-AGPL--3.0-7c6bff)](LICENSE)
 
-A modern OS for knowledge work powered by MCP — connect your projects, control everything from a prompt. Bring your own LLM. Install as easy as `npm install oyster-os`
+One surface for all your work. Chat to navigate, organise, and create — powered by MCP so any AI can control it.
 
-Open the right thing, switch context quickly, and organise work from one chat bar.  
-Oyster is local, AI-first, visual, and built for people juggling multiple projects, tools, and sessions.
+```bash
+npm install -g oyster-os && oyster
+```
 
 ![Oyster desktop](docs/screenshots/desktop.png)
 
 ## Why Oyster
 
-Most work is scattered across folders, repos, docs, tabs, and chat threads.
+Your work is scattered across folders, repos, docs, tabs, and chat threads. Oyster puts it all on one visual surface and lets you control it from a chat bar.
 
-Oyster puts that work on one surface and lets you control it with simple commands.
+- **Open things fast** — type `/o competitor analysis` and it opens, no folder hunting
+- **Switch context instantly** — `#blunderfixer` or `#1` to jump between projects
+- **See everything at once** — docs, diagrams, apps, decks, and spreadsheets on one desktop
+- **Any AI can control it** — Oyster speaks MCP, the open standard for AI tools. Connect Claude Code, Cursor, or any MCP client and your AI can manage the surface directly
 
-- **Open things fast**  
-  Type `/o competitor analysis` and open the right artefact without digging through folders.
-
-- **Switch context quickly**  
-  Jump between spaces with `/s blunderfixer` or `#bf`.
-
-- **Keep work visible**  
-  Docs, diagrams, apps, decks, and spreadsheets live together on a visual desktop.
-
-- **Let the agent act on the surface**  
-  Oyster can open artefacts, switch spaces, and organise the workspace through MCP tools.
-
-- **Bring your own AI**  
-  Oyster speaks MCP — the open standard that lets AI tools talk to each other. Connect the AI you already use and it can control your workspace directly.
-
-## Quick start
-
-### Install and run
+## Quick Start
 
 ```bash
 npm install -g oyster-os
 oyster
 ```
+
+That's it. On first run, Oyster connects you to an AI provider (opens your browser to sign in). Then your workspace opens at **http://localhost:4444**.
 
 Or try without installing:
 
@@ -51,11 +40,9 @@ Or try without installing:
 npx oyster-os
 ```
 
-That's it. On first run, Oyster connects you to an AI provider (opens your browser to sign in). Then your workspace opens at **http://localhost:4444**.
+## Connect Your AI
 
-### Connect your AI
-
-Oyster is an MCP server. Any MCP-compatible tool can control your workspace.
+Oyster is an MCP server. Any MCP-compatible tool can connect and control your workspace.
 
 **Claude Code:**
 
@@ -76,7 +63,7 @@ claude mcp add --transport http oyster http://localhost:4444/mcp/
 
 Once connected, your AI can list spaces, open artefacts, create documents, onboard projects, and manage the surface directly.
 
-### Onboard a project
+## Onboard a Project
 
 From the Oyster chat bar:
 
@@ -84,23 +71,7 @@ From the Oyster chat bar:
 onboard my project at ~/Dev/my-project
 ```
 
-Or from Claude Code / any connected AI:
-
-```
-> onboard_space(name: "My Project", repo_path: "/path/to/my-project")
-```
-
 Oyster scans the folder for documents, apps, and diagrams and adds them to the surface automatically.
-
-## What works today
-
-- Prompt-driven navigation
-- Space switching
-- Artefact desktop with icons
-- Local repo onboarding
-- MCP server with 12 tools (works with Claude Code, Cursor, any MCP client)
-- Instant UI updates via SSE
-- Slash commands (`/s`, `/o`, `#`)
 
 ## Commands
 
@@ -112,62 +83,6 @@ Oyster scans the folder for documents, apps, and diagrams and adds them to the s
 | `#<number>` | Jump to a numbered space — `#1` switches to first space |
 | `#.` | Go to the home screen |
 | normal chat | Ask Oyster anything — navigate, organise, or create work |
-
-## The full loop
-
-Here's what it looks like end to end:
-
-```bash
-# 1. Install Oyster
-npm install -g oyster-os
-
-# 2. Start it
-oyster
-# → browser opens to http://localhost:4444
-
-# 3. Connect Claude Code (or any MCP client)
-claude mcp add --transport http oyster http://localhost:4444/mcp/
-
-# 4. From Claude Code, onboard a project
-> onboard_space(name: "My App", repo_path: "~/Dev/my-app")
-# → Oyster scans for docs, apps, diagrams
-
-# 5. From the Oyster chat bar
-show me the architecture diagram
-# → artifact opens in the viewer
-
-# 6. Switch spaces
-#1
-# → instant switch to your first project
-```
-
-## Who it is for
-
-Oyster is for people working across more than one project, repo, or tool at a time, especially:
-
-- founders
-- builders
-- consultants
-- product teams
-- anyone tired of folder hunting and tab overload
-
-## Current status
-
-Early v1.  
-Local-first. Single-user. Built for fast iteration.
-
-**In scope now**
-- prompt-driven surface control
-- artefact management
-- repo onboarding
-- visual workspace
-- MCP server
-
-**Planned later**
-- dynamic UI — interfaces that adapt to the task at hand, not static layouts
-- cloud hosting
-- persistent memory
-- richer plugins and integrations
 
 ## Architecture
 
@@ -182,19 +97,19 @@ Browser → http://localhost:4444
          - Chat proxy → OpenCode → LLM
 ```
 
+## Status
+
+Early v1. Local-first. Single-user. Built for fast iteration.
+
+**Now:** prompt-driven navigation, space switching, artefact desktop, repo onboarding, MCP server with 12 tools, slash commands, instant UI updates via SSE.
+
+**Next:** smoother onboarding, faster artefact navigation, better repo import.
+
+**Later:** dynamic UI that reshapes to fit the task, cloud hosting, persistent memory, plugin ecosystem.
+
 ## Contributing
 
-Oyster is still early, but focused contributions are welcome.
-
-Good areas to help with:
-
-- onboarding and setup
-- slash commands
-- artefact search and ranking
-- UI polish
-- MCP connectors
-
-If you want to contribute:
+Oyster is early, but focused contributions are welcome.
 
 1. Open an issue first
 2. Keep the scope tight
@@ -209,22 +124,6 @@ cd web && npm install && cd ../server && npm install && cd ..
 npm run dev
 # → dev server at http://localhost:7337 (proxies to server at 4200)
 ```
-
-## Roadmap
-
-**Short term:**
-
-- smoother onboarding
-- faster artefact opening and navigation
-- better repo import experience
-
-**Longer term:**
-
-- dynamic UI — surfaces that reshape to fit the job
-- cloud and hybrid hosting
-- persistent memory
-- plugin ecosystem
-- richer cross-space search and automation
 
 ## Licence
 

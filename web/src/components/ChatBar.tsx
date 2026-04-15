@@ -632,15 +632,14 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                         if (e.key === "Enter" && renaming.name.trim()) {
                           onSpaceUpdate?.(s.id, { displayName: renaming.name.trim() });
                           setRenaming(null);
+                          e.currentTarget.blur();
                         }
-                        if (e.key === "Escape") setRenaming(null);
-                      }}
-                      onBlur={() => {
-                        if (renaming.name.trim() && renaming.name.trim() !== s.displayName) {
-                          onSpaceUpdate?.(s.id, { displayName: renaming.name.trim() });
+                        if (e.key === "Escape") {
+                          setRenaming(null);
+                          e.currentTarget.blur();
                         }
-                        setRenaming(null);
                       }}
+                      onBlur={() => setRenaming(null)}
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (

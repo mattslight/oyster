@@ -14,7 +14,7 @@ import {
   stopApp as stopAppApi,
 } from "./data/artifacts-api";
 import { shouldOpenFullscreen } from "../../shared/types";
-import { fetchSpaces, createSpace, updateSpace, deleteSpace, convertFolderToSpace } from "./data/spaces-api";
+import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace } from "./data/spaces-api";
 import type { Space } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
@@ -200,10 +200,10 @@ export default function App() {
     }
   }, [activeSpace, handleSpaceChange]);
 
-  const handleConvertToSpace = useCallback(async (groupName: string) => {
+  const handleConvertToSpace = useCallback(async (groupName: string, merge?: boolean) => {
     try {
-      const newSpace = await convertFolderToSpace(groupName, activeSpace);
-      setSpaces((prev) => [...prev, newSpace]);
+      const newSpace = await convertFolderToSpace(groupName, activeSpace, merge);
+      setSpaces((prev) => prev.some(s => s.id === newSpace.id) ? prev : [...prev, newSpace]);
       handleSpaceChange(newSpace.id);
     } catch (err) {
       console.error("[space] convert folder failed:", err);

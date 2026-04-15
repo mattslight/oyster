@@ -77,17 +77,19 @@ export async function handleSpacesRequest(
     req.on("data", (chunk: Buffer | string) => (body += chunk));
     req.on("end", () => {
       try {
-        const { folderName, sourceSpaceId } = JSON.parse(body);
+        const { folderName, sourceSpaceId, merge } = JSON.parse(body);
         if (!folderName) throw new Error("folderName is required");
         let space: ReturnType<typeof spaceService.getSpace>;
         const existing = spaceService.getSpace(slugify(folderName));
-        if (existing) {
+        if (existing && merge) {
           space = existing;
+        } else if (existing && !merge) {
+          space = spaceService.createSpace({ name: folderName });
         } else {
           space = spaceService.createSpace({ name: folderName });
         }
         spaceService.convertFolderToSpace(sourceSpaceId ?? "home", folderName, space!.id);
-        res.writeHead(existing ? 200 : 201, { "Content-Type": "application/json" });
+        res.writeHead(existing && merge ? 200 : 201, { "Content-Type": "application/json" });
         res.end(JSON.stringify(space));
       } catch (err) {
         res.writeHead(400, { "Content-Type": "application/json" });

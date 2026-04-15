@@ -41,11 +41,11 @@ export async function updateSpace(spaceId: string, fields: { displayName?: strin
   return res.json();
 }
 
-export async function convertFolderToSpace(folderName: string, sourceSpaceId: string = "home"): Promise<Space> {
+export async function convertFolderToSpace(folderName: string, sourceSpaceId: string = "home", merge?: boolean): Promise<Space> {
   const res = await fetch("/api/spaces/from-folder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folderName, sourceSpaceId }),
+    body: JSON.stringify({ folderName, sourceSpaceId, merge }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
@@ -60,7 +60,11 @@ export async function deleteSpace(spaceId: string, folderName?: string): Promise
     opts.headers = { "Content-Type": "application/json" };
     opts.body = JSON.stringify({ folderName });
   }
-  await fetch(`/api/spaces/${spaceId}`, opts);
+  const res = await fetch(`/api/spaces/${spaceId}`, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
 }
 
 export async function addPath(spaceId: string, path: string): Promise<string> {
