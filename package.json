@@ -22,9 +22,7 @@
     "dev:web": "cd web && npm run dev",
     "dev:server": "cd server && npm run dev",
     "release": "npm version patch && git push && git push --tags",
-    "release:minor": "npm version minor && git push && git push --tags",
-    "release:beta": "npm version prerelease --preid=beta && git push && git push --tags",
-    "release:promote": "npm version patch && git push && git push --tags"
+    "release:beta": "npm version prerelease --preid=beta && git push && git push --tags"
   },
   "keywords": [
     "ai",
