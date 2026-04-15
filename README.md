@@ -6,15 +6,11 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-7c6bff)]()
 [![License](https://img.shields.io/badge/License-AGPL--3.0-7c6bff)](LICENSE)
 
-From prompt to workspace.
-
-An OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.
+The OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.
 
 ```bash
 npm install -g oyster-os && oyster
 ```
-
-![Oyster desktop](docs/screenshots/desktop.png)
 
 ## Why Oyster
 
@@ -24,6 +20,8 @@ Your work is scattered across folders, repos, docs, tabs, and chat threads. Oyst
 - **Switch context instantly** — `#blunderfixer` or `#1` to jump between projects
 - **See everything at once** — docs, diagrams, apps, decks, and spreadsheets on one desktop
 - **Any AI can control it** — Oyster speaks MCP, the open standard for AI tools. Connect Claude Code, Cursor, or any MCP client and your AI can manage the surface directly
+
+![Oyster desktop](docs/screenshots/desktop.png)
 
 ## Quick Start
 
