@@ -13,7 +13,7 @@
     "@modelcontextprotocol/sdk": "^1.28.0",
     "better-sqlite3": "^12.8.0",
     "marked": "^17.0.4",
-    "node-pty": "1.0.0",
+    "@lydell/node-pty": "^1.2.0-beta.12",
     "opencode-ai": "^1.4.3",
     "ws": "^8.18.0"
   },

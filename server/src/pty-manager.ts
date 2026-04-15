@@ -9,12 +9,17 @@ let proc: any;
 let ptyAvailable = false;
 let ptyModule: any;
 
-// Dynamic import — node-pty is optional (native module, may not build on all platforms)
+// Dynamic import — try @lydell/node-pty (prebuilt), fall back to node-pty
 try {
-  ptyModule = await import("node-pty");
+  ptyModule = await import("@lydell/node-pty");
   ptyAvailable = true;
 } catch {
-  console.log("[pty] node-pty not available — terminal disabled");
+  try {
+    ptyModule = await import("node-pty");
+    ptyAvailable = true;
+  } catch {
+    console.log("[pty] node-pty not available — terminal disabled");
+  }
 }
 
 export function spawnSession(
