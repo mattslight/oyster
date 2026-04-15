@@ -10,7 +10,7 @@
 
 From prompt to workspace.
 
-The desktop that understands what you're working on.
+A workspace OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.
 
 ```bash
 npm install -g oyster-os && oyster
