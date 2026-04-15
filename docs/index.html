@@ -51,7 +51,26 @@
       line-height: 1.7;
       color: rgba(255, 255, 255, 0.7);
       max-width: 480px;
-      margin: 0 auto 56px;
+      margin: 0 auto 32px;
+    }
+
+    .hero-badges {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+
+    .hero-badge {
+      padding: 6px 16px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(124, 107, 255, 0.35);
+      background: rgba(124, 107, 255, 0.1);
+      letter-spacing: 0.02em;
     }
 
     .cta-row {
@@ -434,8 +453,15 @@
   <div class="hero">
     <h1>One surface. All your work.</h1>
     <p class="subtitle">
-      A workspace that understands your files and acts from one prompt — powered by MCP so any AI can control it.
+      A workspace with AI at the core. It understands your work and acts on it.
     </p>
+    <div class="hero-badges">
+      <span class="hero-badge">MCP Powered</span>
+      <span class="hero-badge">Memory</span>
+      <span class="hero-badge">Plugins</span>
+      <span class="hero-badge">Dynamic UI</span>
+      <span class="hero-badge">Build &amp; Share Apps</span>
+    </div>
     <div class="cta-row">
       <a href="#install" class="cta cta-primary">Get started</a>
       <a href="https://github.com/mattslight/oyster" class="cta cta-secondary">View on GitHub</a>
