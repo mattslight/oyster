@@ -30,7 +30,12 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *"-beta"* ]]; then
+            npm publish --provenance --access public --tag beta
+          else
+            npm publish --provenance --access public
+          fi
 
       - name: Extract changelog
         id: changelog
