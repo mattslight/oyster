@@ -2,10 +2,11 @@
 
 # Oyster
 
-[![npm version](https://img.shields.io/npm/v/oyster-os)](https://www.npmjs.com/package/oyster-os)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![npm downloads](https://img.shields.io/npm/dm/oyster-os)](https://www.npmjs.com/package/oyster-os)
-[![Platform: macOS | Linux | Windows](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)]()
+[![Release](https://img.shields.io/github/v/release/mattslight/oyster?color=7c6bff)](https://github.com/mattslight/oyster/releases)
+[![npm](https://img.shields.io/npm/v/oyster-os?color=7c6bff)](https://www.npmjs.com/package/oyster-os)
+[![Downloads](https://img.shields.io/npm/dm/oyster-os?color=7c6bff)](https://www.npmjs.com/package/oyster-os)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-7c6bff)]()
+[![License](https://img.shields.io/badge/License-AGPL--3.0-7c6bff)](LICENSE)
 
 A modern OS for knowledge work powered by MCP — connect your projects, control everything from a prompt. Bring your own LLM. Install as easy as `npm install oyster-os`
 
