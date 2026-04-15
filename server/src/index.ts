@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join, dirname } from "node:path";
+import { extname, join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, renderMermaid } from "./renderers.js";
 import { handleSpacesRequest } from "./spaces-routes.js";
@@ -99,7 +99,7 @@ const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
 // Installed → ~/.oyster/userland, dev → ./userland
 const USERLAND_DIR = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
-const ARTIFACTS_DIR = `${USERLAND_DIR}/`;
+const ARTIFACTS_DIR = join(USERLAND_DIR, "")  + sep;
 
 // ── MIME types ──
 
