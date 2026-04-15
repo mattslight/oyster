@@ -106,8 +106,32 @@ export class SpaceService {
     const row = this.spaceStore.getById(id);
     return row ? rowToSpace(row) : null;
   }
-  deleteSpace(id: string): void {
-    this.artifactStore.getBySpaceId(id).forEach(a => this.artifactStore.delete(a.id));
+  updateSpace(id: string, fields: { displayName?: string; color?: string }): Space {
+    const row = this.spaceStore.getById(id);
+    if (!row) throw new Error(`Space "${id}" not found`);
+    const dbFields: Record<string, string> = {};
+    if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
+    if (fields.color !== undefined) dbFields.color = fields.color;
+    this.spaceStore.update(id, dbFields);
+    return rowToSpace(this.spaceStore.getById(id)!);
+  }
+
+  convertFolderToSpace(sourceSpaceId: string, folderName: string, targetSpaceId: string): void {
+    const artifacts = this.artifactStore.getBySpaceId(sourceSpaceId)
+      .filter(a => a.group_name === folderName);
+    for (const a of artifacts) {
+      this.artifactStore.update(a.id, { space_id: targetSpaceId, group_name: null as unknown as string });
+    }
+  }
+
+  deleteSpace(id: string, folderNameOverride?: string): void {
+    const row = this.spaceStore.getById(id);
+    const folderName = folderNameOverride ?? row?.display_name ?? id;
+    const artifacts = this.artifactStore.getBySpaceId(id);
+    // Move orphaned artifacts to home in a folder named after the deleted space
+    for (const a of artifacts) {
+      this.artifactStore.update(a.id, { space_id: "home", group_name: folderName });
+    }
     this.spaceStore.delete(id);
   }
 

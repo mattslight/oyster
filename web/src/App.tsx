@@ -14,7 +14,7 @@ import {
   stopApp as stopAppApi,
 } from "./data/artifacts-api";
 import { shouldOpenFullscreen } from "../../shared/types";
-import { fetchSpaces } from "./data/spaces-api";
+import { fetchSpaces, createSpace, updateSpace, deleteSpace, convertFolderToSpace } from "./data/spaces-api";
 import type { Space } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
@@ -181,6 +181,35 @@ export default function App() {
     setOpenGroup(null);
   }, []);
 
+  const handleSpaceUpdate = useCallback(async (id: string, fields: { displayName?: string; color?: string }) => {
+    try {
+      const updated = await updateSpace(id, fields);
+      setSpaces((prev) => prev.map((s) => s.id === id ? updated : s));
+    } catch (err) {
+      console.error("[space] update failed:", err);
+    }
+  }, []);
+
+  const handleSpaceDelete = useCallback(async (id: string, folderName?: string) => {
+    try {
+      await deleteSpace(id, folderName);
+      setSpaces((prev) => prev.filter((s) => s.id !== id));
+      if (activeSpace === id) handleSpaceChange("home");
+    } catch (err) {
+      console.error("[space] delete failed:", err);
+    }
+  }, [activeSpace, handleSpaceChange]);
+
+  const handleConvertToSpace = useCallback(async (groupName: string) => {
+    try {
+      const newSpace = await convertFolderToSpace(groupName, activeSpace);
+      setSpaces((prev) => [...prev, newSpace]);
+      handleSpaceChange(newSpace.id);
+    } catch (err) {
+      console.error("[space] convert folder failed:", err);
+    }
+  }, [activeSpace, handleSpaceChange]);
+
   const isHero = activeSpace === "home";
   const isFirstRun = spaces.filter(s => s.id !== "home" && s.id !== "__all__").length === 0;
 
@@ -313,6 +342,7 @@ export default function App() {
         }}
         onSpaceChange={handleSpaceChange}
         onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
+        onConvertToSpace={handleConvertToSpace}
         isFirstRun={isFirstRun}
         dragOver={shellDragOver}
         revealId={revealId}
@@ -435,6 +465,8 @@ export default function App() {
         onSpaceChange={handleSpaceChange}
         inputRef={chatInputRef}
         onAddSpace={() => setShowAddSpaceWizard(true)}
+        onSpaceUpdate={handleSpaceUpdate}
+        onSpaceDelete={handleSpaceDelete}
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
         isFirstRun={isFirstRun}

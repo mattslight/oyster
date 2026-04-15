@@ -2479,6 +2479,81 @@ body {
 /* + pill */
 .space-pill--add { opacity: 0.4; font-size: 16px; line-height: 1; padding: 0 10px; min-width: 28px; }
 .space-pill--add:hover { opacity: 0.8; }
+
+/* Space context menu */
+.space-ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--window-chrome);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+}
+.space-ctx-item {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.space-ctx-item:hover { background: rgba(124, 107, 255, 0.12); }
+.space-ctx-delete { color: #ef4444; }
+.space-ctx-delete:hover { background: rgba(239, 68, 68, 0.12); }
+.space-ctx-sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 3px 8px;
+}
+.space-ctx-colors {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 8px;
+}
+.space-ctx-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.space-ctx-swatch:hover { border-color: rgba(255, 255, 255, 0.5); transform: scale(1.15); }
+.space-ctx-confirm {
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.space-ctx-confirm-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.space-pill-rename {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0 2px;
+  width: 80px;
+  outline: none;
+  position: relative;
+  z-index: 1;
+}
 .add-space-drop-zone {
   display: flex;
   flex-direction: column;

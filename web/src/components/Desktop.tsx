@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { LayoutGrid, List, ArrowDownAZ, Tag, Clock, Folder, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
@@ -20,12 +21,13 @@ interface Props {
   onGroupClick: (groupName: string) => void;
   onSpaceChange: (space: string) => void;
   onAddSpace?: (folderName?: string) => void;
+  onConvertToSpace?: (groupName: string, merge?: boolean) => void;
   isFirstRun?: boolean;
   dragOver?: boolean;
   revealId?: string | null;
 }
 
-export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, dragOver, revealId, isFirstRun }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, dragOver, revealId, isFirstRun }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Onboarding banner ──
@@ -36,6 +38,18 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
     localStorage.setItem("oyster-onboarding-dismissed", "true");
     setBannerDismissed(true);
   };
+
+  // ── Folder context menu ──
+  const [folderCtx, setFolderCtx] = useState<{ name: string; x: number; y: number } | null>(null);
+  const folderCtxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!folderCtx) return;
+    function handleClick(e: MouseEvent) {
+      if (folderCtxRef.current && !folderCtxRef.current.contains(e.target as Node)) setFolderCtx(null);
+    }
+    window.addEventListener("mousedown", handleClick);
+    return () => window.removeEventListener("mousedown", handleClick);
+  }, [folderCtx]);
 
   // ── Topbar auto-hide ──
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -276,7 +290,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                 <div className="icon-grid icon-grid--inline" style={{ justifyContent: headerAlign === "left" ? "start" : headerAlign === "right" ? "end" : "center" }}>
                   {section.items.map((item, i) => (
                     item.type === "group" ? (
-                      <GroupIcon key={item.key} name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} />
+                      <GroupIcon key={item.key} name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} onContextMenu={(e) => { e.preventDefault(); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }} />
                     ) : (
                       <ArtifactIcon
                         key={item.key}
@@ -305,7 +319,7 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
                   style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
                 >
                   {item.type === "group" ? (
-                    <GroupIcon name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} />
+                    <GroupIcon name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} onContextMenu={(e) => { e.preventDefault(); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }} />
                   ) : (
                     <ArtifactIcon
                       artifact={item.artifact}
@@ -322,6 +336,38 @@ export function Desktop({ space, artifacts, isHero, onArtifactClick, onArtifactS
         )}
       </div>
       <div className="version-badge">v{__APP_VERSION__} · {__APP_ENV__}</div>
+
+      {folderCtx && createPortal(
+        <div
+          ref={folderCtxRef}
+          className="space-ctx-menu"
+          style={{ left: folderCtx.x, top: folderCtx.y, transform: "translateY(-100%)", marginTop: -8 }}
+        >
+          {onConvertToSpace && (() => {
+            const slug = folderCtx.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+            const hasConflict = spaces.includes(slug);
+            if (hasConflict) {
+              return (
+                <>
+                  <span className="space-ctx-confirm" style={{ padding: "6px 12px" }}>"{folderCtx.name}" space exists.</span>
+                  <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name, true); setFolderCtx(null); }}>
+                    Merge
+                  </button>
+                  <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name + " (2)"); setFolderCtx(null); }}>
+                    Create "{folderCtx.name} (2)"
+                  </button>
+                </>
+              );
+            }
+            return (
+              <button className="space-ctx-item" onClick={() => { onConvertToSpace(folderCtx.name); setFolderCtx(null); }}>
+                Convert to Space
+              </button>
+            );
+          })()}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
