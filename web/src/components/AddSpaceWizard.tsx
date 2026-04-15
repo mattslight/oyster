@@ -166,6 +166,19 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
 
   async function handleScan() {
     setError(null);
+
+    // Empty space — just create and close, no scan
+    if (mode === "new" && folders.length === 0) {
+      if (!name.trim()) { setError("Name is required"); return; }
+      try {
+        await createSpace({ name: name.trim() });
+        onComplete();
+      } catch (err) {
+        setError((err as Error).message);
+      }
+      return;
+    }
+
     setScanning(true);
 
     let spaceId: string;
@@ -180,12 +193,6 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
         const space = await createSpace({ name: name.trim() });
         spaceId = space.id;
         createdNew = true;
-      }
-
-      if (folders.length === 0) {
-        // Empty space — no scan needed
-        onComplete();
-        return;
       }
 
       for (const folder of folders) {
