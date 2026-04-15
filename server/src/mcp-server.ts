@@ -39,7 +39,7 @@ function walkRepoFiles(dir: string, root: string, depth = 0, acc: RepoFile[] = [
     if (st.isDirectory()) {
       if (!CONTEXT_SKIP_DIRS.has(entry)) walkRepoFiles(abs, root, depth + 1, acc);
     } else if (TEXT_EXTS.has(extname(entry).toLowerCase())) {
-      acc.push({ path: abs, relPath: abs.slice(root.length + 1), size: st.size });
+      acc.push({ path: abs, relPath: abs.slice(root.length + 1).replace(/\\/g, "/"), size: st.size });
     }
   }
   return acc;

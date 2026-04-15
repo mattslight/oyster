@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { fal } from "@fal-ai/client";
 import type { IconStatus } from "../../shared/types.js";
 
@@ -136,7 +136,7 @@ export class IconGenerator {
     const iconPath = join(job.artifactDir, "icon.png");
     writeFileSync(iconPath, buffer);
 
-    const dirName = job.artifactDir.split("/").pop();
+    const dirName = basename(job.artifactDir);
     const servePath = `/artifacts/${dirName}/icon.png`;
 
     this.updateArtifact(job.artifactId, {

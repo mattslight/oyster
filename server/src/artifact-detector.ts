@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, basename, sep } from "node:path";
 import {
   registerGeneratedArtifact,
   updateGeneratedArtifact,
@@ -80,12 +80,12 @@ const NAME_OVERRIDES: Record<string, string> = {
 };
 
 export function inferName(filePath: string): string {
-  const base = filePath.split("/").pop() || "untitled";
+  const base = basename(filePath) || "untitled";
   const stem = base.replace(/\.[^.]+$/, "");
 
   // For index.html files, use the parent directory name instead
   if (stem.toLowerCase() === "index") {
-    const parentDir = dirname(filePath).split("/").pop() || "untitled";
+    const parentDir = basename(dirname(filePath)) || "untitled";
     if (NAME_OVERRIDES[parentDir]) return NAME_OVERRIDES[parentDir];
     return parentDir
       .replace(/[-_]/g, " ")
@@ -99,7 +99,7 @@ export function inferName(filePath: string): string {
 }
 
 function detectExistingIcon(artifactDir: string): { icon: string; iconStatus: "ready" } | {} {
-  const dirName = artifactDir.split("/").pop();
+  const dirName = basename(artifactDir);
   const iconPath = join(artifactDir, "icon.png");
   if (existsSync(iconPath)) {
     return { icon: `/artifacts/${dirName}/icon.png`, iconStatus: "ready" as const };
@@ -169,7 +169,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
   // Check if this file is inside userland
   if (filePath.startsWith(artifactsDir)) {
     const relativePath = filePath.slice(artifactsDir.length);
-    const topDir = relativePath.split("/")[0];
+    const topDir = relativePath.split(sep)[0];
     if (!topDir || topDir.startsWith(".")) return; // Skip dotdirs (.opencode/, .git/, etc.)
     const artifactId = topDir;
 
@@ -326,7 +326,7 @@ export function startGenerationTimer(
       generatingArtifacts.delete(id);
       const name = manifest?.name || info.name;
       const type = manifest?.type || info.type;
-      const dirName = info.dir.split("/").pop();
+      const dirName = basename(info.dir);
       const servePath = manifest
         ? `/artifacts/${manifest.id}/${manifest.entrypoint}`
         : `/artifacts/${dirName}/src/index.html`;
