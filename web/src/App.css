@@ -1279,10 +1279,9 @@ body {
   border-radius: 9999px;
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.4),
-    0 0 0 1px var(--glass-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   user-select: none;
-  transform: translateY(0);
   opacity: 1;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1291,6 +1290,18 @@ body {
   transform: translateY(calc(-100% - 8px));
 }
 
+.fullscreen-toolbar-hint {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
 
 .fullscreen-toolbar-btn {
   width: 26px;
