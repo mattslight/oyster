@@ -110,7 +110,6 @@ export function ViewerWindow({
   onHashChange,
   initialHash,
 }: Props) {
-  const toolbarRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<ArtifactError | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
@@ -347,13 +346,16 @@ export function ViewerWindow({
     }
   }, [onFixError, error, title]);
 
-  // Fullscreen toolbar auto-hide
+  // Toolbar: visible until first use, then auto-hides with subtle hint (#102)
+  const [discovered, setDiscovered] = useState(
+    () => localStorage.getItem("oyster-toolbar-discovered") === "true",
+  );
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleHide = useCallback(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => setToolbarVisible(false), 150);
+    hideTimer.current = setTimeout(() => setToolbarVisible(false), 1500);
   }, []);
 
   const showToolbar = useCallback(() => {
@@ -362,16 +364,22 @@ export function ViewerWindow({
   }, []);
 
   const leaveToolbar = useCallback(() => {
-    scheduleHide();
-  }, [scheduleHide]);
+    if (discovered) scheduleHide();
+  }, [discovered, scheduleHide]);
 
-  // Start auto-hide timer when entering fullscreen
+  const markDiscovered = useCallback(() => {
+    if (!discovered) {
+      setDiscovered(true);
+      localStorage.setItem("oyster-toolbar-discovered", "true");
+    }
+  }, [discovered]);
+
   useEffect(() => {
     if (!fullscreen) return;
     setToolbarVisible(true);
-    scheduleHide();
+    if (discovered) scheduleHide();
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
-  }, [fullscreen, scheduleHide]);
+  }, [fullscreen, discovered, scheduleHide]);
 
   // Escape key exits fullscreen
   useEffect(() => {
@@ -477,14 +485,12 @@ export function ViewerWindow({
           onMouseEnter={showToolbar}
           onMouseLeave={leaveToolbar}
         >
-        <div
-          ref={toolbarRef}
-          className={`fullscreen-toolbar ${toolbarVisible ? "" : "fullscreen-toolbar-hidden"}`}
-        >
+        {!toolbarVisible && <div className="fullscreen-toolbar-hint" />}
+        <div className={`fullscreen-toolbar ${toolbarVisible ? "" : "fullscreen-toolbar-hidden"}`}>
           <button
             className="fullscreen-toolbar-btn"
             disabled={!hasPrev}
-            onClick={() => onNavigate?.(-1)}
+            onClick={() => { markDiscovered(); onNavigate?.(-1); }}
             title="Previous"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -494,7 +500,7 @@ export function ViewerWindow({
           <button
             className="fullscreen-toolbar-btn"
             disabled={!hasNext}
-            onClick={() => onNavigate?.(1)}
+            onClick={() => { markDiscovered(); onNavigate?.(1); }}
             title="Next"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -505,7 +511,7 @@ export function ViewerWindow({
           <div className="fullscreen-toolbar-sep" />
           <button
             className="fullscreen-toolbar-btn"
-            onClick={onToggleFullscreen}
+            onClick={() => { markDiscovered(); onToggleFullscreen?.(); }}
             title="Window"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -517,7 +523,7 @@ export function ViewerWindow({
           </button>
           <button
             className="fullscreen-toolbar-btn fullscreen-toolbar-close"
-            onClick={onClose}
+            onClick={() => { markDiscovered(); onClose(); }}
             title="Close"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
