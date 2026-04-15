@@ -34,6 +34,7 @@ import {
   buildImportPlan,
   executeImportPlan,
   getPlan,
+  setImportStatePath,
   type PromptContext,
   type PreviewDeps,
   type ExecuteDeps,
@@ -154,6 +155,7 @@ function bootstrapUserland() {
 
 // ── Auto-backup userland before bootstrap/upgrade and before touching the DB ──
 runStartupBackup(USERLAND_DIR);
+setImportStatePath(USERLAND_DIR);
 
 bootstrapUserland();
 

@@ -91,7 +91,11 @@ setInterval(() => {
 
 // ── Import State ──
 
-const IMPORT_STATE_PATH = join(homedir(), ".oyster", "import-state.json");
+let importStatePath = join(homedir(), ".oyster", "import-state.json");
+
+export function setImportStatePath(userlandDir: string): void {
+  importStatePath = join(userlandDir, "import-state.json");
+}
 
 interface ImportState {
   [provider: string]: { last_import_date: string };
@@ -99,8 +103,8 @@ interface ImportState {
 
 function readImportState(): ImportState {
   try {
-    if (existsSync(IMPORT_STATE_PATH)) {
-      return JSON.parse(readFileSync(IMPORT_STATE_PATH, "utf8"));
+    if (existsSync(importStatePath)) {
+      return JSON.parse(readFileSync(importStatePath, "utf8"));
     }
   } catch {}
   return {};
@@ -109,8 +113,7 @@ function readImportState(): ImportState {
 export function writeImportDate(provider: string): void {
   const state = readImportState();
   state[provider] = { last_import_date: new Date().toISOString() };
-  mkdirSync(join(homedir(), ".oyster"), { recursive: true });
-  writeFileSync(IMPORT_STATE_PATH, JSON.stringify(state, null, 2) + "\n");
+  writeFileSync(importStatePath, JSON.stringify(state, null, 2) + "\n");
 }
 
 // ── Prompt Generation ──
