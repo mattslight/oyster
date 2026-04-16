@@ -49,6 +49,7 @@ export function spawnOpenCodeServe(
     const match = text.match(/listening on http:\/\/127\.0\.0\.1:(\d+)/);
     if (match && !resolvedPort) {
       resolvedPort = parseInt(match[1], 10);
+      opencodeRestarts = 0;
       console.log(`[opencode-serve] resolved to port ${resolvedPort}`);
     }
   });
@@ -57,9 +58,10 @@ export function spawnOpenCodeServe(
     console.error(`[opencode-serve] ${data.toString().trim()}`);
   });
 
-  child.on("error", (err) => {
-    console.error(`[opencode-serve] spawn error: ${err.message}`);
-    if (opencodeChild === child) { opencodeChild = null; resolvedPort = 0; }
+  function scheduleRestart(reason: string) {
+    if (opencodeChild !== child) return; // already handled by other event
+    opencodeChild = null;
+    resolvedPort = 0;
     if (shuttingDown) return;
     opencodeRestarts++;
     if (opencodeRestarts > MAX_RESTARTS) {
@@ -67,21 +69,17 @@ export function spawnOpenCodeServe(
       return;
     }
     const delay = Math.min(2000 * opencodeRestarts, 30000);
-    console.log(`[opencode-serve] restarting in ${delay}ms...`);
+    console.log(`[opencode-serve] ${reason}, restarting in ${delay}ms...`);
     setTimeout(() => spawnOpenCodeServe(opencodeBin, opencodePort, userlandDir, cleanEnv), delay);
+  }
+
+  child.on("error", (err) => {
+    console.error(`[opencode-serve] spawn error: ${err.message}`);
+    scheduleRestart(`spawn error: ${err.message}`);
   });
 
   child.on("exit", (code) => {
-    if (opencodeChild === child) { opencodeChild = null; resolvedPort = 0; }
-    if (shuttingDown) return;
-    opencodeRestarts++;
-    if (opencodeRestarts > MAX_RESTARTS) {
-      console.error("[opencode-serve] too many restarts, giving up");
-      return;
-    }
-    const delay = Math.min(2000 * opencodeRestarts, 30000);
-    console.log(`[opencode-serve] exited (code ${code}), restarting in ${delay}ms...`);
-    setTimeout(() => spawnOpenCodeServe(opencodeBin, opencodePort, userlandDir, cleanEnv), delay);
+    scheduleRestart(`exited (code ${code})`);
   });
 
   return child;
