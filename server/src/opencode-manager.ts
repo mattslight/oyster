@@ -6,9 +6,17 @@ let opencodeRestarts = 0;
 const MAX_RESTARTS = 10;
 
 let resolvedPort = 0;
+let opencodeChild: ReturnType<typeof spawn> | null = null;
 
 export function getOpenCodePort(): number {
   return resolvedPort;
+}
+
+export function killOpenCode() {
+  if (opencodeChild) {
+    opencodeChild.kill("SIGTERM");
+    opencodeChild = null;
+  }
 }
 
 export function spawnOpenCodeServe(
@@ -19,12 +27,15 @@ export function spawnOpenCodeServe(
 ) {
   // Use port 0 to let the OS pick an available port
   console.log(`Spawning opencode serve in ${userlandDir}`);
+  // Reset port so the new instance's port is captured
+  resolvedPort = 0;
   const child = spawn(opencodeBin, ["serve", "--port", "0"], {
     cwd: userlandDir,
     env: cleanEnv,
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
   });
+  opencodeChild = child;
 
   child.stdout?.on("data", (data: Buffer) => {
     const text = data.toString().trim();
@@ -42,6 +53,7 @@ export function spawnOpenCodeServe(
   });
 
   child.on("exit", (code) => {
+    if (opencodeChild === child) opencodeChild = null;
     if (shuttingDown) return;
     opencodeRestarts++;
     if (opencodeRestarts > MAX_RESTARTS) {

@@ -43,6 +43,7 @@ import {
   spawnOpenCodeServe,
   getOpenCodePort,
   markShuttingDown,
+  killOpenCode,
   startAutoApprover,
   proxyToOpenCode,
   proxySSE,
@@ -202,8 +203,8 @@ startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
 });
 startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
-process.on("SIGTERM", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
-process.on("SIGINT", () => { markShuttingDown(); db.close(); memoryProvider.close(); process.exit(0); });
+process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); process.exit(0); });
+process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); process.exit(0); });
 
 // ── UI push events (SSE) ──
 
