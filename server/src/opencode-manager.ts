@@ -15,7 +15,9 @@ export function getOpenCodePort(): number {
 export function killOpenCode() {
   if (opencodeChild) {
     if (process.platform === "win32" && opencodeChild.pid) {
-      try { execSync(`taskkill /PID ${opencodeChild.pid} /T /F`, { stdio: "ignore" }); } catch {}
+      try { execSync(`taskkill /PID ${opencodeChild.pid} /T /F`, { stdio: "ignore" }); } catch (err) {
+        console.warn(`[opencode-serve] taskkill failed: ${err instanceof Error ? err.message : err}`);
+      }
     } else {
       opencodeChild.kill("SIGTERM");
     }
@@ -29,11 +31,10 @@ export function spawnOpenCodeServe(
   userlandDir: string,
   cleanEnv: Record<string, string>,
 ) {
-  // Use port 0 to let the OS pick an available port
   console.log(`Spawning opencode serve in ${userlandDir}`);
-  // Reset port so the new instance's port is captured
   resolvedPort = 0;
-  const child = spawn(opencodeBin, ["serve", "--port", "0"], {
+  const portArg = opencodePort > 0 ? String(opencodePort) : "0";
+  const child = spawn(opencodeBin, ["serve", "--port", portArg], {
     cwd: userlandDir,
     env: cleanEnv,
     stdio: ["ignore", "pipe", "pipe"],
@@ -58,7 +59,7 @@ export function spawnOpenCodeServe(
 
   child.on("error", (err) => {
     console.error(`[opencode-serve] spawn error: ${err.message}`);
-    if (opencodeChild === child) opencodeChild = null;
+    if (opencodeChild === child) { opencodeChild = null; resolvedPort = 0; }
     if (shuttingDown) return;
     opencodeRestarts++;
     if (opencodeRestarts > MAX_RESTARTS) {
@@ -71,7 +72,7 @@ export function spawnOpenCodeServe(
   });
 
   child.on("exit", (code) => {
-    if (opencodeChild === child) opencodeChild = null;
+    if (opencodeChild === child) { opencodeChild = null; resolvedPort = 0; }
     if (shuttingDown) return;
     opencodeRestarts++;
     if (opencodeRestarts > MAX_RESTARTS) {
