@@ -1,5 +1,5 @@
 import { type IncomingMessage, type ServerResponse } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 
 let shuttingDown = false;
 let opencodeRestarts = 0;
@@ -14,7 +14,11 @@ export function getOpenCodePort(): number {
 
 export function killOpenCode() {
   if (opencodeChild) {
-    opencodeChild.kill("SIGTERM");
+    if (process.platform === "win32" && opencodeChild.pid) {
+      try { execSync(`taskkill /PID ${opencodeChild.pid} /T /F`, { stdio: "ignore" }); } catch {}
+    } else {
+      opencodeChild.kill("SIGTERM");
+    }
     opencodeChild = null;
   }
 }
@@ -50,6 +54,20 @@ export function spawnOpenCodeServe(
 
   child.stderr?.on("data", (data: Buffer) => {
     console.error(`[opencode-serve] ${data.toString().trim()}`);
+  });
+
+  child.on("error", (err) => {
+    console.error(`[opencode-serve] spawn error: ${err.message}`);
+    if (opencodeChild === child) opencodeChild = null;
+    if (shuttingDown) return;
+    opencodeRestarts++;
+    if (opencodeRestarts > MAX_RESTARTS) {
+      console.error("[opencode-serve] too many restarts, giving up");
+      return;
+    }
+    const delay = Math.min(2000 * opencodeRestarts, 30000);
+    console.log(`[opencode-serve] restarting in ${delay}ms...`);
+    setTimeout(() => spawnOpenCodeServe(opencodeBin, opencodePort, userlandDir, cleanEnv), delay);
   });
 
   child.on("exit", (code) => {
