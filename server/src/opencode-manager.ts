@@ -1,14 +1,28 @@
 import { type IncomingMessage, type ServerResponse } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 
 let shuttingDown = false;
 let opencodeRestarts = 0;
 const MAX_RESTARTS = 10;
 
 let resolvedPort = 0;
+let opencodeChild: ReturnType<typeof spawn> | null = null;
 
 export function getOpenCodePort(): number {
   return resolvedPort;
+}
+
+export function killOpenCode() {
+  if (opencodeChild) {
+    if (process.platform === "win32" && opencodeChild.pid) {
+      try { execSync(`taskkill /PID ${opencodeChild.pid} /T /F`, { stdio: "ignore" }); } catch (err) {
+        console.warn(`[opencode-serve] taskkill failed: ${err instanceof Error ? err.message : err}`);
+      }
+    } else {
+      opencodeChild.kill("SIGTERM");
+    }
+    opencodeChild = null;
+  }
 }
 
 export function spawnOpenCodeServe(
@@ -17,14 +31,16 @@ export function spawnOpenCodeServe(
   userlandDir: string,
   cleanEnv: Record<string, string>,
 ) {
-  // Use port 0 to let the OS pick an available port
   console.log(`Spawning opencode serve in ${userlandDir}`);
-  const child = spawn(opencodeBin, ["serve", "--port", "0"], {
+  resolvedPort = 0;
+  const portArg = opencodePort > 0 ? String(opencodePort) : "0";
+  const child = spawn(opencodeBin, ["serve", "--port", portArg], {
     cwd: userlandDir,
     env: cleanEnv,
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
   });
+  opencodeChild = child;
 
   child.stdout?.on("data", (data: Buffer) => {
     const text = data.toString().trim();
@@ -33,6 +49,7 @@ export function spawnOpenCodeServe(
     const match = text.match(/listening on http:\/\/127\.0\.0\.1:(\d+)/);
     if (match && !resolvedPort) {
       resolvedPort = parseInt(match[1], 10);
+      opencodeRestarts = 0;
       console.log(`[opencode-serve] resolved to port ${resolvedPort}`);
     }
   });
@@ -41,7 +58,10 @@ export function spawnOpenCodeServe(
     console.error(`[opencode-serve] ${data.toString().trim()}`);
   });
 
-  child.on("exit", (code) => {
+  function scheduleRestart(reason: string) {
+    if (opencodeChild !== child) return; // already handled by other event
+    opencodeChild = null;
+    resolvedPort = 0;
     if (shuttingDown) return;
     opencodeRestarts++;
     if (opencodeRestarts > MAX_RESTARTS) {
@@ -49,8 +69,17 @@ export function spawnOpenCodeServe(
       return;
     }
     const delay = Math.min(2000 * opencodeRestarts, 30000);
-    console.log(`[opencode-serve] exited (code ${code}), restarting in ${delay}ms...`);
+    console.log(`[opencode-serve] ${reason}, restarting in ${delay}ms...`);
     setTimeout(() => spawnOpenCodeServe(opencodeBin, opencodePort, userlandDir, cleanEnv), delay);
+  }
+
+  child.on("error", (err) => {
+    console.error(`[opencode-serve] spawn error: ${err.message}`);
+    scheduleRestart(`spawn error: ${err.message}`);
+  });
+
+  child.on("exit", (code) => {
+    scheduleRestart(`exited (code ${code})`);
   });
 
   return child;
