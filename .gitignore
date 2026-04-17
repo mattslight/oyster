@@ -12,3 +12,6 @@ shared/types.js
 # User data
 userland/
 server/registry.json
+
+# Discovery PoC output (contains real paths/emails)
+scripts/discovery-poc-last.json

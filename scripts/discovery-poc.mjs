@@ -16,6 +16,7 @@
 
 import { promises as fs, existsSync, readFileSync } from "node:fs";
 import { join, basename, dirname, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -42,18 +43,62 @@ const AUTHOR_WINDOW_DAYS = 180;
 
 // ─── CLI ─────────────────────────────────────────────────────────────────
 
+function printUsage() {
+  console.error("Usage: node scripts/discovery-poc.mjs [options]");
+  console.error("");
+  console.error("Options:");
+  console.error("  --emails <list>   Comma-separated emails to match against git authors");
+  console.error("  --roots <list>    Comma-separated root directories to scan");
+  console.error(`  --depth <n>       Max traversal depth (default: ${MAX_DEPTH})`);
+  console.error("  --no-llm          Skip the LLM filter; print raw crawl results only");
+  console.error("  -h, --help        Show this help");
+  console.error("");
+  console.error("Note: unless --no-llm is set, candidate metadata (paths, git origins,");
+  console.error("author emails) is sent to the Anthropic API for classification.");
+}
+
+function nextValue(argv, i, flag) {
+  const value = argv[i + 1];
+  if (value === undefined || value.startsWith("--")) {
+    printUsage();
+    throw new Error(`Missing value for ${flag}`);
+  }
+  return value;
+}
+
 async function parseArgs(argv) {
-  const args = { emails: [], roots: [homedir()], maxDepth: MAX_DEPTH };
+  const args = { emails: [], roots: [homedir()], maxDepth: MAX_DEPTH, noLlm: false };
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === "--emails") {
-      args.emails = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
-    } else if (argv[i] === "--roots") {
-      args.roots = argv[++i].split(",").map((s) => {
+    const flag = argv[i];
+    if (flag === "-h" || flag === "--help") {
+      printUsage();
+      process.exit(0);
+    } else if (flag === "--emails") {
+      args.emails = nextValue(argv, i, flag).split(",").map((s) => s.trim()).filter(Boolean);
+      i++;
+    } else if (flag === "--roots") {
+      args.roots = nextValue(argv, i, flag).split(",").map((s) => {
         const p = s.trim();
         return p.startsWith("~") ? join(homedir(), p.slice(1)) : resolve(p);
-      });
-    } else if (argv[i] === "--depth") {
-      args.maxDepth = parseInt(argv[++i], 10) || MAX_DEPTH;
+      }).filter(Boolean);
+      if (args.roots.length === 0) {
+        printUsage();
+        throw new Error("--roots must contain at least one path");
+      }
+      i++;
+    } else if (flag === "--depth") {
+      const parsed = Number.parseInt(nextValue(argv, i, flag), 10);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        printUsage();
+        throw new Error("--depth must be a positive integer");
+      }
+      args.maxDepth = parsed;
+      i++;
+    } else if (flag === "--no-llm") {
+      args.noLlm = true;
+    } else {
+      printUsage();
+      throw new Error(`Unknown argument: ${flag}`);
     }
   }
   if (args.emails.length === 0) {
@@ -365,12 +410,22 @@ async function main() {
   console.log(`Roots:  ${args.roots.join(", ")}`);
   console.log();
 
-  const apiKey = loadApiKey();
-  if (!apiKey) {
-    console.error("ERROR: No Anthropic API key found.");
-    console.error("  Set ANTHROPIC_API_KEY env var OR");
-    console.error("  Ensure ~/.local/share/opencode/auth.json has an 'anthropic' entry");
-    process.exit(1);
+  let apiKey = null;
+  if (!args.noLlm) {
+    apiKey = loadApiKey();
+    if (!apiKey) {
+      console.error("ERROR: No Anthropic API key found.");
+      console.error("  Set ANTHROPIC_API_KEY env var OR");
+      console.error("  Ensure ~/.local/share/opencode/auth.json has an 'anthropic' entry");
+      console.error("  Or pass --no-llm to skip the LLM filter and print raw crawl results.");
+      process.exit(1);
+    }
+    console.log("Note: candidate metadata (paths, git origins, author emails) will be");
+    console.log("      sent to Anthropic's API for classification. Pass --no-llm to skip.");
+    console.log();
+  } else {
+    console.log("--no-llm set; skipping LLM filter.");
+    console.log();
   }
 
   // Crawl
@@ -395,54 +450,70 @@ async function main() {
     return;
   }
 
-  // LLM filter
-  const prompt = buildPrompt(candidates, args.emails);
-  const llmStart = performance.now();
-  console.log(`== LLM filter ==`);
-  console.log(`Prompt size: ${prompt.length} chars (~${Math.round(prompt.length / 4)} tokens)`);
-  console.log(`Calling Haiku...`);
-
-  const { text, usage } = await callHaiku(prompt, apiKey);
-  const llmMs = performance.now() - llmStart;
-
-  const verdict = parseVerdict(text);
-  console.log(
-    `Response in ${llmMs.toFixed(0)}ms — in=${usage.input_tokens} out=${usage.output_tokens} tokens`,
-  );
-  console.log();
-
-  // Report
   const home = homedir();
-  const byPath = new Map(candidates.map((c) => [c.path.startsWith(home) ? "~" + c.path.slice(home.length) : c.path, c]));
+  let verdict = null;
+  let llmMs = 0;
+  let usage = null;
 
-  console.log(`== Kept (${verdict.kept.length}) ==`);
-  for (const k of verdict.kept) {
-    const c = byPath.get(k.path);
-    const { rel, tags } = c ? formatCandidate(c, home) : { rel: k.path, tags: [] };
-    console.log(`  ${rel}`);
-    console.log(`    tags:   ${tags.join(" | ")}`);
-    console.log(`    reason: ${k.reason}`);
-  }
-  console.log();
+  if (args.noLlm) {
+    console.log(`== Raw candidates (${candidates.length}) ==`);
+    for (const c of candidates) {
+      const { rel, tags } = formatCandidate(c, home);
+      console.log(`  ${rel}`);
+      console.log(`    tags: ${tags.join(" | ")}`);
+    }
+    console.log();
+  } else {
+    // LLM filter
+    const prompt = buildPrompt(candidates, args.emails);
+    const llmStart = performance.now();
+    console.log(`== LLM filter ==`);
+    console.log(`Prompt size: ${prompt.length} chars (~${Math.round(prompt.length / 4)} tokens)`);
+    console.log(`Calling Haiku...`);
 
-  console.log(`== Rejected (${verdict.rejected.length}) ==`);
-  for (const r of verdict.rejected) {
-    const c = byPath.get(r.path);
-    const { rel, tags } = c ? formatCandidate(c, home) : { rel: r.path, tags: [] };
-    console.log(`  ${rel}`);
-    console.log(`    tags:   ${tags.join(" | ")}`);
-    console.log(`    reason: ${r.reason}`);
+    const resp = await callHaiku(prompt, apiKey);
+    llmMs = performance.now() - llmStart;
+    usage = resp.usage;
+    verdict = parseVerdict(resp.text);
+
+    console.log(
+      `Response in ${llmMs.toFixed(0)}ms — in=${usage.input_tokens} out=${usage.output_tokens} tokens`,
+    );
+    console.log();
+
+    // Report
+    const byPath = new Map(candidates.map((c) => [c.path.startsWith(home) ? "~" + c.path.slice(home.length) : c.path, c]));
+
+    console.log(`== Kept (${verdict.kept.length}) ==`);
+    for (const k of verdict.kept) {
+      const c = byPath.get(k.path);
+      const { rel, tags } = c ? formatCandidate(c, home) : { rel: k.path, tags: [] };
+      console.log(`  ${rel}`);
+      console.log(`    tags:   ${tags.join(" | ")}`);
+      console.log(`    reason: ${k.reason}`);
+    }
+    console.log();
+
+    console.log(`== Rejected (${verdict.rejected.length}) ==`);
+    for (const r of verdict.rejected) {
+      const c = byPath.get(r.path);
+      const { rel, tags } = c ? formatCandidate(c, home) : { rel: r.path, tags: [] };
+      console.log(`  ${rel}`);
+      console.log(`    tags:   ${tags.join(" | ")}`);
+      console.log(`    reason: ${r.reason}`);
+    }
+    console.log();
   }
-  console.log();
 
   const total = crawlMs + llmMs;
   console.log(`== Timings ==`);
   console.log(`Crawl:  ${crawlMs.toFixed(0)}ms`);
-  console.log(`LLM:    ${llmMs.toFixed(0)}ms`);
+  if (!args.noLlm) console.log(`LLM:    ${llmMs.toFixed(0)}ms`);
   console.log(`Total:  ${total.toFixed(0)}ms`);
 
   // Persist raw data for re-runs / ground-truth annotation
-  const outPath = join(dirname(new URL(import.meta.url).pathname), "discovery-poc-last.json");
+  const scriptDir = dirname(fileURLToPath(import.meta.url));
+  const outPath = join(scriptDir, "discovery-poc-last.json");
   await fs.writeFile(
     outPath,
     JSON.stringify({ args, stats, crawlMs, llmMs, candidates, verdict, usage }, null, 2),
