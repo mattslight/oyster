@@ -57,7 +57,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 const isInstalledPackage = !!process.env.OYSTER_INSTALLED;
 const PREFERRED_PORT = parseInt(process.env.OYSTER_PORT ?? (isInstalledPackage ? "4444" : "3333"), 10);
-const OPENCODE_PORT = parseInt(process.env.OYSTER_OPENCODE_PORT ?? "4096", 10);
+const OPENCODE_PORT = parseInt(process.env.OYSTER_OPENCODE_PORT ?? "0", 10);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Find the package root by walking up from __dirname until we find .opencode/agents/
