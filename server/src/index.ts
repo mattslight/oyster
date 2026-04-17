@@ -205,6 +205,12 @@ startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DI
 
 process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); process.exit(0); });
 process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); process.exit(0); });
+process.on("uncaughtException", (err) => {
+  console.error(`[oyster] uncaught exception: ${err.message}`);
+});
+process.on("unhandledRejection", (err) => {
+  console.error(`[oyster] unhandled rejection: ${err instanceof Error ? err.message : err}`);
+});
 
 // ── UI push events (SSE) ──
 

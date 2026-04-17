@@ -108,9 +108,11 @@ export function startAutoApprover(
       setTimeout(connect, 3000);
       return;
     }
+    const controller = new AbortController();
     try {
       const res = await fetch(`http://127.0.0.1:${opencodePort}/event`, {
         headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
       });
       if (!res.ok || !res.body) {
         console.log("[auto-approver] failed to connect, retrying in 3s...");
@@ -123,40 +125,43 @@ export function startAutoApprover(
       let buffer = "";
 
       async function pump() {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
 
-          // Parse SSE lines
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+            // Parse SSE lines
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const event = JSON.parse(line.slice(6));
-              if (event.type === "permission.asked") {
-                const requestId = event.properties.id;
-                console.log(`[auto-approver] approving ${requestId}: ${event.properties.permission}`);
-                fetch(`http://127.0.0.1:${opencodePort}/permission/${requestId}/reply`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ reply: "always" }),
-                }).catch(() => {});
-              }
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const event = JSON.parse(line.slice(6));
+                if (event.type === "permission.asked") {
+                  const requestId = event.properties.id;
+                  console.log(`[auto-approver] approving ${requestId}: ${event.properties.permission}`);
+                  fetch(`http://127.0.0.1:${opencodePort}/permission/${requestId}/reply`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ reply: "always" }),
+                  }).catch(() => {});
+                }
 
-              // Auto-detect new artifacts from file.edited events
-              if (event.type === "file.edited") {
-                const file = event.properties.file as string | undefined;
-                if (file) onFileEdited(file);
-              }
-            } catch {}
+                // Auto-detect new artifacts from file.edited events
+                if (event.type === "file.edited") {
+                  const file = event.properties.file as string | undefined;
+                  if (file) onFileEdited(file);
+                }
+              } catch {}
+            }
           }
-        }
+        } catch {}
       }
 
-      pump().catch(() => {}).finally(() => {
+      pump().finally(() => {
+        controller.abort();
         if (!shuttingDown) {
           console.log("[auto-approver] disconnected, reconnecting in 3s...");
           setTimeout(connect, 3000);
@@ -218,10 +223,12 @@ export async function proxySSE(
   opencodePort: number,
 ) {
   const url = `http://127.0.0.1:${opencodePort}${targetPath}`;
+  const controller = new AbortController();
 
   try {
     const upstream = await fetch(url, {
       headers: { Accept: "text/event-stream" },
+      signal: controller.signal,
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -241,19 +248,21 @@ export async function proxySSE(
     const decoder = new TextDecoder();
 
     async function pump() {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        res.write(chunk);
-      }
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          res.write(chunk);
+        }
+      } catch {}
       res.end();
     }
 
-    pump().catch(() => res.end());
+    pump();
 
     req.on("close", () => {
-      reader.cancel();
+      controller.abort();
     });
   } catch {
     res.writeHead(502);
