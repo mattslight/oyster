@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 // Local discovery PoC — walker + git metadata + LLM filter + report
-// Usage: node scripts/discovery-poc.mjs [--emails a@b.com,c@d.com] [--roots ~,/Users/x/work]
+//
+// Related: https://github.com/mattslight/oyster/issues/108
+//
+// This is a *validation script*, not shipping code. It was used to test
+// whether a "crawler + LLM filter" architecture would justify building
+// local discovery as a feature. On the test machine it found no real
+// projects outside ~/Dev — so the feature was shelved and the issue
+// marked low priority. See the issue comments for full findings.
+//
+// Kept on main in case we resurrect #108 for users with scattered work
+// (iCloud / Dropbox / Obsidian / Figma / other tool-specific markers).
+//
+// Usage: node scripts/discovery-poc.mjs [--emails a@b.com,c@d.com] [--roots ~,/Users/x/work] [--depth 4]
 
 import { promises as fs, existsSync, readFileSync } from "node:fs";
 import { join, basename, dirname, extname, resolve } from "node:path";
