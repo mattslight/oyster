@@ -9,6 +9,14 @@ import { homedir } from "node:os";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
 const OYSTER_HOME = join(homedir(), ".oyster");
+
+// ── CLI flags ──
+const args = process.argv.slice(2);
+if (args.includes("--version") || args.includes("-v")) {
+  const pkg = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8"));
+  console.log(pkg.version);
+  process.exit(0);
+}
 const ENV_FILE = join(OYSTER_HOME, ".env");
 
 // ── Resolve env vars ──
