@@ -3,8 +3,13 @@
 import { spawn, execSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
+import {
+  existsSync, readFileSync, mkdirSync, mkdtempSync, readdirSync,
+  rmSync, cpSync, createWriteStream,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
@@ -17,6 +22,168 @@ if (args.includes("--version") || args.includes("-v")) {
   console.log(pkg.version);
   process.exit(0);
 }
+if (args.includes("--help") || args.includes("-h") || args[0] === "help") {
+  printHelp();
+  process.exit(0);
+}
+
+// ── Plugin subcommands ──
+
+const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const REPO_PATTERN = /^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,64}$/;
+
+const cmd = args[0];
+if (cmd && !cmd.startsWith("-")) {
+  try {
+    if (cmd === "install") { await cmdInstall(args[1]); process.exit(0); }
+    if (cmd === "uninstall" || cmd === "remove") { cmdUninstall(args[1]); process.exit(0); }
+    if (cmd === "list" || cmd === "ls") { cmdList(); process.exit(0); }
+    console.error(`Unknown command: ${cmd}\n`);
+    printHelp();
+    process.exit(1);
+  } catch (err) {
+    console.error(`\n  Error: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
+function printHelp() {
+  console.log(`
+  Oyster — prompt-controlled workspace OS
+
+  Usage:
+    oyster                            Start the server (default)
+    oyster install <owner>/<repo>     Install a plugin from its latest GitHub release
+    oyster uninstall <id>             Remove an installed plugin
+    oyster list                       List installed plugins
+    oyster --version                  Print version
+    oyster --help                     Show this help
+`);
+}
+
+async function cmdInstall(repo) {
+  if (!repo || !REPO_PATTERN.test(repo)) {
+    throw new Error("install expects <owner>/<repo>, e.g. 'oyster install mattslight/oyster-sample-plugin'");
+  }
+
+  console.log(`\n  Fetching latest release of ${repo}...`);
+  const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
+  const assets = release.assets || [];
+  const zipAsset = assets.find((a) => a.name.toLowerCase().endsWith(".zip"));
+  if (!zipAsset) {
+    throw new Error(`No .zip asset found in release ${release.tag_name || "?"} of ${repo}. Plugin authors: attach a zipped bundle to the release.`);
+  }
+  console.log(`  Release: ${release.tag_name} (${zipAsset.name}, ${(zipAsset.size / 1024).toFixed(1)} KB)`);
+
+  const workDir = mkdtempSync(join(tmpdir(), "oyster-install-"));
+  const zipPath = join(workDir, zipAsset.name);
+  const extractDir = join(workDir, "extracted");
+  mkdirSync(extractDir);
+
+  try {
+    await downloadFile(zipAsset.browser_download_url, zipPath);
+    extractZip(zipPath, extractDir);
+
+    const manifestPath = join(extractDir, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      throw new Error("Downloaded bundle has no manifest.json at the root.");
+    }
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (!manifest.id || !PLUGIN_ID_PATTERN.test(manifest.id)) {
+      throw new Error(`Invalid plugin id in manifest: '${manifest.id}'. Must match ${PLUGIN_ID_PATTERN}.`);
+    }
+
+    const userlandDir = join(OYSTER_HOME, "userland");
+    mkdirSync(userlandDir, { recursive: true });
+    const destDir = join(userlandDir, manifest.id);
+
+    if (existsSync(destDir)) {
+      throw new Error(`Plugin '${manifest.id}' is already installed at ${destDir}. Run 'oyster uninstall ${manifest.id}' first.`);
+    }
+
+    cpSync(extractDir, destDir, { recursive: true });
+
+    console.log(`\n  ✓ Installed ${manifest.name} v${manifest.version || "?"}`);
+    console.log(`    ${destDir}`);
+    console.log(`\n  Restart Oyster (or the running server) to see it on your surface.\n`);
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+function cmdUninstall(id) {
+  if (!id || !PLUGIN_ID_PATTERN.test(id)) {
+    throw new Error("uninstall expects a valid plugin id, e.g. 'oyster uninstall pomodoro'");
+  }
+  const dir = join(OYSTER_HOME, "userland", id);
+  if (!existsSync(dir)) {
+    throw new Error(`'${id}' is not installed.`);
+  }
+  const manifestPath = join(dir, "manifest.json");
+  if (!existsSync(manifestPath)) {
+    throw new Error(`${dir} has no manifest.json — refusing to remove a folder that isn't a plugin.`);
+  }
+  rmSync(dir, { recursive: true, force: true });
+  console.log(`\n  ✓ Uninstalled ${id}\n`);
+}
+
+function cmdList() {
+  const userlandDir = join(OYSTER_HOME, "userland");
+  if (!existsSync(userlandDir)) {
+    console.log("\n  No plugins installed.\n");
+    return;
+  }
+  const rows = [];
+  for (const entry of readdirSync(userlandDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = join(userlandDir, entry.name, "manifest.json");
+    if (!existsSync(manifestPath)) continue;
+    try {
+      const m = JSON.parse(readFileSync(manifestPath, "utf8"));
+      rows.push({ id: m.id || entry.name, name: m.name || "-", version: m.version || "?", builtin: m.builtin === true });
+    } catch {}
+  }
+  if (rows.length === 0) {
+    console.log("\n  No plugins installed.\n");
+    return;
+  }
+  const idWidth = Math.max(8, ...rows.map((r) => r.id.length));
+  const nameWidth = Math.max(8, ...rows.map((r) => r.name.length));
+  console.log("");
+  for (const r of rows) {
+    const tag = r.builtin ? " (builtin)" : "";
+    console.log(`  ${r.id.padEnd(idWidth)}  ${r.name.padEnd(nameWidth)}  v${r.version}${tag}`);
+  }
+  console.log("");
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url, { headers: { "User-Agent": "oyster-cli", Accept: "application/vnd.github+json" } });
+  if (!res.ok) throw new Error(`GitHub API ${res.status} ${res.statusText} for ${url}`);
+  return await res.json();
+}
+
+async function downloadFile(url, destPath) {
+  const res = await fetch(url, { redirect: "follow", headers: { "User-Agent": "oyster-cli" } });
+  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status} for ${url}`);
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(destPath));
+}
+
+function extractZip(zipPath, destDir) {
+  try {
+    execSync(`unzip -q "${zipPath}" -d "${destDir}"`, { stdio: "pipe" });
+    return;
+  } catch {
+    // fall through
+  }
+  try {
+    execSync(`tar -xf "${zipPath}" -C "${destDir}"`, { stdio: "pipe" });
+    return;
+  } catch {
+    throw new Error("Extraction failed — neither `unzip` nor `tar` could open the bundle.");
+  }
+}
+
 const ENV_FILE = join(OYSTER_HOME, ".env");
 
 // ── Resolve env vars ──
