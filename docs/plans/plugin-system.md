@@ -154,7 +154,7 @@ The Oyster monorepo stays focused on the host. Plugins and their ecosystem live 
 | `mattslight/oyster-pomodoro` | First real third-party plugin. Own releases, own README with screenshots. Validates Tier 1 → Tier 2 install flow. | individual community plugin repos |
 | `mattslight/oyster-community-plugins` | Registry repo containing `community-plugins.json`. Single source of truth for both `oyster.to/plugins` page and the in-app browser (Tier 3). Authors submit a PR to list. | `obsidianmd/obsidian-releases` |
 
-**oyster.to/plugins** — static page generated from `community-plugins.json`. Discovery only; install still happens via CLI/in-app. Zero backend.
+**oyster.to/plugins** — static-hosted page that fetches `community-plugins.json` at runtime. Discovery only; install still happens via CLI/in-app. Zero backend.
 
 ## References
 

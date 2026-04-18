@@ -467,12 +467,16 @@
     }
 
     function setCopyState(btn, label, cls) {
+      if (btn._copyTimeoutId) {
+        clearTimeout(btn._copyTimeoutId);
+      }
       btn.textContent = label;
       btn.classList.remove("copied", "error");
       if (cls) btn.classList.add(cls);
-      setTimeout(() => {
+      btn._copyTimeoutId = setTimeout(() => {
         btn.textContent = "copy";
         btn.classList.remove("copied", "error");
+        btn._copyTimeoutId = null;
       }, 2000);
     }
 
@@ -515,15 +519,25 @@
       });
     }
 
+    const FETCH_TIMEOUT_MS = 10000;
+
+    async function fetchJson(url) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { cache: "no-cache", signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
     async function fetchRegistry() {
       try {
-        const res = await fetch(REGISTRY_URL, { cache: "no-cache" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        return await fetchJson(REGISTRY_URL);
       } catch {
-        const res = await fetch(FALLBACK_URL, { cache: "no-cache" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        return await fetchJson(FALLBACK_URL);
       }
     }
 
@@ -532,12 +546,17 @@
         const raw = await fetchRegistry();
         if (!Array.isArray(raw)) throw new Error("registry not an array");
         const plugins = raw.filter(isValidPlugin);
-        if (plugins.length === 0) {
-          renderState(`No plugins listed yet. <a href="https://github.com/mattslight/oyster-community-plugins">Submit the first one</a>.`);
-          return;
+        const invalidCount = raw.length - plugins.length;
+        if (invalidCount > 0) {
+          console.warn(`[plugins] filtered ${invalidCount} invalid registry entries`);
         }
-        if (plugins.length < raw.length) {
-          console.warn(`[plugins] filtered ${raw.length - plugins.length} invalid registry entries`);
+        if (plugins.length === 0) {
+          if (raw.length === 0) {
+            renderState(`No plugins listed yet. <a href="https://github.com/mattslight/oyster-community-plugins">Submit the first one</a>.`);
+          } else {
+            renderState(`The registry has ${raw.length} ${raw.length === 1 ? "entry" : "entries"} but none passed validation. <a href="https://github.com/mattslight/oyster-community-plugins/issues">Report an issue</a>.`);
+          }
+          return;
         }
         root.innerHTML = plugins.map(renderCard).join("");
         bindCopyButtons();
