@@ -13,10 +13,14 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment: npm
+    # Third-party action versions are pinned to exact tags (not floating @vN majors)
+    # so that a compromised or accidentally-published bad release on the same major
+    # branch does not land in our CI automatically. Manual bumps for now; revisit
+    # once Dependabot/Renovate is configured for this repo.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6.3.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -50,7 +54,7 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.0
         with:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
