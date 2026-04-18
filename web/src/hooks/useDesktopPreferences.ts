@@ -60,9 +60,12 @@ export function useDesktopPreferences(space: string, artifacts: Artifact[]) {
 
   const [kindDropdownOpen, setKindDropdownOpen] = useState(false);
 
-  // Sync sort mode + flat mode when space tab changes
+  // Sync sort mode + flat mode when space tab changes — reactive reset from
+  // localStorage per space, not derivable without an effect since it reads
+  // external (browser) state.
   useEffect(() => {
     const s = lsGet(SORT_KEY_PREFIX + space);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSortMode(s === "alpha" || s === "kind" || s === "timeline" ? s : "alpha");
     setFlatMode(lsGet(FLAT_MODE_KEY_PREFIX + space) === "true");
   }, [space]);

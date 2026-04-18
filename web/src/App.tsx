@@ -41,6 +41,7 @@ export default function App() {
   }, []);
 
   const [activeSpace, setActiveSpace] = useState<string>(() => getUrlState().space);
+  const [spotlightOpen, setSpotlightOpen] = useState(false);
 
   // Global keyboard shortcuts
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -78,11 +79,10 @@ export default function App() {
       window.history.replaceState(null, "", "/s/home");
     }
   }, []);
-  const [loaded, setLoaded] = useState(false);
+  const [, setLoaded] = useState(false);
   const [revealId, setRevealId] = useState<string | null>(null);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(() => getUrlState().groupName);
-  const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
   const [connected, setConnected] = useState(true);
 

@@ -23,8 +23,10 @@ export function useDragOrder(space: string, sortMode: SortMode, orderedItems: De
     currentOrder: DesktopItem[];
   } | null>(null);
 
-  // Keep displayItems in sync when orderedItems changes (space switch, new artifacts)
+  // Keep displayItems in sync when orderedItems changes (space switch, new
+  // artifacts). Gated by dragState ref so we don't stomp an in-flight drag.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!dragState.current?.isDragging) setDisplayItems(orderedItems);
   }, [orderedItems]);
 

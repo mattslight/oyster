@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { subscribeToEvents, type ChatEvent } from "../data/chat-api";
-import type { Message, MessagePart, ToolPart, PendingQuestion, QuestionOption } from "./useChatSession";
+import type { Message, MessagePart, ToolPart, QuestionOption } from "./useChatSession";
 import { TOOL_LABELS, extractToolHint } from "./tool-labels";
 
 interface UseChatEventsOptions {

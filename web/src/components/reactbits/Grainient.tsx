@@ -240,7 +240,6 @@ export default function Grainient({
         // Ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     timeSpeed, colorBalance, warpStrength, warpFrequency, warpSpeed,
     warpAmplitude, blendAngle, blendSoftness, rotationAmount, noiseScale,

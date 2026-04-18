@@ -119,6 +119,9 @@ export function ViewerWindow({
   const [fixLogOpen, setFixLogOpen] = useState(false);
   const fixLogEndRef = useRef<HTMLDivElement>(null);
   const unsubRef = useRef<(() => void) | null>(null);
+  // Date.now() is intentional cache-busting — the memo only recomputes when
+  // path or iframeKey changes, so it's not per-render.
+  // eslint-disable-next-line react-hooks/purity
   const iframeSrc = useMemo(() => `${path}${path.includes("?") ? "&" : "?"}t=${Date.now()}${initialHash ? initialHash : ""}`, [path, iframeKey]);
 
   // Auto-scroll fix log
@@ -191,10 +194,11 @@ export function ViewerWindow({
     };
   }, [onHashChange, iframeKey]);
 
-  // Reset on path change
+  // Reset on path change — each state reset is intentional on navigation.
   useEffect(() => {
     unsubRef.current?.();
     unsubRef.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
     setFixPhase("idle");
     setFixStatus("");
@@ -376,6 +380,8 @@ export function ViewerWindow({
 
   useEffect(() => {
     if (!fullscreen) return;
+    // Auto-reveal the toolbar entering fullscreen, then schedule hide.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToolbarVisible(true);
     if (discovered) scheduleHide();
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };

@@ -1,5 +1,6 @@
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const typeConfig: Record<
   ArtifactKind,
   { gradient: string; color: string; ext: string; icon: string }
