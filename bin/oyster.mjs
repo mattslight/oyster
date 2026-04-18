@@ -14,6 +14,10 @@ import { pipeline } from "node:stream/promises";
 const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB cap on plugin bundles
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const API_TIMEOUT_MS = 10_000;
+// The community registry is the trust root for `oyster install <id>`. A merged
+// PR to that repo can redirect any id to any repo — delegation is to the
+// registry maintainer, not verified here. Direct `oyster install <owner>/<repo>`
+// bypasses the registry entirely.
 const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-community-plugins/main/community-plugins.json";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -70,11 +74,15 @@ function printHelp() {
 `);
 }
 
+// Returns { repo, expectedId } — expectedId is set only when arg was resolved
+// via the registry, letting the caller assert the downloaded manifest.id
+// matches what the user typed. For direct <owner>/<repo> installs there's
+// nothing to cross-check against, so expectedId is null.
 async function resolvePluginArg(arg) {
   if (!arg) {
     throw new Error("install expects a plugin id or <owner>/<repo>, e.g. 'oyster install pomodoro'");
   }
-  if (REPO_PATTERN.test(arg)) return arg;
+  if (REPO_PATTERN.test(arg)) return { repo: arg, expectedId: null };
   if (!PLUGIN_ID_PATTERN.test(arg)) {
     throw new Error(`'${arg}' is neither a valid plugin id nor an <owner>/<repo> path.`);
   }
@@ -83,19 +91,23 @@ async function resolvePluginArg(arg) {
   if (!Array.isArray(registry)) {
     throw new Error("Registry response was not a JSON array — ask the registry maintainer.");
   }
-  const entry = registry.find((p) => p && p.id === arg);
-  if (!entry) {
+  const matches = registry.filter((p) => p && p.id === arg);
+  if (matches.length === 0) {
     throw new Error(`'${arg}' is not listed in the community registry. Try 'oyster install <owner>/<repo>' for plugins that aren't listed, or browse https://oyster.to/plugins.`);
   }
+  if (matches.length > 1) {
+    throw new Error(`Registry has ${matches.length} entries with id '${arg}' — report this to the registry maintainer.`);
+  }
+  const entry = matches[0];
   if (!entry.repo || !REPO_PATTERN.test(entry.repo)) {
     throw new Error(`Registry entry for '${arg}' has an invalid 'repo' field: '${entry.repo}'.`);
   }
   console.log(`  → ${entry.repo}`);
-  return entry.repo;
+  return { repo: entry.repo, expectedId: arg };
 }
 
 async function cmdInstall(arg) {
-  const repo = await resolvePluginArg(arg);
+  const { repo, expectedId } = await resolvePluginArg(arg);
 
   console.log(`\n  Fetching latest release of ${repo}...`);
   const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
@@ -121,6 +133,9 @@ async function cmdInstall(arg) {
     const manifest = JSON.parse(readFileSync(join(manifestRoot, "manifest.json"), "utf8"));
     if (!manifest.id || !PLUGIN_ID_PATTERN.test(manifest.id)) {
       throw new Error(`Invalid plugin id in manifest: '${manifest.id}'. Must match ${PLUGIN_ID_PATTERN}.`);
+    }
+    if (expectedId && manifest.id !== expectedId) {
+      throw new Error(`Registry mismatch: '${expectedId}' points to ${repo}, but that plugin declares id '${manifest.id}'. Refusing install so 'oyster uninstall ${expectedId}' stays honest. Report to the registry maintainer.`);
     }
 
     const userlandDir = join(OYSTER_HOME, "userland");
