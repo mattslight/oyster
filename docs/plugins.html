@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Plugins — Oyster</title>
   <meta name="description" content="Community plugins for Oyster. Static apps, tools, and widgets that run on your workspace surface.">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Barlow', -apple-system, BlinkMacSystemFont, sans-serif;
       background: #0a0b14;
       color: #e0e0e0;
       min-height: 100vh;
@@ -76,6 +76,14 @@
       color: #fff;
       margin-bottom: 16px;
     }
+    .rename-strike {
+      color: rgba(255, 255, 255, 0.32);
+      text-decoration: line-through;
+      text-decoration-thickness: 4px;
+      text-decoration-color: rgba(255, 255, 255, 0.6);
+      font-weight: 500;
+      margin-right: 0.25em;
+    }
     .subtitle {
       font-size: 18px;
       line-height: 1.7;
@@ -93,9 +101,9 @@
       padding: 0 24px;
     }
     .section-label {
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
-      letter-spacing: 1.5px;
+      letter-spacing: 2.5px;
       text-transform: uppercase;
       color: #7c6bff;
       margin-bottom: 20px;
@@ -242,7 +250,7 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
     }
     .submit-title {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 600;
       color: #fff;
       margin-bottom: 8px;
@@ -298,7 +306,7 @@
       text-align: center;
     }
     .install-label {
-      font-size: 16px;
+      font-size: 22px;
       font-weight: 600;
       color: #fff;
       margin-bottom: 24px;
@@ -366,8 +374,8 @@
   </div>
 
   <div class="hero">
-    <h1>Plugins.</h1>
-    <p class="subtitle">Community-built apps, tools, and widgets that run on your Oyster surface. Install any with a single command.</p>
+    <h1><span class="rename-strike">Plugins.</span> Pearls.</h1>
+    <p class="subtitle">Apps, tools, and widgets the community drops inside your shell. Install any with a single command.</p>
   </div>
 
   <div class="section">
