@@ -41,7 +41,27 @@ export class ArtifactService {
   constructor(private store: ArtifactStore, private userlandDir?: string) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
-    const rows = this.store.getAll();
+    const allRows = this.store.getAll();
+
+    // Self-heal: drop DB rows whose filesystem backing no longer exists.
+    // Happens after `oyster uninstall <id>`, manual folder removal, or a
+    // crashed install. The in-memory map already self-heals; this closes
+    // the same loop for persisted rows so the surface doesn't show ghosts.
+    const rows: ArtifactRow[] = [];
+    for (const row of allRows) {
+      if (row.storage_kind === "filesystem") {
+        try {
+          const path = (JSON.parse(row.storage_config) as { path?: string }).path;
+          if (path && !existsSync(path)) {
+            this.store.remove(row.id);
+            onArtifactRemoved?.(row.id, path);
+            continue;
+          }
+        } catch { /* malformed storage_config — leave row alone */ }
+      }
+      rows.push(row);
+    }
+
     const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row)));
 
     // Map of filePath → persisted artifact index — used to suppress and merge gen: twins
