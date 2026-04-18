@@ -43,6 +43,7 @@
       background: rgba(17, 19, 34, 0.88);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
+      border: 2px solid rgba(124, 107, 255, 0.14);
       border-radius: 9999px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     }
@@ -111,17 +112,18 @@
       background: rgba(17, 19, 34, 0.88);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
+      border: 2px solid rgba(124, 107, 255, 0.14);
       border-radius: 16px;
       padding: 24px;
       display: flex;
       flex-direction: column;
       gap: 14px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-      transition: box-shadow 0.2s ease, transform 0.15s ease;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
     }
     .plugin-card:hover {
-      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4),
-                  0 0 0 1px rgba(124, 107, 255, 0.35);
+      border-color: rgba(124, 107, 255, 0.4);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
       transform: translateY(-2px);
     }
     .plugin-header {
@@ -234,6 +236,7 @@
     }
     .submit-card {
       background: rgba(17, 19, 34, 0.88);
+      border: 2px solid rgba(124, 107, 255, 0.14);
       border-radius: 16px;
       padding: 32px 24px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
@@ -254,19 +257,35 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 20px;
-      background: rgba(124, 107, 255, 0.15);
-      border: 1px solid rgba(124, 107, 255, 0.3);
+      padding: 12px 22px;
+      background: #7c6bff;
       color: #fff;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 500;
       border-radius: 9999px;
       text-decoration: none;
-      transition: all 0.15s;
+      box-shadow: 0 4px 20px rgba(124, 107, 255, 0.3);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      position: relative;
+      overflow: hidden;
     }
     .submit-cta:hover {
-      background: rgba(124, 107, 255, 0.25);
-      border-color: rgba(124, 107, 255, 0.5);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(124, 107, 255, 0.4);
+    }
+    @keyframes submitShimmer {
+      0% { transform: translateX(-100%) skewX(-15deg); }
+      100% { transform: translateX(200%) skewX(-15deg); }
+    }
+    .submit-cta::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+      transform: translateX(-100%) skewX(-15deg);
+    }
+    .submit-cta:hover::after {
+      animation: submitShimmer 0.8s ease-in-out 1 forwards;
     }
 
     /* Install CTA */
@@ -286,6 +305,7 @@
     }
     .terminal {
       background: rgba(8, 9, 18, 0.95);
+      border: 2px solid rgba(124, 107, 255, 0.14);
       border-radius: 12px;
       box-shadow: 0 24px 64px rgba(0,0,0,0.5);
       overflow: hidden;
