@@ -26,12 +26,12 @@ The `runtime` field is the forward-looking lever — it lets new plugin kinds la
 
 | `runtime` | What it loads | Status |
 |---|---|---|
-| `static` | folder with `entrypoint` HTML, served as an iframe artifact | ✅ shipped (zombie-horde, pomodoro) |
+| `static` | folder with `entrypoint` HTML, served as an iframe artifact | ✅ supported (builtin: zombie-horde; 3p: pomodoro) |
 | `bundle` | `main.js` bundled with esbuild, runs in sandboxed iframe, talks to host via `postMessage` | next |
 | `mcp` | server-side Node module that registers tools at `/mcp/` alongside the built-in 19 | after `bundle` |
 | `panel` | React component mounted into `Desktop.tsx` shell (Obsidian's native model) | eventually |
 
-Pomodoro (`mattslight/oyster-pomodoro`, separate repo) uses `runtime: "static"` and is the reference demonstration for Tier 1 install.
+Pomodoro (`mattslight/oyster-sample-plugin`, separate repo) uses `runtime: "static"` and is the reference demonstration for Tier 1 install.
 
 ## What We Learned From Obsidian
 
@@ -69,7 +69,7 @@ User creates `<vault>/.obsidian/plugins/<id>/` with `manifest.json` + `main.js` 
 **Oyster equivalent today:** drop a folder into `~/.oyster/userland/<id>/`. The existing artifact detector (`server/src/artifact-detector.ts`) picks up the manifest and registers the artifact. Works without any new code.
 
 ```bash
-git clone https://github.com/mattslight/oyster-pomodoro ~/.oyster/userland/pomodoro
+git clone https://github.com/mattslight/oyster-sample-plugin ~/.oyster/userland/pomodoro
 # restart oyster
 ```
 
@@ -80,7 +80,7 @@ Obsidian: user installs BRAT plugin, pastes `<owner>/<repo>`, BRAT fetches the l
 
 **Oyster equivalent:**
 ```bash
-oyster install mattslight/oyster-pomodoro
+oyster install mattslight/oyster-sample-plugin
 oyster update pomodoro
 oyster uninstall pomodoro
 ```
@@ -90,7 +90,7 @@ Implementation: ~50 lines. `gh api` or raw HTTPS → fetch release assets → va
 Obsidian: author submits a PR to `obsidianmd/obsidian-releases` adding one entry to `community-plugins.json`:
 ```json
 { "id": "pomodoro", "name": "Pomodoro", "author": "mattslight",
-  "description": "…", "repo": "mattslight/oyster-pomodoro" }
+  "description": "…", "repo": "mattslight/oyster-sample-plugin" }
 ```
 Obsidian's in-app UI reads that JSON, fetches each plugin's manifest + release assets from GitHub, renders browse/search/install.
 
@@ -101,7 +101,7 @@ Obsidian's in-app UI reads that JSON, fetches each plugin's manifest + release a
 - **Tier 2** → ship when there's a second third-party plugin to validate against. `oyster install` CLI + `/install` slash command.
 - **Tier 3** → ship when the community is real. Until then it's over-engineering.
 
-## First Use Case: Pomodoro (separate repo: `mattslight/oyster-pomodoro`)
+## First Use Case: Pomodoro (separate repo: `mattslight/oyster-sample-plugin`)
 
 A classic 25/5/15 focus timer. Single-file `runtime: "static"` app, no dependencies, no network, no storage capability declared (uses `localStorage` which the iframe manages itself — scoped to the iframe origin, invisible to Oyster).
 
@@ -150,8 +150,7 @@ The Oyster monorepo stays focused on the host. Plugins and their ecosystem live 
 
 | Repo | Purpose | Equivalent to |
 |---|---|---|
-| `mattslight/oyster-sample-plugin` | **Template repo** (GitHub "Use this template"). Minimal hello-world showing manifest + lifecycle + settings + build. How new plugin authors start. | `obsidianmd/obsidian-sample-plugin` |
-| `mattslight/oyster-pomodoro` | First real third-party plugin. Own releases, own README with screenshots. Validates Tier 1 → Tier 2 install flow. | individual community plugin repos |
+| `mattslight/oyster-sample-plugin` | **Template repo** (GitHub "Use this template") that currently hosts the Pomodoro plugin as the reference third-party implementation. May split later into a minimal hello-world template + a dedicated pomodoro repo; for now one repo serves both roles. | `obsidianmd/obsidian-sample-plugin` |
 | `mattslight/oyster-community-plugins` | Registry repo containing `community-plugins.json`. Single source of truth for both `oyster.to/plugins` page and the in-app browser (Tier 3). Authors submit a PR to list. | `obsidianmd/obsidian-releases` |
 
 **oyster.to/plugins** — static-hosted page that fetches `community-plugins.json` at runtime. Discovery only; install still happens via CLI/in-app. Zero backend.
