@@ -450,8 +450,8 @@
     }
 
     function installCommand(plugin) {
-      // id and repo have been validated against strict patterns; safe to interpolate.
-      return `git clone https://github.com/${plugin.repo} ~/.oyster/userland/${plugin.id}`;
+      // id has been validated against strict patterns; safe to interpolate.
+      return `oyster install ${plugin.id}`;
     }
 
     function renderCard(plugin) {
