@@ -58,7 +58,7 @@ if (cmd && !cmd.startsWith("-")) {
 
 function printHelp() {
   console.log(`
-  Oyster — prompt-controlled workspace OS
+  🦪 Oyster — prompt-controlled workspace OS
 
   Usage:
     oyster                            Start the server (default)
