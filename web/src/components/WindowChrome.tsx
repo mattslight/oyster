@@ -1,3 +1,8 @@
+// This component drives window drag + resize by mutating position/size refs
+// directly and matching them to CSS transforms imperatively — avoiding the
+// per-pixel re-renders that reactive state would trigger. Reading ref.current
+// during render is load-bearing here, so disable react-hooks/refs file-wide.
+/* eslint-disable react-hooks/refs */
 import { useRef, useCallback, type ReactNode, type PointerEvent } from "react";
 
 type ResizeEdge = "e" | "w" | "s" | "n" | "se" | "sw" | "ne" | "nw";
@@ -141,23 +146,23 @@ export function WindowChrome({
 
   const className = `window-chrome window-enter${fullscreen ? " fullscreen" : ""}`;
 
+  const style: React.CSSProperties = fullscreen
+    ? { position: "fixed", inset: 0, zIndex: 9999 }
+    : {
+        position: "absolute",
+        left: pos.current.x,
+        top: pos.current.y,
+        width: size.current.w,
+        height: size.current.h,
+        zIndex,
+      };
+
   return (
     <div
       ref={ref}
       className={className}
       onMouseDown={onFocus}
-      style={
-        fullscreen
-          ? { position: "fixed", inset: 0, zIndex: 9999 }
-          : {
-              position: "absolute",
-              left: pos.current.x,
-              top: pos.current.y,
-              width: size.current.w,
-              height: size.current.h,
-              zIndex,
-            }
-      }
+      style={style}
     >
       {!fullscreen && (
         <>

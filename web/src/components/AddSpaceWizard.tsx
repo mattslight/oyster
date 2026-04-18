@@ -87,7 +87,7 @@ export function AddSpaceWizard({ spaces, initialFolder, onClose, onComplete }: P
         setFolders(prev => prev.includes(data.path!) ? prev : [...prev, data.path!]);
         setStep("name-path");
       }
-    } catch (err) {
+    } catch {
       setFolders(prev => prev.includes(path) ? prev : [...prev, path]);
       setStep("name-path");
     } finally {

@@ -28,6 +28,8 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
   }, [query, artifacts]);
 
   useEffect(() => {
+    // Reset highlighted result when the query changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected(0);
   }, [query]);
 

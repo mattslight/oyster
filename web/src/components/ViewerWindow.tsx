@@ -119,7 +119,14 @@ export function ViewerWindow({
   const [fixLogOpen, setFixLogOpen] = useState(false);
   const fixLogEndRef = useRef<HTMLDivElement>(null);
   const unsubRef = useRef<(() => void) | null>(null);
-  const iframeSrc = useMemo(() => `${path}${path.includes("?") ? "&" : "?"}t=${Date.now()}${initialHash ? initialHash : ""}`, [path, iframeKey]);
+  // initialHash is applied only to the first iframe load — if the prop
+  // changes later we deliberately don't reload, so freeze it to a ref.
+  const initialHashRef = useRef(initialHash);
+  // Date.now() is intentional cache-busting, initialHashRef is the frozen
+  // first-load hash — the memo only recomputes when path or iframeKey
+  // changes, so neither concern actually lands per-render.
+  // eslint-disable-next-line react-hooks/purity, react-hooks/refs
+  const iframeSrc = useMemo(() => `${path}${path.includes("?") ? "&" : "?"}t=${Date.now()}${initialHashRef.current ? initialHashRef.current : ""}`, [path, iframeKey]);
 
   // Auto-scroll fix log
   useEffect(() => {
@@ -191,10 +198,11 @@ export function ViewerWindow({
     };
   }, [onHashChange, iframeKey]);
 
-  // Reset on path change
+  // Reset on path change — each state reset is intentional on navigation.
   useEffect(() => {
     unsubRef.current?.();
     unsubRef.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
     setFixPhase("idle");
     setFixStatus("");
@@ -376,6 +384,8 @@ export function ViewerWindow({
 
   useEffect(() => {
     if (!fullscreen) return;
+    // Auto-reveal the toolbar entering fullscreen, then schedule hide.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToolbarVisible(true);
     if (discovered) scheduleHide();
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };

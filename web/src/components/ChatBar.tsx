@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { motion, LayoutGroup } from "framer-motion";
 import { spaceColor } from "../utils/spaceColor";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -236,6 +236,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const slashOpen = slashItems.length > 0;
 
   // Reset index when items change
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSlashIndex(0); }, [slashItems.length]);
   const { resetTracking } = useChatEvents({ sessionId, setMessages, setStreaming, setStatusText });
 
