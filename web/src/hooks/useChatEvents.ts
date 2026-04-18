@@ -138,16 +138,20 @@ export function useChatEvents({
         }
 
         case "message.part.updated": {
-          const partMsgId = props.messageID as string;
           const part = props.part as {
             type: string;
             text?: string;
             id: string;
+            messageID?: string;
             toolName?: string;
             name?: string;
             tool?: string;
             state?: { input?: Record<string, unknown>; output?: unknown; status?: string };
           };
+          // OpenCode 1.4+ nests messageID inside part; older versions put it at props.messageID
+          const fallbackMessageID = typeof props.messageID === "string" ? props.messageID : undefined;
+          const partMsgId = part.messageID ?? fallbackMessageID;
+          if (!partMsgId) break;
           // Skip non-content part types
           if (part.type === "step-start" || part.type === "step-finish") break;
           if (part.type === "reasoning") {
