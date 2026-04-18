@@ -1,7 +1,7 @@
 # Oyster OS — Design Document
 
 **Status:** Living document
-**Last updated:** 2026-03-30
+**Last updated:** 2026-04-18
 **Authors:** Matthew Slight, with architectural input from Bharat Mani Prem Sankar
 
 ---
@@ -17,7 +17,7 @@ Not just for makers and developers. For anyone whose work is distributed across 
 - ChatGPT can't — it has no live access and forgets between sessions.
 - A Zoho report can't — ProCore isn't in scope.
 
-Oyster can, because it connects all systems via MCP, holds the relationships between them in a knowledge graph, and accumulates context across every session.
+Oyster can, because it connects all systems via MCP, holds the relationships between them, and accumulates context across every session.
 
 ## Problem
 
@@ -58,7 +58,7 @@ The engine is OpenCode (`opencode serve`), spawned internally by the server. Pro
 Prove that Oyster can:
 
 1. Present a visual surface where generated outputs appear as typed icons.
-2. Accept chat input via an embedded bar and structure it into persistent Oyster system data (nodes, edges).
+2. Accept chat input via an embedded bar and structure it into persistent Oyster system data (spaces, artifacts, memories).
 3. Generate usable outputs that appear on the surface without the user touching code.
 4. Feel like a workspace you return to, not a chat thread you scroll.
 
@@ -106,7 +106,7 @@ Prove that Oyster can:
 | OpenCode (internal) | AI engine, spawned as subprocess, not user-facing |
 | SQLite (~/.oyster/userland/oyster.db) | Artefact and space registry |
 
-The UI, API, and MCP server all run on port 4444. OpenCode is spawned internally. Memory ships in v1 (SQLite FTS5).
+The UI, API, and MCP server all run on port 4444 (3333 in dev, overridable via `OYSTER_PORT`). OpenCode is spawned internally. Memory ships in v1 (SQLite FTS5).
 
 ### The Artifact Contract
 
