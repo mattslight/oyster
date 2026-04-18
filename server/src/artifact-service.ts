@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { resolve, basename, dirname, join, sep } from "node:path";
 import crypto from "node:crypto";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
@@ -30,6 +30,27 @@ function parseJson(raw: string): Record<string, unknown> {
   }
 }
 
+function storagePathOf(row: ArtifactRow): string | undefined {
+  if (row.storage_kind !== "filesystem") return undefined;
+  const parsed = parseJson(row.storage_config);
+  return typeof parsed.path === "string" ? parsed.path : undefined;
+}
+
+// Returns true if the path exists, false only on ENOENT/ENOTDIR, and rethrows
+// on any other error (permissions, transient IO). Narrower than existsSync,
+// which would swallow those and let us wipe DB rows whose backing files are
+// temporarily inaccessible (e.g. synced drive offline, permission glitch).
+function pathExistsOrThrow(path: string): boolean {
+  try {
+    statSync(path);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw err;
+  }
+}
+
 const KIND_EXT: Record<ArtifactKind, string> = {
   notes: ".md", diagram: ".mmd",
   app: ".html", deck: ".html", wireframe: ".html", table: ".html", map: ".html",
@@ -41,16 +62,38 @@ export class ArtifactService {
   constructor(private store: ArtifactStore, private userlandDir?: string) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
-    const rows = this.store.getAll();
+    const allRows = this.store.getAll();
+
+    // Self-heal: drop DB rows whose filesystem backing is definitively gone.
+    // Happens after `oyster uninstall <id>`, manual folder removal, or a
+    // crashed install. The in-memory map already self-heals; this closes
+    // the same loop for persisted rows so the surface doesn't show ghosts.
+    //
+    // Rows with a filesystem path get their existence checked via
+    // pathExistsOrThrow (narrower than existsSync — only ENOENT/ENOTDIR
+    // counts as "gone", so a temporary permission blip doesn't wipe data).
+    // Parsed paths are cached to avoid re-parsing storage_config below.
+    const rows: ArtifactRow[] = [];
+    const pathByRowIdx = new Map<number, string>();
+    for (const row of allRows) {
+      const storagePath = storagePathOf(row);
+      if (storagePath) {
+        if (!pathExistsOrThrow(storagePath)) {
+          this.store.remove(row.id);
+          onArtifactRemoved?.(row.id, storagePath);
+          continue;
+        }
+        pathByRowIdx.set(rows.length, storagePath);
+      }
+      rows.push(row);
+    }
+
     const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row)));
 
     // Map of filePath → persisted artifact index — used to suppress and merge gen: twins
     const dbPathToIdx = new Map<string, number>();
-    for (let i = 0; i < rows.length; i++) {
-      try {
-        const p = (JSON.parse(rows[i].storage_config) as { path?: string }).path;
-        if (p) dbPathToIdx.set(p, i);
-      } catch {}
+    for (const [idx, storagePath] of pathByRowIdx) {
+      dbPathToIdx.set(storagePath, idx);
     }
 
     const entries = getGeneratedArtifactEntries(onArtifactRemoved);
