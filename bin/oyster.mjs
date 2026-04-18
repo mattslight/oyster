@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 
-import { spawn, execSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { spawn, execSync, execFileSync } from "node:child_process";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   existsSync, readFileSync, mkdirSync, mkdtempSync, readdirSync,
-  rmSync, cpSync, createWriteStream,
+  rmSync, cpSync, createWriteStream, realpathSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+
+const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB cap on plugin bundles
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+const API_TIMEOUT_MS = 10_000;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
@@ -76,19 +80,18 @@ async function cmdInstall(repo) {
   console.log(`  Release: ${release.tag_name} (${zipAsset.name}, ${(zipAsset.size / 1024).toFixed(1)} KB)`);
 
   const workDir = mkdtempSync(join(tmpdir(), "oyster-install-"));
-  const zipPath = join(workDir, zipAsset.name);
+  // Hardcode the local filename — never interpolate attacker-controlled asset.name into a path.
+  const zipPath = join(workDir, "bundle.zip");
   const extractDir = join(workDir, "extracted");
   mkdirSync(extractDir);
 
   try {
     await downloadFile(zipAsset.browser_download_url, zipPath);
     extractZip(zipPath, extractDir);
+    assertNoZipSlip(extractDir);
 
-    const manifestPath = join(extractDir, "manifest.json");
-    if (!existsSync(manifestPath)) {
-      throw new Error("Downloaded bundle has no manifest.json at the root.");
-    }
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const manifestRoot = locateManifestRoot(extractDir);
+    const manifest = JSON.parse(readFileSync(join(manifestRoot, "manifest.json"), "utf8"));
     if (!manifest.id || !PLUGIN_ID_PATTERN.test(manifest.id)) {
       throw new Error(`Invalid plugin id in manifest: '${manifest.id}'. Must match ${PLUGIN_ID_PATTERN}.`);
     }
@@ -101,7 +104,12 @@ async function cmdInstall(repo) {
       throw new Error(`Plugin '${manifest.id}' is already installed at ${destDir}. Run 'oyster uninstall ${manifest.id}' first.`);
     }
 
-    cpSync(extractDir, destDir, { recursive: true });
+    try {
+      cpSync(manifestRoot, destDir, { recursive: true });
+    } catch (err) {
+      rmSync(destDir, { recursive: true, force: true });
+      throw err;
+    }
 
     console.log(`\n  ✓ Installed ${manifest.name} v${manifest.version || "?"}`);
     console.log(`    ${destDir}`);
@@ -158,30 +166,85 @@ function cmdList() {
 }
 
 async function fetchJson(url) {
-  const res = await fetch(url, { headers: { "User-Agent": "oyster-cli", Accept: "application/vnd.github+json" } });
+  const res = await fetch(url, {
+    headers: { "User-Agent": "oyster-cli", Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`GitHub API ${res.status} ${res.statusText} for ${url}`);
   return await res.json();
 }
 
 async function downloadFile(url, destPath) {
-  const res = await fetch(url, { redirect: "follow", headers: { "User-Agent": "oyster-cli" } });
+  const res = await fetch(url, {
+    redirect: "follow",
+    headers: { "User-Agent": "oyster-cli" },
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`Download failed: HTTP ${res.status} for ${url}`);
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(destPath));
+
+  const declared = Number(res.headers.get("content-length"));
+  if (declared && declared > MAX_DOWNLOAD_BYTES) {
+    throw new Error(`Bundle too large: ${(declared / 1024 / 1024).toFixed(1)} MB (limit ${MAX_DOWNLOAD_BYTES / 1024 / 1024} MB)`);
+  }
+
+  let bytes = 0;
+  const capped = new Transform({
+    transform(chunk, _enc, cb) {
+      bytes += chunk.length;
+      if (bytes > MAX_DOWNLOAD_BYTES) {
+        cb(new Error(`Bundle exceeds ${MAX_DOWNLOAD_BYTES / 1024 / 1024} MB limit`));
+        return;
+      }
+      cb(null, chunk);
+    },
+  });
+  await pipeline(Readable.fromWeb(res.body), capped, createWriteStream(destPath));
 }
 
 function extractZip(zipPath, destDir) {
   try {
-    execSync(`unzip -q "${zipPath}" -d "${destDir}"`, { stdio: "pipe" });
+    execFileSync("unzip", ["-q", zipPath, "-d", destDir], { stdio: "pipe" });
     return;
   } catch {
-    // fall through
+    // fall through to tar
   }
   try {
-    execSync(`tar -xf "${zipPath}" -C "${destDir}"`, { stdio: "pipe" });
+    execFileSync("tar", ["-xf", zipPath, "-C", destDir], { stdio: "pipe" });
     return;
   } catch {
     throw new Error("Extraction failed — neither `unzip` nor `tar` could open the bundle.");
   }
+}
+
+// Defend against zip-slip: every extracted path must resolve under the extract root,
+// even after following any symlinks that landed in the archive.
+function assertNoZipSlip(rootDir) {
+  const realRoot = realpathSync(rootDir);
+  const rootPrefix = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      const real = realpathSync(full);
+      if (real !== realRoot && !real.startsWith(rootPrefix)) {
+        throw new Error(`Unsafe archive entry escapes plugin dir: ${entry.name} → ${real}`);
+      }
+      if (entry.isDirectory()) walk(full);
+    }
+  };
+  walk(realRoot);
+}
+
+// Source-zipballs nest everything under <repo>-<sha>/. If manifest.json isn't at
+// the extract root, probe exactly one level deep for it.
+function locateManifestRoot(extractDir) {
+  if (existsSync(join(extractDir, "manifest.json"))) return extractDir;
+  const subdirs = readdirSync(extractDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+  if (subdirs.length === 1) {
+    const nested = join(extractDir, subdirs[0].name);
+    if (existsSync(join(nested, "manifest.json"))) return nested;
+  }
+  throw new Error("Downloaded bundle has no manifest.json at the root (or one level deep).");
 }
 
 const ENV_FILE = join(OYSTER_HOME, ".env");
