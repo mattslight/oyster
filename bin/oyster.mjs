@@ -14,6 +14,7 @@ import { pipeline } from "node:stream/promises";
 const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB cap on plugin bundles
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const API_TIMEOUT_MS = 10_000;
+const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-community-plugins/main/community-plugins.json";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
@@ -57,18 +58,44 @@ function printHelp() {
 
   Usage:
     oyster                            Start the server (default)
-    oyster install <owner>/<repo>     Install a plugin from its latest GitHub release
+    oyster install <id|owner/repo>    Install a plugin by registry id, or directly from a repo
     oyster uninstall <id>             Remove an installed plugin
     oyster list                       List installed plugins
     oyster --version                  Print version
     oyster --help                     Show this help
+
+  Examples:
+    oyster install pomodoro                           # resolved via community registry
+    oyster install mattslight/oyster-sample-plugin    # explicit repo path
 `);
 }
 
-async function cmdInstall(repo) {
-  if (!repo || !REPO_PATTERN.test(repo)) {
-    throw new Error("install expects <owner>/<repo>, e.g. 'oyster install mattslight/oyster-sample-plugin'");
+async function resolvePluginArg(arg) {
+  if (!arg) {
+    throw new Error("install expects a plugin id or <owner>/<repo>, e.g. 'oyster install pomodoro'");
   }
+  if (REPO_PATTERN.test(arg)) return arg;
+  if (!PLUGIN_ID_PATTERN.test(arg)) {
+    throw new Error(`'${arg}' is neither a valid plugin id nor an <owner>/<repo> path.`);
+  }
+  console.log(`\n  Looking up '${arg}' in the community registry...`);
+  const registry = await fetchJson(REGISTRY_URL);
+  if (!Array.isArray(registry)) {
+    throw new Error("Registry response was not a JSON array — ask the registry maintainer.");
+  }
+  const entry = registry.find((p) => p && p.id === arg);
+  if (!entry) {
+    throw new Error(`'${arg}' is not listed in the community registry. Try 'oyster install <owner>/<repo>' for plugins that aren't listed, or browse https://oyster.to/plugins.`);
+  }
+  if (!entry.repo || !REPO_PATTERN.test(entry.repo)) {
+    throw new Error(`Registry entry for '${arg}' has an invalid 'repo' field: '${entry.repo}'.`);
+  }
+  console.log(`  → ${entry.repo}`);
+  return entry.repo;
+}
+
+async function cmdInstall(arg) {
+  const repo = await resolvePluginArg(arg);
 
   console.log(`\n  Fetching latest release of ${repo}...`);
   const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
