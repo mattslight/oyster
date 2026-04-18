@@ -188,6 +188,11 @@
       border-color: rgba(80, 200, 120, 0.3);
       color: rgba(80, 200, 120, 0.9);
     }
+    .copy-inline.error {
+      background: rgba(248, 113, 113, 0.15);
+      border-color: rgba(248, 113, 113, 0.35);
+      color: rgba(248, 113, 113, 0.9);
+    }
     .plugin-footer {
       display: flex;
       align-items: center;
@@ -392,6 +397,12 @@
     const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-community-plugins/main/community-plugins.json";
     const FALLBACK_URL = "https://cdn.jsdelivr.net/gh/mattslight/oyster-community-plugins@main/community-plugins.json";
 
+    // Strict patterns — the registry is user-submitted via PR, and the
+    // install command is copied into a user's shell. Reject anything that
+    // could smuggle shell metacharacters through `id` / `repo`.
+    const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+    const REPO_PATTERN = /^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,64}$/;
+
     const root = document.getElementById("plugins");
 
     function escapeHtml(s) {
@@ -400,14 +411,35 @@
       }[c]));
     }
 
+    function sanitizeHttpUrl(url) {
+      if (!url) return null;
+      try {
+        const p = new URL(String(url));
+        return (p.protocol === "http:" || p.protocol === "https:") ? p.toString() : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function isValidPlugin(p) {
+      return p && typeof p === "object"
+        && typeof p.id === "string" && ID_PATTERN.test(p.id)
+        && typeof p.repo === "string" && REPO_PATTERN.test(p.repo)
+        && typeof p.name === "string" && p.name.length > 0
+        && typeof p.author === "string" && p.author.length > 0
+        && typeof p.description === "string";
+    }
+
     function installCommand(plugin) {
+      // id and repo have been validated against strict patterns; safe to interpolate.
       return `git clone https://github.com/${plugin.repo} ~/.oyster/userland/${plugin.id}`;
     }
 
     function renderCard(plugin) {
       const cmd = installCommand(plugin);
-      const authorHtml = plugin.authorUrl
-        ? `<a href="${escapeHtml(plugin.authorUrl)}" target="_blank" rel="noopener">${escapeHtml(plugin.author)}</a>`
+      const authorUrl = sanitizeHttpUrl(plugin.authorUrl);
+      const authorHtml = authorUrl
+        ? `<a href="${escapeHtml(authorUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(plugin.author)}</a>`
         : escapeHtml(plugin.author);
       return `
         <div class="plugin-card">
@@ -421,7 +453,7 @@
             <button class="copy-inline" data-cmd="${escapeHtml(cmd)}">copy</button>
           </div>
           <div class="plugin-footer">
-            <a class="plugin-link" href="https://github.com/${escapeHtml(plugin.repo)}" target="_blank" rel="noopener">
+            <a class="plugin-link" href="https://github.com/${escapeHtml(plugin.repo)}" target="_blank" rel="noopener noreferrer">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.73.5.5 5.73.5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56 0-.27-.01-1-.02-1.96-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.29 1.2-3.1-.12-.29-.52-1.47.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.78 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.58.23 2.76.11 3.05.75.81 1.2 1.84 1.2 3.1 0 4.42-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.15 0 1.55-.01 2.8-.01 3.18 0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
               View on GitHub
             </a>
@@ -434,17 +466,51 @@
       root.innerHTML = `<div class="state">${html}</div>`;
     }
 
+    function setCopyState(btn, label, cls) {
+      btn.textContent = label;
+      btn.classList.remove("copied", "error");
+      if (cls) btn.classList.add(cls);
+      setTimeout(() => {
+        btn.textContent = "copy";
+        btn.classList.remove("copied", "error");
+      }, 2000);
+    }
+
+    function fallbackCopyText(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "absolute";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        return document.execCommand("copy");
+      } catch {
+        return false;
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+
+    async function copyToClipboard(text) {
+      if (!text) return false;
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {
+          return fallbackCopyText(text);
+        }
+      }
+      return fallbackCopyText(text);
+    }
+
     function bindCopyButtons() {
       root.querySelectorAll(".copy-inline").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          navigator.clipboard.writeText(btn.dataset.cmd).then(() => {
-            btn.textContent = "copied";
-            btn.classList.add("copied");
-            setTimeout(() => {
-              btn.textContent = "copy";
-              btn.classList.remove("copied");
-            }, 2000);
-          });
+        btn.addEventListener("click", async () => {
+          const ok = await copyToClipboard(btn.dataset.cmd || "");
+          setCopyState(btn, ok ? "copied" : "copy failed", ok ? "copied" : "error");
         });
       });
     }
@@ -463,10 +529,15 @@
 
     async function load() {
       try {
-        const plugins = await fetchRegistry();
-        if (!Array.isArray(plugins) || plugins.length === 0) {
+        const raw = await fetchRegistry();
+        if (!Array.isArray(raw)) throw new Error("registry not an array");
+        const plugins = raw.filter(isValidPlugin);
+        if (plugins.length === 0) {
           renderState(`No plugins listed yet. <a href="https://github.com/mattslight/oyster-community-plugins">Submit the first one</a>.`);
           return;
+        }
+        if (plugins.length < raw.length) {
+          console.warn(`[plugins] filtered ${raw.length - plugins.length} invalid registry entries`);
         }
         root.innerHTML = plugins.map(renderCard).join("");
         bindCopyButtons();
