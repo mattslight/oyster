@@ -1,6 +1,6 @@
 # Memory Layer Evaluation — March 2026
 
-> **STATUS (2026-03): Decision made (Graphiti) but deferred to v2.** Current v1 has no persistent memory. The agent is stateless between sessions. See issue #70 for v2 options. Revisit when persistent memory moves from "planned" to "in progress."
+> **STATUS (2026-04): Superseded.** v1 shipped with a simple SQLite FTS5 memory layer (see `server/src/memory-store.ts`). The evaluation below is preserved as research for a future richer / graph-based memory layer.
 
 ## Context
 

@@ -1,7 +1,7 @@
 # Oyster OS — Design Document
 
 **Status:** Living document
-**Last updated:** 2026-03-30
+**Last updated:** 2026-04-18
 **Authors:** Matthew Slight, with architectural input from Bharat Mani Prem Sankar
 
 ---
@@ -17,7 +17,7 @@ Not just for makers and developers. For anyone whose work is distributed across 
 - ChatGPT can't — it has no live access and forgets between sessions.
 - A Zoho report can't — ProCore isn't in scope.
 
-Oyster can, because it connects all systems via MCP, holds the relationships between them in a knowledge graph, and accumulates context across every session.
+Oyster can, because it connects all systems via MCP, holds the relationships between them, and accumulates context across every session.
 
 ## Problem
 
@@ -31,7 +31,7 @@ Oyster's surface accumulates context across all your systems and sessions — so
 
 Oyster is a visual surface where generated outputs — documents, diagrams, apps, notes — appear as artifacts you can open, organise, and build on. A unified chat bar is the single entry point: chat to build, search to find, type to navigate. Each output replaces a separate tool.
 
-The engine is OpenCode (`opencode serve`), spawned internally by the server. Persistent memory is deferred to v2. Product behaviour is steered by `.opencode/agents/oyster.md`. The user never sees OpenCode — the engine is invisible.
+The engine is OpenCode (`opencode serve`), spawned internally by the server. Product behaviour is steered by `.opencode/agents/oyster.md`. The user never sees OpenCode — the engine is invisible.
 
 **One-liner:** A surface that remembers. An AI that connects the dots.
 
@@ -58,7 +58,7 @@ The engine is OpenCode (`opencode serve`), spawned internally by the server. Per
 Prove that Oyster can:
 
 1. Present a visual surface where generated outputs appear as typed icons.
-2. Accept chat input via an embedded bar and structure it into persistent Oyster system data (nodes, edges).
+2. Accept chat input via an embedded bar and structure it into persistent Oyster system data (spaces, artifacts, memories).
 3. Generate usable outputs that appear on the surface without the user touching code.
 4. Feel like a workspace you return to, not a chat thread you scroll.
 
@@ -73,7 +73,7 @@ Prove that Oyster can:
 │                    User Machine (local)                   │
 │                                                           │
 │  ┌─────────────────────────────────────────────────────┐ │
-│  │  Oyster Server  (port 4200)                         │ │
+│  │  Oyster Server  (port 4444)                         │ │
 │  │  ├── HTTP API  (/api/artifacts, /api/spaces, etc.)  │ │
 │  │  ├── MCP endpoint  (/mcp/)  ← agent tool surface    │ │
 │  │  ├── Chat proxy  → OpenCode                         │ │
@@ -102,11 +102,11 @@ Prove that Oyster can:
 
 | Component | Role |
 |---|---|
-| Oyster Server (port 4200) | Everything: API, SQLite, MCP server, static web UI, chat proxy |
+| Oyster Server (port 4444) | Everything: API, SQLite, MCP server, static web UI, chat proxy |
 | OpenCode (internal) | AI engine, spawned as subprocess, not user-facing |
 | SQLite (~/.oyster/userland/oyster.db) | Artefact and space registry |
 
-The UI, API, and MCP server all run on port 4200. OpenCode is spawned internally. No persistent memory in v1.
+In the installed package the server serves API, MCP, and static UI on port 4444. In dev the server runs on 3333 and Vite serves the UI at 7337 (proxying API/MCP to the server). `OYSTER_PORT` overrides the server port. OpenCode is spawned internally. Memory ships in v1 (SQLite FTS5).
 
 ### The Artifact Contract
 
@@ -195,16 +195,9 @@ This is additive. Tier 1 artifacts continue working unchanged when Tier 2 is add
 
 OpenCode has full filesystem access to the workspace and can read/modify any artifact's manifest, source files, and data. This is tenant-scoped visibility — the agent sees everything for one user, nothing for other users. This cross-artifact visibility is Oyster's core differentiator: "take the data from the sales dashboard and reference it in the presentation" works because both artifacts are in the same filesystem scope.
 
-**MCP tool surface:** In addition to filesystem access, agents interact with the desktop surface via the Oyster MCP server (`localhost:4200/mcp/`). This is the preferred interface for surface management — it enforces approved paths, maintains the artifact registry, and makes agent intent legible to the system.
+**MCP tool surface:** In addition to filesystem access, agents interact with the desktop surface via the Oyster MCP server (`localhost:4444/mcp/`). This is the preferred interface for surface management — it enforces approved paths, maintains the artifact registry, and makes agent intent legible to the system.
 
-| Tool | What it does |
-|------|-------------|
-| `get_context` | Returns a full description of Oyster OS, artifact kinds, and the userland path |
-| `list_spaces` / `list_artifacts` | Discover what exists on the surface |
-| `create_artifact` | Write content + register on the surface in one step (opaque UUID id, slug-based filename) |
-| `read_artifact` | Read the raw text of a static file artifact |
-| `update_artifact` | Update display metadata (label, space, group) without touching the file |
-| `register_artifact` | Register a pre-existing file as a desktop artifact |
+See `server/src/mcp-server.ts` and `server/src/memory-store.ts` for the current tool surface (19 tools: 15 artifact/space + 4 memory).
 
 Agents should use MCP tools for surface management and direct filesystem access for reading/modifying artifact source content. Do not touch `userland/oyster.db` directly.
 
@@ -225,11 +218,9 @@ spaces (id, display_name, repo_path, color, parent_id,
 `source_origin` tracks how an artifact arrived: `manual` | `discovered` | `ai_generated`.
 `parent_id` on spaces is **navigation only** — where to show the space in the UI hierarchy. Semantic relationships between spaces are a v2 feature.
 
-### Knowledge Graph — Deferred to v2
+### Memory (v1)
 
-Persistent memory (cross-session context, entity graphs, relationship tracking) is planned but not active in v1. The v1 surface works without it — the agent is stateless between sessions.
-
-**v2 options under evaluation:** Graphiti (FalkorDB), opencode-plugin-simple-memory, forgetful (SQLite + embeddings), or custom Oyster-native SQLite FTS5. See issue #70 for details and [`docs/research/memory-layer-evaluation.md`](../research/memory-layer-evaluation.md) for the full evaluation.
+Persistent memory ships in v1 via SQLite FTS5 (`server/src/memory-store.ts`), exposed as four MCP tools: `remember`, `recall`, `forget`, `list_memories`. Memories are scoped per space, with global memories also supported. Richer graph-based memory (entity extraction, relationship tracking, temporal awareness) is future work — see [`docs/research/memory-layer-evaluation.md`](../research/memory-layer-evaluation.md) for earlier options analysis.
 
 ### App-Specific Data
 
@@ -237,7 +228,7 @@ Artifacts that need persistence (e.g. a generated todo tracker) use their own lo
 
 ### OpenCode Server (Engine)
 
-`opencode serve` is spawned internally by Oyster Server as a subprocess. It's not user-facing — the user only sees port 4200. OpenCode powers the chat and tool calling behind the scenes.
+`opencode serve` is spawned internally by Oyster Server as a subprocess. It's not user-facing — the user only sees port 4444. OpenCode powers the chat and tool calling behind the scenes.
 
 Key endpoints:
 - `POST /session` — create a new session
@@ -313,9 +304,9 @@ The UI is a visual surface with an embedded chat bar. Artifacts are icons on the
 - The viewer is the only remaining "window" — it makes sense because you're viewing a specific document
 
 **Data model:**
-- Trash is cosmetic — deleting an artifact removes it from the surface, but the underlying data (nodes, edges) stays in the knowledge graph
+- Trash is cosmetic — deleting an artifact removes it from the surface, but the underlying file and record are preserved
 
-The UI polls Oyster Server (`/api/artifacts`, `/api/spaces`) for surface state and streams chat via SSE. It has no direct connection to Graphiti or OpenCode.
+The UI polls Oyster Server (`/api/artifacts`, `/api/spaces`) for surface state and streams chat via SSE.
 
 **Design origin:** The visual surface pattern emerged organically from the tokinvest-concept prototype. Sprint 1 initially mimicked desktop OS chrome (floating windows, dock, minimize/maximize) but prototyping revealed this was borrowed decoration that didn't serve user intent. The refined direction strips all chrome and embeds chat directly into the surface.
 
@@ -471,7 +462,7 @@ On import, Oyster can auto-generate starter artifacts (summaries, knowledge maps
 
 PoC input is chat only. Imports are sprint 2+. Live connectors are later.
 
-**Note:** OpenCode has native MCP support. Connectors can be implemented as MCP servers, managed via the REST API (`GET /mcp`, `POST /mcp/{name}/connect`). The Oyster server itself exposes an MCP endpoint (`localhost:4200/mcp/`) that any agent — not just OpenCode — can use to manage the desktop surface. This is how Claude Code, Cursor, or any other agent with MCP support can create artifacts and navigate spaces without touching the filesystem directly.
+**Note:** OpenCode has native MCP support. Connectors can be implemented as MCP servers, managed via the REST API (`GET /mcp`, `POST /mcp/{name}/connect`). The Oyster server itself exposes an MCP endpoint (`localhost:4444/mcp/`) that any agent — not just OpenCode — can use to manage the desktop surface. This is how Claude Code, Cursor, or any other agent with MCP support can create artifacts and navigate spaces without touching the filesystem directly.
 
 ---
 
@@ -529,9 +520,9 @@ TBD. Cloud hosting and multi-tenant provisioning are future concerns. The import
 - [~] Supabase realtime subscriptions — superseded: SQLite + polling via `/api/artifacts`
 - [x] Real artifact generation + appearance on surface (auto-detected from userland/ via file watcher)
 - [x] Artifact manifest schema (folder + manifest.json per artifact)
-- [x] MCP server at `localhost:4200/mcp/` — agent tool surface for surface management (Phase 1: discover + register; Phase 2: create, read, update)
+- [x] MCP server at `localhost:4444/mcp/` — agent tool surface for surface management (Phase 1: discover + register; Phase 2: create, read, update)
 - [x] AI-generated artifact icons (GPT-4o-mini + fal.ai Flux Schnell)
-- [x] Knowledge graph memory layer (Graphiti, localhost:8000)
+- [x] Memory layer (SQLite FTS5, server-side) — `remember` / `recall` / `forget` / `list_memories`
 - [x] Drag-to-reorder desktop icons with localStorage persistence
 - [x] Fullscreen preference persistence per artifact
 

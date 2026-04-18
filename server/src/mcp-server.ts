@@ -126,7 +126,7 @@ function buildContext(userlandDir: string): string {
   return `
 # Oyster OS
 
-Oyster is a personal AI-native desktop OS that runs in the browser (localhost:4200).
+Oyster is a personal AI-native desktop OS that runs in your browser.
 It is NOT a chat interface or a file browser — it is a spatial desktop surface where
 artifacts (interactive documents, apps, diagrams, etc.) live as launchable icons.
 
