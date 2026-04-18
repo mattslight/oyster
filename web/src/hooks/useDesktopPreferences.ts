@@ -10,6 +10,11 @@ const ACTIVE_KIND_KEY = "oyster-active-kind";
 const FLAT_MODE_KEY_PREFIX = "oyster-flat-mode:";
 
 export type SortMode = "alpha" | "kind" | "timeline" | "space" | "group";
+
+const VALID_SORT_MODES: readonly SortMode[] = ["alpha", "kind", "timeline", "space", "group"];
+function parseSortMode(value: unknown): SortMode {
+  return VALID_SORT_MODES.includes(value as SortMode) ? (value as SortMode) : "alpha";
+}
 export type SortDir = "asc" | "desc";
 export type ViewMode = "grid" | "list";
 export type GroupBy = "space" | "kind" | "none";
@@ -30,11 +35,9 @@ export function useDesktopPreferences(space: string, artifacts: Artifact[]) {
     lsGet(VIEW_MODE_KEY) === "list" ? "list" : "grid",
   );
 
-  const [sortMode, setSortMode] = useState<SortMode>(() => {
-    const s = lsGet(SORT_KEY_PREFIX + space);
-    if (s === "alpha" || s === "kind" || s === "timeline" || s === "space") return s;
-    return "alpha";
-  });
+  const [sortMode, setSortMode] = useState<SortMode>(() =>
+    parseSortMode(lsGet(SORT_KEY_PREFIX + space)),
+  );
 
   const [sortDir, setSortDir] = useState<SortDir>(() =>
     lsGet(SORT_DIR_KEY) === "desc" ? "desc" : "asc",
@@ -64,9 +67,8 @@ export function useDesktopPreferences(space: string, artifacts: Artifact[]) {
   // localStorage per space, not derivable without an effect since it reads
   // external (browser) state.
   useEffect(() => {
-    const s = lsGet(SORT_KEY_PREFIX + space);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSortMode(s === "alpha" || s === "kind" || s === "timeline" ? s : "alpha");
+    setSortMode(parseSortMode(lsGet(SORT_KEY_PREFIX + space)));
     setFlatMode(lsGet(FLAT_MODE_KEY_PREFIX + space) === "true");
   }, [space]);
 

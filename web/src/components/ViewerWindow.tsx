@@ -119,10 +119,14 @@ export function ViewerWindow({
   const [fixLogOpen, setFixLogOpen] = useState(false);
   const fixLogEndRef = useRef<HTMLDivElement>(null);
   const unsubRef = useRef<(() => void) | null>(null);
-  // Date.now() is intentional cache-busting — the memo only recomputes when
-  // path or iframeKey changes, so it's not per-render.
-  // eslint-disable-next-line react-hooks/purity
-  const iframeSrc = useMemo(() => `${path}${path.includes("?") ? "&" : "?"}t=${Date.now()}${initialHash ? initialHash : ""}`, [path, iframeKey]);
+  // initialHash is applied only to the first iframe load — if the prop
+  // changes later we deliberately don't reload, so freeze it to a ref.
+  const initialHashRef = useRef(initialHash);
+  // Date.now() is intentional cache-busting, initialHashRef is the frozen
+  // first-load hash — the memo only recomputes when path or iframeKey
+  // changes, so neither concern actually lands per-render.
+  // eslint-disable-next-line react-hooks/purity, react-hooks/refs
+  const iframeSrc = useMemo(() => `${path}${path.includes("?") ? "&" : "?"}t=${Date.now()}${initialHashRef.current ? initialHashRef.current : ""}`, [path, iframeKey]);
 
   // Auto-scroll fix log
   useEffect(() => {
