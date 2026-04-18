@@ -19,7 +19,7 @@ Browser → http://localhost:4444
          - Chat proxy → OpenCode (spawned internally) → LLM
 ```
 
-**Oyster Server** (port 4444 when installed, 3333 in dev) — HTTP API, artifact/space registry (SQLite), MCP tool surface, static web serving, chat proxy to OpenCode. This is the only user-facing port.
+**Oyster Server** (port 4444 when installed, 3333 in dev) — HTTP API, artifact/space registry (SQLite), MCP tool surface, static web serving, chat proxy to OpenCode. In the installed package, this is the only user-facing port; in dev, Vite serves the UI at 7337 and proxies to the server.
 
 **OpenCode** — AI engine, spawned as a subprocess by the server. Not user-facing. Configured via `.opencode/agents/oyster.md` and `.opencode/config.toml`.
 

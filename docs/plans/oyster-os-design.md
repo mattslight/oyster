@@ -106,7 +106,7 @@ Prove that Oyster can:
 | OpenCode (internal) | AI engine, spawned as subprocess, not user-facing |
 | SQLite (~/.oyster/userland/oyster.db) | Artefact and space registry |
 
-The UI, API, and MCP server all run on port 4444 (3333 in dev, overridable via `OYSTER_PORT`). OpenCode is spawned internally. Memory ships in v1 (SQLite FTS5).
+In the installed package the server serves API, MCP, and static UI on port 4444. In dev the server runs on 3333 and Vite serves the UI at 7337 (proxying API/MCP to the server). `OYSTER_PORT` overrides the server port. OpenCode is spawned internally. Memory ships in v1 (SQLite FTS5).
 
 ### The Artifact Contract
 
