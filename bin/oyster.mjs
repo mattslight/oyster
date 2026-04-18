@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 
-import { spawn, execSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { spawn, execSync, execFileSync } from "node:child_process";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
+import {
+  existsSync, readFileSync, mkdirSync, mkdtempSync, readdirSync,
+  rmSync, cpSync, createWriteStream, realpathSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+
+const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB cap on plugin bundles
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+const API_TIMEOUT_MS = 10_000;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
@@ -17,6 +26,227 @@ if (args.includes("--version") || args.includes("-v")) {
   console.log(pkg.version);
   process.exit(0);
 }
+if (args.includes("--help") || args.includes("-h") || args[0] === "help") {
+  printHelp();
+  process.exit(0);
+}
+
+// ── Plugin subcommands ──
+
+const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const REPO_PATTERN = /^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,64}$/;
+
+const cmd = args[0];
+if (cmd && !cmd.startsWith("-")) {
+  try {
+    if (cmd === "install") { await cmdInstall(args[1]); process.exit(0); }
+    if (cmd === "uninstall" || cmd === "remove") { cmdUninstall(args[1]); process.exit(0); }
+    if (cmd === "list" || cmd === "ls") { cmdList(); process.exit(0); }
+    console.error(`Unknown command: ${cmd}\n`);
+    printHelp();
+    process.exit(1);
+  } catch (err) {
+    console.error(`\n  Error: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
+function printHelp() {
+  console.log(`
+  Oyster — prompt-controlled workspace OS
+
+  Usage:
+    oyster                            Start the server (default)
+    oyster install <owner>/<repo>     Install a plugin from its latest GitHub release
+    oyster uninstall <id>             Remove an installed plugin
+    oyster list                       List installed plugins
+    oyster --version                  Print version
+    oyster --help                     Show this help
+`);
+}
+
+async function cmdInstall(repo) {
+  if (!repo || !REPO_PATTERN.test(repo)) {
+    throw new Error("install expects <owner>/<repo>, e.g. 'oyster install mattslight/oyster-sample-plugin'");
+  }
+
+  console.log(`\n  Fetching latest release of ${repo}...`);
+  const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
+  const assets = release.assets || [];
+  const zipAsset = assets.find((a) => a.name.toLowerCase().endsWith(".zip"));
+  if (!zipAsset) {
+    throw new Error(`No .zip asset found in release ${release.tag_name || "?"} of ${repo}. Plugin authors: attach a zipped bundle to the release.`);
+  }
+  console.log(`  Release: ${release.tag_name} (${zipAsset.name}, ${(zipAsset.size / 1024).toFixed(1)} KB)`);
+
+  const workDir = mkdtempSync(join(tmpdir(), "oyster-install-"));
+  // Hardcode the local filename — never interpolate attacker-controlled asset.name into a path.
+  const zipPath = join(workDir, "bundle.zip");
+  const extractDir = join(workDir, "extracted");
+  mkdirSync(extractDir);
+
+  try {
+    await downloadFile(zipAsset.browser_download_url, zipPath);
+    extractZip(zipPath, extractDir);
+    assertNoZipSlip(extractDir);
+
+    const manifestRoot = locateManifestRoot(extractDir);
+    const manifest = JSON.parse(readFileSync(join(manifestRoot, "manifest.json"), "utf8"));
+    if (!manifest.id || !PLUGIN_ID_PATTERN.test(manifest.id)) {
+      throw new Error(`Invalid plugin id in manifest: '${manifest.id}'. Must match ${PLUGIN_ID_PATTERN}.`);
+    }
+
+    const userlandDir = join(OYSTER_HOME, "userland");
+    mkdirSync(userlandDir, { recursive: true });
+    const destDir = join(userlandDir, manifest.id);
+
+    if (existsSync(destDir)) {
+      throw new Error(`Plugin '${manifest.id}' is already installed at ${destDir}. Run 'oyster uninstall ${manifest.id}' first.`);
+    }
+
+    try {
+      cpSync(manifestRoot, destDir, { recursive: true });
+    } catch (err) {
+      rmSync(destDir, { recursive: true, force: true });
+      throw err;
+    }
+
+    console.log(`\n  ✓ Installed ${manifest.name} v${manifest.version || "?"}`);
+    console.log(`    ${destDir}`);
+    console.log(`\n  Restart Oyster (or the running server) to see it on your surface.\n`);
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+function cmdUninstall(id) {
+  if (!id || !PLUGIN_ID_PATTERN.test(id)) {
+    throw new Error("uninstall expects a valid plugin id, e.g. 'oyster uninstall pomodoro'");
+  }
+  const dir = join(OYSTER_HOME, "userland", id);
+  if (!existsSync(dir)) {
+    throw new Error(`'${id}' is not installed.`);
+  }
+  const manifestPath = join(dir, "manifest.json");
+  if (!existsSync(manifestPath)) {
+    throw new Error(`${dir} has no manifest.json — refusing to remove a folder that isn't a plugin.`);
+  }
+  rmSync(dir, { recursive: true, force: true });
+  console.log(`\n  ✓ Uninstalled ${id}\n`);
+}
+
+function cmdList() {
+  const userlandDir = join(OYSTER_HOME, "userland");
+  if (!existsSync(userlandDir)) {
+    console.log("\n  No plugins installed.\n");
+    return;
+  }
+  const rows = [];
+  for (const entry of readdirSync(userlandDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = join(userlandDir, entry.name, "manifest.json");
+    if (!existsSync(manifestPath)) continue;
+    try {
+      const m = JSON.parse(readFileSync(manifestPath, "utf8"));
+      rows.push({ id: m.id || entry.name, name: m.name || "-", version: m.version || "?", builtin: m.builtin === true });
+    } catch {}
+  }
+  if (rows.length === 0) {
+    console.log("\n  No plugins installed.\n");
+    return;
+  }
+  const idWidth = Math.max(8, ...rows.map((r) => r.id.length));
+  const nameWidth = Math.max(8, ...rows.map((r) => r.name.length));
+  console.log("");
+  for (const r of rows) {
+    const tag = r.builtin ? " (builtin)" : "";
+    console.log(`  ${r.id.padEnd(idWidth)}  ${r.name.padEnd(nameWidth)}  v${r.version}${tag}`);
+  }
+  console.log("");
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "oyster-cli", Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`GitHub API ${res.status} ${res.statusText} for ${url}`);
+  return await res.json();
+}
+
+async function downloadFile(url, destPath) {
+  const res = await fetch(url, {
+    redirect: "follow",
+    headers: { "User-Agent": "oyster-cli" },
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status} for ${url}`);
+
+  const declared = Number(res.headers.get("content-length"));
+  if (declared && declared > MAX_DOWNLOAD_BYTES) {
+    throw new Error(`Bundle too large: ${(declared / 1024 / 1024).toFixed(1)} MB (limit ${MAX_DOWNLOAD_BYTES / 1024 / 1024} MB)`);
+  }
+
+  let bytes = 0;
+  const capped = new Transform({
+    transform(chunk, _enc, cb) {
+      bytes += chunk.length;
+      if (bytes > MAX_DOWNLOAD_BYTES) {
+        cb(new Error(`Bundle exceeds ${MAX_DOWNLOAD_BYTES / 1024 / 1024} MB limit`));
+        return;
+      }
+      cb(null, chunk);
+    },
+  });
+  await pipeline(Readable.fromWeb(res.body), capped, createWriteStream(destPath));
+}
+
+function extractZip(zipPath, destDir) {
+  try {
+    execFileSync("unzip", ["-q", zipPath, "-d", destDir], { stdio: "pipe" });
+    return;
+  } catch {
+    // fall through to tar
+  }
+  try {
+    execFileSync("tar", ["-xf", zipPath, "-C", destDir], { stdio: "pipe" });
+    return;
+  } catch {
+    throw new Error("Extraction failed — neither `unzip` nor `tar` could open the bundle.");
+  }
+}
+
+// Defend against zip-slip: every extracted path must resolve under the extract root,
+// even after following any symlinks that landed in the archive.
+function assertNoZipSlip(rootDir) {
+  const realRoot = realpathSync(rootDir);
+  const rootPrefix = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      const real = realpathSync(full);
+      if (real !== realRoot && !real.startsWith(rootPrefix)) {
+        throw new Error(`Unsafe archive entry escapes plugin dir: ${entry.name} → ${real}`);
+      }
+      if (entry.isDirectory()) walk(full);
+    }
+  };
+  walk(realRoot);
+}
+
+// Source-zipballs nest everything under <repo>-<sha>/. If manifest.json isn't at
+// the extract root, probe exactly one level deep for it.
+function locateManifestRoot(extractDir) {
+  if (existsSync(join(extractDir, "manifest.json"))) return extractDir;
+  const subdirs = readdirSync(extractDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+  if (subdirs.length === 1) {
+    const nested = join(extractDir, subdirs[0].name);
+    if (existsSync(join(nested, "manifest.json"))) return nested;
+  }
+  throw new Error("Downloaded bundle has no manifest.json at the root (or one level deep).");
+}
+
 const ENV_FILE = join(OYSTER_HOME, ".env");
 
 // ── Resolve env vars ──
