@@ -19,13 +19,13 @@ Browser → http://localhost:4444
          - Chat proxy → OpenCode (spawned internally) → LLM
 ```
 
-**Oyster Server** (port 4200) — HTTP API, artifact/space registry (SQLite), MCP tool surface, static web serving, chat proxy to OpenCode. This is the only user-facing port.
+**Oyster Server** (port 4444 when installed, 3333 in dev) — HTTP API, artifact/space registry (SQLite), MCP tool surface, static web serving, chat proxy to OpenCode. This is the only user-facing port.
 
 **OpenCode** — AI engine, spawned as a subprocess by the server. Not user-facing. Configured via `.opencode/agents/oyster.md` and `.opencode/config.toml`.
 
 **SQLite** (`~/.oyster/userland/oyster.db`) — artefact and space registry. Fast, local, no infrastructure.
 
-**No persistent memory in v1.** Cross-session memory (Graphiti / knowledge graph) is deferred to v2. The agent is stateless between sessions.
+**Memory (v1)** — SQLite FTS5-backed `remember` / `recall` / `forget` / `list_memories` tools in `server/src/memory-store.ts`. Richer cross-session / graph-based memory is future work.
 
 ## Mental Models
 
@@ -33,7 +33,7 @@ Browser → http://localhost:4444
 
 **Artefacts** — typed outputs on the surface (app, notes, diagram, deck, wireframe, table, map). Registered in SQLite, files in `~/.oyster/userland/`. `source_origin` tracks provenance: `manual` | `discovered` | `ai_generated`.
 
-**MCP** — the server exposes 15 tools at `/mcp/`. Any MCP client (Claude Code, Cursor, etc.) can connect and control the surface.
+**MCP** — the server exposes 19 tools at `/mcp/` (15 artifact/space + 4 memory). Any MCP client (Claude Code, Cursor, etc.) can connect and control the surface.
 
 ## Key Files
 
@@ -54,7 +54,7 @@ Browser → http://localhost:4444
 ```bash
 # Development
 cd web && npm install && cd ../server && npm install && cd ..
-npm run dev              # Vite dev server at 7337, proxies to server at 4200
+npm run dev              # Vite dev server at 7337, proxies to server at 3333
 
 # Production build
 npm run build            # Builds web + server + copies web into server/dist/public/

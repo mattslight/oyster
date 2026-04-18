@@ -107,11 +107,11 @@ Browser → http://localhost:4444
 
 Early v1. Local-first. Single-user. Built for fast iteration.
 
-**Now:** MCP powered workspace, bring your own AI, prompt-driven navigation, space switching, artefact desktop, repo onboarding, 12 MCP tools, slash commands, instant UI updates via SSE.
+**Now:** MCP powered workspace, bring your own AI, prompt-driven navigation, space switching, artefact desktop, repo onboarding, persistent memory (remember/recall), 19 MCP tools, slash commands, instant UI updates via SSE.
 
 **Next:** smoother onboarding, faster artefact navigation, better repo import.
 
-**Vision:** persistent memory, plugins, dynamic UI that reshapes to fit the task, build & share apps.
+**Vision:** plugins, dynamic UI that reshapes to fit the task, build & share apps.
 
 ## Contributing
 
@@ -128,7 +128,7 @@ git clone https://github.com/mattslight/oyster.git
 cd oyster
 cd web && npm install && cd ../server && npm install && cd ..
 npm run dev
-# → dev server at http://localhost:7337 (proxies to server at 4200)
+# → dev server at http://localhost:7337 (proxies to server at 3333)
 ```
 
 ## Licence
