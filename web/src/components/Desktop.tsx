@@ -436,7 +436,22 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                   style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
                 >
                   {item.type === "group" ? (
-                    <GroupIcon name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} onContextMenu={(e) => { e.preventDefault(); setArtifactCtx(null); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }} />
+                    <GroupIcon
+                      name={item.name}
+                      artifacts={item.artifacts}
+                      index={i}
+                      onClick={() => onGroupClick(item.name)}
+                      // Folder actions (Rename folder / Archive folder) are
+                      // scoped to a space_id. In the archived view, `space`
+                      // is "__archived__" which archived rows don't belong to,
+                      // so those bulk ops would silently no-op. Suppress the
+                      // menu entirely here.
+                      onContextMenu={
+                        isArchivedView
+                          ? (e) => e.preventDefault()
+                          : (e) => { e.preventDefault(); setArtifactCtx(null); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }
+                      }
+                    />
                   ) : (
                     <ArtifactIcon
                       artifact={item.artifact}

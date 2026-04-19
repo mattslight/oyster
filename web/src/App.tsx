@@ -370,7 +370,11 @@ export default function App() {
         onSpaceChange={handleSpaceChange}
         onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         onConvertToSpace={handleConvertToSpace}
-        onRefresh={() => loadArtifacts().then(setArtifacts).catch(() => setConnected(false))}
+        onRefresh={() =>
+          loadArtifacts()
+            .then((nextArtifacts) => { setArtifacts(nextArtifacts); setConnected(true); })
+            .catch(() => setConnected(false))
+        }
         onArtifactUpdate={(id, fields) => setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, ...fields } : a)))}
         onArtifactRemove={(id) => setArtifacts((prev) => prev.filter((a) => a.id !== id))}
         onImportFromAI={(spaceId) => {

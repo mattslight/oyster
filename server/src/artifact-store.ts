@@ -154,17 +154,13 @@ export class SqliteArtifactStore implements ArtifactStore {
   // file-backed artifact archived from the UI would still appear because the
   // scanner re-detects the underlying file each scan cycle).
   getArchivedFilePaths(): Set<string> {
+    // Use SQLite's json_extract in-query instead of JSON.parse'ing each row
+    // in JS. Matches the getByPath pattern above and scales better as the
+    // archive grows.
     const rows = this.db.prepare(
-      "SELECT storage_config FROM artifacts WHERE removed_at IS NOT NULL AND storage_kind = 'filesystem'"
-    ).all() as { storage_config: string }[];
-    const paths = new Set<string>();
-    for (const row of rows) {
-      try {
-        const p = (JSON.parse(row.storage_config) as { path?: string }).path;
-        if (p) paths.add(p);
-      } catch { /* malformed — skip */ }
-    }
-    return paths;
+      "SELECT json_extract(storage_config, '$.path') AS path FROM artifacts WHERE removed_at IS NOT NULL AND storage_kind = 'filesystem' AND json_extract(storage_config, '$.path') IS NOT NULL"
+    ).all() as { path: string | null }[];
+    return new Set(rows.map((r) => r.path).filter((p): p is string => typeof p === "string" && p.length > 0));
   }
 
   delete(id: string): void {
