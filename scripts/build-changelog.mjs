@@ -8,6 +8,24 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const mdPath = path.join(root, "CHANGELOG.md");
 const outPath = path.join(root, "docs", "changelog.html");
 
+// Escape any raw HTML in CHANGELOG.md rather than pass it through. This page is
+// built from a file that gets edited in PRs and published to oyster.to, so a
+// `<script>` sneaking in would ship as stored XSS. We don't need HTML in the
+// changelog itself — markdown is enough — so the safest thing is to render
+// any html token as escaped text.
+const escapeHtml = (s) =>
+  s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+marked.use({
+  renderer: {
+    // Block-level html token (e.g. a `<div>...</div>` block). Marked v12+
+    // routes both block and inline html tokens through this renderer.
+    html({ text, raw }) {
+      return escapeHtml(text ?? raw ?? "");
+    },
+  },
+});
+
 const md = fs.readFileSync(mdPath, "utf8");
 // Strip the title + lead paragraph; the template owns the hero.
 const body = md.replace(/^#\s+Changelog[\s\S]*?\n## /m, "## ");

@@ -59,4 +59,6 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
-          generate_release_notes: true
+          # Curated CHANGELOG section is the source of truth. Auto-generated PR
+          # list would be prepended/appended to our body and duplicate content.
+          generate_release_notes: false
