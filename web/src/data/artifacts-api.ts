@@ -2,12 +2,13 @@ export type { Artifact, ArtifactKind, ArtifactStatus, IconStatus } from "../../.
 import type { Artifact } from "../../../shared/types";
 
 // Our mutation endpoints return `{error: "…"}` on failure. Surface that
-// message in thrown Error objects so UI alert()s show something actionable
-// instead of just "Update failed: 400". Best-effort: if the body isn't
-// JSON or doesn't carry `.error`, fall back to the status.
-async function throwFromResponse(res: Response, fallback: string): Promise<never> {
+// message in thrown Error objects so UI alert()s show something actionable.
+// Callers add their own action context (e.g. "Rename failed:") on the
+// alert side — this helper just carries the reason, so we don't get
+// double-prefixed messages like "Rename failed: Rename failed: 400".
+async function throwFromResponse(res: Response): Promise<never> {
   const body = await res.json().catch(() => null) as { error?: string } | null;
-  throw new Error(body?.error || `${fallback}: ${res.status}`);
+  throw new Error(body?.error || `HTTP ${res.status}`);
 }
 
 export async function fetchArtifacts(): Promise<Artifact[]> {
@@ -35,29 +36,29 @@ export async function updateArtifact(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(fields),
   });
-  if (!res.ok) await throwFromResponse(res, "Update failed");
+  if (!res.ok) await throwFromResponse(res);
   return res.json();
 }
 
 export async function archiveArtifact(id: string): Promise<void> {
   const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}/archive`, { method: "POST" });
-  if (!res.ok) await throwFromResponse(res, "Archive failed");
+  if (!res.ok) await throwFromResponse(res);
 }
 
 export async function listArchivedArtifacts(): Promise<Artifact[]> {
   const res = await fetch("/api/artifacts/archived");
-  if (!res.ok) await throwFromResponse(res, "List archived failed");
+  if (!res.ok) await throwFromResponse(res);
   return res.json();
 }
 
 export async function restoreArtifact(id: string): Promise<void> {
   const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}/restore`, { method: "POST" });
-  if (!res.ok) await throwFromResponse(res, "Restore failed");
+  if (!res.ok) await throwFromResponse(res);
 }
 
 export async function uninstallPlugin(id: string): Promise<void> {
   const res = await fetch(`/api/plugins/${encodeURIComponent(id)}/uninstall`, { method: "POST" });
-  if (!res.ok) await throwFromResponse(res, "Uninstall failed");
+  if (!res.ok) await throwFromResponse(res);
 }
 
 export async function renameGroup(
@@ -70,7 +71,7 @@ export async function renameGroup(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ space_id: spaceId, old_name: oldName, new_name: newName }),
   });
-  if (!res.ok) await throwFromResponse(res, "Rename group failed");
+  if (!res.ok) await throwFromResponse(res);
   return res.json();
 }
 
@@ -80,6 +81,6 @@ export async function archiveGroup(spaceId: string, name: string): Promise<{ arc
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ space_id: spaceId, name }),
   });
-  if (!res.ok) await throwFromResponse(res, "Archive group failed");
+  if (!res.ok) await throwFromResponse(res);
   return res.json();
 }

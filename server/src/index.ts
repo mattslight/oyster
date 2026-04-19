@@ -260,6 +260,17 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     res.end(JSON.stringify(data));
   };
 
+  // Throwable that carries an HTTP status — lets readJsonBody and others
+  // surface a specific status (e.g. 413) without writing the response
+  // themselves, which would race the caller's own catch-block response.
+  class HttpError extends Error {
+    constructor(message: string, public status: number) { super(message); this.name = "HttpError"; }
+  }
+  const sendError = (err: unknown, fallback = 400) => {
+    if (err instanceof HttpError) sendJson({ error: err.message }, err.status);
+    else sendJson({ error: (err as Error).message }, fallback);
+  };
+
   // Mutation endpoints only accept tiny config bodies ({label, group_name}
   // etc). Cap at 64 KB to prevent memory/CPU abuse from an oversized payload.
   const MAX_MUTATION_BODY = 64_000;
@@ -268,15 +279,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     for await (const chunk of req) {
       body += chunk;
       if (body.length > MAX_MUTATION_BODY) {
-        res.writeHead(413);
-        res.end("Payload too large");
-        req.destroy();
-        throw new Error("Payload too large");
+        throw new HttpError("Payload too large", 413);
       }
     }
     if (!body) return {};
     try { return JSON.parse(body) as Record<string, unknown>; }
-    catch { throw new Error("Invalid JSON body"); }
+    catch { throw new HttpError("Invalid JSON body", 400); }
   }
 
   // Artifact endpoints (both reads and mutations) are localhost-only. A
@@ -355,7 +363,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       const archived = await artifactService.getArchivedArtifacts();
       sendJson(archived);
     } catch (err) {
-      sendJson({ error: (err as Error).message }, 500);
+      sendError(err, 500);
     }
     return;
   }
@@ -387,7 +395,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       const updated = await artifactService.updateArtifact(id, fields);
       sendJson(updated);
     } catch (err) {
-      sendJson({ error: (err as Error).message }, 400);
+      sendError(err);
     }
     return;
   }
@@ -400,7 +408,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       artifactService.restoreArtifact(id);
       sendJson({ id, restored: true });
     } catch (err) {
-      sendJson({ error: (err as Error).message }, 400);
+      sendError(err);
     }
     return;
   }
@@ -413,7 +421,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       artifactService.removeArtifact(id);
       sendJson({ id, archived: true });
     } catch (err) {
-      sendJson({ error: (err as Error).message }, 400);
+      sendError(err);
     }
     return;
   }
@@ -432,7 +440,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       const updated = artifactService.renameGroup(spaceId, oldName, newName);
       sendJson({ space_id: spaceId, old_name: oldName, new_name: newName.trim(), updated });
     } catch (err) {
-      sendJson({ error: (err as Error).message }, 400);
+      sendError(err);
     }
     return;
   }
@@ -462,7 +470,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       rmSync(dir, { recursive: true, force: true });
       sendJson({ id, uninstalled: true });
     } catch (err) {
-      sendJson({ error: (err as Error).message }, 500);
+      sendError(err, 500);
     }
     return;
   }
@@ -480,7 +488,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       const archived = artifactService.archiveGroup(spaceId, name);
       sendJson({ space_id: spaceId, name, archived });
     } catch (err) {
-      sendJson({ error: (err as Error).message }, 400);
+      sendError(err);
     }
     return;
   }
