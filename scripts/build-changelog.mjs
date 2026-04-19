@@ -8,20 +8,36 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const mdPath = path.join(root, "CHANGELOG.md");
 const outPath = path.join(root, "docs", "changelog.html");
 
-// Escape any raw HTML in CHANGELOG.md rather than pass it through. This page is
-// built from a file that gets edited in PRs and published to oyster.to, so a
-// `<script>` sneaking in would ship as stored XSS. We don't need HTML in the
-// changelog itself — markdown is enough — so the safest thing is to render
-// any html token as escaped text.
+// This page is built from CHANGELOG.md which is edited in PRs and published to
+// oyster.to, so anything exploitable there ships as stored XSS. Defense:
+//   1. Escape `&<>"'` everywhere we inject strings into the template.
+//   2. Render raw HTML tokens as escaped text (no pass-through).
+//   3. Allow only safe URL protocols on links and images.
 const escapeHtml = (s) =>
-  s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  String(s).replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
+
+const SAFE_URL = /^(?:https?:|mailto:|#|\/|\.\/|\.\.\/)/i;
+const safeHref = (href) => (href && SAFE_URL.test(href) ? href : "#");
 
 marked.use({
   renderer: {
-    // Block-level html token (e.g. a `<div>...</div>` block). Marked v12+
-    // routes both block and inline html tokens through this renderer.
+    // Block + inline html tokens both route here in marked v12+.
     html({ text, raw }) {
       return escapeHtml(text ?? raw ?? "");
+    },
+    link({ href, title, tokens }) {
+      const url = escapeHtml(safeHref(href));
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      const inner = this.parser.parseInline(tokens);
+      return `<a href="${url}"${titleAttr}>${inner}</a>`;
+    },
+    image({ href, title, text }) {
+      if (!href || !SAFE_URL.test(href)) return escapeHtml(`[image: ${text ?? ""}]`);
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text ?? "")}"${titleAttr}>`;
     },
   },
 });
@@ -41,19 +57,30 @@ const releases = [];
 // Single pass: marked renders `[Unreleased]` as a reference-link (because of the
 // compare-link footer defining it) and `[0.0.x]` as plain brackets (no matching
 // definition). Match both forms in one regex so releases stay in document order.
+// The `<h2[^>]*>` tolerates any attributes marked may emit in future versions.
+// Captured values (version, rest, href) are escaped before interpolation.
 const rendered = rawRendered.replace(
-  /<h2>(?:<a[^>]*>([^<]+)<\/a>|\[([^\]]+)\])(?:\s*-\s*([^<]+?))?<\/h2>/g,
-  (_, linkedVersion, bracketVersion, rest) => {
+  /<h2[^>]*>(?:<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>|\[([^\]]+)\])(?:\s*-\s*([^<]+?))?<\/h2>/g,
+  (_, linkedHref, linkedVersion, bracketVersion, rest) => {
     const version = linkedVersion || bracketVersion;
     const id = `v-${slug(version)}`;
-    const suffix = rest ? `<span class="release-date"> — ${rest.trim()}</span>` : "";
+    const versionSpan = `<span class="release-version">${escapeHtml(version)}</span>`;
+    const versionHtml = linkedHref
+      ? `<a class="release-version-link" href="${escapeHtml(safeHref(linkedHref))}">${versionSpan}</a>`
+      : versionSpan;
+    const suffix = rest
+      ? `<span class="release-date"> — ${escapeHtml(rest.trim())}</span>`
+      : "";
     releases.push({ version, id });
-    return `<h2 id="${id}"><span class="release-version">${version}</span>${suffix}</h2>`;
+    return `<h2 id="${escapeHtml(id)}">${versionHtml}${suffix}</h2>`;
   },
 );
 
 const pills = releases
-  .map((r) => `<a class="version-pill" href="#${r.id}">${r.version}</a>`)
+  .map(
+    (r) =>
+      `<a class="version-pill" href="#${escapeHtml(r.id)}">${escapeHtml(r.version)}</a>`,
+  )
   .join("\n      ");
 
 const html = `<!DOCTYPE html>
@@ -198,6 +225,14 @@ const html = `<!DOCTYPE html>
       font-weight: 700;
       color: #fff;
       letter-spacing: -0.5px;
+    }
+    .release-version-link {
+      text-decoration: none;
+      border-bottom: 0 !important;
+      transition: opacity 0.15s;
+    }
+    .release-version-link:hover .release-version {
+      color: #a99eff;
     }
     .release-date {
       font-family: 'IBM Plex Mono', monospace;

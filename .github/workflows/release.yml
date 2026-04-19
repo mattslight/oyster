@@ -45,8 +45,11 @@ jobs:
         id: changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Keep a Changelog format: match `## [X.Y.Z]` header, capture until the next `## ` header.
-          NOTES=$(awk -v v="$VERSION" 'BEGIN{re="^## \\[" v "\\]"} /^## /{if(found)exit; if($0~re){found=1; next}} found' CHANGELOG.md 2>/dev/null || true)
+          # Keep a Changelog format: match literal `## [X.Y.Z]` header, capture
+          # until the next `## ` header. `index() == 1` avoids regex-metachar
+          # pitfalls (e.g. `.` in semver matching any character).
+          HEADER="## [$VERSION]"
+          NOTES=$(awk -v h="$HEADER" 'index($0, h)==1{found=1; next} /^## /{if(found)exit} found' CHANGELOG.md 2>/dev/null || true)
           if [ -z "$NOTES" ]; then
             NOTES="Release $GITHUB_REF_NAME"
           fi

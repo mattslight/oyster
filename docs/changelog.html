@@ -141,6 +141,14 @@
       color: #fff;
       letter-spacing: -0.5px;
     }
+    .release-version-link {
+      text-decoration: none;
+      border-bottom: 0 !important;
+      transition: opacity 0.15s;
+    }
+    .release-version-link:hover .release-version {
+      color: #a99eff;
+    }
     .release-date {
       font-family: 'IBM Plex Mono', monospace;
       font-size: 12px;
@@ -317,7 +325,7 @@
   </nav>
 
   <main class="entries">
-<h2 id="v-unreleased"><span class="release-version">Unreleased</span></h2>
+<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.4...HEAD"><span class="release-version">Unreleased</span></a></h2>
 <h3>Performance</h3>
 <ul>
 <li>Grainient shader pauses <code>requestAnimationFrame</code> on window blur and tab hide (was pinning the Chrome GPU process while Oyster sat in the background). Time stays continuous on resume — no visual jump.</li>
@@ -331,7 +339,7 @@
 <li>Docs site typography: Barlow headings paired with Space Grotesk body across landing and <code>/plugins</code>.</li>
 <li><code>/plugins</code> hero renamed to &quot;Pearls&quot;.</li>
 </ul>
-<h2 id="v-0-3-4"><span class="release-version">0.3.4</span><span class="release-date"> — 2026-04-19</span></h2>
+<h2 id="v-0-3-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.3...v0.3.4"><span class="release-version">0.3.4</span></a><span class="release-date"> — 2026-04-19</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li>Stale tile icons cleared after <code>oyster uninstall &lt;id&gt;</code>.</li>
@@ -347,7 +355,7 @@
 <li>Release workflow actions bumped for Node 24.</li>
 <li>Dep bumps: <code>marked</code> 17 → 18; <code>@types/node</code> 22 → 25; web/server/root minor+patch groups.</li>
 </ul>
-<h2 id="v-0-3-3"><span class="release-version">0.3.3</span><span class="release-date"> — 2026-04-18</span></h2>
+<h2 id="v-0-3-3"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.2...v0.3.3"><span class="release-version">0.3.3</span></a><span class="release-date"> — 2026-04-18</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Plugins — Tier 2 installer.</strong> <code>oyster install &lt;id&gt;</code>, <code>oyster uninstall &lt;id&gt;</code>, <code>oyster list</code> install community plugins by id.</li>
@@ -360,7 +368,7 @@
 <li>README and <code>CLAUDE.md</code> updated to match shipped v1 — port 4444, 19 MCP tools, FTS5 memory.</li>
 <li><code>/plugins</code> page polish: hairline borders dropped, only purposeful ones kept.</li>
 </ul>
-<h2 id="v-0-3-2"><span class="release-version">0.3.2</span><span class="release-date"> — 2026-04-18</span></h2>
+<h2 id="v-0-3-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.1...v0.3.2"><span class="release-version">0.3.2</span></a><span class="release-date"> — 2026-04-18</span></h2>
 <h3>Added</h3>
 <ul>
 <li><code>--version</code> / <code>-v</code> flag on the <code>oyster</code> CLI.</li>
@@ -373,7 +381,7 @@
 <ul>
 <li>Local discovery validation PoC script.</li>
 </ul>
-<h2 id="v-0-3-1"><span class="release-version">0.3.1</span><span class="release-date"> — 2026-04-17</span></h2>
+<h2 id="v-0-3-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.2.4...v0.3.1"><span class="release-version">0.3.1</span></a><span class="release-date"> — 2026-04-17</span></h2>
 <p>First stable release of the 0.3 line. Bundles everything shipped across the 0.3.0 beta cycle (no stable 0.3.0 tag).</p>
 <h3>Added</h3>
 <ul>
@@ -409,7 +417,7 @@
 <li>Connection banner says &quot;oyster&quot; (was &quot;npm run dev&quot;).</li>
 <li>Helpful error when import paste yields nothing.</li>
 </ul>
-<h2 id="v-0-2-4"><span class="release-version">0.2.4</span><span class="release-date"> — 2026-04-15</span></h2>
+<h2 id="v-0-2-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.1.21...v0.2.4"><span class="release-version">0.2.4</span></a><span class="release-date"> — 2026-04-15</span></h2>
 <h3>Added</h3>
 <ul>
 <li>Release scripts: <code>release:minor</code>, <code>release:beta</code>, <code>release:promote</code> (later simplified to <code>release</code> and <code>release:beta</code>).</li>
@@ -421,7 +429,7 @@
 <li>Import wizard UI polish — prompt copy hint, paste area, consistent CTAs.</li>
 <li>Native <code>select</code> replaced with a custom dark-themed dropdown.</li>
 </ul>
-<h2 id="v-0-1-21"><span class="release-version">0.1.21</span><span class="release-date"> — 2026-04-14</span></h2>
+<h2 id="v-0-1-21"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.1.17...v0.1.21"><span class="release-version">0.1.21</span></a><span class="release-date"> — 2026-04-14</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Auto-backup.</strong> Userland auto-backed up on every startup to <code>~/oyster-backups/auto/</code>.<ul>
@@ -444,7 +452,7 @@
 <li>Mobile: terminal mockup no longer overflows on small screens.</li>
 <li>&quot;Bring Your Own AI&quot; capitalisation and naming consistency.</li>
 </ul>
-<h2 id="v-0-1-17"><span class="release-version">0.1.17</span><span class="release-date"> — 2026-04-13</span></h2>
+<h2 id="v-0-1-17"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.1.10...v0.1.17"><span class="release-version">0.1.17</span></a><span class="release-date"> — 2026-04-13</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Drop-to-import.</strong> Drop a folder anywhere on the surface to import projects. Full-page drop zone, Grainient speeds up on drag, icons and chat dim to focus attention, wizard skips straight to scanning.</li>
@@ -469,7 +477,7 @@
 <li>Agent sessions use the <code>oyster</code> agent (was defaulting to <code>build</code>).</li>
 <li>Port resilience: OpenCode config written dynamically with actual server port; OpenCode spawned after server listens (fixes MCP connection race); Vite proxy reads <code>OYSTER_PORT</code> env var.</li>
 </ul>
-<h2 id="v-0-1-10"><span class="release-version">0.1.10</span><span class="release-date"> — 2026-04-12</span></h2>
+<h2 id="v-0-1-10"><a class="release-version-link" href="https://github.com/mattslight/oyster/releases/tag/v0.1.10"><span class="release-version">0.1.10</span></a><span class="release-date"> — 2026-04-12</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Multi-folder spaces + broader scanner.</strong><ul>
