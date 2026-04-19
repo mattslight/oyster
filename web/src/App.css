@@ -1,6 +1,6 @@
 /* ── Oyster OS — Desktop Shell ── */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
   --desktop-bg: #1a1b2e;
@@ -569,6 +569,26 @@ body {
   text-shadow: 0 1px 6px rgba(0,0,0,0.7);
 }
 
+/* Inline rename input — visually matches .icon-label but editable */
+.icon-label-input {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 400;
+  text-align: center;
+  line-height: 1.35;
+  color: var(--text);
+  max-width: 110px;
+  width: 110px;
+  padding: 2px 6px;
+  background: rgba(13, 14, 26, 0.85);
+  border: 1px solid rgba(124, 107, 255, 0.5);
+  border-radius: 4px;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124, 107, 255, 0.15);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* ── Status dot (app artifacts) ── */
 .status-dot {
   width: 10px;
@@ -761,10 +781,10 @@ body {
   position: relative;
   text-align: center;
   margin-bottom: 20px;
-  font-family: var(--font-body);
+  font-family: 'Barlow', sans-serif;
   font-size: 1.5rem;
-  font-weight: 500;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1.3;
   opacity: 1;
   transform: translateY(0);

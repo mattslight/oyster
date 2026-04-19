@@ -59,6 +59,13 @@ const KIND_EXT: Record<ArtifactKind, string> = {
 // ── Service ──
 
 export class ArtifactService {
+  // Archived-paths cache: /api/artifacts polls every 5s and each hit used
+  // to re-run the archived-rows SQL + Set construction. Cache the Set in
+  // memory, invalidate on any call that mutates removed_at. Stays O(active
+  // artifacts) in steady state instead of O(archived).
+  private archivedPathsCache: Set<string> | null = null;
+  private invalidateArchivedPaths(): void { this.archivedPathsCache = null; }
+
   constructor(private store: ArtifactStore, private userlandDir?: string) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
@@ -80,6 +87,7 @@ export class ArtifactService {
       if (storagePath) {
         if (!pathExistsOrThrow(storagePath)) {
           this.store.remove(row.id);
+          this.invalidateArchivedPaths();
           onArtifactRemoved?.(row.id, storagePath);
           continue;
         }
@@ -98,17 +106,44 @@ export class ArtifactService {
 
     const entries = getGeneratedArtifactEntries(onArtifactRemoved);
     const gen: Artifact[] = [];
+    // Paths of archived filesystem-backed rows — used to suppress in-memory
+    // scanner shadows so a soft-deleted artifact doesn't reappear on the
+    // surface just because its backing file still exists on disk.
+    const archivedPaths = this.store.getArchivedFilePaths();
 
     for (const e of entries) {
+      if (e.filePath && archivedPaths.has(e.filePath)) continue;
+      // Manifest-based gen ids are "gen:<plugin-folder>"; strip the prefix
+      // to get the folder name under ~/.oyster/userland/. Used as pluginId
+      // so Uninstall has a stable handle even after the DB reconciles the
+      // artifact to a UUID.
+      const pluginFolderId = e.plugin && e.id.startsWith("gen:") ? e.id.slice(4) : undefined;
+
       const idx = e.filePath ? dbPathToIdx.get(e.filePath) : undefined;
       if (idx !== undefined) {
-        // Suppressed twin — forward icon onto the DB artifact so it isn't lost
+        // Suppressed twin — forward icon onto the DB artifact so it isn't lost.
+        // Non-builtin scan entries also have builtin=false, so the plugin
+        // flag must come from the detector's explicit `plugin` marker, not
+        // `!e.builtin` (which would misclassify regular scan-backed notes).
         const dbArtifact = persisted[idx];
         if (e.icon && !dbArtifact.icon) dbArtifact.icon = e.icon;
         if (e.iconStatus && !dbArtifact.iconStatus) dbArtifact.iconStatus = e.iconStatus;
+        if (e.plugin) {
+          dbArtifact.plugin = true;
+          if (pluginFolderId) dbArtifact.pluginId = pluginFolderId;
+        }
       } else {
-        const { filePath: _f, builtin: _b, ...a } = e;
-        gen.push(a as Artifact);
+        // No DB twin: either a builtin (never reconciled to DB) or a manifest
+        // plugin whose DB row hasn't been reconciled yet. Carry through the
+        // builtin / plugin flags so the UI can gate destructive actions.
+        const { filePath: _f, builtin, plugin, ...a } = e;
+        const artifact = a as Artifact;
+        if (builtin) artifact.builtin = true;
+        if (plugin) {
+          artifact.plugin = true;
+          if (pluginFolderId) artifact.pluginId = pluginFolderId;
+        }
+        gen.push(artifact);
       }
     }
 
@@ -180,6 +215,7 @@ export class ArtifactService {
     if (existing) {
       if (existing.removed_at) {
         this.store.resurface(id);
+        this.invalidateArchivedPaths();
         const kind = params.artifact_kind || inferKindFromPath(absPath);
         this.store.update(id, {
           space_id: params.space_id,
@@ -285,12 +321,30 @@ export class ArtifactService {
     const row = this.store.getById(id);
     if (!row) throw new Error(`Artifact "${id}" not found`);
     this.store.remove(id);
+    this.invalidateArchivedPaths();
   }
 
   // ── Reconciliation ──
 
-  reconcileGeneratedArtifact(artifact: Artifact, filePath: string, userlandDir: string): void {
-    if (this.store.getByPath(filePath)) return; // already registered
+  reconcileGeneratedArtifact(
+    artifact: Artifact,
+    filePath: string,
+    userlandDir: string,
+    archivedPaths?: Set<string>,
+  ): void {
+    if (this.store.getByPath(filePath)) return; // already registered (active row)
+    // If the user archived this path previously, the scanner will keep
+    // seeing the file on disk and a naive reconcile would create a fresh
+    // active row next to the archived one — effectively ignoring the
+    // archive. Skip reconciliation when an archived row already claims
+    // this path; the user has to restore (#archived → Restore) to bring
+    // it back.
+    //
+    // Callers that reconcile many artifacts in one pass (e.g. the boot
+    // loop) should pass a pre-loaded `archivedPaths` set to avoid re-
+    // querying for every artifact.
+    const archived = archivedPaths ?? this.store.getArchivedFilePaths();
+    if (archived.has(filePath)) return;
     console.log(`[reconcile] ${artifact.label} → DB`);
     try {
       this.registerArtifact(
@@ -300,6 +354,15 @@ export class ArtifactService {
     } catch (err) {
       console.error(`[reconcile] failed for ${artifact.label}:`, err);
     }
+  }
+
+  // Exposed so callers running a reconcile pass can query once. Cached
+  // in-memory and invalidated whenever a mutation touches removed_at.
+  getArchivedFilePaths(): Set<string> {
+    if (!this.archivedPathsCache) {
+      this.archivedPathsCache = this.store.getArchivedFilePaths();
+    }
+    return this.archivedPathsCache;
   }
 
   // ── Update ──
@@ -330,6 +393,44 @@ export class ArtifactService {
     }
 
     return this.rowToArtifact(this.store.getById(id)!);
+  }
+
+  // ── Archived-view helpers ──
+
+  async getArchivedArtifacts(): Promise<Artifact[]> {
+    const rows = this.store.getAllArchived();
+    return Promise.all(rows.map((row) => this.rowToArtifact(row)));
+  }
+
+  restoreArtifact(id: string): void {
+    const row = this.store.getById(id);
+    if (!row) throw new Error(`Artifact "${id}" not found`);
+    if (!row.removed_at) throw new Error(`Artifact "${id}" is not archived`);
+    this.store.resurface(id);
+    this.invalidateArchivedPaths();
+  }
+
+  // ── Group (folder) bulk operations ──
+  // group_name is just a string on each artifact — no separate groups table.
+  // Renaming a group = bulk-update group_name on every artifact in the space
+  // that currently matches the old name. Archiving a group = bulk soft-delete
+  // everything in it.
+
+  renameGroup(spaceId: string, oldName: string, newName: string): number {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error("new group name must not be empty");
+    if (!oldName) throw new Error("old group name must not be empty");
+    const rows = this.store.getBySpaceId(spaceId).filter((r) => r.group_name === oldName);
+    for (const row of rows) this.store.update(row.id, { group_name: trimmed });
+    return rows.length;
+  }
+
+  archiveGroup(spaceId: string, name: string): number {
+    if (!name) throw new Error("group name must not be empty");
+    const rows = this.store.getBySpaceId(spaceId).filter((r) => r.group_name === name);
+    for (const row of rows) this.store.remove(row.id);
+    if (rows.length > 0) this.invalidateArchivedPaths();
+    return rows.length;
   }
 
   // ── Private ──

@@ -39,6 +39,8 @@ export interface ArtifactStore {
   resurface(id: string): void;
   remove(id: string): void;
   delete(id: string): void;
+  getAllArchived(): ArtifactRow[];
+  getArchivedFilePaths(): Set<string>;
 }
 
 // ── SQLite implementation ──
@@ -138,6 +140,27 @@ export class SqliteArtifactStore implements ArtifactStore {
 
   remove(id: string): void {
     this.db.prepare("UPDATE artifacts SET removed_at = datetime('now') WHERE id = ?").run(id);
+  }
+
+  // All rows that have been soft-deleted — newest first, for the Archived view.
+  getAllArchived(): ArtifactRow[] {
+    return this.db.prepare(
+      "SELECT * FROM artifacts WHERE removed_at IS NOT NULL ORDER BY removed_at DESC"
+    ).all() as ArtifactRow[];
+  }
+
+  // Paths of soft-deleted filesystem-backed artifacts. Used by getAllArtifacts
+  // to suppress in-memory scanner shadows of archived rows (without this, a
+  // file-backed artifact archived from the UI would still appear because the
+  // scanner re-detects the underlying file each scan cycle).
+  getArchivedFilePaths(): Set<string> {
+    // Use SQLite's json_extract in-query instead of JSON.parse'ing each row
+    // in JS. Matches the getByPath pattern above and scales better as the
+    // archive grows.
+    const rows = this.db.prepare(
+      "SELECT json_extract(storage_config, '$.path') AS path FROM artifacts WHERE removed_at IS NOT NULL AND storage_kind = 'filesystem' AND json_extract(storage_config, '$.path') IS NOT NULL"
+    ).all() as { path: string | null }[];
+    return new Set(rows.map((r) => r.path).filter((p): p is string => typeof p === "string" && p.length > 0));
   }
 
   delete(id: string): void {

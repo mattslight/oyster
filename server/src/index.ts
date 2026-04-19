@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -201,10 +201,15 @@ spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 // OpenCode spawn is deferred until after port resolution (see below)
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 
-// Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path)
-for (const entry of getGeneratedArtifactEntries()) {
-  if (!entry.builtin && entry.filePath && entry.status === "ready") {
-    artifactService.reconcileGeneratedArtifact(entry, entry.filePath, USERLAND_DIR);
+// Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path).
+// Load the archived-paths set once and pass it through; otherwise every
+// reconcile call would re-run the same SQL + JSON.parse over every archived row.
+{
+  const archivedPaths = artifactService.getArchivedFilePaths();
+  for (const entry of getGeneratedArtifactEntries()) {
+    if (!entry.builtin && entry.filePath && entry.status === "ready") {
+      artifactService.reconcileGeneratedArtifact(entry, entry.filePath, USERLAND_DIR, archivedPaths);
+    }
   }
 }
 
@@ -259,6 +264,62 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   const url = req.url || "/";
 
+  // ── Shared helpers ──
+  // Defined near the top so early routes (e.g. GET /api/artifacts) can use
+  // them too, not just the later mutation routes.
+
+  const sendJson = (data: unknown, status = 200) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(data));
+  };
+
+  // Throwable that carries an HTTP status — lets readJsonBody and others
+  // surface a specific status (e.g. 413) without writing the response
+  // themselves, which would race the caller's own catch-block response.
+  class HttpError extends Error {
+    constructor(message: string, public status: number) { super(message); this.name = "HttpError"; }
+  }
+  const sendError = (err: unknown, fallback = 400) => {
+    if (err instanceof HttpError) sendJson({ error: err.message }, err.status);
+    else sendJson({ error: err instanceof Error ? err.message : String(err) }, fallback);
+  };
+
+  // Mutation endpoints only accept tiny config bodies ({label, group_name}
+  // etc). Cap at 64 KB to prevent memory/CPU abuse from an oversized payload.
+  const MAX_MUTATION_BODY = 64_000;
+  async function readJsonBody(): Promise<Record<string, unknown>> {
+    let body = "";
+    for await (const chunk of req) {
+      body += chunk;
+      if (body.length > MAX_MUTATION_BODY) {
+        // Destroy the socket so we stop reading further bytes from an
+        // oversized payload — unlike a plain throw, which lets the rest
+        // of the stream keep draining. Matches the /api/import/* pattern.
+        req.destroy();
+        throw new HttpError("Payload too large", 413);
+      }
+    }
+    if (!body) return {};
+    try { return JSON.parse(body) as Record<string, unknown>; }
+    catch { throw new HttpError("Invalid JSON body", 400); }
+  }
+
+  // Artifact endpoints (both reads and mutations) are localhost-only. A
+  // browser tab on some other site could otherwise fetch user data or
+  // trigger destructive actions via http://localhost:<port>/api/…. Mirrors
+  // the /mcp handler pattern: reject non-local origins outright; echo the
+  // origin back for local ones to override the wildcard CORS header set
+  // above.
+  const rejectIfNonLocalOrigin = (): boolean => {
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      sendJson({ error: "Forbidden origin" }, 403);
+      return true;
+    }
+    if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+    return false;
+  };
+
   // GET /api/resolve-path?url=...  — resolve a serving URL to a filesystem path
   if (url.startsWith("/api/resolve-path")) {
     const params = new URL(url, "http://localhost").searchParams;
@@ -286,14 +347,166 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // GET /api/artifacts
+  // GET /api/artifacts — the full live artifact list. Local-origin-only for
+  // the same reason /api/artifacts/archived is: it contains user-private
+  // artifact metadata that a malicious cross-origin site could otherwise
+  // enumerate against a running local Oyster.
   if (url === "/api/artifacts") {
+    if (rejectIfNonLocalOrigin()) return;
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
     const revealed = new Set(pendingReveals);
     pendingReveals.clear();
     const response = artifacts.map((a) => revealed.has(a.id) ? { ...a, pendingReveal: true } : a);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(response));
+    return;
+  }
+
+  // ── Artifact mutations (context-menu actions on the desktop) ──
+  // PATCH /api/artifacts/:id   — rename and/or move to/from a group
+  // POST  /api/artifacts/:id/archive — soft-delete (removed_at set)
+  // PATCH /api/groups          — rename a group across all artifacts in a space
+  // POST  /api/groups/archive  — archive all artifacts in a group
+
+  // GET /api/artifacts/archived — list soft-deleted rows for the Archived view.
+  // Must match BEFORE the :id-scoped routes below so "archived" is never
+  // interpreted as an artifact id (e.g. PATCH /api/artifacts/archived
+  // would otherwise hit the rename handler with id="archived"). Locked to
+  // local origins for the same reason the mutation endpoints are — the
+  // list contains user-private artifact metadata.
+  if (url === "/api/artifacts/archived" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return;
+    try {
+      const archived = await artifactService.getArchivedArtifacts();
+      sendJson(archived);
+    } catch (err) {
+      sendError(err, 500);
+    }
+    return;
+  }
+
+  const artifactMatch = url.match(/^\/api\/artifacts\/([^/]+)$/);
+  if (artifactMatch && req.method === "PATCH") {
+    if (rejectIfNonLocalOrigin()) return;
+    const id = decodeURIComponent(artifactMatch[1]);
+    try {
+      const body = await readJsonBody();
+      const fields: { label?: string; group_name?: string | null } = {};
+      if ("label" in body) {
+        if (typeof body.label === "string") {
+          fields.label = body.label;
+        } else {
+          throw new Error("label must be a string");
+        }
+      }
+      if ("group_name" in body) {
+        const v = body.group_name;
+        if (v === null) {
+          fields.group_name = null;
+        } else if (typeof v === "string") {
+          fields.group_name = v.trim() || null;
+        } else {
+          throw new Error("group_name must be a string or null");
+        }
+      }
+      const updated = await artifactService.updateArtifact(id, fields);
+      sendJson(updated);
+    } catch (err) {
+      sendError(err);
+    }
+    return;
+  }
+
+  const restoreMatch = url.match(/^\/api\/artifacts\/([^/]+)\/restore$/);
+  if (restoreMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    const id = decodeURIComponent(restoreMatch[1]);
+    try {
+      artifactService.restoreArtifact(id);
+      sendJson({ id, restored: true });
+    } catch (err) {
+      sendError(err);
+    }
+    return;
+  }
+
+  const archiveMatch = url.match(/^\/api\/artifacts\/([^/]+)\/archive$/);
+  if (archiveMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    const id = decodeURIComponent(archiveMatch[1]);
+    try {
+      artifactService.removeArtifact(id);
+      sendJson({ id, archived: true });
+    } catch (err) {
+      sendError(err);
+    }
+    return;
+  }
+
+  if (url === "/api/groups" && req.method === "PATCH") {
+    if (rejectIfNonLocalOrigin()) return;
+    try {
+      const body = await readJsonBody();
+      const spaceId = typeof body.space_id === "string" ? body.space_id : null;
+      const oldName = typeof body.old_name === "string" ? body.old_name : null;
+      const newName = typeof body.new_name === "string" ? body.new_name : null;
+      if (!spaceId || !oldName || !newName) {
+        sendJson({ error: "space_id, old_name, new_name are required" }, 400);
+        return;
+      }
+      const updated = artifactService.renameGroup(spaceId, oldName, newName);
+      sendJson({ space_id: spaceId, old_name: oldName, new_name: newName.trim(), updated });
+    } catch (err) {
+      sendError(err);
+    }
+    return;
+  }
+
+  // POST /api/plugins/:id/uninstall — remove the plugin folder from userland.
+  // The artifact detector + getAllArtifacts self-heal the in-memory and DB
+  // entries; no separate cleanup needed here. Mirrors `oyster uninstall <id>`.
+  const pluginUninstallMatch = url.match(/^\/api\/plugins\/([^/]+)\/uninstall$/);
+  if (pluginUninstallMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    const id = decodeURIComponent(pluginUninstallMatch[1]);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
+      sendJson({ error: `Invalid plugin id '${id}'` }, 400);
+      return;
+    }
+    const dir = join(USERLAND_DIR, id);
+    if (!existsSync(dir)) {
+      sendJson({ error: `'${id}' is not installed` }, 404);
+      return;
+    }
+    const manifestPath = join(dir, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      sendJson({ error: `${dir} has no manifest.json — refusing to remove a non-plugin folder` }, 400);
+      return;
+    }
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      sendJson({ id, uninstalled: true });
+    } catch (err) {
+      sendError(err, 500);
+    }
+    return;
+  }
+
+  if (url === "/api/groups/archive" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    try {
+      const body = await readJsonBody();
+      const spaceId = typeof body.space_id === "string" ? body.space_id : null;
+      const name = typeof body.name === "string" ? body.name : null;
+      if (!spaceId || !name) {
+        sendJson({ error: "space_id and name are required" }, 400);
+        return;
+      }
+      const archived = artifactService.archiveGroup(spaceId, name);
+      sendJson({ space_id: spaceId, name, archived });
+    } catch (err) {
+      sendError(err);
+    }
     return;
   }
 

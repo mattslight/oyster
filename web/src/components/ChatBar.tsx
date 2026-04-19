@@ -83,7 +83,7 @@ function ToolBlock({ tool }: { tool: ToolPart }) {
 const SLASH_COMMANDS = [
   { cmd: "/s", args: "<prefix>", desc: "Switch space", example: "/s bf → blunderfixer" },
   { cmd: "/o", args: "<search>", desc: "Open artifact", example: "/o competitor analysis" },
-  { cmd: "#", args: "<space>", desc: "Quick switch", example: "#bf or #1" },
+  { cmd: "#", args: "<space>", desc: "Quick switch", example: "#bf · #all · #archived" },
 ];
 
 interface Props {
@@ -189,11 +189,14 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         { id: "home", displayName: "Home", hint: "#." },
         { id: "__all__", displayName: "All", hint: "#0" },
         ...userSpaces.map((s, i) => ({ ...s, hint: `#${i + 1}` })),
+        { id: "__archived__", displayName: "Archived", hint: "#archived" },
       ];
+      const labelFor = (id: string) =>
+        id === "__all__" ? "all" : id === "__archived__" ? "archived" : id;
       return ordered
-        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || (q.startsWith("arch") && s.id === "__archived__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
-        .map(s => ({ key: s.id, label: `#${s.id === "__all__" ? "all" : s.id}`, desc: s.hint, type: "space" as const }));
+        .map(s => ({ key: s.id, label: `#${labelFor(s.id)}`, desc: s.hint, type: "space" as const }));
     }
 
     if (!input.startsWith("/")) return [];
@@ -281,8 +284,9 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         }
       }
 
-      // Named: #all → __all__, #bf → blunderfixer
+      // Named: #all → __all__, #archived → __archived__, #bf → blunderfixer
       if (q === "all") { onSpaceChange("__all__"); return; }
+      if (q === "archived") { onSpaceChange("__archived__"); return; }
       const match = spaces.find(s => s.id === q)
         || spaces.find(s => s.id.startsWith(q))
         || spaces.find(s => s.displayName.toLowerCase().startsWith(q))
@@ -539,7 +543,25 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             if (slashOpen) {
               if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex(i => Math.min(i + 1, slashItems.length - 1)); return; }
               if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndex(i => Math.max(i - 1, 0)); return; }
-              if (e.key === "Tab" || (e.key === "Enter" && slashItems[slashIndex])) {
+              if (e.key === "Tab") {
+                // Tab = complete the current text to the highlighted item,
+                // don't execute. User can inspect what it expanded to and
+                // then hit Enter to run it. Mirrors shell behaviour.
+                e.preventDefault();
+                const item = slashItems[slashIndex];
+                if (item.type === "space") {
+                  const label = item.key === "__all__" ? "all" : item.key === "__archived__" ? "archived" : item.key;
+                  setInput(`#${label}`);
+                } else if (item.type === "artifact") {
+                  const a = artifacts.find((x) => x.id === item.key);
+                  if (a) setInput(`/o ${a.label}`);
+                } else {
+                  setInput(item.label + ("args" in item && item.args ? " " : ""));
+                }
+                return;
+              }
+              if (e.key === "Enter" && slashItems[slashIndex]) {
+                // Enter = execute: switch space / open artifact / begin command
                 e.preventDefault();
                 const item = slashItems[slashIndex];
                 if (item.type === "space") { setInput(""); onSpaceChange?.(item.key); }

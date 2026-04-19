@@ -20,12 +20,17 @@ export function clearStarting(name: string): void {
 
 // ── Generated artifacts (in-memory, transitional) ──
 
-type GeneratedEntry = Artifact & { filePath?: string; builtin?: boolean };
+type GeneratedEntry = Artifact & { filePath?: string; builtin?: boolean; plugin?: boolean };
 
 const generatedArtifacts = new Map<string, GeneratedEntry>();
 
-export function registerGeneratedArtifact(artifact: Artifact, filePath?: string, builtin = false): void {
-  generatedArtifacts.set(artifact.id, { ...artifact, filePath, builtin });
+export function registerGeneratedArtifact(
+  artifact: Artifact,
+  filePath?: string,
+  builtin = false,
+  plugin = false,
+): void {
+  generatedArtifacts.set(artifact.id, { ...artifact, filePath, builtin, plugin });
 }
 
 export function updateGeneratedArtifact(id: string, fields: Partial<Artifact>, filePath?: string): void {

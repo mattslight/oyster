@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -54,13 +55,32 @@ interface Props {
   index: number;
   onClick: () => void;
   onStop?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   reveal?: boolean;
+  isRenaming?: boolean;
+  onRenameCommit?: (label: string) => void;
+  onRenameCancel?: () => void;
 }
 
-export function ArtifactIcon({ artifact, index, onClick, onStop, reveal }: Props) {
+export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, reveal, isRenaming, onRenameCommit, onRenameCancel }: Props) {
   const config = typeConfig[artifact.artifactKind] || typeConfig.app;
   // Only show status indicators for managed apps (local_process runtime)
   const isManagedApp = artifact.runtimeKind === "local_process";
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Guard against the double-commit race: Enter or Esc call commit/cancel
+  // directly, but then the state flip unmounts the <input> which fires blur,
+  // which would call commit a second time. For Esc that undoes the cancel
+  // entirely (the rename still happens). Track "already handled" in a ref
+  // and skip the blur-triggered commit when set.
+  const keyHandledRef = useRef(false);
+  useEffect(() => {
+    if (isRenaming) {
+      keyHandledRef.current = false;
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isRenaming]);
 
   return (
     <button
@@ -69,7 +89,8 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, reveal }: Props
         animationDelay: `${index * 0.05 + 0.05}s`,
         ...(artifact.status === "generating" ? { pointerEvents: "none" as const } : {}),
       }}
-      onClick={onClick}
+      onClick={isRenaming ? (e) => e.preventDefault() : onClick}
+      onContextMenu={onContextMenu}
     >
       <div className={`icon-thumb ${artifact.icon ? "icon-thumb-ai" : ""}`} style={artifact.icon ? undefined : { background: config.gradient }}>
         {artifact.icon ? (
@@ -113,7 +134,33 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, reveal }: Props
           </span>
         )}
       </div>
-      <span className="icon-label">{artifact.label}</span>
+      {isRenaming ? (
+        <input
+          ref={inputRef}
+          className="icon-label-input"
+          defaultValue={artifact.label}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              keyHandledRef.current = true;
+              onRenameCommit?.(e.currentTarget.value);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              keyHandledRef.current = true;
+              onRenameCancel?.();
+            }
+          }}
+          onBlur={(e) => {
+            if (keyHandledRef.current) return;
+            onRenameCommit?.(e.currentTarget.value);
+          }}
+        />
+      ) : (
+        <span className="icon-label">{artifact.label}</span>
+      )}
     </button>
   );
 }
