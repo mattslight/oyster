@@ -26,6 +26,7 @@ export interface SpacePath {
 export interface SpaceStore {
   getAll(): SpaceRow[];
   getById(id: string): SpaceRow | undefined;
+  getByDisplayName(name: string): SpaceRow | undefined;
   getByRepoPath(repoPath: string): SpaceRow | undefined;
   insert(row: Omit<SpaceRow, "created_at" | "updated_at">): void;
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void;
@@ -40,6 +41,7 @@ export class SqliteSpaceStore implements SpaceStore {
   private stmts: {
     getAll: Database.Statement;
     getById: Database.Statement;
+    getByDisplayName: Database.Statement;
     getByRepoPath: Database.Statement;
     insert: Database.Statement;
     getPaths: Database.Statement;
@@ -52,6 +54,8 @@ export class SqliteSpaceStore implements SpaceStore {
     this.stmts = {
       getAll: db.prepare("SELECT * FROM spaces ORDER BY display_name"),
       getById: db.prepare("SELECT * FROM spaces WHERE id = ?"),
+      // Case-insensitive + trim-tolerant match; most recently updated wins when displayNames collide
+      getByDisplayName: db.prepare("SELECT * FROM spaces WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?)) ORDER BY updated_at DESC LIMIT 1"),
       getByRepoPath: db.prepare("SELECT * FROM spaces WHERE repo_path = ?"),
       insert: db.prepare(`
         INSERT INTO spaces (
@@ -73,6 +77,7 @@ export class SqliteSpaceStore implements SpaceStore {
 
   getAll(): SpaceRow[] { return this.stmts.getAll.all() as SpaceRow[]; }
   getById(id: string): SpaceRow | undefined { return this.stmts.getById.get(id) as SpaceRow | undefined; }
+  getByDisplayName(name: string): SpaceRow | undefined { return this.stmts.getByDisplayName.get(name) as SpaceRow | undefined; }
   getByRepoPath(repoPath: string): SpaceRow | undefined { return this.stmts.getByRepoPath.get(repoPath) as SpaceRow | undefined; }
   insert(row: Omit<SpaceRow, "created_at" | "updated_at">): void { this.stmts.insert.run(row); }
   delete(id: string): void {

@@ -18,6 +18,7 @@ import { SqliteArtifactStore } from "./artifact-store.js";
 import { ArtifactService } from "./artifact-service.js";
 import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
+import { slugify } from "./utils.js";
 import { IconGenerator } from "./icon-generator.js";
 import { injectBridge } from "./error-bridge.js";
 import {
@@ -174,6 +175,18 @@ const db = initDb(USERLAND_DIR);
 const store = new SqliteArtifactStore(db);
 const artifactService = new ArtifactService(store, USERLAND_DIR);
 const spaceStore = new SqliteSpaceStore(db);
+
+// Shared resolver: try raw id, then slugified id, then case-insensitive display_name.
+// Used by import preview + execute so an agent-emitted space name (possibly
+// whitespace-padded or referring to a renamed space) resolves consistently.
+function resolveSpaceRow(name: string) {
+  const trimmed = name.trim();
+  return (
+    spaceStore.getById(trimmed) ??
+    spaceStore.getById(slugify(trimmed)) ??
+    spaceStore.getByDisplayName(trimmed)
+  );
+}
 const spaceService = new SpaceService(spaceStore, store);
 const memoryProvider = new SqliteFtsMemoryProvider(USERLAND_DIR);
 await memoryProvider.init();
@@ -571,8 +584,8 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         const generatedAt = parseResult.payload.source?.generated_at || new Date().toISOString();
 
         const previewDeps: PreviewDeps = {
-          getSpaceBySlug: (slug) => {
-            const row = spaceStore.getAll().find((s) => s.id === slug);
+          resolveSpaceByName: (name) => {
+            const row = resolveSpaceRow(name);
             return row ? { id: row.id, displayName: row.display_name } : null;
           },
           getArtifactsBySpace: (spaceId) => {
@@ -625,8 +638,8 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           createArtifact: (params) => artifactService.createArtifact(params, USERLAND_DIR),
           remember: (input) => memoryProvider.remember(input),
           findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
-          getSpaceBySlug: (slug) => {
-            const row = spaceStore.getAll().find((s) => s.id === slug);
+          resolveSpaceByName: (name) => {
+            const row = resolveSpaceRow(name);
             return row ? { id: row.id } : null;
           },
         };
