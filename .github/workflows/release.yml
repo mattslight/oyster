@@ -45,7 +45,8 @@ jobs:
         id: changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          NOTES=$(awk "/^## /{if(found)exit; if(/## $VERSION/||/## [0-9]{4}-/){found=1; next}} found" CHANGELOG.md 2>/dev/null || echo "Release $GITHUB_REF_NAME")
+          # Keep a Changelog format: match `## [X.Y.Z]` header, capture until the next `## ` header.
+          NOTES=$(awk -v v="$VERSION" 'BEGIN{re="^## \\[" v "\\]"} /^## /{if(found)exit; if($0~re){found=1; next}} found' CHANGELOG.md 2>/dev/null || true)
           if [ -z "$NOTES" ]; then
             NOTES="Release $GITHUB_REF_NAME"
           fi
