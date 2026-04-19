@@ -5,7 +5,7 @@ import {
   updateGeneratedArtifact,
 } from "./process-manager.js";
 import { IconGenerator } from "./icon-generator.js";
-import { debug } from "./debug.js";
+import { debug, debugEnabled } from "./debug.js";
 
 // ── Artifact detection ──
 // Artifacts live in userland/<id>/ with a manifest.json and src/ directory.
@@ -172,19 +172,20 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
   const userlandDir = artifactsDir; // ARTIFACTS_DIR is USERLAND_DIR with a trailing path.sep
   // Normalize so the separator matches artifactsDir on Windows (Node may hand
   // us a forward-slash path while artifactsDir uses backslashes, or vice versa).
-  const filePath = normalize(isAbsolute(rawPath) ? rawPath : `${userlandDir}${rawPath}`);
-  debug("watcher", "file.edited", { rawPath, filePath, isAbs: isAbsolute(rawPath) });
+  const isAbs = isAbsolute(rawPath);
+  const filePath = normalize(isAbs ? rawPath : `${userlandDir}${rawPath}`);
+  if (debugEnabled) debug("watcher", "file.edited", { rawPath, filePath, isAbs });
 
   // Check if this file is inside userland
   if (filePath.startsWith(artifactsDir)) {
     const relativePath = filePath.slice(artifactsDir.length);
     const topDir = relativePath.split(sep)[0];
     if (!topDir || topDir.startsWith(".")) {
-      debug("watcher", "skip dotdir/empty", { topDir });
+      if (debugEnabled) debug("watcher", "skip dotdir/empty", { topDir });
       return; // Skip dotdirs (.opencode/, .git/, etc.)
     }
     const artifactId = topDir;
-    debug("watcher", "artifactId derived", { artifactId, relativePath });
+    if (debugEnabled) debug("watcher", "artifactId derived", { artifactId, relativePath });
 
     const artifactDir = join(artifactsDir, artifactId);
     const id = `gen:${artifactId}`;
@@ -205,7 +206,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
     // Try manifest first
     const manifest = tryReadManifest(artifactDir);
     if (manifest) {
-      debug("watcher", "manifest found → register", { manifestName: manifest.name, manifestType: manifest.type, artifactDir });
+      if (debugEnabled) debug("watcher", "manifest found → register", { manifestName: manifest.name, manifestType: manifest.type, artifactDir });
       registerArtifactFromManifest(manifest, artifactDir, iconGenerator, true);
       return;
     }
@@ -214,7 +215,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
     // Use the directory name (artifact ID) for inference, not the individual file
     const name = inferName(join(artifactDir, "index.html"));
     const type = inferType(artifactDir);
-    debug("watcher", "no manifest → inferred", { name, type, artifactDir });
+    if (debugEnabled) debug("watcher", "no manifest → inferred", { name, type, artifactDir });
 
     seenArtifacts.add(id);
     console.log(`[artifact-detect] generating (inferred): ${name} (${type})`);

@@ -6,7 +6,7 @@ const enabled = (() => {
   const v = process.env.OYSTER_DEBUG;
   if (!v) return false;
   if (v === "1" || v.toLowerCase() === "true") return true;
-  return v.split(",").map((s) => s.trim()).includes("artifact");
+  return v.split(",").map((s) => s.trim().toLowerCase()).includes("artifact");
 })();
 
 export function debug(scope: string, msg: string, data?: Record<string, unknown>): void {

@@ -5,7 +5,7 @@ import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
 import { slugify, inferKindFromPath, toArtifactKind } from "./utils.js";
-import { debug } from "./debug.js";
+import { debug, debugEnabled } from "./debug.js";
 
 // ── Config shapes (validated here, not in route handlers) ──
 
@@ -214,9 +214,12 @@ export class ArtifactService {
     debug("artifact-svc", "registerArtifact id resolved", { id, fromParams: !!params.id, absPath });
 
     // Log dedup-by-path observability so #167 diagnosis is easy; behaviour unchanged here.
-    const byPath = this.store.getByPath(absPath);
-    if (byPath) {
-      debug("artifact-svc", "registerArtifact path already has active row", { existingId: byPath.id, incomingId: id, path: absPath });
+    // Gated on debugEnabled so we don't pay for an extra SQLite query in hot paths when debug is off.
+    if (debugEnabled) {
+      const byPath = this.store.getByPath(absPath);
+      if (byPath) {
+        debug("artifact-svc", "registerArtifact path already has active row", { existingId: byPath.id, incomingId: id, path: absPath });
+      }
     }
 
     // If a removed record exists with this ID, resurface and update it
