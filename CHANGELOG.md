@@ -4,6 +4,24 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-04-20
+
+### Added
+
+- `OYSTER_DEBUG` artifact-lifecycle logging (`OYSTER_DEBUG=1 oyster` or `OYSTER_DEBUG=artifact oyster`) — opt-in structured traces across MCP tool entry, OpenCode file events, watcher decisions, service layer, and reconciliation. No output when unset.
+
+### Fixed
+
+- MCP `create_artifact` and `register_artifact` handlers now `await` the async service calls. Previously the tool response serialised as `{}` and the agent received no artifact id, triggering recovery paths that could duplicate rows.
+- `docs/changelog.html` auto-regenerates on pushes to `main` that touch `CHANGELOG.md` or the build script — `oyster.to/changelog` no longer lags between releases.
+
+## [0.3.6] - 2026-04-19
+
+### Fixed
+
+- Windows: artifact appeared as `C:` and hung in `generating` forever. Watcher now uses `path.isAbsolute()` instead of a POSIX-only `startsWith("/")` check.
+- Windows: dark-theme scrollbar styling on the chat panel (thin `::-webkit-scrollbar` + Firefox `scrollbar-color`) — macOS unchanged.
+
 ## [0.3.5] - 2026-04-19
 
 ### Added
