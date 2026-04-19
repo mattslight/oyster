@@ -4,18 +4,35 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-### Performance
-
-- Grainient shader pauses `requestAnimationFrame` on window blur and tab hide (was pinning the Chrome GPU process while Oyster sat in the background). Time stays continuous on resume — no visual jump.
+## [0.3.5] - 2026-04-19
 
 ### Added
 
+- Right-click menu on desktop artifact tiles — Rename (inline), Archive (soft-delete), Uninstall for plugins, read-only label for builtins.
+- Right-click menu on folder tiles — Rename folder, Archive folder (bulk), alongside existing Convert to Space.
+- `#archived` view — browse soft-deleted artifacts and Restore them.
+- Changelog page at `oyster.to/changelog`, generated from `CHANGELOG.md`.
 - `oyster --help` shows 🦪 in the header.
 
 ### Changed
 
 - Docs site typography: Barlow headings paired with Space Grotesk body across landing and `/plugins`.
 - `/plugins` hero renamed to "Pearls".
+- Chat-bar Tab now completes the highlighted suggestion instead of executing — press Enter to execute.
+
+### Fixed
+
+- Import resolves spaces by display_name when the slug lookup misses (prevents duplicate spaces when an agent emits a renamed space name).
+
+### Performance
+
+- Grainient shader pauses `requestAnimationFrame` on window blur and tab hide (was pinning the Chrome GPU process while Oyster sat in the background). Time stays continuous on resume — no visual jump.
+- Archived-paths lookup cached on `ArtifactService`, invalidated on mutations — `/api/artifacts` polling is now O(active) in steady state.
+
+### Security
+
+- Artifact endpoints (reads and mutations) locked to localhost origins — prevents cross-origin sites from enumerating or mutating the local surface.
+- JSON body size capped at 64 KB on mutation routes.
 
 ## [0.3.4] - 2026-04-19
 
@@ -241,7 +258,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/mattslight/oyster/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/mattslight/oyster/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/mattslight/oyster/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/mattslight/oyster/compare/v0.3.1...v0.3.2
