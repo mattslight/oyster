@@ -101,7 +101,13 @@ export default function App() {
 
   // Refetch whenever the mode toggles (archive ↔ normal) so the view flips
   // to the right dataset instantly rather than waiting for the next poll.
-  useEffect(() => { loadArtifacts().then(setArtifacts).catch(() => {}); }, [isArchivedView, loadArtifacts]);
+  // Mirrors the error handling used by the mount fetch and poller so a
+  // failure here doesn't leave `connected` stale.
+  useEffect(() => {
+    loadArtifacts()
+      .then((a) => { setArtifacts(a); setConnected(true); })
+      .catch((err) => { console.warn("[oyster] failed to refetch on mode toggle:", err.message); setConnected(false); });
+  }, [isArchivedView, loadArtifacts]);
 
   // Fetch artifacts + spaces on mount; auto-open artifact if URL contains one
   useEffect(() => {

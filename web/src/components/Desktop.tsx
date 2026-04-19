@@ -76,7 +76,10 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
   // ── Context-menu action handlers ──
-  // Every mutation calls onRefresh so the parent refetches fresh state.
+  // Optimistic updates go first via onArtifactUpdate / onArtifactRemove so
+  // the UI responds instantly; onRefresh is called only on failure (to
+  // revert by refetching) or for bulk folder ops where per-artifact
+  // bookkeeping isn't worth it.
   function handleRenameArtifact(artifact: Artifact) {
     setArtifactCtx(null);
     setRenamingId(artifact.id);
@@ -109,7 +112,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     // by manifest id, exposed as `pluginId`. Fall back to id only as a last
     // resort (pre-reconcile or mis-tagged entries).
     const folderId = artifact.pluginId ?? artifact.id;
-    if (!window.confirm(`Uninstall "${artifact.label}"? This removes the plugin folder from ~/.oyster/userland/${folderId}.`)) return;
+    if (!window.confirm(`Uninstall "${artifact.label}"? This removes the plugin folder "~/.oyster/userland/${folderId}".`)) return;
     onArtifactRemove?.(artifact.id);
     try { await uninstallPlugin(folderId); }
     catch (err) { onRefresh?.(); alert(`Uninstall failed: ${(err as Error).message}`); }

@@ -68,8 +68,15 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
   const isManagedApp = artifact.runtimeKind === "local_process";
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // Guard against the double-commit race: Enter or Esc call commit/cancel
+  // directly, but then the state flip unmounts the <input> which fires blur,
+  // which would call commit a second time. For Esc that undoes the cancel
+  // entirely (the rename still happens). Track "already handled" in a ref
+  // and skip the blur-triggered commit when set.
+  const keyHandledRef = useRef(false);
   useEffect(() => {
     if (isRenaming) {
+      keyHandledRef.current = false;
       inputRef.current?.focus();
       inputRef.current?.select();
     }
@@ -136,10 +143,20 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); onRenameCommit?.(e.currentTarget.value); }
-            else if (e.key === "Escape") { e.preventDefault(); onRenameCancel?.(); }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              keyHandledRef.current = true;
+              onRenameCommit?.(e.currentTarget.value);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              keyHandledRef.current = true;
+              onRenameCancel?.();
+            }
           }}
-          onBlur={(e) => onRenameCommit?.(e.currentTarget.value)}
+          onBlur={(e) => {
+            if (keyHandledRef.current) return;
+            onRenameCommit?.(e.currentTarget.value);
+          }}
         />
       ) : (
         <span className="icon-label">{artifact.label}</span>

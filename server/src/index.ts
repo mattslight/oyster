@@ -313,7 +313,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     try {
       const body = await readJsonBody();
       const fields: { label?: string; group_name?: string | null } = {};
-      if (typeof body.label === "string") fields.label = body.label;
+      if ("label" in body) {
+        if (typeof body.label === "string") {
+          fields.label = body.label;
+        } else {
+          throw new Error("label must be a string");
+        }
+      }
       if ("group_name" in body) {
         const v = body.group_name;
         if (v === null) {
