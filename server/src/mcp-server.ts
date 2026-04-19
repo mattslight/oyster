@@ -338,7 +338,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     async ({ path, space_id, label, id, artifact_kind, group_name }) => {
       debug("mcp", "register_artifact invoked", { path, label, id: id ?? null, space_id, kind: artifact_kind ?? null });
       try {
-        const artifact = deps.service.registerArtifact(
+        const artifact = await deps.service.registerArtifact(
           { path, space_id, label, id, artifact_kind, group_name },
           [], // MCP callers are trusted — no path restriction
         );
@@ -402,7 +402,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     async ({ space_id, label, artifact_kind, content, subdir, group_name, source_origin }) => {
       debug("mcp", "create_artifact invoked", { label, space_id, kind: artifact_kind, subdir: subdir ?? null });
       try {
-        const artifact = deps.service.createArtifact(
+        const artifact = await deps.service.createArtifact(
           { space_id, label, artifact_kind, content, subdir, group_name, source_origin },
           deps.userlandDir,
         );
