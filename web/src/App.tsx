@@ -84,6 +84,18 @@ export default function App() {
   const [revealId, setRevealId] = useState<string | null>(null);
   const [showHardcoreGate, setShowHardcoreGate] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(() => getUrlState().groupName);
+  // Auto-close the group popup when the group goes empty (e.g. the user
+  // archived the last artifact from within it). Without this, the popup
+  // keeps rendering an empty shell until the user manually dismisses.
+  useEffect(() => {
+    if (!openGroup) return;
+    const stillHas = artifacts.some(
+      (a) =>
+        a.groupName?.toLowerCase() === openGroup.toLowerCase() &&
+        (activeSpace === "__all__" || activeSpace === "__archived__" || a.spaceId === activeSpace),
+    );
+    if (!stillHas) setOpenGroup(null);
+  }, [artifacts, openGroup, activeSpace]);
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
   const [connected, setConnected] = useState(true);
 

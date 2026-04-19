@@ -332,6 +332,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return false;
   };
 
+  // GET /api/artifacts/archived — list soft-deleted rows for the Archived view.
+  // Must match BEFORE the :id-scoped routes below so "archived" is never
+  // interpreted as an artifact id (e.g. PATCH /api/artifacts/archived
+  // would otherwise hit the rename handler with id="archived").
+  if (url === "/api/artifacts/archived" && req.method === "GET") {
+    try {
+      const archived = await artifactService.getArchivedArtifacts();
+      sendJson(archived);
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 500);
+    }
+    return;
+  }
+
   const artifactMatch = url.match(/^\/api\/artifacts\/([^/]+)$/);
   if (artifactMatch && req.method === "PATCH") {
     if (rejectIfNonLocalOrigin()) return;
@@ -360,19 +374,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       sendJson(updated);
     } catch (err) {
       sendJson({ error: (err as Error).message }, 400);
-    }
-    return;
-  }
-
-  // GET /api/artifacts/archived — list soft-deleted rows for the Archived view.
-  // Must match before the :id-scoped routes below so "archived" isn't
-  // interpreted as an id.
-  if (url === "/api/artifacts/archived" && req.method === "GET") {
-    try {
-      const archived = await artifactService.getArchivedArtifacts();
-      sendJson(archived);
-    } catch (err) {
-      sendJson({ error: (err as Error).message }, 500);
     }
     return;
   }
