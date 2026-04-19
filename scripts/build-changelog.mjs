@@ -29,10 +29,12 @@ marked.use({
       return escapeHtml(text ?? raw ?? "");
     },
     link({ href, title, tokens }) {
-      const url = escapeHtml(safeHref(href));
+      const resolved = safeHref(href);
+      const url = escapeHtml(resolved);
       const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      const relAttr = /^https?:/i.test(resolved) ? ' rel="noopener noreferrer"' : "";
       const inner = this.parser.parseInline(tokens);
-      return `<a href="${url}"${titleAttr}>${inner}</a>`;
+      return `<a href="${url}"${titleAttr}${relAttr}>${inner}</a>`;
     },
     image({ href, title, text }) {
       if (!href || !SAFE_URL.test(href)) return escapeHtml(`[image: ${text ?? ""}]`);
@@ -65,8 +67,10 @@ const rendered = rawRendered.replace(
     const version = linkedVersion || bracketVersion;
     const id = `v-${slug(version)}`;
     const versionSpan = `<span class="release-version">${escapeHtml(version)}</span>`;
-    const versionHtml = linkedHref
-      ? `<a class="release-version-link" href="${escapeHtml(safeHref(linkedHref))}">${versionSpan}</a>`
+    const resolvedHref = linkedHref ? safeHref(linkedHref) : null;
+    const relAttr = resolvedHref && /^https?:/i.test(resolvedHref) ? ' rel="noopener noreferrer"' : "";
+    const versionHtml = resolvedHref
+      ? `<a class="release-version-link" href="${escapeHtml(resolvedHref)}"${relAttr}>${versionSpan}</a>`
       : versionSpan;
     const suffix = rest
       ? `<span class="release-date"> — ${escapeHtml(rest.trim())}</span>`
