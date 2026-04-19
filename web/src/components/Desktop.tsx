@@ -442,12 +442,18 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                       index={i}
                       onClick={() => onGroupClick(item.name)}
                       // Folder actions (Rename folder / Archive folder) are
-                      // scoped to a space_id. In the archived view, `space`
-                      // is "__archived__" which archived rows don't belong to,
-                      // so those bulk ops would silently no-op. Suppress the
-                      // menu entirely here.
+                      // scoped to a space_id. In the special views the group
+                      // tiles don't map cleanly:
+                      // - __archived__: rows keep their original spaceId so
+                      //   calling the bulk endpoints with "__archived__"
+                      //   no-ops silently.
+                      // - __all__: group tiles can be space-groupings
+                      //   (groupBy="space"), not user folders — same
+                      //   silent-no-op problem, plus Rename folder makes
+                      //   no semantic sense on a whole space.
+                      // Suppress the menu entirely in both cases.
                       onContextMenu={
-                        isArchivedView
+                        isArchivedView || isAllSpace
                           ? (e) => e.preventDefault()
                           : (e) => { e.preventDefault(); setArtifactCtx(null); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }
                       }

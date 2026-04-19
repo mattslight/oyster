@@ -251,6 +251,50 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   const url = req.url || "/";
 
+  // ── Shared helpers ──
+  // Defined near the top so early routes (e.g. GET /api/artifacts) can use
+  // them too, not just the later mutation routes.
+
+  const sendJson = (data: unknown, status = 200) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(data));
+  };
+
+  // Mutation endpoints only accept tiny config bodies ({label, group_name}
+  // etc). Cap at 64 KB to prevent memory/CPU abuse from an oversized payload.
+  const MAX_MUTATION_BODY = 64_000;
+  async function readJsonBody(): Promise<Record<string, unknown>> {
+    let body = "";
+    for await (const chunk of req) {
+      body += chunk;
+      if (body.length > MAX_MUTATION_BODY) {
+        res.writeHead(413);
+        res.end("Payload too large");
+        req.destroy();
+        throw new Error("Payload too large");
+      }
+    }
+    if (!body) return {};
+    try { return JSON.parse(body) as Record<string, unknown>; }
+    catch { throw new Error("Invalid JSON body"); }
+  }
+
+  // Artifact endpoints (both reads and mutations) are localhost-only. A
+  // browser tab on some other site could otherwise fetch user data or
+  // trigger destructive actions via http://localhost:<port>/api/…. Mirrors
+  // the /mcp handler pattern: reject non-local origins outright; echo the
+  // origin back for local ones to override the wildcard CORS header set
+  // above.
+  const rejectIfNonLocalOrigin = (): boolean => {
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      sendJson({ error: "Forbidden origin" }, 403);
+      return true;
+    }
+    if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+    return false;
+  };
+
   // GET /api/resolve-path?url=...  — resolve a serving URL to a filesystem path
   if (url.startsWith("/api/resolve-path")) {
     const params = new URL(url, "http://localhost").searchParams;
@@ -278,8 +322,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // GET /api/artifacts
+  // GET /api/artifacts — the full live artifact list. Local-origin-only for
+  // the same reason /api/artifacts/archived is: it contains user-private
+  // artifact metadata that a malicious cross-origin site could otherwise
+  // enumerate against a running local Oyster.
   if (url === "/api/artifacts") {
+    if (rejectIfNonLocalOrigin()) return;
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
     const revealed = new Set(pendingReveals);
     pendingReveals.clear();
@@ -294,43 +342,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // POST  /api/artifacts/:id/archive — soft-delete (removed_at set)
   // PATCH /api/groups          — rename a group across all artifacts in a space
   // POST  /api/groups/archive  — archive all artifacts in a group
-
-  const sendJson = (data: unknown, status = 200) => {
-    res.writeHead(status, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(data));
-  };
-  // Mutation endpoints below only accept tiny config bodies ({label, group_name}
-  // etc). Cap at 64 KB to prevent memory/CPU abuse from an oversized payload.
-  const MAX_MUTATION_BODY = 64_000;
-  async function readJsonBody(): Promise<Record<string, unknown>> {
-    let body = "";
-    for await (const chunk of req) {
-      body += chunk;
-      if (body.length > MAX_MUTATION_BODY) {
-        res.writeHead(413);
-        res.end("Payload too large");
-        req.destroy();
-        throw new Error("Payload too large");
-      }
-    }
-    if (!body) return {};
-    try { return JSON.parse(body) as Record<string, unknown>; }
-    catch { throw new Error("Invalid JSON body"); }
-  }
-  // Mutation endpoints are localhost-only. A browser tab on some other site
-  // could otherwise POST to http://localhost:<port>/api/… and trigger
-  // destructive actions (localhost CSRF). Mirrors the /mcp handler pattern:
-  // reject non-local origins outright; echo the origin back for local ones
-  // to override the wildcard CORS header set at the top of this handler.
-  const rejectIfNonLocalOrigin = (): boolean => {
-    const origin = req.headers.origin;
-    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-      sendJson({ error: "Forbidden origin" }, 403);
-      return true;
-    }
-    if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
-    return false;
-  };
 
   // GET /api/artifacts/archived — list soft-deleted rows for the Archived view.
   // Must match BEFORE the :id-scoped routes below so "archived" is never
