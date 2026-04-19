@@ -223,16 +223,42 @@ export default function Grainient({
     setSize();
 
     let raf = 0;
-    const t0 = performance.now();
+    let t0 = performance.now();
+    let pausedAt: number | null = null;
     const loop = (t: number) => {
       program.uniforms.iTime.value = (t - t0) * 0.001;
       renderer.render({ scene: mesh });
       raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
+    const start = () => {
+      if (raf) return;
+      if (pausedAt !== null) {
+        t0 += performance.now() - pausedAt;
+        pausedAt = null;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    const stop = () => {
+      if (!raf) return;
+      cancelAnimationFrame(raf);
+      raf = 0;
+      pausedAt = performance.now();
+    };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else start();
+    };
+    if (document.hasFocus() && !document.hidden) start();
+    else pausedAt = performance.now();
+    window.addEventListener("blur", stop);
+    window.addEventListener("focus", start);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      cancelAnimationFrame(raf);
+      stop();
+      window.removeEventListener("blur", stop);
+      window.removeEventListener("focus", start);
+      document.removeEventListener("visibilitychange", onVisibility);
       ro.disconnect();
       try {
         container.removeChild(canvas);
