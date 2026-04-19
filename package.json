@@ -19,6 +19,7 @@
     "build:server": "cd server && npm run build",
     "build": "npm run build:web && npm run build:server && node -e \"const fs=require('fs');fs.cpSync('web/dist','server/dist/public',{recursive:true})\"",
     "build:changelog": "node scripts/build-changelog.mjs",
+    "serve:docs": "npm run build:changelog && npx serve docs",
     "dev": "npx concurrently -n web,server -c blue,green \"cd web && npm run dev\" \"cd server && npm run dev\"",
     "dev:web": "cd web && npm run dev",
     "dev:server": "cd server && npm run dev",
