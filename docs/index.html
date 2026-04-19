@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Oyster — From prompt to workspace.</title>
   <meta name="description" content="From prompt to workspace. The OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.">
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html { scroll-padding-top: 60px; }
 
     body {
-      font-family: 'Barlow', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
       background: #0a0b14;
       color: #e0e0e0;
       min-height: 100vh;
@@ -38,6 +38,7 @@
     }
 
     h1 {
+      font-family: 'Barlow', sans-serif;
       font-size: clamp(36px, 6vw, 56px);
       font-weight: 700;
       line-height: 1.15;
@@ -125,6 +126,7 @@
 
     .feature-text { flex: 1; }
     .feature-text h3 {
+      font-family: 'Barlow', sans-serif;
       font-size: 26px;
       font-weight: 700;
       color: #fff;
@@ -660,24 +662,24 @@
           <!-- View 1: Kanban -->
           <div class="dui-view dui-active" data-view="0" style="display: flex; gap: 8px;">
             <div style="flex: 1;">
-              <div style="font-size: 11px; font-weight: 600; color: #a99eff; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">To Do</div>
+              <div style="font-size: 11px; font-weight: 600; color: #a99eff; text-transform: uppercase; letter-spacing: 2px; font-family: 'Barlow', sans-serif; margin-bottom: 8px;">To Do</div>
               <div style="display: flex; flex-direction: column; gap: 6px;">
                 <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fb7185;">Review proposal</div>
                 <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #fbbf24;">Chase invoice</div>
               </div>
             </div>
             <div style="flex: 1;">
-              <div style="font-size: 11px; font-weight: 600; color: #36d399; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">In Progress</div>
+              <div style="font-size: 11px; font-weight: 600; color: #36d399; text-transform: uppercase; letter-spacing: 2px; font-family: 'Barlow', sans-serif; margin-bottom: 8px;">In Progress</div>
               <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.6); border-left: 2px solid #4dc9f6;">Client onboarding</div>
             </div>
             <div style="flex: 1;">
-              <div style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">Done</div>
+              <div style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 2px; font-family: 'Barlow', sans-serif; margin-bottom: 8px;">Done</div>
               <div style="padding: 8px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 11px; color: rgba(255,255,255,0.35); border-left: 2px solid rgba(255,255,255,0.15);">Send contract</div>
             </div>
           </div>
           <!-- View 2: Chart/Report -->
           <div class="dui-view" data-view="1">
-            <div style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 12px;">Q1 Progress</div>
+            <div style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 2px; font-family: 'Barlow', sans-serif; margin-bottom: 12px;">Q1 Progress</div>
             <div style="display: flex; align-items: flex-end; gap: 8px; height: 100px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div style="flex: 1; background: rgba(124,107,255,0.3); border-radius: 4px 4px 0 0; height: 40%;"></div>
               <div style="flex: 1; background: rgba(124,107,255,0.4); border-radius: 4px 4px 0 0; height: 55%;"></div>
@@ -697,7 +699,7 @@
           </div>
           <!-- View 3: List/Table -->
           <div class="dui-view" data-view="2">
-            <div style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">Recent Activity</div>
+            <div style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 2px; font-family: 'Barlow', sans-serif; margin-bottom: 10px;">Recent Activity</div>
             <div style="display: flex; flex-direction: column; gap: 1px;">
               <div style="display: flex; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px;">
                 <span style="color: rgba(255,255,255,0.6);">Competitor Analysis updated</span>
