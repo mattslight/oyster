@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, dirname, basename, sep } from "node:path";
+import { join, dirname, basename, sep, isAbsolute } from "node:path";
 import {
   registerGeneratedArtifact,
   updateGeneratedArtifact,
@@ -165,9 +165,11 @@ function registerArtifactFromManifest(
 }
 
 export function handleFileEdited(rawPath: string, artifactsDir: string, iconGenerator: IconGenerator) {
-  // Resolve relative paths against userland
+  // Resolve relative paths against userland. Must use isAbsolute to catch
+  // Windows drive-letter paths (C:\...) — startsWith("/") would miss them,
+  // causing userlandDir to be prepended and artifactId to become "C:".
   const userlandDir = artifactsDir; // ARTIFACTS_DIR === USERLAND_DIR + "/"
-  const filePath = rawPath.startsWith("/") ? rawPath : `${userlandDir}${rawPath}`;
+  const filePath = isAbsolute(rawPath) ? rawPath : `${userlandDir}${rawPath}`;
 
   // Check if this file is inside userland
   if (filePath.startsWith(artifactsDir)) {
