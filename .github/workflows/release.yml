@@ -45,7 +45,11 @@ jobs:
         id: changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          NOTES=$(awk "/^## /{if(found)exit; if(/## $VERSION/||/## [0-9]{4}-/){found=1; next}} found" CHANGELOG.md 2>/dev/null || echo "Release $GITHUB_REF_NAME")
+          # Keep a Changelog format: match literal `## [X.Y.Z]` header, capture
+          # until the next `## ` header. `index() == 1` avoids regex-metachar
+          # pitfalls (e.g. `.` in semver matching any character).
+          HEADER="## [$VERSION]"
+          NOTES=$(awk -v h="$HEADER" 'index($0, h)==1{found=1; next} /^## /{if(found)exit} found' CHANGELOG.md 2>/dev/null || true)
           if [ -z "$NOTES" ]; then
             NOTES="Release $GITHUB_REF_NAME"
           fi
@@ -58,4 +62,6 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
-          generate_release_notes: true
+          # Curated CHANGELOG section is the source of truth. Auto-generated PR
+          # list would be prepended/appended to our body and duplicate content.
+          generate_release_notes: false

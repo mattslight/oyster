@@ -113,6 +113,8 @@ Early v1. Local-first. Single-user. Built for fast iteration.
 
 **Vision:** plugins, dynamic UI that reshapes to fit the task, build & share apps.
 
+See every shipped change in the [changelog](https://oyster.to/changelog).
+
 ## Contributing
 
 Oyster is early, but focused contributions are welcome.

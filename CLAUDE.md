@@ -68,6 +68,10 @@ oyster                   # Starts server, opens browser to localhost:4444
 
 # Release (bump version, push tag — CI publishes to npm + creates GitHub release)
 npm run release          # runs: npm version patch && git push && git push --tags
+                         # npm `version` lifecycle regenerates docs/changelog.html from CHANGELOG.md
+
+# Regenerate the oyster.to changelog page after editing CHANGELOG.md between releases
+npm run build:changelog  # renders CHANGELOG.md → docs/changelog.html
 ```
 
 ## Conventions
@@ -79,6 +83,7 @@ npm run release          # runs: npm version patch && git push && git push --tag
 - SQLite migrations are additive `ALTER TABLE ... ADD COLUMN` with try/catch (idempotent)
 - Userland data lives at `~/.oyster/userland/` (not in the package directory)
 - Always use feature branches, never commit to main directly
+- Add a `CHANGELOG.md` entry in the same PR as any user-visible change; run `npm run build:changelog` to refresh `docs/changelog.html` (also auto-runs via the `version` lifecycle on `npm run release`)
 
 ---
 
