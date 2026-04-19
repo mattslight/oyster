@@ -268,7 +268,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
   const sendError = (err: unknown, fallback = 400) => {
     if (err instanceof HttpError) sendJson({ error: err.message }, err.status);
-    else sendJson({ error: (err as Error).message }, fallback);
+    else sendJson({ error: err instanceof Error ? err.message : String(err) }, fallback);
   };
 
   // Mutation endpoints only accept tiny config bodies ({label, group_name}
@@ -279,6 +279,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     for await (const chunk of req) {
       body += chunk;
       if (body.length > MAX_MUTATION_BODY) {
+        // Destroy the socket so we stop reading further bytes from an
+        // oversized payload — unlike a plain throw, which lets the rest
+        // of the stream keep draining. Matches the /api/import/* pattern.
+        req.destroy();
         throw new HttpError("Payload too large", 413);
       }
     }

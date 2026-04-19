@@ -121,7 +121,11 @@ export default function App() {
     if (!didMountRef.current) { didMountRef.current = true; return; }
     loadArtifacts()
       .then((a) => { setArtifacts(a); setConnected(true); })
-      .catch((err) => { console.warn("[oyster] failed to refetch on mode toggle:", err.message); setConnected(false); });
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[oyster] failed to refetch on mode toggle:", msg);
+        setConnected(false);
+      });
   }, [isArchivedView, loadArtifacts]);
 
   // Fetch artifacts + spaces on mount; auto-open artifact if URL contains one

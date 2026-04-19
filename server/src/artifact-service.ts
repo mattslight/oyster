@@ -59,6 +59,13 @@ const KIND_EXT: Record<ArtifactKind, string> = {
 // ── Service ──
 
 export class ArtifactService {
+  // Archived-paths cache: /api/artifacts polls every 5s and each hit used
+  // to re-run the archived-rows SQL + Set construction. Cache the Set in
+  // memory, invalidate on any call that mutates removed_at. Stays O(active
+  // artifacts) in steady state instead of O(archived).
+  private archivedPathsCache: Set<string> | null = null;
+  private invalidateArchivedPaths(): void { this.archivedPathsCache = null; }
+
   constructor(private store: ArtifactStore, private userlandDir?: string) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
@@ -80,6 +87,7 @@ export class ArtifactService {
       if (storagePath) {
         if (!pathExistsOrThrow(storagePath)) {
           this.store.remove(row.id);
+          this.invalidateArchivedPaths();
           onArtifactRemoved?.(row.id, storagePath);
           continue;
         }
@@ -207,6 +215,7 @@ export class ArtifactService {
     if (existing) {
       if (existing.removed_at) {
         this.store.resurface(id);
+        this.invalidateArchivedPaths();
         const kind = params.artifact_kind || inferKindFromPath(absPath);
         this.store.update(id, {
           space_id: params.space_id,
@@ -312,6 +321,7 @@ export class ArtifactService {
     const row = this.store.getById(id);
     if (!row) throw new Error(`Artifact "${id}" not found`);
     this.store.remove(id);
+    this.invalidateArchivedPaths();
   }
 
   // ── Reconciliation ──
@@ -346,9 +356,13 @@ export class ArtifactService {
     }
   }
 
-  // Exposed so callers running a reconcile pass can query once.
+  // Exposed so callers running a reconcile pass can query once. Cached
+  // in-memory and invalidated whenever a mutation touches removed_at.
   getArchivedFilePaths(): Set<string> {
-    return this.store.getArchivedFilePaths();
+    if (!this.archivedPathsCache) {
+      this.archivedPathsCache = this.store.getArchivedFilePaths();
+    }
+    return this.archivedPathsCache;
   }
 
   // ── Update ──
@@ -393,6 +407,7 @@ export class ArtifactService {
     if (!row) throw new Error(`Artifact "${id}" not found`);
     if (!row.removed_at) throw new Error(`Artifact "${id}" is not archived`);
     this.store.resurface(id);
+    this.invalidateArchivedPaths();
   }
 
   // ── Group (folder) bulk operations ──
@@ -414,6 +429,7 @@ export class ArtifactService {
     if (!name) throw new Error("group name must not be empty");
     const rows = this.store.getBySpaceId(spaceId).filter((r) => r.group_name === name);
     for (const row of rows) this.store.remove(row.id);
+    if (rows.length > 0) this.invalidateArchivedPaths();
     return rows.length;
   }
 
