@@ -87,12 +87,21 @@ const rendered = rawRendered.replace(
   },
 );
 
+// Drop the Unreleased section entirely if there's no content between its h2
+// and the next h2 — post-release, `[Unreleased]` sits empty in CHANGELOG.md
+// until the next change lands, and we don't want to render a bare heading
+// and pill for nothing.
+const emptyUnreleasedRe = /<h2 id="v-unreleased">[\s\S]*?<\/h2>\s*(?=<h2 )/;
+const unreleasedEmpty = emptyUnreleasedRe.test(rendered);
+const cleanedRendered = unreleasedEmpty ? rendered.replace(emptyUnreleasedRe, "") : rendered;
+
 // Group pills by minor version (0.3.4 → 0.3) so the nav stays flat as patches
 // accumulate. Releases are already in reverse-chrono order, so the first entry
 // per minor is the newest patch — that's where the pill links to.
 const pillGroups = [];
 const seen = new Set();
 for (const r of releases) {
+  if (r.version === "Unreleased" && unreleasedEmpty) continue;
   const minor =
     r.version === "Unreleased"
       ? "Unreleased"
@@ -427,7 +436,7 @@ const html = `<!DOCTYPE html>
   </nav>
 
   <main class="entries">
-${rendered}
+${cleanedRendered}
   </main>
 
   <div class="install-section">
