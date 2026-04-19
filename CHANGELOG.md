@@ -11,7 +11,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - Right-click menu on desktop artifact tiles — Rename (inline), Archive (soft-delete), Uninstall for plugins, read-only label for builtins.
 - Right-click menu on folder tiles — Rename folder, Archive folder (bulk), alongside existing Convert to Space.
 - `#archived` view — browse soft-deleted artifacts and Restore them.
-- Changelog page at `oyster.to/changelog`, generated from this file.
+- Changelog page at `oyster.to/changelog`, generated from `CHANGELOG.md`.
 - `oyster --help` shows 🦪 in the header.
 
 ### Changed
@@ -258,7 +258,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/mattslight/oyster/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/mattslight/oyster/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/mattslight/oyster/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/mattslight/oyster/compare/v0.3.1...v0.3.2
