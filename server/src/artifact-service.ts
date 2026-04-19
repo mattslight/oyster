@@ -5,6 +5,7 @@ import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
 import { slugify, inferKindFromPath, toArtifactKind } from "./utils.js";
+import { debug, debugEnabled } from "./debug.js";
 
 // ── Config shapes (validated here, not in route handlers) ──
 
@@ -189,6 +190,7 @@ export class ArtifactService {
     },
     approvedRoots: string[],
   ): Promise<Artifact> {
+    debug("artifact-svc", "registerArtifact called", { path: params.path, label: params.label, id: params.id ?? null, space_id: params.space_id });
     const absPath = resolve(params.path);
 
     // Validate file exists
@@ -209,6 +211,16 @@ export class ArtifactService {
 
     // Infer ID from filename stem if not provided
     const id = params.id || basename(absPath).replace(/\.[^.]+$/, "");
+    debug("artifact-svc", "registerArtifact id resolved", { id, fromParams: !!params.id, absPath });
+
+    // Log dedup-by-path observability so #167 diagnosis is easy; behaviour unchanged here.
+    // Gated on debugEnabled so we don't pay for an extra SQLite query in hot paths when debug is off.
+    if (debugEnabled) {
+      const byPath = this.store.getByPath(absPath);
+      if (byPath) {
+        debug("artifact-svc", "registerArtifact path already has active row", { existingId: byPath.id, incomingId: id, path: absPath });
+      }
+    }
 
     // If a removed record exists with this ID, resurface and update it
     const existing = this.store.getById(id);
@@ -276,6 +288,7 @@ export class ArtifactService {
     },
     userlandDir: string,
   ): Promise<Artifact> {
+    debug("artifact-svc", "createArtifact called", { label: params.label, space_id: params.space_id, kind: params.artifact_kind, subdir: params.subdir ?? null });
     const label = params.label.trim();
     const space_id = params.space_id.trim();
     if (!label) throw new Error("label must not be empty");
@@ -295,6 +308,7 @@ export class ArtifactService {
 
     const ext = KIND_EXT[params.artifact_kind];
     const absPath = join(targetDir, `${slug}${ext}`);
+    debug("artifact-svc", "createArtifact writing file", { id, slug, absPath });
 
     // Filesystem collision check + exclusive write
     mkdirSync(targetDir, { recursive: true });
@@ -332,7 +346,11 @@ export class ArtifactService {
     userlandDir: string,
     archivedPaths?: Set<string>,
   ): void {
-    if (this.store.getByPath(filePath)) return; // already registered (active row)
+    debug("reconcile", "start", { genId: artifact.id, label: artifact.label, filePath });
+    if (this.store.getByPath(filePath)) {
+      debug("reconcile", "skipped: active row exists for path", { filePath });
+      return; // already registered (active row)
+    }
     // If the user archived this path previously, the scanner will keep
     // seeing the file on disk and a naive reconcile would create a fresh
     // active row next to the archived one — effectively ignoring the
@@ -344,8 +362,12 @@ export class ArtifactService {
     // loop) should pass a pre-loaded `archivedPaths` set to avoid re-
     // querying for every artifact.
     const archived = archivedPaths ?? this.store.getArchivedFilePaths();
-    if (archived.has(filePath)) return;
+    if (archived.has(filePath)) {
+      debug("reconcile", "skipped: archived path", { filePath });
+      return;
+    }
     console.log(`[reconcile] ${artifact.label} → DB`);
+    debug("reconcile", "inserting new row", { label: artifact.label, filePath, newId: "pending-uuid" });
     try {
       this.registerArtifact(
         { path: filePath, space_id: artifact.spaceId, label: artifact.label, artifact_kind: artifact.artifactKind, id: crypto.randomUUID() },

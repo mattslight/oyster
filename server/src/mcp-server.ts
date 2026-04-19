@@ -9,6 +9,7 @@ import type { SpaceService } from "./space-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
+import { debug } from "./debug.js";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
 // `satisfies` ensures this stays in sync with the ArtifactKind union at compile time.
@@ -335,6 +336,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
       group_name: z.string().optional().describe("Group name for visual grouping on the surface"),
     },
     async ({ path, space_id, label, id, artifact_kind, group_name }) => {
+      debug("mcp", "register_artifact invoked", { path, label, id: id ?? null, space_id, kind: artifact_kind ?? null });
       try {
         const artifact = deps.service.registerArtifact(
           { path, space_id, label, id, artifact_kind, group_name },
@@ -398,6 +400,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
       source_origin: z.enum(["manual", "ai_generated"]).optional().describe("Provenance of the artifact. Defaults to 'manual'. Use 'ai_generated' when the content was produced by an AI agent."),
     },
     async ({ space_id, label, artifact_kind, content, subdir, group_name, source_origin }) => {
+      debug("mcp", "create_artifact invoked", { label, space_id, kind: artifact_kind, subdir: subdir ?? null });
       try {
         const artifact = deps.service.createArtifact(
           { space_id, label, artifact_kind, content, subdir, group_name, source_origin },
