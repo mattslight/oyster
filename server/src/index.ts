@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -281,6 +281,144 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     const response = artifacts.map((a) => revealed.has(a.id) ? { ...a, pendingReveal: true } : a);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(response));
+    return;
+  }
+
+  // ── Artifact mutations (context-menu actions on the desktop) ──
+  // PATCH /api/artifacts/:id   — rename and/or move to/from a group
+  // POST  /api/artifacts/:id/archive — soft-delete (removed_at set)
+  // PATCH /api/groups          — rename a group across all artifacts in a space
+  // POST  /api/groups/archive  — archive all artifacts in a group
+
+  const sendJson = (data: unknown, status = 200) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(data));
+  };
+  async function readJsonBody(): Promise<Record<string, unknown>> {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    if (!body) return {};
+    try { return JSON.parse(body) as Record<string, unknown>; }
+    catch { throw new Error("Invalid JSON body"); }
+  }
+
+  const artifactMatch = url.match(/^\/api\/artifacts\/([^/]+)$/);
+  if (artifactMatch && req.method === "PATCH") {
+    const id = decodeURIComponent(artifactMatch[1]);
+    try {
+      const body = await readJsonBody();
+      const fields: { label?: string; group_name?: string | null } = {};
+      if (typeof body.label === "string") fields.label = body.label;
+      if ("group_name" in body) {
+        const v = body.group_name;
+        fields.group_name = v === null ? null : (typeof v === "string" ? v.trim() || null : null);
+      }
+      const updated = await artifactService.updateArtifact(id, fields);
+      sendJson(updated);
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 400);
+    }
+    return;
+  }
+
+  // GET /api/artifacts/archived — list soft-deleted rows for the Archived view.
+  // Must match before the :id-scoped routes below so "archived" isn't
+  // interpreted as an id.
+  if (url === "/api/artifacts/archived" && req.method === "GET") {
+    try {
+      const archived = await artifactService.getArchivedArtifacts();
+      sendJson(archived);
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 500);
+    }
+    return;
+  }
+
+  const restoreMatch = url.match(/^\/api\/artifacts\/([^/]+)\/restore$/);
+  if (restoreMatch && req.method === "POST") {
+    const id = decodeURIComponent(restoreMatch[1]);
+    try {
+      artifactService.restoreArtifact(id);
+      sendJson({ id, restored: true });
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 400);
+    }
+    return;
+  }
+
+  const archiveMatch = url.match(/^\/api\/artifacts\/([^/]+)\/archive$/);
+  if (archiveMatch && req.method === "POST") {
+    const id = decodeURIComponent(archiveMatch[1]);
+    try {
+      artifactService.removeArtifact(id);
+      sendJson({ id, archived: true });
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 400);
+    }
+    return;
+  }
+
+  if (url === "/api/groups" && req.method === "PATCH") {
+    try {
+      const body = await readJsonBody();
+      const spaceId = typeof body.space_id === "string" ? body.space_id : null;
+      const oldName = typeof body.old_name === "string" ? body.old_name : null;
+      const newName = typeof body.new_name === "string" ? body.new_name : null;
+      if (!spaceId || !oldName || !newName) {
+        sendJson({ error: "space_id, old_name, new_name are required" }, 400);
+        return;
+      }
+      const updated = artifactService.renameGroup(spaceId, oldName, newName);
+      sendJson({ space_id: spaceId, old_name: oldName, new_name: newName.trim(), updated });
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 400);
+    }
+    return;
+  }
+
+  // POST /api/plugins/:id/uninstall — remove the plugin folder from userland.
+  // The artifact detector + getAllArtifacts self-heal the in-memory and DB
+  // entries; no separate cleanup needed here. Mirrors `oyster uninstall <id>`.
+  const pluginUninstallMatch = url.match(/^\/api\/plugins\/([^/]+)\/uninstall$/);
+  if (pluginUninstallMatch && req.method === "POST") {
+    const id = decodeURIComponent(pluginUninstallMatch[1]);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
+      sendJson({ error: `Invalid plugin id '${id}'` }, 400);
+      return;
+    }
+    const dir = join(USERLAND_DIR, id);
+    if (!existsSync(dir)) {
+      sendJson({ error: `'${id}' is not installed` }, 404);
+      return;
+    }
+    const manifestPath = join(dir, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      sendJson({ error: `${dir} has no manifest.json — refusing to remove a non-plugin folder` }, 400);
+      return;
+    }
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      sendJson({ id, uninstalled: true });
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 500);
+    }
+    return;
+  }
+
+  if (url === "/api/groups/archive" && req.method === "POST") {
+    try {
+      const body = await readJsonBody();
+      const spaceId = typeof body.space_id === "string" ? body.space_id : null;
+      const name = typeof body.name === "string" ? body.name : null;
+      if (!spaceId || !name) {
+        sendJson({ error: "space_id and name are required" }, 400);
+        return;
+      }
+      const archived = artifactService.archiveGroup(spaceId, name);
+      sendJson({ space_id: spaceId, name, archived });
+    } catch (err) {
+      sendJson({ error: (err as Error).message }, 400);
+    }
     return;
   }
 

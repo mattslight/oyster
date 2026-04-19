@@ -10,6 +10,7 @@ import { windowsReducer } from "./stores/windows";
 import {
   type Artifact,
   fetchArtifacts,
+  listArchivedArtifacts,
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/artifacts-api";
@@ -86,9 +87,25 @@ export default function App() {
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
   const [connected, setConnected] = useState(true);
 
+  // Active-space-aware artifact loader. Mirrors current activeSpace via a ref
+  // so callers don't have to thread it through every closure (polling,
+  // onRefresh, mutation handlers all call loadArtifacts with no args).
+  const isArchivedView = activeSpace === "__archived__";
+  const activeSpaceRef = useRef(activeSpace);
+  useEffect(() => { activeSpaceRef.current = activeSpace; }, [activeSpace]);
+  const loadArtifacts = useCallback(() => {
+    return activeSpaceRef.current === "__archived__"
+      ? listArchivedArtifacts()
+      : fetchArtifacts();
+  }, []);
+
+  // Refetch whenever the mode toggles (archive ↔ normal) so the view flips
+  // to the right dataset instantly rather than waiting for the next poll.
+  useEffect(() => { loadArtifacts().then(setArtifacts).catch(() => {}); }, [isArchivedView, loadArtifacts]);
+
   // Fetch artifacts + spaces on mount; auto-open artifact if URL contains one
   useEffect(() => {
-    fetchArtifacts().then((a) => {
+    loadArtifacts().then((a) => {
       setArtifacts(a);
       setLoaded(true);
       setConnected(true);
@@ -107,7 +124,7 @@ export default function App() {
   // Poll for status updates every 5 seconds; handle pending reveals
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchArtifacts().then((arts) => {
+      loadArtifacts().then((arts) => {
         setArtifacts(arts);
         setConnected(true);
         const revealed = arts.find((a) => a.pendingReveal);
@@ -333,7 +350,8 @@ export default function App() {
         space={activeSpace}
         spaces={spaces.map(s => s.id)}
         isHero={isHero}
-        artifacts={activeSpace === "__all__" ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
+        artifacts={(activeSpace === "__all__" || activeSpace === "__archived__") ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
+        isArchivedView={isArchivedView}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}
         onGroupClick={(name) => {
@@ -343,6 +361,7 @@ export default function App() {
         onSpaceChange={handleSpaceChange}
         onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         onConvertToSpace={handleConvertToSpace}
+        onRefresh={() => loadArtifacts().then(setArtifacts)}
         onImportFromAI={(spaceId) => {
           const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
           if (!importArtifact) return;
@@ -493,7 +512,7 @@ export default function App() {
             setShowAddSpaceWizard(false);
             setDroppedFolder(undefined);
             fetchSpaces().then(setSpaces);
-            fetchArtifacts().then(setArtifacts);
+            loadArtifacts().then(setArtifacts);
             if (newSpaceId) handleSpaceChange(newSpaceId);
           }}
         />

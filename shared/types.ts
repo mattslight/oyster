@@ -31,6 +31,10 @@ export interface Artifact {
   createdAt: string;
   groupName?: string;
   pendingReveal?: boolean;
+  /** First-party app bundled with Oyster (builtins/*). Read-only — cannot be renamed or archived from the UI. */
+  builtin?: boolean;
+  /** Third-party plugin installed via `oyster install <id>`. Removal means uninstall (delete folder), not archive. */
+  plugin?: boolean;
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";

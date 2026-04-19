@@ -98,17 +98,30 @@ export class ArtifactService {
 
     const entries = getGeneratedArtifactEntries(onArtifactRemoved);
     const gen: Artifact[] = [];
+    // Paths of archived filesystem-backed rows — used to suppress in-memory
+    // scanner shadows so a soft-deleted artifact doesn't reappear on the
+    // surface just because its backing file still exists on disk.
+    const archivedPaths = this.store.getArchivedFilePaths();
 
     for (const e of entries) {
+      if (e.filePath && archivedPaths.has(e.filePath)) continue;
       const idx = e.filePath ? dbPathToIdx.get(e.filePath) : undefined;
       if (idx !== undefined) {
-        // Suppressed twin — forward icon onto the DB artifact so it isn't lost
+        // Suppressed twin — forward icon onto the DB artifact so it isn't lost.
+        // The presence of a manifest-based gen twin on a non-builtin entry
+        // means this DB row is a third-party plugin (installed via `oyster install`).
         const dbArtifact = persisted[idx];
         if (e.icon && !dbArtifact.icon) dbArtifact.icon = e.icon;
         if (e.iconStatus && !dbArtifact.iconStatus) dbArtifact.iconStatus = e.iconStatus;
+        if (!e.builtin) dbArtifact.plugin = true;
       } else {
-        const { filePath: _f, builtin: _b, ...a } = e;
-        gen.push(a as Artifact);
+        // No DB twin: either a builtin (never reconciled to DB) or a manifest
+        // plugin whose DB row hasn't been reconciled yet. Carry through the
+        // builtin flag so the UI can gate destructive actions.
+        const { filePath: _f, builtin, ...a } = e;
+        const artifact = a as Artifact;
+        if (builtin) artifact.builtin = true;
+        gen.push(artifact);
       }
     }
 
@@ -290,7 +303,14 @@ export class ArtifactService {
   // ── Reconciliation ──
 
   reconcileGeneratedArtifact(artifact: Artifact, filePath: string, userlandDir: string): void {
-    if (this.store.getByPath(filePath)) return; // already registered
+    if (this.store.getByPath(filePath)) return; // already registered (active row)
+    // If the user archived this path previously, the scanner will keep
+    // seeing the file on disk and a naive reconcile would create a fresh
+    // active row next to the archived one — effectively ignoring the
+    // archive. Skip reconciliation when an archived row already claims
+    // this path; the user has to restore (#archived → Restore) to bring
+    // it back.
+    if (this.store.getArchivedFilePaths().has(filePath)) return;
     console.log(`[reconcile] ${artifact.label} → DB`);
     try {
       this.registerArtifact(
@@ -330,6 +350,42 @@ export class ArtifactService {
     }
 
     return this.rowToArtifact(this.store.getById(id)!);
+  }
+
+  // ── Archived-view helpers ──
+
+  async getArchivedArtifacts(): Promise<Artifact[]> {
+    const rows = this.store.getAllArchived();
+    return Promise.all(rows.map((row) => this.rowToArtifact(row)));
+  }
+
+  restoreArtifact(id: string): void {
+    const row = this.store.getById(id);
+    if (!row) throw new Error(`Artifact "${id}" not found`);
+    if (!row.removed_at) throw new Error(`Artifact "${id}" is not archived`);
+    this.store.resurface(id);
+  }
+
+  // ── Group (folder) bulk operations ──
+  // group_name is just a string on each artifact — no separate groups table.
+  // Renaming a group = bulk-update group_name on every artifact in the space
+  // that currently matches the old name. Archiving a group = bulk soft-delete
+  // everything in it.
+
+  renameGroup(spaceId: string, oldName: string, newName: string): number {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error("new group name must not be empty");
+    if (!oldName) throw new Error("old group name must not be empty");
+    const rows = this.store.getBySpaceId(spaceId).filter((r) => r.group_name === oldName);
+    for (const row of rows) this.store.update(row.id, { group_name: trimmed });
+    return rows.length;
+  }
+
+  archiveGroup(spaceId: string, name: string): number {
+    if (!name) throw new Error("group name must not be empty");
+    const rows = this.store.getBySpaceId(spaceId).filter((r) => r.group_name === name);
+    for (const row of rows) this.store.remove(row.id);
+    return rows.length;
   }
 
   // ── Private ──

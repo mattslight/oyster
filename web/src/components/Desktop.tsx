@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { LayoutGrid, List, ArrowDownAZ, Tag, Clock, Folder, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
+import { archiveArtifact, archiveGroup, renameGroup, restoreArtifact, uninstallPlugin, updateArtifact } from "../data/artifacts-api";
 import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
 import { GroupIcon } from "./GroupIcon";
 import Grainient from "./reactbits/Grainient";
@@ -23,12 +24,15 @@ interface Props {
   onAddSpace?: (folderName?: string) => void;
   onConvertToSpace?: (groupName: string, merge?: boolean, sourceSpaceId?: string) => void;
   onImportFromAI?: (spaceId?: string) => void;
+  onRefresh?: () => void;
   isFirstRun?: boolean;
   dragOver?: boolean;
   revealId?: string | null;
+  /** When true, render the archived-items view: context menu shows Restore / Delete permanently. */
+  isArchivedView?: boolean;
 }
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, dragOver, revealId, isFirstRun }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, onRefresh, dragOver, revealId, isFirstRun, isArchivedView }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Onboarding banner ──
@@ -51,6 +55,68 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     window.addEventListener("mousedown", handleClick);
     return () => window.removeEventListener("mousedown", handleClick);
   }, [folderCtx]);
+
+  // ── Artifact context menu (right-click on a tile) ──
+  const [artifactCtx, setArtifactCtx] = useState<{ artifact: Artifact; x: number; y: number } | null>(null);
+  const artifactCtxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!artifactCtx) return;
+    function handleClick(e: MouseEvent) {
+      if (artifactCtxRef.current && !artifactCtxRef.current.contains(e.target as Node)) setArtifactCtx(null);
+    }
+    window.addEventListener("mousedown", handleClick);
+    return () => window.removeEventListener("mousedown", handleClick);
+  }, [artifactCtx]);
+
+  // ── Inline rename state — when set, the matching tile swaps its label for an input ──
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+
+  // ── Context-menu action handlers ──
+  // Every mutation calls onRefresh so the parent refetches fresh state.
+  function handleRenameArtifact(artifact: Artifact) {
+    setArtifactCtx(null);
+    setRenamingId(artifact.id);
+  }
+  async function commitArtifactRename(artifact: Artifact, nextLabel: string) {
+    setRenamingId(null);
+    const trimmed = nextLabel.trim();
+    if (!trimmed || trimmed === artifact.label) return;
+    try { await updateArtifact(artifact.id, { label: trimmed }); onRefresh?.(); }
+    catch (err) { alert(`Rename failed: ${(err as Error).message}`); }
+  }
+  async function handleArchiveArtifact(artifact: Artifact) {
+    setArtifactCtx(null);
+    try { await archiveArtifact(artifact.id); onRefresh?.(); }
+    catch (err) { alert(`Archive failed: ${(err as Error).message}`); }
+  }
+  async function handleUninstallPlugin(artifact: Artifact) {
+    setArtifactCtx(null);
+    if (!window.confirm(`Uninstall "${artifact.label}"? This removes the plugin folder from ~/.oyster/userland/${artifact.id}.`)) return;
+    try { await uninstallPlugin(artifact.id); onRefresh?.(); }
+    catch (err) { alert(`Uninstall failed: ${(err as Error).message}`); }
+  }
+  async function handleRestoreArtifact(artifact: Artifact) {
+    setArtifactCtx(null);
+    try { await restoreArtifact(artifact.id); onRefresh?.(); }
+    catch (err) { alert(`Restore failed: ${(err as Error).message}`); }
+  }
+  async function handleRenameGroup(oldName: string, sourceSpaceId?: string) {
+    setFolderCtx(null);
+    const next = window.prompt("Rename folder", oldName);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === oldName) return;
+    const targetSpace = sourceSpaceId ?? space;
+    try { await renameGroup(targetSpace, oldName, trimmed); onRefresh?.(); }
+    catch (err) { alert(`Rename folder failed: ${(err as Error).message}`); }
+  }
+  async function handleArchiveGroup(name: string, sourceSpaceId?: string) {
+    setFolderCtx(null);
+    const targetSpace = sourceSpaceId ?? space;
+    if (!window.confirm(`Archive folder "${name}" and all its artifacts?`)) return;
+    try { await archiveGroup(targetSpace, name); onRefresh?.(); }
+    catch (err) { alert(`Archive folder failed: ${(err as Error).message}`); }
+  }
 
   // ── Topbar auto-hide ──
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -345,14 +411,18 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                   style={isDragged ? undefined : { transition: "transform 0.25s ease" }}
                 >
                   {item.type === "group" ? (
-                    <GroupIcon name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} onContextMenu={(e) => { e.preventDefault(); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }} />
+                    <GroupIcon name={item.name} artifacts={item.artifacts} index={i} onClick={() => onGroupClick(item.name)} onContextMenu={(e) => { e.preventDefault(); setArtifactCtx(null); setFolderCtx({ name: item.name, x: e.clientX, y: e.clientY }); }} />
                   ) : (
                     <ArtifactIcon
                       artifact={item.artifact}
                       index={i}
                       onClick={() => onArtifactClick(item.artifact)}
                       onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
+                      onContextMenu={(e) => { e.preventDefault(); setFolderCtx(null); setArtifactCtx({ artifact: item.artifact, x: e.clientX, y: e.clientY }); }}
                       reveal={item.artifact.id === revealId}
+                      isRenaming={renamingId === item.artifact.id}
+                      onRenameCommit={(label) => commitArtifactRename(item.artifact, label)}
+                      onRenameCancel={() => setRenamingId(null)}
                     />
                   )}
                 </div>
@@ -369,6 +439,9 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
           className="space-ctx-menu"
           style={{ left: folderCtx.x, top: folderCtx.y, transform: "translateY(-100%)", marginTop: -8 }}
         >
+          <button className="space-ctx-item" onClick={() => handleRenameGroup(folderCtx.name, folderCtx.sourceSpaceId)}>
+            Rename folder
+          </button>
           {onConvertToSpace && (() => {
             const slug = folderCtx.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
             const hasConflict = spaces.includes(slug);
@@ -391,6 +464,52 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               </button>
             );
           })()}
+          <div className="space-ctx-sep" />
+          <button className="space-ctx-item space-ctx-delete" onClick={() => handleArchiveGroup(folderCtx.name, folderCtx.sourceSpaceId)}>
+            Archive folder
+          </button>
+        </div>,
+        document.body,
+      )}
+
+      {artifactCtx && createPortal(
+        <div
+          ref={artifactCtxRef}
+          className="space-ctx-menu"
+          style={{ left: artifactCtx.x, top: artifactCtx.y, transform: "translateY(-100%)", marginTop: -8 }}
+        >
+          {isArchivedView ? (
+            // In the Archived view the only supported action is Restore
+            // (store.resurface clears removed_at). Hard-delete was cut for
+            // v1 because we'd either leave orphan files on disk or risk
+            // deleting onboarded files Oyster doesn't own.
+            <button className="space-ctx-item" onClick={() => handleRestoreArtifact(artifactCtx.artifact)}>
+              Restore
+            </button>
+          ) : artifactCtx.artifact.builtin ? (
+            // Builtins are re-seeded from the package on every boot — the
+            // menu is a no-op read-only marker rather than surfacing actions
+            // that would either fail or be reverted on next start.
+            <span className="space-ctx-confirm" style={{ padding: "6px 12px" }}>
+              Read-only (built-in)
+            </span>
+          ) : (
+            <>
+              <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>
+                Rename
+              </button>
+              <div className="space-ctx-sep" />
+              {artifactCtx.artifact.plugin ? (
+                <button className="space-ctx-item space-ctx-delete" onClick={() => handleUninstallPlugin(artifactCtx.artifact)}>
+                  Uninstall
+                </button>
+              ) : (
+                <button className="space-ctx-item space-ctx-delete" onClick={() => handleArchiveArtifact(artifactCtx.artifact)}>
+                  Archive
+                </button>
+              )}
+            </>
+          )}
         </div>,
         document.body,
       )}
