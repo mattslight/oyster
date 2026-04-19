@@ -335,8 +335,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // GET /api/artifacts/archived — list soft-deleted rows for the Archived view.
   // Must match BEFORE the :id-scoped routes below so "archived" is never
   // interpreted as an artifact id (e.g. PATCH /api/artifacts/archived
-  // would otherwise hit the rename handler with id="archived").
+  // would otherwise hit the rename handler with id="archived"). Locked to
+  // local origins for the same reason the mutation endpoints are — the
+  // list contains user-private artifact metadata.
   if (url === "/api/artifacts/archived" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return;
     try {
       const archived = await artifactService.getArchivedArtifacts();
       sendJson(archived);
