@@ -25,6 +25,10 @@ interface Props {
   onConvertToSpace?: (groupName: string, merge?: boolean, sourceSpaceId?: string) => void;
   onImportFromAI?: (spaceId?: string) => void;
   onRefresh?: () => void;
+  /** Patch a single artifact in the parent's state — used for optimistic UI on rename so the label swap is instant, not a fetch round-trip later. */
+  onArtifactUpdate?: (id: string, fields: Partial<Artifact>) => void;
+  /** Remove a single artifact from the parent's state — used for optimistic archive / uninstall / restore so the tile disappears instantly. */
+  onArtifactRemove?: (id: string) => void;
   isFirstRun?: boolean;
   dragOver?: boolean;
   revealId?: string | null;
@@ -32,7 +36,7 @@ interface Props {
   isArchivedView?: boolean;
 }
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, onRefresh, dragOver, revealId, isFirstRun, isArchivedView }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, dragOver, revealId, isFirstRun, isArchivedView }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Onboarding banner ──
@@ -78,27 +82,41 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     setRenamingId(artifact.id);
   }
   async function commitArtifactRename(artifact: Artifact, nextLabel: string) {
-    setRenamingId(null);
     const trimmed = nextLabel.trim();
+    setRenamingId(null);
     if (!trimmed || trimmed === artifact.label) return;
-    try { await updateArtifact(artifact.id, { label: trimmed }); onRefresh?.(); }
-    catch (err) { alert(`Rename failed: ${(err as Error).message}`); }
+    // Optimistic: flip the label immediately so there's no flicker between
+    // the input disappearing and the server round-trip completing. The next
+    // poll (or onRefresh below) converges the state.
+    onArtifactUpdate?.(artifact.id, { label: trimmed });
+    try {
+      await updateArtifact(artifact.id, { label: trimmed });
+    } catch (err) {
+      // Revert the optimistic change on failure.
+      onArtifactUpdate?.(artifact.id, { label: artifact.label });
+      alert(`Rename failed: ${(err as Error).message}`);
+    }
   }
   async function handleArchiveArtifact(artifact: Artifact) {
     setArtifactCtx(null);
-    try { await archiveArtifact(artifact.id); onRefresh?.(); }
-    catch (err) { alert(`Archive failed: ${(err as Error).message}`); }
+    onArtifactRemove?.(artifact.id);
+    try { await archiveArtifact(artifact.id); }
+    catch (err) { onRefresh?.(); alert(`Archive failed: ${(err as Error).message}`); }
   }
   async function handleUninstallPlugin(artifact: Artifact) {
     setArtifactCtx(null);
     if (!window.confirm(`Uninstall "${artifact.label}"? This removes the plugin folder from ~/.oyster/userland/${artifact.id}.`)) return;
-    try { await uninstallPlugin(artifact.id); onRefresh?.(); }
-    catch (err) { alert(`Uninstall failed: ${(err as Error).message}`); }
+    onArtifactRemove?.(artifact.id);
+    try { await uninstallPlugin(artifact.id); }
+    catch (err) { onRefresh?.(); alert(`Uninstall failed: ${(err as Error).message}`); }
   }
   async function handleRestoreArtifact(artifact: Artifact) {
     setArtifactCtx(null);
-    try { await restoreArtifact(artifact.id); onRefresh?.(); }
-    catch (err) { alert(`Restore failed: ${(err as Error).message}`); }
+    // Optimistically remove from the archived view; the next refresh
+    // refetches the archived list and confirms.
+    onArtifactRemove?.(artifact.id);
+    try { await restoreArtifact(artifact.id); }
+    catch (err) { onRefresh?.(); alert(`Restore failed: ${(err as Error).message}`); }
   }
   async function handleRenameGroup(oldName: string, sourceSpaceId?: string) {
     setFolderCtx(null);

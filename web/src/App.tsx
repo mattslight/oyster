@@ -362,6 +362,8 @@ export default function App() {
         onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         onConvertToSpace={handleConvertToSpace}
         onRefresh={() => loadArtifacts().then(setArtifacts)}
+        onArtifactUpdate={(id, fields) => setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, ...fields } : a)))}
+        onArtifactRemove={(id) => setArtifacts((prev) => prev.filter((a) => a.id !== id))}
         onImportFromAI={(spaceId) => {
           const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
           if (!importArtifact) return;
