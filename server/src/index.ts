@@ -175,6 +175,18 @@ const db = initDb(USERLAND_DIR);
 const store = new SqliteArtifactStore(db);
 const artifactService = new ArtifactService(store, USERLAND_DIR);
 const spaceStore = new SqliteSpaceStore(db);
+
+// Shared resolver: try raw id, then slugified id, then case-insensitive display_name.
+// Used by import preview + execute so an agent-emitted space name (possibly
+// whitespace-padded or referring to a renamed space) resolves consistently.
+function resolveSpaceRow(name: string) {
+  const trimmed = name.trim();
+  return (
+    spaceStore.getById(trimmed) ??
+    spaceStore.getById(slugify(trimmed)) ??
+    spaceStore.getByDisplayName(trimmed)
+  );
+}
 const spaceService = new SpaceService(spaceStore, store);
 const memoryProvider = new SqliteFtsMemoryProvider(USERLAND_DIR);
 await memoryProvider.init();
@@ -573,11 +585,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
         const previewDeps: PreviewDeps = {
           resolveSpaceByName: (name) => {
-            const trimmed = name.trim();
-            const row =
-              spaceStore.getById(trimmed) ??
-              spaceStore.getById(slugify(trimmed)) ??
-              spaceStore.getByDisplayName(trimmed);
+            const row = resolveSpaceRow(name);
             return row ? { id: row.id, displayName: row.display_name } : null;
           },
           getArtifactsBySpace: (spaceId) => {
@@ -631,11 +639,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           remember: (input) => memoryProvider.remember(input),
           findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
           resolveSpaceByName: (name) => {
-            const trimmed = name.trim();
-            const row =
-              spaceStore.getById(trimmed) ??
-              spaceStore.getById(slugify(trimmed)) ??
-              spaceStore.getByDisplayName(trimmed);
+            const row = resolveSpaceRow(name);
             return row ? { id: row.id } : null;
           },
         };

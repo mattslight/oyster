@@ -331,8 +331,9 @@ export function buildImportPlan(
     }
 
     const slug = slugify(space.name);
-    if (!slug) continue;
     const existing = deps.resolveSpaceByName(space.name);
+    // Skip only when we can neither resolve an existing space nor mint a new slug.
+    if (!existing && !slug) continue;
     const actionId = nextId();
     spaceActionIds.set(space.name, actionId);
 
@@ -556,9 +557,12 @@ export async function executeImportPlan(
           break;
         }
         case "create_memory": {
-          const spaceSlug = action.space ? slugify(action.space) : undefined;
-          const spaceId = spaceSlug
-            ? resolveSpaceId(action.space!, createdSpaces, deps)
+          // Match the preview gate: require a non-empty slug before binding to
+          // a space. Keeps unscoped-memory behaviour consistent with
+          // buildImportPlan when space names slugify to empty.
+          const spaceSlug = action.space ? slugify(action.space) : "";
+          const spaceId = action.space && spaceSlug
+            ? resolveSpaceId(action.space, createdSpaces, deps)
             : undefined;
           // Check if already exists before creating
           if (deps.findMemory && deps.findMemory(action.content!, spaceId ?? null)) {
