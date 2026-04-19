@@ -413,7 +413,12 @@ export function buildImportPlan(
 
   for (const memory of payload.memories ?? []) {
     if (!memory.content) continue;
-    const spaceId = targetSpaceId ?? (memory.space ? (deps.resolveSpaceByName(memory.space)?.id ?? slugify(memory.space)) : null);
+    const memorySpaceSlug = memory.space ? slugify(memory.space) : "";
+    const spaceId =
+      targetSpaceId ??
+      (memory.space && memorySpaceSlug
+        ? (deps.resolveSpaceByName(memory.space)?.id ?? memorySpaceSlug)
+        : null);
     const isDupe = deps.findMemory(memory.content, spaceId);
 
     actions.push({
