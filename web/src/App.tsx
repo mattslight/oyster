@@ -101,9 +101,12 @@ export default function App() {
 
   // Refetch whenever the mode toggles (archive ↔ normal) so the view flips
   // to the right dataset instantly rather than waiting for the next poll.
-  // Mirrors the error handling used by the mount fetch and poller so a
-  // failure here doesn't leave `connected` stale.
+  // Skip the initial mount — the separate mount effect below handles that
+  // fetch, and firing both racing fetches at startup would waste a round-
+  // trip and leave the faster result under-written by the slower one.
+  const didMountRef = useRef(false);
   useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
     loadArtifacts()
       .then((a) => { setArtifacts(a); setConnected(true); })
       .catch((err) => { console.warn("[oyster] failed to refetch on mode toggle:", err.message); setConnected(false); });

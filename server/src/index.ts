@@ -299,16 +299,42 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
   };
+  // Mutation endpoints below only accept tiny config bodies ({label, group_name}
+  // etc). Cap at 64 KB to prevent memory/CPU abuse from an oversized payload.
+  const MAX_MUTATION_BODY = 64_000;
   async function readJsonBody(): Promise<Record<string, unknown>> {
     let body = "";
-    for await (const chunk of req) body += chunk;
+    for await (const chunk of req) {
+      body += chunk;
+      if (body.length > MAX_MUTATION_BODY) {
+        res.writeHead(413);
+        res.end("Payload too large");
+        req.destroy();
+        throw new Error("Payload too large");
+      }
+    }
     if (!body) return {};
     try { return JSON.parse(body) as Record<string, unknown>; }
     catch { throw new Error("Invalid JSON body"); }
   }
+  // Mutation endpoints are localhost-only. A browser tab on some other site
+  // could otherwise POST to http://localhost:<port>/api/… and trigger
+  // destructive actions (localhost CSRF). Mirrors the /mcp handler pattern:
+  // reject non-local origins outright; echo the origin back for local ones
+  // to override the wildcard CORS header set at the top of this handler.
+  const rejectIfNonLocalOrigin = (): boolean => {
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      sendJson({ error: "Forbidden origin" }, 403);
+      return true;
+    }
+    if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+    return false;
+  };
 
   const artifactMatch = url.match(/^\/api\/artifacts\/([^/]+)$/);
   if (artifactMatch && req.method === "PATCH") {
+    if (rejectIfNonLocalOrigin()) return;
     const id = decodeURIComponent(artifactMatch[1]);
     try {
       const body = await readJsonBody();
@@ -353,6 +379,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   const restoreMatch = url.match(/^\/api\/artifacts\/([^/]+)\/restore$/);
   if (restoreMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
     const id = decodeURIComponent(restoreMatch[1]);
     try {
       artifactService.restoreArtifact(id);
@@ -365,6 +392,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   const archiveMatch = url.match(/^\/api\/artifacts\/([^/]+)\/archive$/);
   if (archiveMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
     const id = decodeURIComponent(archiveMatch[1]);
     try {
       artifactService.removeArtifact(id);
@@ -376,6 +404,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url === "/api/groups" && req.method === "PATCH") {
+    if (rejectIfNonLocalOrigin()) return;
     try {
       const body = await readJsonBody();
       const spaceId = typeof body.space_id === "string" ? body.space_id : null;
@@ -398,6 +427,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // entries; no separate cleanup needed here. Mirrors `oyster uninstall <id>`.
   const pluginUninstallMatch = url.match(/^\/api\/plugins\/([^/]+)\/uninstall$/);
   if (pluginUninstallMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
     const id = decodeURIComponent(pluginUninstallMatch[1]);
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
       sendJson({ error: `Invalid plugin id '${id}'` }, 400);
@@ -423,6 +453,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url === "/api/groups/archive" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
     try {
       const body = await readJsonBody();
       const spaceId = typeof body.space_id === "string" ? body.space_id : null;
