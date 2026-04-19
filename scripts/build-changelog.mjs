@@ -87,10 +87,25 @@ const rendered = rawRendered.replace(
   },
 );
 
-const pills = releases
+// Group pills by minor version (0.3.4 → 0.3) so the nav stays flat as patches
+// accumulate. Releases are already in reverse-chrono order, so the first entry
+// per minor is the newest patch — that's where the pill links to.
+const pillGroups = [];
+const seen = new Set();
+for (const r of releases) {
+  const minor =
+    r.version === "Unreleased"
+      ? "Unreleased"
+      : (r.version.match(/^(\d+\.\d+)/)?.[1] ?? r.version);
+  if (seen.has(minor)) continue;
+  seen.add(minor);
+  pillGroups.push({ label: minor, id: r.id });
+}
+
+const pills = pillGroups
   .map(
-    (r) =>
-      `<a class="version-pill" href="#${escapeHtml(r.id)}">${escapeHtml(r.version)}</a>`,
+    (g) =>
+      `<a class="version-pill" href="#${escapeHtml(g.id)}">${escapeHtml(g.label)}</a>`,
   )
   .join("\n      ");
 
