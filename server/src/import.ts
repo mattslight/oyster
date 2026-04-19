@@ -276,7 +276,10 @@ export async function parseImportPayload(
 // ── Preview (Plan Building) ──
 
 export interface PreviewDeps {
-  getSpaceBySlug: (slug: string) => { id: string; displayName: string } | null;
+  // Resolve a space by the raw name an agent emitted. Implementation should
+  // try id match first, then fall back to case-insensitive display_name match
+  // so renamed spaces still resolve (issue #118).
+  resolveSpaceByName: (name: string) => { id: string; displayName: string } | null;
   getArtifactsBySpace: (spaceId: string) => Array<{ source_ref: string | null; label: string }>;
   findMemory: (content: string, spaceId: string | null) => boolean;
 }
@@ -299,7 +302,7 @@ export function buildImportPlan(
   const nextId = () => `act_${++actCounter}`;
 
   // When scoped to a target space, resolve the display name for remapping
-  const targetSpaceRow = targetSpaceId ? deps.getSpaceBySlug(targetSpaceId) : null;
+  const targetSpaceRow = targetSpaceId ? deps.resolveSpaceByName(targetSpaceId) : null;
   const targetSpaceName = targetSpaceRow?.displayName ?? targetSpaceId;
 
   const spaceActionIds = new Map<string, string>();
@@ -329,7 +332,7 @@ export function buildImportPlan(
 
     const slug = slugify(space.name);
     if (!slug) continue;
-    const existing = deps.getSpaceBySlug(slug);
+    const existing = deps.resolveSpaceByName(space.name);
     const actionId = nextId();
     spaceActionIds.set(space.name, actionId);
 
@@ -388,7 +391,7 @@ export function buildImportPlan(
     }
 
     const slug = slugify(summary.space);
-    const existing = deps.getSpaceBySlug(slug);
+    const existing = deps.resolveSpaceByName(summary.space);
     const parentActionId = spaceActionIds.get(summary.space);
     if (!existing && !parentActionId) continue;
     const spaceId = existing?.id ?? slug;
@@ -410,7 +413,7 @@ export function buildImportPlan(
 
   for (const memory of payload.memories ?? []) {
     if (!memory.content) continue;
-    const spaceId = targetSpaceId ?? (memory.space ? (deps.getSpaceBySlug(slugify(memory.space))?.id ?? slugify(memory.space)) : null);
+    const spaceId = targetSpaceId ?? (memory.space ? (deps.resolveSpaceByName(memory.space)?.id ?? slugify(memory.space)) : null);
     const isDupe = deps.findMemory(memory.content, spaceId);
 
     actions.push({
@@ -448,7 +451,8 @@ export interface ExecuteDeps {
   }) => Promise<{ id: string }>;
   remember: (input: { content: string; space_id?: string; tags?: string[] }) => Promise<{ id: string }>;
   findMemory: (content: string, spaceId: string | null) => boolean;
-  getSpaceBySlug: (slug: string) => { id: string } | null;
+  // See PreviewDeps.resolveSpaceByName
+  resolveSpaceByName: (name: string) => { id: string } | null;
 }
 
 function resolveSpaceId(
@@ -458,7 +462,7 @@ function resolveSpaceId(
 ): string {
   const fromCreated = createdSpaces.get(spaceName);
   if (fromCreated) return fromCreated;
-  const existing = deps.getSpaceBySlug(slugify(spaceName));
+  const existing = deps.resolveSpaceByName(spaceName);
   if (existing) return existing.id;
   return slugify(spaceName);
 }
@@ -508,7 +512,7 @@ export async function executeImportPlan(
       switch (action.type) {
         case "create_space": {
           if (action.status === "exists_will_merge") {
-            const existing = deps.getSpaceBySlug(slugify(action.name!));
+            const existing = deps.resolveSpaceByName(action.name!);
             if (existing) createdSpaces.set(action.name!, existing.id);
             results.push({ action_id: action.action_id, status: "skipped" });
           } else {

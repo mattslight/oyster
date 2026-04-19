@@ -18,6 +18,7 @@ import { SqliteArtifactStore } from "./artifact-store.js";
 import { ArtifactService } from "./artifact-service.js";
 import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
+import { slugify } from "./utils.js";
 import { IconGenerator } from "./icon-generator.js";
 import { injectBridge } from "./error-bridge.js";
 import {
@@ -571,8 +572,8 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         const generatedAt = parseResult.payload.source?.generated_at || new Date().toISOString();
 
         const previewDeps: PreviewDeps = {
-          getSpaceBySlug: (slug) => {
-            const row = spaceStore.getAll().find((s) => s.id === slug);
+          resolveSpaceByName: (name) => {
+            const row = spaceStore.getById(slugify(name)) ?? spaceStore.getByDisplayName(name);
             return row ? { id: row.id, displayName: row.display_name } : null;
           },
           getArtifactsBySpace: (spaceId) => {
@@ -625,8 +626,8 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           createArtifact: (params) => artifactService.createArtifact(params, USERLAND_DIR),
           remember: (input) => memoryProvider.remember(input),
           findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
-          getSpaceBySlug: (slug) => {
-            const row = spaceStore.getAll().find((s) => s.id === slug);
+          resolveSpaceByName: (name) => {
+            const row = spaceStore.getById(slugify(name)) ?? spaceStore.getByDisplayName(name);
             return row ? { id: row.id } : null;
           },
         };
