@@ -168,7 +168,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
   // Resolve relative paths against userland. Must use isAbsolute to catch
   // Windows drive-letter paths (C:\...) — startsWith("/") would miss them,
   // causing userlandDir to be prepended and artifactId to become "C:".
-  const userlandDir = artifactsDir; // ARTIFACTS_DIR === USERLAND_DIR + "/"
+  const userlandDir = artifactsDir; // ARTIFACTS_DIR is USERLAND_DIR with a trailing path.sep
   // Normalize so the separator matches artifactsDir on Windows (Node may hand
   // us a forward-slash path while artifactsDir uses backslashes, or vice versa).
   const filePath = normalize(isAbsolute(rawPath) ? rawPath : `${userlandDir}${rawPath}`);
