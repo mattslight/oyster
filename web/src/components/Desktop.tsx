@@ -32,7 +32,7 @@ interface Props {
   isFirstRun?: boolean;
   dragOver?: boolean;
   revealId?: string | null;
-  /** When true, render the archived-items view: context menu shows Restore / Delete permanently. */
+  /** When true, render the archived-items view: context menu shows Restore. */
   isArchivedView?: boolean;
 }
 
@@ -105,9 +105,13 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   }
   async function handleUninstallPlugin(artifact: Artifact) {
     setArtifactCtx(null);
-    if (!window.confirm(`Uninstall "${artifact.label}"? This removes the plugin folder from ~/.oyster/userland/${artifact.id}.`)) return;
+    // `artifact.id` is a DB UUID once reconciled; the plugin folder is named
+    // by manifest id, exposed as `pluginId`. Fall back to id only as a last
+    // resort (pre-reconcile or mis-tagged entries).
+    const folderId = artifact.pluginId ?? artifact.id;
+    if (!window.confirm(`Uninstall "${artifact.label}"? This removes the plugin folder from ~/.oyster/userland/${folderId}.`)) return;
     onArtifactRemove?.(artifact.id);
-    try { await uninstallPlugin(artifact.id); }
+    try { await uninstallPlugin(folderId); }
     catch (err) { onRefresh?.(); alert(`Uninstall failed: ${(err as Error).message}`); }
   }
   async function handleRestoreArtifact(artifact: Artifact) {

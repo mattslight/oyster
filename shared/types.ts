@@ -35,6 +35,8 @@ export interface Artifact {
   builtin?: boolean;
   /** Third-party plugin installed via `oyster install <id>`. Removal means uninstall (delete folder), not archive. */
   plugin?: boolean;
+  /** For plugin artifacts: the folder-name id under ~/.oyster/userland/ (e.g. "pomodoro"). Used by Uninstall since `id` is a UUID that doesn't map to a directory. */
+  pluginId?: string;
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";

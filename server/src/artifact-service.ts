@@ -105,22 +105,36 @@ export class ArtifactService {
 
     for (const e of entries) {
       if (e.filePath && archivedPaths.has(e.filePath)) continue;
+      // Manifest-based gen ids are "gen:<plugin-folder>"; strip the prefix
+      // to get the folder name under ~/.oyster/userland/. Used as pluginId
+      // so Uninstall has a stable handle even after the DB reconciles the
+      // artifact to a UUID.
+      const pluginFolderId = e.plugin && e.id.startsWith("gen:") ? e.id.slice(4) : undefined;
+
       const idx = e.filePath ? dbPathToIdx.get(e.filePath) : undefined;
       if (idx !== undefined) {
         // Suppressed twin — forward icon onto the DB artifact so it isn't lost.
-        // The presence of a manifest-based gen twin on a non-builtin entry
-        // means this DB row is a third-party plugin (installed via `oyster install`).
+        // Non-builtin scan entries also have builtin=false, so the plugin
+        // flag must come from the detector's explicit `plugin` marker, not
+        // `!e.builtin` (which would misclassify regular scan-backed notes).
         const dbArtifact = persisted[idx];
         if (e.icon && !dbArtifact.icon) dbArtifact.icon = e.icon;
         if (e.iconStatus && !dbArtifact.iconStatus) dbArtifact.iconStatus = e.iconStatus;
-        if (!e.builtin) dbArtifact.plugin = true;
+        if (e.plugin) {
+          dbArtifact.plugin = true;
+          if (pluginFolderId) dbArtifact.pluginId = pluginFolderId;
+        }
       } else {
         // No DB twin: either a builtin (never reconciled to DB) or a manifest
         // plugin whose DB row hasn't been reconciled yet. Carry through the
-        // builtin flag so the UI can gate destructive actions.
-        const { filePath: _f, builtin, ...a } = e;
+        // builtin / plugin flags so the UI can gate destructive actions.
+        const { filePath: _f, builtin, plugin, ...a } = e;
         const artifact = a as Artifact;
         if (builtin) artifact.builtin = true;
+        if (plugin) {
+          artifact.plugin = true;
+          if (pluginFolderId) artifact.pluginId = pluginFolderId;
+        }
         gen.push(artifact);
       }
     }
@@ -302,7 +316,12 @@ export class ArtifactService {
 
   // ── Reconciliation ──
 
-  reconcileGeneratedArtifact(artifact: Artifact, filePath: string, userlandDir: string): void {
+  reconcileGeneratedArtifact(
+    artifact: Artifact,
+    filePath: string,
+    userlandDir: string,
+    archivedPaths?: Set<string>,
+  ): void {
     if (this.store.getByPath(filePath)) return; // already registered (active row)
     // If the user archived this path previously, the scanner will keep
     // seeing the file on disk and a naive reconcile would create a fresh
@@ -310,7 +329,12 @@ export class ArtifactService {
     // archive. Skip reconciliation when an archived row already claims
     // this path; the user has to restore (#archived → Restore) to bring
     // it back.
-    if (this.store.getArchivedFilePaths().has(filePath)) return;
+    //
+    // Callers that reconcile many artifacts in one pass (e.g. the boot
+    // loop) should pass a pre-loaded `archivedPaths` set to avoid re-
+    // querying for every artifact.
+    const archived = archivedPaths ?? this.store.getArchivedFilePaths();
+    if (archived.has(filePath)) return;
     console.log(`[reconcile] ${artifact.label} → DB`);
     try {
       this.registerArtifact(
@@ -320,6 +344,11 @@ export class ArtifactService {
     } catch (err) {
       console.error(`[reconcile] failed for ${artifact.label}:`, err);
     }
+  }
+
+  // Exposed so callers running a reconcile pass can query once.
+  getArchivedFilePaths(): Set<string> {
+    return this.store.getArchivedFilePaths();
   }
 
   // ── Update ──

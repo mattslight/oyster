@@ -122,6 +122,9 @@ function registerArtifactFromManifest(
   seenArtifacts.add(id);
 
   const builtin = manifest.builtin === true;
+  // Manifest-based non-builtin entries are third-party plugins installed
+  // via `oyster install`. The UI branches on this for Uninstall vs Archive.
+  const plugin = !builtin;
 
   if (generating) {
     console.log(`[artifact-detect] generating: ${manifest.name} (${manifest.type})`);
@@ -135,7 +138,7 @@ function registerArtifactFromManifest(
       runtimeKind: "static_file",
       runtimeConfig: {},
       createdAt: manifest.created_at,
-    }, undefined, builtin); // No filePath — prevents self-healing deletion while entrypoint doesn't exist
+    }, undefined, builtin, plugin); // No filePath — prevents self-healing deletion while entrypoint doesn't exist
     generatingArtifacts.set(id, {
       name: manifest.name,
       type: manifest.type,
@@ -156,7 +159,7 @@ function registerArtifactFromManifest(
       runtimeConfig: {},
       createdAt: manifest.created_at,
       ...detectExistingIcon(artifactDir),
-    }, entrypointPath, builtin);
+    }, entrypointPath, builtin, plugin);
     iconGenerator.enqueue(id, manifest.name, manifest.type, artifactDir);
   }
 }

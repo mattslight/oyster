@@ -188,10 +188,15 @@ spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 // OpenCode spawn is deferred until after port resolution (see below)
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 
-// Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path)
-for (const entry of getGeneratedArtifactEntries()) {
-  if (!entry.builtin && entry.filePath && entry.status === "ready") {
-    artifactService.reconcileGeneratedArtifact(entry, entry.filePath, USERLAND_DIR);
+// Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path).
+// Load the archived-paths set once and pass it through; otherwise every
+// reconcile call would re-run the same SQL + JSON.parse over every archived row.
+{
+  const archivedPaths = artifactService.getArchivedFilePaths();
+  for (const entry of getGeneratedArtifactEntries()) {
+    if (!entry.builtin && entry.filePath && entry.status === "ready") {
+      artifactService.reconcileGeneratedArtifact(entry, entry.filePath, USERLAND_DIR, archivedPaths);
+    }
   }
 }
 
@@ -311,7 +316,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       if (typeof body.label === "string") fields.label = body.label;
       if ("group_name" in body) {
         const v = body.group_name;
-        fields.group_name = v === null ? null : (typeof v === "string" ? v.trim() || null : null);
+        if (v === null) {
+          fields.group_name = null;
+        } else if (typeof v === "string") {
+          fields.group_name = v.trim() || null;
+        } else {
+          throw new Error("group_name must be a string or null");
+        }
       }
       const updated = await artifactService.updateArtifact(id, fields);
       sendJson(updated);
