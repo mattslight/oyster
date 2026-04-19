@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, dirname, basename, sep, isAbsolute } from "node:path";
+import { join, dirname, basename, sep, isAbsolute, normalize } from "node:path";
 import {
   registerGeneratedArtifact,
   updateGeneratedArtifact,
@@ -169,7 +169,9 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
   // Windows drive-letter paths (C:\...) — startsWith("/") would miss them,
   // causing userlandDir to be prepended and artifactId to become "C:".
   const userlandDir = artifactsDir; // ARTIFACTS_DIR === USERLAND_DIR + "/"
-  const filePath = isAbsolute(rawPath) ? rawPath : `${userlandDir}${rawPath}`;
+  // Normalize so the separator matches artifactsDir on Windows (Node may hand
+  // us a forward-slash path while artifactsDir uses backslashes, or vice versa).
+  const filePath = normalize(isAbsolute(rawPath) ? rawPath : `${userlandDir}${rawPath}`);
 
   // Check if this file is inside userland
   if (filePath.startsWith(artifactsDir)) {
@@ -277,7 +279,8 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
             if (!seenArtifacts.has(id)) {
               const name = inferName(foundFile);
               const type = inferType(foundFile);
-              const serveRelative = `/artifacts/${foundFile.slice(artifactsDir.length)}`;
+              // URLs must use forward slashes; sep is "\" on Windows, so rewrite.
+              const serveRelative = `/artifacts/${foundFile.slice(artifactsDir.length).split(sep).join("/")}`;
               seenArtifacts.add(id);
               console.log(`[artifact-detect] scan: ${name} (${type}) → ${serveRelative}`);
               registerGeneratedArtifact({
