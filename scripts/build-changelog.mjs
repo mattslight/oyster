@@ -19,8 +19,15 @@ const escapeHtml = (s) =>
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
   );
 
-const SAFE_URL = /^(?:https?:|mailto:|#|\/|\.\/|\.\.\/)/i;
-const safeHref = (href) => (href && SAFE_URL.test(href) ? href : "#");
+// `\/(?!\/)` allows `/path` (same-origin) but rejects `//evil.com` (protocol-relative).
+// `\.\.?\/` covers `./` and `../`. Trim leading whitespace before testing so
+// a href like `\tjavascript:...` can't sneak past the scheme check.
+const SAFE_URL = /^(?:https?:\/\/|mailto:|#|\.\.?\/|\/(?!\/))/i;
+const safeHref = (href) => {
+  if (!href) return "#";
+  const trimmed = String(href).trim();
+  return SAFE_URL.test(trimmed) ? trimmed : "#";
+};
 
 marked.use({
   renderer: {
