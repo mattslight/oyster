@@ -573,7 +573,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
         const previewDeps: PreviewDeps = {
           resolveSpaceByName: (name) => {
-            const row = spaceStore.getById(slugify(name)) ?? spaceStore.getByDisplayName(name);
+            const trimmed = name.trim();
+            const row =
+              spaceStore.getById(trimmed) ??
+              spaceStore.getById(slugify(trimmed)) ??
+              spaceStore.getByDisplayName(trimmed);
             return row ? { id: row.id, displayName: row.display_name } : null;
           },
           getArtifactsBySpace: (spaceId) => {
@@ -627,7 +631,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           remember: (input) => memoryProvider.remember(input),
           findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
           resolveSpaceByName: (name) => {
-            const row = spaceStore.getById(slugify(name)) ?? spaceStore.getByDisplayName(name);
+            const trimmed = name.trim();
+            const row =
+              spaceStore.getById(trimmed) ??
+              spaceStore.getById(slugify(trimmed)) ??
+              spaceStore.getByDisplayName(trimmed);
             return row ? { id: row.id } : null;
           },
         };

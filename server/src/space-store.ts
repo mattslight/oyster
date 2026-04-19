@@ -54,8 +54,8 @@ export class SqliteSpaceStore implements SpaceStore {
     this.stmts = {
       getAll: db.prepare("SELECT * FROM spaces ORDER BY display_name"),
       getById: db.prepare("SELECT * FROM spaces WHERE id = ?"),
-      // Case-insensitive match; most recently updated wins when displayNames collide
-      getByDisplayName: db.prepare("SELECT * FROM spaces WHERE LOWER(display_name) = LOWER(?) ORDER BY updated_at DESC LIMIT 1"),
+      // Case-insensitive + trim-tolerant match; most recently updated wins when displayNames collide
+      getByDisplayName: db.prepare("SELECT * FROM spaces WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?)) ORDER BY updated_at DESC LIMIT 1"),
       getByRepoPath: db.prepare("SELECT * FROM spaces WHERE repo_path = ?"),
       insert: db.prepare(`
         INSERT INTO spaces (
