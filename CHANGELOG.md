@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- Stopped overriding OpenCode's own model selection with a hardcoded `anthropic/claude-sonnet-4-20250514` string, which broke users authed with OpenAI / Google / other providers (`ProviderModelNotFoundError` → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via `opencode providers login` or env vars. ([#174](https://github.com/mattslight/oyster/issues/174))
+
 ## [0.3.7] - 2026-04-20
 
 ### Added
