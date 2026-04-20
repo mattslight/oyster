@@ -312,6 +312,7 @@
   </div>
 
   <nav class="version-pills" aria-label="Jump to version">
+      <a class="version-pill" href="#v-unreleased">Unreleased</a>
       <a class="version-pill" href="#v-0-3-7">0.3</a>
       <a class="version-pill" href="#v-0-2-4">0.2</a>
       <a class="version-pill" href="#v-0-1-21">0.1</a>
@@ -319,6 +320,11 @@
   </nav>
 
   <main class="entries">
+<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.5...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
+<h3>Fixed</h3>
+<ul>
+<li>Stopped overriding OpenCode&#39;s own model selection with a hardcoded <code>anthropic/claude-sonnet-4-20250514</code> string, which broke users authed with OpenAI / Google / other providers (<code>ProviderModelNotFoundError</code> → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via <code>opencode providers login</code> or env vars. (<a href="https://github.com/mattslight/oyster/issues/174" rel="noopener noreferrer">#174</a>)</li>
+</ul>
 <h2 id="v-0-3-7"><span class="release-version">0.3.7</span><span class="release-date"> — 2026-04-20</span></h2>
 <h3>Added</h3>
 <ul>
