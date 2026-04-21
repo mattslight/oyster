@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding — Dock + Agent-led Mock</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #7c6bff;
+      --accent-bright: #a597ff;
+      --green: #4ade80;
+      --text: #f0f0f5;
+      --text-dim: rgba(232,233,240,0.55);
+      --text-muted: rgba(232,233,240,0.25);
+      --surface: rgba(12,13,28,0.85);
+      --tile-empty: rgba(255,255,255,0.02);
+      --tile-empty-border: rgba(255,255,255,0.06);
+      --tile-bg: rgba(255,255,255,0.04);
+      --tile-border: rgba(124,107,255,0.2);
+      --border-soft: rgba(255,255,255,0.06);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      padding: 32px 24px 60px;
+    }
+    .glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,107,255,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 80% 90%, rgba(165,151,255,0.04) 0%, transparent 50%);
+    }
+
+    .page { max-width: 1000px; margin: 0 auto; position: relative; z-index: 1; }
+
+    .mock-header {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .mock-title {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .mock-sub {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    .state-picker {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      background: rgba(13,14,26,0.6);
+      border: 1px solid var(--border-soft);
+      border-radius: 9999px;
+      margin: 20px auto 30px;
+      width: fit-content;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .state-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      cursor: pointer;
+    }
+    .state-btn:hover { color: var(--text); }
+    .state-btn.active { background: rgba(124,107,255,0.25); color: #fff; }
+
+    /* Faux Oyster window frame */
+    .oyster {
+      background: rgba(20, 21, 40, 0.9);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      position: relative;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: rgba(13,14,26,0.7);
+      border-bottom: 1px solid var(--border-soft);
+      height: 44px;
+    }
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .dots {
+      display: flex;
+      gap: 6px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+    }
+    .dot:nth-child(1) { background: #ff5f56; }
+    .dot:nth-child(2) { background: #ffbd2e; }
+    .dot:nth-child(3) { background: #27c93f; }
+    .topbar-url {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 3px 10px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+      border: 1px solid var(--border-soft);
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* The Dock pill */
+    .dock {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      background: rgba(124,107,255,0.15);
+      border: 1px solid rgba(124,107,255,0.3);
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #fff;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s;
+    }
+    .dock:hover { background: rgba(124,107,255,0.25); }
+    .dock-pulse {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent-bright);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.4; }
+    }
+    .dock-check {
+      color: var(--green);
+      font-size: 10px;
+    }
+    .dock-minimised {
+      background: rgba(74,222,128,0.12);
+      border-color: rgba(74,222,128,0.25);
+      padding: 5px 10px;
+    }
+
+    /* Space pills below topbar */
+    .space-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 11px;
+      color: var(--text-dim);
+      min-height: 36px;
+    }
+    .space-pill {
+      padding: 4px 10px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 9999px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .space-pill.current {
+      background: rgba(124,107,255,0.2);
+      color: #fff;
+    }
+    .space-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .space-appearing {
+      animation: fadeSlide 0.5s ease;
+    }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateX(-8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Desktop surface */
+    .desktop {
+      min-height: 400px;
+      padding: 28px;
+      background: rgba(0,0,0,0.15);
+      position: relative;
+    }
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px;
+    }
+    .tile {
+      background: var(--tile-bg);
+      border: 1px solid var(--tile-border);
+      border-radius: 12px;
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+    .tile:hover { transform: translateY(-2px); }
+    .tile-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(124,107,255,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .tile-label {
+      font-size: 12px;
+      text-align: center;
+      color: var(--text-dim);
+    }
+    .tile.appearing {
+      animation: tileAppear 0.6s cubic-bezier(0.16,1,0.3,1);
+    }
+    @keyframes tileAppear {
+      from { opacity: 0; transform: scale(0.85) translateY(8px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .desktop-empty-hint {
+      text-align: center;
+      padding: 80px 40px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .desktop-empty-hint strong {
+      display: block;
+      color: var(--text-dim);
+      font-size: 15px;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    /* Chat bar */
+    .chatbar {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border-soft);
+      background: rgba(13,14,26,0.7);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .chat-input-fake {
+      flex: 1;
+      padding: 8px 14px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border-soft);
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Popover anchored to the dock */
+    .popover {
+      position: absolute;
+      top: 56px;
+      right: 16px;
+      width: 340px;
+      background: rgba(20, 21, 40, 0.98);
+      border: 1px solid var(--tile-border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      z-index: 10;
+      animation: popoverIn 0.2s ease;
+    }
+    @keyframes popoverIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .popover::before {
+      content: '';
+      position: absolute;
+      top: -6px;
+      right: 18px;
+      width: 12px;
+      height: 12px;
+      background: rgba(20, 21, 40, 0.98);
+      border-left: 1px solid var(--tile-border);
+      border-top: 1px solid var(--tile-border);
+      transform: rotate(45deg);
+    }
+
+    .popover-header {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .popover-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .popover-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .popover-progress {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+    }
+    .progress-dot {
+      flex: 1;
+      height: 3px;
+      border-radius: 9999px;
+      background: rgba(255,255,255,0.08);
+    }
+    .progress-dot.done { background: var(--green); }
+    .progress-dot.active { background: var(--accent); }
+
+    .tab-track {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px 4px;
+      border-radius: 9999px;
+      background: rgba(13,14,26,0.6);
+      border: 1px solid var(--border-soft);
+      margin-bottom: 12px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 11px;
+      border-radius: 9999px;
+      cursor: pointer;
+    }
+    .tab-btn.active { background: rgba(124,107,255,0.25); color: #fff; }
+
+    .code-box {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: rgba(255,255,255,0.8);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .code-box code {
+      overflow-x: auto;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .copy-btn {
+      background: rgba(124,107,255,0.2);
+      border: none;
+      color: var(--text);
+      font-size: 10px;
+      font-family: var(--font-mono);
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .popover-status {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .popover-status .dot-live {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: blink 1.2s infinite;
+    }
+    @keyframes blink { 50% { opacity: 0.3; } }
+
+    .trust-note {
+      background: rgba(74,222,128,0.06);
+      border: 1px solid rgba(74,222,128,0.15);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+      margin: 10px 0 12px;
+    }
+    .trust-note strong { color: var(--green); font-weight: 500; }
+
+    .popover-cta {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .btn-primary {
+      flex: 1;
+      background: rgba(124,107,255,0.2);
+      border: 1px solid rgba(124,107,255,0.3);
+      color: #fff;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn-ghost {
+      background: none;
+      border: 1px solid var(--border-soft);
+      color: var(--text-dim);
+      font-family: var(--font-body);
+      font-size: 12px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    /* Log of agent actions in popover */
+    .action-log {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      max-height: 120px;
+      overflow-y: auto;
+      line-height: 1.7;
+    }
+    .action-log .action-line { display: flex; gap: 6px; }
+    .action-log .action-tick { color: var(--green); }
+
+    /* Notes area */
+    .notes {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border-soft);
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+    .notes h3 {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+    .notes ul { padding-left: 20px; }
+    .notes li { margin-bottom: 6px; }
+
+    .state-caption {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 12px;
+      font-family: var(--font-mono);
+    }
+    .state-caption strong { color: var(--accent-bright); }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="page">
+
+    <div class="mock-header">
+      <div class="mock-title">Onboarding · dock + agent-led</div>
+      <div class="mock-sub">The agent drives setup. Oyster's surface populates as it works. The dock is the only onboarding UI.</div>
+    </div>
+
+    <div class="state-picker">
+      <button class="state-btn active" data-state="s1">1. Fresh install</button>
+      <button class="state-btn" data-state="s2">2. Dock opened</button>
+      <button class="state-btn" data-state="s3">3. Agent connected</button>
+      <button class="state-btn" data-state="s4">4. Agent working</button>
+      <button class="state-btn" data-state="s5">5. Memories step</button>
+      <button class="state-btn" data-state="s6">6. Done</button>
+    </div>
+
+    <!-- Stage container -->
+    <div id="stage">
+
+      <!-- STATE 1 — Fresh install: dock pulsing, empty desktop -->
+      <div class="oyster state" data-state="s1">
+        <div class="topbar">
+          <div class="topbar-left">
+            <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="topbar-url">localhost:4444</div>
+          </div>
+          <div class="topbar-right">
+            <div class="dock">
+              <div class="dock-pulse"></div>
+              Set up Oyster · 0/3
+            </div>
+          </div>
+        </div>
+        <div class="space-row">
+          <div class="space-pill current"><span class="space-dot"></span>home</div>
+        </div>
+        <div class="desktop">
+          <div class="desktop-empty-hint">
+            <strong>Welcome to Oyster</strong>
+            Click the <em>Set up</em> pill in the top-right to get started.
+          </div>
+        </div>
+        <div class="chatbar">
+          <div class="chat-input-fake">Chat, or type / for commands…</div>
+        </div>
+      </div>
+      <div class="state-caption state" data-state="s1">Pulsing dock, empty desktop, home space only. No big card. No banner.</div>
+
+      <!-- STATE 2 — Dock opened: popover shows step 1 -->
+      <div class="oyster state" data-state="s2" style="display:none">
+        <div class="topbar">
+          <div class="topbar-left">
+            <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="topbar-url">localhost:4444</div>
+          </div>
+          <div class="topbar-right">
+            <div class="dock">
+              <div class="dock-pulse"></div>
+              Set up Oyster · 0/3
+            </div>
+          </div>
+        </div>
+        <div class="space-row">
+          <div class="space-pill current"><span class="space-dot"></span>home</div>
+        </div>
+        <div class="desktop">
+          <div class="desktop-empty-hint">
+            <strong>Welcome to Oyster</strong>
+            Finish step 1 to start working.
+          </div>
+        </div>
+        <div class="chatbar">
+          <div class="chat-input-fake">Chat, or type / for commands…</div>
+        </div>
+
+        <div class="popover">
+          <div class="popover-header">Step 1 of 3</div>
+          <div class="popover-title">Connect Oyster to your agent</div>
+          <div class="popover-desc">Pick the agent you use. Run the command once — your agent will drive the rest of the setup for you.</div>
+          <div class="popover-progress">
+            <div class="progress-dot active"></div>
+            <div class="progress-dot"></div>
+            <div class="progress-dot"></div>
+          </div>
+          <div class="tab-track">
+            <button class="tab-btn active">Claude Code</button>
+            <button class="tab-btn">Cursor</button>
+            <button class="tab-btn">VS Code</button>
+            <button class="tab-btn">Windsurf</button>
+          </div>
+          <div class="code-box">
+            <code>claude mcp add --scope user --transport http oyster http://localhost:4444/mcp/</code>
+            <button class="copy-btn">copy</button>
+          </div>
+          <div class="popover-status">
+            <span class="dot-live"></span>
+            Waiting for your agent to connect…
+          </div>
+        </div>
+      </div>
+      <div class="state-caption state" data-state="s2" style="display:none">User clicked the dock. Popover anchors to it. Just <strong>one</strong> instruction.</div>
+
+      <!-- STATE 3 — Agent connected: popover shows prompt to run in agent -->
+      <div class="oyster state" data-state="s3" style="display:none">
+        <div class="topbar">
+          <div class="topbar-left">
+            <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="topbar-url">localhost:4444</div>
+          </div>
+          <div class="topbar-right">
+            <div class="dock">
+              <span class="dock-check">✓</span>
+              Set up Oyster · 1/3
+            </div>
+          </div>
+        </div>
+        <div class="space-row">
+          <div class="space-pill current"><span class="space-dot"></span>home</div>
+        </div>
+        <div class="desktop">
+          <div class="desktop-empty-hint">
+            <strong>Claude Code connected ✓</strong>
+            Ask your agent to set things up.
+          </div>
+        </div>
+        <div class="chatbar">
+          <div class="chat-input-fake">Chat, or type / for commands…</div>
+        </div>
+
+        <div class="popover">
+          <div class="popover-header">Step 2 of 3</div>
+          <div class="popover-title">Ask your agent to set things up</div>
+          <div class="popover-desc">Paste this into Claude Code. Your agent will create spaces for your projects and scan them into Oyster using MCP tools.</div>
+          <div class="popover-progress">
+            <div class="progress-dot done"></div>
+            <div class="progress-dot active"></div>
+            <div class="progress-dot"></div>
+          </div>
+          <div class="code-box">
+            <code>Set up Oyster with my projects at ~/Dev. Use the oyster MCP tools.</code>
+            <button class="copy-btn">copy</button>
+          </div>
+          <div class="popover-status">
+            <span class="dot-live"></span>
+            Watching for your agent's activity…
+          </div>
+        </div>
+      </div>
+      <div class="state-caption state" data-state="s3" style="display:none">Dock flips to <strong>1/3 ✓</strong>. Popover hands the next action off to the agent.</div>
+
+      <!-- STATE 4 — Agent working: desktop populates live, action log in popover -->
+      <div class="oyster state" data-state="s4" style="display:none">
+        <div class="topbar">
+          <div class="topbar-left">
+            <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="topbar-url">localhost:4444</div>
+          </div>
+          <div class="topbar-right">
+            <div class="dock">
+              <div class="dock-pulse"></div>
+              Set up Oyster · 1/3 <span style="color:var(--text-dim); font-weight:400;">(agent working)</span>
+            </div>
+          </div>
+        </div>
+        <div class="space-row">
+          <div class="space-pill current"><span class="space-dot"></span>home</div>
+          <div class="space-pill space-appearing"><span class="space-dot"></span>oyster</div>
+          <div class="space-pill space-appearing" style="animation-delay:0.2s"><span class="space-dot"></span>blunderfixer</div>
+          <div class="space-pill space-appearing" style="animation-delay:0.4s"><span class="space-dot"></span>tokinvest</div>
+        </div>
+        <div class="desktop">
+          <div class="tile-grid">
+            <div class="tile appearing"><div class="tile-icon">📁</div><div class="tile-label">oyster</div></div>
+            <div class="tile appearing" style="animation-delay:0.15s"><div class="tile-icon">📁</div><div class="tile-label">blunderfixer</div></div>
+            <div class="tile appearing" style="animation-delay:0.3s"><div class="tile-icon">📁</div><div class="tile-label">tokinvest</div></div>
+            <div class="tile appearing" style="animation-delay:0.45s"><div class="tile-icon">📄</div><div class="tile-label">README.md</div></div>
+            <div class="tile appearing" style="animation-delay:0.6s"><div class="tile-icon">📄</div><div class="tile-label">project-brief.md</div></div>
+            <div class="tile appearing" style="animation-delay:0.75s"><div class="tile-icon">🎨</div><div class="tile-label">diagrams</div></div>
+          </div>
+        </div>
+        <div class="chatbar">
+          <div class="chat-input-fake">Chat, or type / for commands…</div>
+        </div>
+
+        <div class="popover">
+          <div class="popover-header">Step 2 of 3 · Live</div>
+          <div class="popover-title">Your agent is working…</div>
+          <div class="popover-desc">Watch spaces and artifacts appear on your desktop as your agent calls Oyster's MCP tools.</div>
+          <div class="popover-progress">
+            <div class="progress-dot done"></div>
+            <div class="progress-dot active"></div>
+            <div class="progress-dot"></div>
+          </div>
+          <div class="action-log">
+            <div class="action-line"><span class="action-tick">✓</span><span>onboard_space oyster</span></div>
+            <div class="action-line"><span class="action-tick">✓</span><span>onboard_space blunderfixer</span></div>
+            <div class="action-line"><span class="action-tick">✓</span><span>onboard_space tokinvest</span></div>
+            <div class="action-line"><span class="action-tick">✓</span><span>scan_space oyster (14 artifacts)</span></div>
+            <div class="action-line"><span style="color:var(--accent);">…</span><span>scan_space blunderfixer</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="state-caption state" data-state="s4" style="display:none">Desktop populates <strong>live</strong> via SSE as the agent calls MCP tools. Popover shows the action log.</div>
+
+      <!-- STATE 5 — Memories step: trust-first copy -->
+      <div class="oyster state" data-state="s5" style="display:none">
+        <div class="topbar">
+          <div class="topbar-left">
+            <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="topbar-url">localhost:4444</div>
+          </div>
+          <div class="topbar-right">
+            <div class="dock">
+              <span class="dock-check">✓</span>
+              Set up Oyster · 2/3
+            </div>
+          </div>
+        </div>
+        <div class="space-row">
+          <div class="space-pill current"><span class="space-dot"></span>home</div>
+          <div class="space-pill"><span class="space-dot"></span>oyster</div>
+          <div class="space-pill"><span class="space-dot"></span>blunderfixer</div>
+          <div class="space-pill"><span class="space-dot"></span>tokinvest</div>
+        </div>
+        <div class="desktop">
+          <div class="tile-grid">
+            <div class="tile"><div class="tile-icon">📁</div><div class="tile-label">oyster</div></div>
+            <div class="tile"><div class="tile-icon">📁</div><div class="tile-label">blunderfixer</div></div>
+            <div class="tile"><div class="tile-icon">📁</div><div class="tile-label">tokinvest</div></div>
+            <div class="tile"><div class="tile-icon">📄</div><div class="tile-label">README.md</div></div>
+            <div class="tile"><div class="tile-icon">📄</div><div class="tile-label">project-brief.md</div></div>
+            <div class="tile"><div class="tile-icon">🎨</div><div class="tile-label">diagrams</div></div>
+          </div>
+        </div>
+        <div class="chatbar">
+          <div class="chat-input-fake">Chat, or type / for commands…</div>
+        </div>
+
+        <div class="popover">
+          <div class="popover-header">Step 3 of 3 · Optional</div>
+          <div class="popover-title">Bring in your memories</div>
+          <div class="popover-desc">Copy context from Claude.ai or ChatGPT. Oyster generates a prompt you paste there, then paste the result back here.</div>
+          <div class="popover-progress">
+            <div class="progress-dot done"></div>
+            <div class="progress-dot done"></div>
+            <div class="progress-dot active"></div>
+          </div>
+          <div class="trust-note">
+            <strong>Everything stays on your machine.</strong> Oyster never sends your paste anywhere. You'll review and approve each item before it's saved.
+          </div>
+          <div class="popover-cta">
+            <button class="btn-primary">Open import →</button>
+            <button class="btn-ghost">Skip</button>
+          </div>
+        </div>
+      </div>
+      <div class="state-caption state" data-state="s5" style="display:none">Only step the user completes back in Oyster — because the store is local. Trust-first copy, clear opt-out.</div>
+
+      <!-- STATE 6 — Done: dock collapsed -->
+      <div class="oyster state" data-state="s6" style="display:none">
+        <div class="topbar">
+          <div class="topbar-left">
+            <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="topbar-url">localhost:4444</div>
+          </div>
+          <div class="topbar-right">
+            <div class="dock dock-minimised">
+              <span class="dock-check">✓</span>
+              Set up
+            </div>
+          </div>
+        </div>
+        <div class="space-row">
+          <div class="space-pill current"><span class="space-dot"></span>home</div>
+          <div class="space-pill"><span class="space-dot"></span>oyster</div>
+          <div class="space-pill"><span class="space-dot"></span>blunderfixer</div>
+          <div class="space-pill"><span class="space-dot"></span>tokinvest</div>
+        </div>
+        <div class="desktop">
+          <div class="tile-grid">
+            <div class="tile"><div class="tile-icon">📁</div><div class="tile-label">oyster</div></div>
+            <div class="tile"><div class="tile-icon">📁</div><div class="tile-label">blunderfixer</div></div>
+            <div class="tile"><div class="tile-icon">📁</div><div class="tile-label">tokinvest</div></div>
+            <div class="tile"><div class="tile-icon">📄</div><div class="tile-label">README.md</div></div>
+            <div class="tile"><div class="tile-icon">📄</div><div class="tile-label">project-brief.md</div></div>
+            <div class="tile"><div class="tile-icon">🎨</div><div class="tile-label">diagrams</div></div>
+            <div class="tile"><div class="tile-icon">🧠</div><div class="tile-label">memories</div></div>
+          </div>
+        </div>
+        <div class="chatbar">
+          <div class="chat-input-fake">Chat, or type / for commands…</div>
+        </div>
+      </div>
+      <div class="state-caption state" data-state="s6" style="display:none">Dock collapses to a tiny <strong>✓ Set up</strong> pill. Click to re-expand for docs or re-run any step. Desktop is the user's workspace now — no onboarding UI in the way.</div>
+
+    </div>
+
+    <div class="notes">
+      <h3>Design notes · dock + agent-led</h3>
+      <ul>
+        <li><strong>The only onboarding UI is the dock pill.</strong> No big card, no banner, no modal. Popover appears on click, anchored to the dock.</li>
+        <li><strong>Step 1 is the only manual step for the user.</strong> Everything after is the agent doing work — Oyster's surface is the demo.</li>
+        <li><strong>Step 2 is hands-off.</strong> User pastes a prompt into their connected agent. Agent calls Oyster's MCP tools. Desktop populates live via SSE. Popover shows the action log for transparency.</li>
+        <li><strong>Step 3 is back in Oyster</strong> because the memory store is local and the trust decision belongs to the user (not the agent).</li>
+        <li><strong>Dock lives forever.</strong> After setup, it shrinks to a tiny "✓ Set up" pill. Click anytime to re-expand. Can host future progress indicators (sync status, background tasks) without growing new UI.</li>
+        <li><strong>Why this is most Oyster:</strong> it doesn't teach "here are 3 setup tasks" — it demonstrates "your agent drives Oyster" through the experience itself. Step 1 is the price of entry; step 2 is the pitch being proven.</li>
+        <li><strong>Failure modes:</strong> if step 1's auto-detection breaks, popover has a manual "I've connected it" fallback. If step 2's agent never does anything, dock stays at 1/3 and the popover keeps the prompt visible indefinitely.</li>
+        <li><strong>Trade-off vs accordion:</strong> dock is discoverable (pulse + placement) but less in-your-face. Strangers on Reddit might not click it immediately. Balance is: lower friction for users who know what they want, slightly higher miss-rate for users who don't notice the dock.</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll('.state-btn');
+    const allStates = document.querySelectorAll('[data-state]');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const target = btn.dataset.state;
+        allStates.forEach(s => {
+          if (s.classList.contains('state-btn')) return;
+          s.style.display = s.dataset.state === target ? '' : 'none';
+        });
+      });
+    });
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const track = btn.parentElement;
+        track.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
