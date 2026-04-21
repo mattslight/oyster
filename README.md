@@ -53,7 +53,7 @@ Oyster is an MCP server. Any MCP-compatible tool can connect and control your wo
 **Claude Code:**
 
 ```bash
-claude mcp add --transport http oyster http://localhost:4444/mcp/
+claude mcp add --scope user --transport http oyster http://localhost:4444/mcp/
 ```
 
 **Cursor / VS Code / other MCP clients** — add to your MCP config:
