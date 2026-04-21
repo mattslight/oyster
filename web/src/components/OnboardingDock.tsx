@@ -307,11 +307,8 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
 
   return (
     <div className="onboarding-step">
-      <div className="onboarding-step-header">Step 1 of 3</div>
       <div className="onboarding-step-title">Connect Oyster to your agent</div>
-      <div className="onboarding-step-desc">
-        Pick the agent you use. Run the command once — your agent will drive the rest of the setup for you.
-      </div>
+      <div className="onboarding-step-desc">Run it once — your agent takes it from there.</div>
 
       <div className="onboarding-client-tabs">
         {CLIENT_TABS.map((t) => (
@@ -325,7 +322,6 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
         ))}
       </div>
 
-      <div className="onboarding-code-hint">{config.hint}</div>
       <div className="onboarding-code-box">
         <pre><code>{command}</code></pre>
         <button
@@ -338,7 +334,7 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
 
       <div className="onboarding-waiting">
         <span className="onboarding-waiting-dot" />
-        Waiting for your agent to connect…
+        Waiting for your agent…
       </div>
 
       <div className="onboarding-step-actions">
@@ -366,11 +362,8 @@ function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; too
 
   return (
     <div className="onboarding-step">
-      <div className="onboarding-step-header">Step 2 of 3</div>
       <div className="onboarding-step-title">Ask your agent to set things up</div>
-      <div className="onboarding-step-desc">
-        Paste this into your connected agent. It will create spaces for your projects and scan them into Oyster using MCP tools.
-      </div>
+      <div className="onboarding-step-desc">Paste this in your agent. Watch the desktop fill.</div>
 
       <div className="onboarding-code-box">
         <pre><code>{AGENT_PROMPT}</code></pre>
@@ -425,11 +418,8 @@ function Step3Memories({
 
   return (
     <div className="onboarding-step">
-      <div className="onboarding-step-header">Step 3 of 3 · Optional</div>
-      <div className="onboarding-step-title">Bring in your memories</div>
-      <div className="onboarding-step-desc">
-        Copy context from Claude.ai or ChatGPT. Oyster generates a prompt you paste there, then paste the result back here.
-      </div>
+      <div className="onboarding-step-title">Bring in your memories <span className="onboarding-step-optional">· optional</span></div>
+      <div className="onboarding-step-desc">Pull context from Claude.ai or ChatGPT.</div>
       <div className="onboarding-trust-note">
         <strong>Everything stays on your machine.</strong> Oyster never sends your paste anywhere.
       </div>
