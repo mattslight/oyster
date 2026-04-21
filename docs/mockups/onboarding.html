@@ -296,6 +296,57 @@
       font-size: 11px;
     }
 
+    /* Sub-steps within step 2 */
+    .substep { margin-bottom: 4px; }
+    .substep-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .substep-optional {
+      color: rgba(232,233,240,0.4);
+      font-style: italic;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .substep-title {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .substep-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .drop-zone-compact { padding: 18px 14px; }
+    .drop-zone-compact .drop-icon { font-size: 22px; margin-bottom: 4px; }
+    .drop-zone-compact .drop-title { font-size: 13px; }
+    .drop-zone-compact .drop-sub { font-size: 11px; }
+
+    .substep-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 22px 0 18px;
+    }
+    .substep-divider-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border-soft);
+    }
+    .substep-divider-word {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+    }
+    .substep-primary .substep-title { color: var(--text); }
+
     /* Step 3 body */
     .trust-note {
       background: rgba(74,222,128,0.06);
@@ -414,14 +465,14 @@
     <!-- STATE 1: Fresh install — step 1 active -->
     <div class="onboarding state" data-state="s1">
       <div class="onboarding-header">
-        <div class="onboarding-title">Oyster is an MCP server.</div>
-        <div class="onboarding-sub">Drive it from the AI you already use.</div>
+        <div class="onboarding-title">Connect Oyster to the AI you use.</div>
+        <div class="onboarding-sub">A 3-step setup. You control each one.</div>
       </div>
       <div class="steps">
         <div class="step active">
           <div class="step-row">
             <div class="step-num">1</div>
-            <div class="step-title">Connect your agent</div>
+            <div class="step-title">Connect Oyster to your agent</div>
             <div class="step-caret">▼</div>
           </div>
           <div class="step-body">
@@ -459,14 +510,14 @@
     <!-- STATE 2: Step 1 done, step 2 active -->
     <div class="onboarding state" data-state="s2" style="display:none">
       <div class="onboarding-header">
-        <div class="onboarding-title">Oyster is an MCP server.</div>
-        <div class="onboarding-sub">Drive it from the AI you already use.</div>
+        <div class="onboarding-title">Connect Oyster to the AI you use.</div>
+        <div class="onboarding-sub">A 3-step setup. You control each one.</div>
       </div>
       <div class="steps">
         <div class="step done">
           <div class="step-row">
             <div class="step-num">✓</div>
-            <div class="step-title">Connect your agent<span class="tag">· Claude Code</span></div>
+            <div class="step-title">Connect Oyster to your agent<span class="tag">· Claude Code</span></div>
           </div>
         </div>
         <div class="step active">
@@ -476,17 +527,35 @@
             <div class="step-caret">▼</div>
           </div>
           <div class="step-body">
-            <div class="drop-zone">
-              <div class="drop-icon">📁</div>
-              <div class="drop-title">Drop your dev folder here</div>
-              <div class="drop-sub">Oyster scans one level deep and creates a space per repo</div>
+            <div class="substep">
+              <div class="substep-label">2a <span class="substep-optional">· optional</span></div>
+              <div class="substep-title">Give Oyster a head start</div>
+              <div class="substep-desc">Drop a folder and Oyster scans it for repos, creating a space per project.</div>
+              <div class="drop-zone drop-zone-compact">
+                <div class="drop-icon">📁</div>
+                <div class="drop-title">Drop your dev folder</div>
+                <div class="drop-sub">or paste a path below</div>
+              </div>
+              <div class="path-row">
+                <input class="path-input" value="~/Dev" />
+                <button class="scan-btn">Scan</button>
+              </div>
             </div>
-            <div class="path-row">
-              <input class="path-input" value="~/Dev" />
-              <button class="scan-btn">Scan</button>
+
+            <div class="substep-divider">
+              <span class="substep-divider-line"></span>
+              <span class="substep-divider-word">AND / OR</span>
+              <span class="substep-divider-line"></span>
             </div>
-            <div class="agent-fallback">
-              Or ask your agent: <code>onboard my projects at ~/Dev</code>
+
+            <div class="substep substep-primary">
+              <div class="substep-label">2b</div>
+              <div class="substep-title">Ask your agent to set things up</div>
+              <div class="substep-desc">Paste this into your connected agent — it uses Oyster's MCP tools to build spaces, import artifacts, and organise them.</div>
+              <div class="code-box">
+                <code>Set up Oyster with my projects at ~/Dev. Use the oyster MCP tools.</code>
+                <button class="copy-btn">copy</button>
+              </div>
             </div>
           </div>
         </div>
@@ -512,7 +581,7 @@
         <div class="step done">
           <div class="step-row">
             <div class="step-num">✓</div>
-            <div class="step-title">Connect your agent<span class="tag">· Claude Code</span></div>
+            <div class="step-title">Connect Oyster to your agent<span class="tag">· Claude Code</span></div>
           </div>
         </div>
         <div class="step done">
@@ -559,7 +628,7 @@
         <div class="step done">
           <div class="step-row">
             <div class="step-num">✓</div>
-            <div class="step-title">Connect your agent<span class="tag">· Claude Code</span></div>
+            <div class="step-title">Connect Oyster to your agent<span class="tag">· Claude Code</span></div>
           </div>
         </div>
         <div class="step done">
@@ -594,13 +663,20 @@
     <div class="notes">
       <h3>Design notes</h3>
       <ul>
-        <li><strong>Terminology discipline:</strong> step 1 says <em>"Connect your agent"</em>, never <em>"Connect your AI"</em>. The AI brain (OpenCode/provider) is step 0, handled at CLI.</li>
-        <li><strong>Step 2 hierarchy:</strong> folder drop is primary, agent-prompt is a secondary link under the zone. Never shown at equal weight.</li>
+        <li><strong>Header copy</strong> is user-centric, not protocol-centric. No "MCP server" in the headline — Merlin doesn't need to know the plumbing.</li>
+        <li><strong>Direction of action</strong> is explicit: <em>"Connect Oyster to your agent"</em>, not <em>"Connect your agent"</em>. Makes it clear which thing is being plugged into what.</li>
+        <li><strong>Step 2 has two sub-steps:</strong>
+          <ul>
+            <li><em>2a (optional) — Give Oyster a head start.</em> Drop a folder, instant scan, no agent required. For users who want to see something work immediately.</li>
+            <li><em>2b — Ask your agent to set things up.</em> The canonical flow. Copyable prompt that invokes Oyster's MCP tools via the agent connected in step 1. Reinforces the "agent-driven workspace" pitch.</li>
+          </ul>
+          AND / OR framing — not either-or. User can do both, or pick.</li>
         <li><strong>Step 3 framing:</strong> optional in the step title, trust-first copy above the CTA, green-tinted note reinforces privacy.</li>
         <li><strong>Completion labels</strong> (e.g. <em>"· 3 spaces"</em>, <em>"· Claude Code"</em>) give the user feedback their action registered.</li>
-        <li><strong>Header copy</strong> changes with progress: value prop → optional-nudge → set-up confirmation.</li>
-        <li><strong>Dismissal:</strong> checklist collapses to a tiny "show onboarding" row. Users who power past the guide get their surface back immediately.</li>
-        <li><strong>Completion detection</strong> (story A7) is polish — a manual "I've connected it" button is the fallback if SSE/poll detection is flaky.</li>
+        <li><strong>Surface integration:</strong> sits as a centered card on the home space, above the builtin tiles (connect-your-ai, quick-start, etc.). Builtins stay below as reference material. Same mount point as today's <code>OnboardingBanner</code>.</li>
+        <li><strong>Dismissal:</strong> checklist collapses to a tiny "Show setup" row, desktop returns to normal.</li>
+        <li><strong>Completion detection</strong> (story A7) is polish — a manual confirm button is the fallback if SSE/poll detection is flaky.</li>
+        <li><strong>Alternative patterns evaluated:</strong> horizontal stepper (more compact, forces linearity), swipe-card pagination (hides arc), docked side panel (steals real estate), chat-style wizard (too long). Accordion wins on "shows the arc + dismissable + fits current mount".</li>
       </ul>
     </div>
 
