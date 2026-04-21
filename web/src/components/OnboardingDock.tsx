@@ -178,6 +178,9 @@ export function OnboardingDock({ onOpenImport }: OnboardingDockProps = {}) {
     const hasOther = toolCalls.some((c) => c.tool !== STEP2_REQUIRED_TOOL && !c.isError);
     if (hasOnboard && hasOther) {
       setState((s) => ({ ...s, step2Complete: true }));
+      // If the user is staring at step 2 when it auto-completes, slide
+      // them to step 3 so the popover reflects the new state.
+      setViewingStep((v) => (v === 2 ? 3 : v));
     }
   }, [toolCalls, state.step2Complete]);
 
