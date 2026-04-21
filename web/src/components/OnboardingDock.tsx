@@ -349,7 +349,11 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
   );
 }
 
-const AGENT_PROMPT = "Set up Oyster with my projects at ~/Dev. Use the oyster MCP — call onboard_container to group related repos into shared spaces.";
+// One short prompt. The agent reads get_context from the oyster MCP to
+// learn the rest (how to discover the dev folder, what tools to call,
+// etc.). Keeping this minimal pushes the intelligence where it belongs:
+// into the server's self-description, not into the user's head.
+const AGENT_PROMPT = "Set up Oyster for me. Call the oyster MCP's get_context tool first — it explains the rest.";
 
 function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; toolCalls: ToolCall[] }) {
   const [copied, setCopied] = useState(false);

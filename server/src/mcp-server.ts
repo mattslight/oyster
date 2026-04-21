@@ -139,6 +139,29 @@ Oyster is a personal AI-native desktop OS that runs in your browser.
 It is NOT a chat interface or a file browser — it is a spatial desktop surface where
 artifacts (interactive documents, apps, diagrams, etc.) live as launchable icons.
 
+## "Set up Oyster for me" — first-run playbook
+
+If the user has asked you to set up Oyster (or connect them, or get them started)
+and has NOT given you an explicit dev folder path, follow this exact flow:
+
+1. **Find their dev folder** — do not ask them yet. Use whatever local tooling
+   you have (file listing, shell, etc.) to check the obvious candidates in order:
+   \`~/Dev\`, \`~/dev\`, \`~/Development\`, \`~/code\`, \`~/projects\`, \`~/workspace\`,
+   \`~/repos\`, \`~/src\`, \`~/work\`. On Windows also try \`C:\\Development\`, \`C:\\Dev\`,
+   \`C:\\code\`, \`%USERPROFILE%\\Development\`, \`E:\\Development\`.
+   Pick the first one that exists AND contains ≥2 subdirectories with git/package
+   markers. If none match, ask the user: *"Where's your dev folder?"* — once, concisely.
+2. **Call \`onboard_container\` with that path.** This one call does the whole job:
+   discovers candidate projects, LLM-groups them (shared prefix, monorepo hints, etc.),
+   creates one space per group, attaches folders, and scans each for artifacts.
+   DO NOT loop \`onboard_space\` per folder — that produces naive one-space-per-repo
+   output (e.g. 5 separate oyster-* spaces) and is the wrong tool for a dev container.
+3. **Confirm with the user** — list the spaces created and roughly how many artifacts
+   each picked up. Offer to fix up any grouping they disagree with.
+
+If the user gave you an explicit path (\`set up Oyster with my projects at ~/foo\`),
+skip step 1 and go straight to \`onboard_container\`.
+
 ## Core concepts
 
 **Artifacts** — the items on the desktop. Each artifact has:
