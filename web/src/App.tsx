@@ -557,7 +557,12 @@ export default function App() {
         />
       )}
 
-      <OnboardingDock />
+      <OnboardingDock
+        onOpenImport={() => {
+          const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
+          if (importArtifact) handleArtifactClick(importArtifact);
+        }}
+      />
     </div>
   );
 }

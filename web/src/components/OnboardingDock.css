@@ -280,6 +280,47 @@
   50% { opacity: 0.3; }
 }
 
+/* Step 2 — action log */
+
+.onboarding-action-log {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: rgba(232, 233, 240, 0.55);
+  max-height: 140px;
+  overflow-y: auto;
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.onboarding-action-log--empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(232, 233, 240, 0.35);
+}
+
+.onboarding-action-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.onboarding-action-tick {
+  color: #4ade80;
+  font-size: 9px;
+  flex-shrink: 0;
+}
+
+.onboarding-action-pending {
+  color: #7c6bff;
+  font-size: 9px;
+  flex-shrink: 0;
+}
+
 .onboarding-trust-note {
   background: rgba(74, 222, 128, 0.06);
   border: 1px solid rgba(74, 222, 128, 0.15);

@@ -99,7 +99,11 @@ function allDone(state: OnboardingState): boolean {
   return state.step1Complete && state.step2Complete && state.step3Complete;
 }
 
-export function OnboardingDock() {
+interface OnboardingDockProps {
+  onOpenImport?: () => void;
+}
+
+export function OnboardingDock({ onOpenImport }: OnboardingDockProps = {}) {
   const [state, setState] = useState<OnboardingState>(loadState);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [viewingStep, setViewingStep] = useState<StepIndex>(() => activeStep(loadState()));
@@ -185,8 +189,14 @@ export function OnboardingDock() {
           </div>
 
           {viewingStep === 1 && <Step1Connect onComplete={markStep1} />}
-          {viewingStep === 2 && <Step2Placeholder onComplete={markStep2} />}
-          {viewingStep === 3 && <Step3Placeholder onComplete={markStep3} onSkip={skipStep3} />}
+          {viewingStep === 2 && <Step2AgentWork onComplete={markStep2} />}
+          {viewingStep === 3 && (
+            <Step3Memories
+              onComplete={markStep3}
+              onSkip={skipStep3}
+              onOpenImport={onOpenImport}
+            />
+          )}
 
           {done && (
             <div className="onboarding-done-actions">
@@ -271,7 +281,18 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
   );
 }
 
-function Step2Placeholder({ onComplete }: { onComplete: () => void }) {
+const AGENT_PROMPT = "Set up Oyster with my projects at ~/Dev. Use the oyster MCP tools.";
+
+function Step2AgentWork({ onComplete }: { onComplete: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(AGENT_PROMPT).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }, []);
+
   return (
     <div className="onboarding-step">
       <div className="onboarding-step-header">Step 2 of 3</div>
@@ -279,15 +300,45 @@ function Step2Placeholder({ onComplete }: { onComplete: () => void }) {
       <div className="onboarding-step-desc">
         Paste this into your connected agent. It will create spaces for your projects and scan them into Oyster using MCP tools.
       </div>
-      <div className="onboarding-placeholder">[Step 2 content lands in story A3 — copyable prompt, live MCP action log]</div>
+
+      <div className="onboarding-code-box">
+        <pre><code>{AGENT_PROMPT}</code></pre>
+        <button
+          className={`onboarding-code-copy${copied ? " copied" : ""}`}
+          onClick={handleCopy}
+        >
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+
+      <div className="onboarding-action-log onboarding-action-log--empty">
+        <span className="onboarding-waiting-dot" />
+        Watching for your agent's activity…
+      </div>
+
       <div className="onboarding-step-actions">
-        <button className="onboarding-btn-primary" onClick={onComplete}>Done, my agent finished →</button>
+        <button className="onboarding-btn-ghost" onClick={onComplete}>
+          I'm done with this step
+        </button>
       </div>
     </div>
   );
 }
 
-function Step3Placeholder({ onComplete, onSkip }: { onComplete: () => void; onSkip: () => void }) {
+function Step3Memories({
+  onComplete,
+  onSkip,
+  onOpenImport,
+}: {
+  onComplete: () => void;
+  onSkip: () => void;
+  onOpenImport?: () => void;
+}) {
+  const handleOpen = useCallback(() => {
+    onOpenImport?.();
+    onComplete();
+  }, [onOpenImport, onComplete]);
+
   return (
     <div className="onboarding-step">
       <div className="onboarding-step-header">Step 3 of 3 · Optional</div>
@@ -298,9 +349,15 @@ function Step3Placeholder({ onComplete, onSkip }: { onComplete: () => void; onSk
       <div className="onboarding-trust-note">
         <strong>Everything stays on your machine.</strong> Oyster never sends your paste anywhere.
       </div>
-      <div className="onboarding-placeholder">[Step 3 content lands in story A4 — link to import-from-ai builtin flow]</div>
       <div className="onboarding-step-actions">
-        <button className="onboarding-btn-primary" onClick={onComplete}>Open import →</button>
+        <button
+          className="onboarding-btn-primary"
+          onClick={handleOpen}
+          disabled={!onOpenImport}
+          title={!onOpenImport ? "Import flow not available" : undefined}
+        >
+          Open import →
+        </button>
         <button className="onboarding-btn-ghost" onClick={onSkip}>Skip</button>
       </div>
     </div>
