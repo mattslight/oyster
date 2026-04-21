@@ -141,23 +141,42 @@ artifacts (interactive documents, apps, diagrams, etc.) live as launchable icons
 
 ## "Set up Oyster for me" — first-run playbook
 
-If the user has asked you to set up Oyster (or connect them, or get them started)
-and has NOT given you an explicit dev folder path, follow this exact flow:
+Oyster is for anyone whose work is organised as projects — developers, designers,
+writers, PMs, researchers, hackers. Don't assume the user is a dev.
 
-1. **Find their dev folder** — do not ask them yet. Use whatever local tooling
-   you have (file listing, shell, etc.) to check the obvious candidates in order:
-   \`~/Dev\`, \`~/dev\`, \`~/Development\`, \`~/code\`, \`~/projects\`, \`~/workspace\`,
-   \`~/repos\`, \`~/src\`, \`~/work\`. On Windows also try \`C:\\Development\`, \`C:\\Dev\`,
-   \`C:\\code\`, \`%USERPROFILE%\\Development\`, \`E:\\Development\`.
-   Pick the first one that exists AND contains ≥2 subdirectories with git/package
-   markers. If none match, ask the user: *"Where's your dev folder?"* — once, concisely.
+If the user has asked you to set up Oyster (or connect them, or get them started)
+and has NOT given you an explicit projects folder path, follow this flow:
+
+1. **Find their projects folder** — do not ask them yet. Probe the obvious
+   candidates with local tooling (file listing / shell), in roughly this order,
+   and pick the first one that exists and looks populated:
+
+   Dev-flavoured: \`~/Dev\`, \`~/dev\`, \`~/Development\`, \`~/code\`, \`~/repos\`, \`~/src\`.
+   Generic: \`~/Projects\`, \`~/projects\`, \`~/Work\`, \`~/work\`, \`~/workspace\`.
+   Document-flavoured (designers/PMs/writers): \`~/Documents/Projects\`,
+   \`~/Documents/Work\`, \`~/Documents\`.
+   Creator-flavoured: \`~/Design\`, \`~/Figma\`, \`~/Writing\`, \`~/Notes\`.
+   Windows: same substituted under \`%USERPROFILE%\\\` and on other drives
+   (\`C:\\Development\`, \`E:\\Development\`, \`D:\\Work\`, etc.).
+
+   If none of those match, ask the user once, concisely:
+   *"Where do you keep your projects?"* — don't say "dev folder".
+
 2. **Call \`onboard_container\` with that path.** This one call does the whole job:
    discovers candidate projects, LLM-groups them (shared prefix, monorepo hints, etc.),
    creates one space per group, attaches folders, and scans each for artifacts.
    DO NOT loop \`onboard_space\` per folder — that produces naive one-space-per-repo
-   output (e.g. 5 separate oyster-* spaces) and is the wrong tool for a dev container.
+   output and is the wrong tool for a multi-project container.
+
 3. **Confirm with the user** — list the spaces created and roughly how many artifacts
    each picked up. Offer to fix up any grouping they disagree with.
+
+**Honest limitation:** the container discovery currently recognises subfolders with
+code-project markers (\`.git\`, \`package.json\`, \`go.mod\`, \`Cargo.toml\`, etc.). A Figma
+dump or a writing folder won't be auto-detected as containing "projects" today. If
+the user's work is non-code, you may need to call \`onboard_space\` per project folder
+(which doesn't need markers), or ask them to point you at individual project folders
+rather than a container. This will improve.
 
 If the user gave you an explicit path (\`set up Oyster with my projects at ~/foo\`),
 skip step 1 and go straight to \`onboard_container\`.
