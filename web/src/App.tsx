@@ -6,6 +6,7 @@ import { AddSpaceWizard } from "./components/AddSpaceWizard";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
+import { OnboardingDock } from "./components/OnboardingDock";
 import { windowsReducer } from "./stores/windows";
 import {
   type Artifact,
@@ -405,7 +406,6 @@ export default function App() {
             handleArtifactClick(importArtifact);
           }
         }}
-        isFirstRun={isFirstRun}
         dragOver={shellDragOver}
         revealId={revealId}
       />
@@ -556,6 +556,8 @@ export default function App() {
           onClose={() => setSpotlightOpen(false)}
         />
       )}
+
+      <OnboardingDock />
     </div>
   );
 }

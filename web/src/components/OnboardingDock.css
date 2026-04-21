@@ -1,0 +1,224 @@
+/* Onboarding dock — persistent pill + popover anchored top-right of viewport */
+
+.onboarding-dock {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: rgba(124, 107, 255, 0.15);
+  border: 1px solid rgba(124, 107, 255, 0.3);
+  border-radius: 9999px;
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.onboarding-dock:hover {
+  background: rgba(124, 107, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.onboarding-dock--active {
+  background: rgba(124, 107, 255, 0.3);
+}
+
+.onboarding-dock--done {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.25);
+  padding: 5px 10px;
+}
+
+.onboarding-dock--done:hover {
+  background: rgba(74, 222, 128, 0.2);
+}
+
+.onboarding-dock-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a597ff;
+  animation: onboarding-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes onboarding-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.4); opacity: 0.4; }
+}
+
+.onboarding-dock-check {
+  color: #4ade80;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.onboarding-dock-label {
+  white-space: nowrap;
+}
+
+/* Popover */
+
+.onboarding-popover {
+  position: fixed;
+  top: 46px;
+  right: 16px;
+  width: 340px;
+  z-index: 899;
+  background: rgba(20, 21, 40, 0.98);
+  border: 1px solid rgba(124, 107, 255, 0.2);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  animation: onboarding-popover-in 0.18s ease;
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  color: #f0f0f5;
+}
+
+@keyframes onboarding-popover-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.onboarding-popover-arrow {
+  position: absolute;
+  top: -6px;
+  right: 18px;
+  width: 12px;
+  height: 12px;
+  background: rgba(20, 21, 40, 0.98);
+  border-left: 1px solid rgba(124, 107, 255, 0.2);
+  border-top: 1px solid rgba(124, 107, 255, 0.2);
+  transform: rotate(45deg);
+}
+
+.onboarding-progress {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.progress-dot {
+  flex: 1;
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.2s;
+}
+
+.progress-dot.active { background: #7c6bff; }
+.progress-dot.done   { background: #4ade80; }
+
+/* Step content */
+
+.onboarding-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.onboarding-step-header {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: #7c6bff;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.onboarding-step-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+
+.onboarding-step-desc {
+  font-size: 12px;
+  color: rgba(232, 233, 240, 0.55);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.onboarding-placeholder {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: rgba(232, 233, 240, 0.35);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.onboarding-trust-note {
+  background: rgba(74, 222, 128, 0.06);
+  border: 1px solid rgba(74, 222, 128, 0.15);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.onboarding-trust-note strong {
+  color: #4ade80;
+  font-weight: 500;
+}
+
+.onboarding-step-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.onboarding-btn-primary {
+  flex: 1;
+  background: rgba(124, 107, 255, 0.2);
+  border: 1px solid rgba(124, 107, 255, 0.3);
+  color: #fff;
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.onboarding-btn-primary:hover {
+  background: rgba(124, 107, 255, 0.3);
+}
+
+.onboarding-btn-ghost {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(232, 233, 240, 0.55);
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.onboarding-btn-ghost:hover {
+  color: #f0f0f5;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.onboarding-done-actions {
+  margin-top: 12px;
+  text-align: right;
+}

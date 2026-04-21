@@ -10,7 +10,6 @@ import { spaceColor } from "../utils/spaceColor";
 import { useDesktopPreferences } from "../hooks/useDesktopPreferences";
 import { useDesktopSections, kindLabel } from "../hooks/useDesktopSections";
 import { useDragOrder } from "../hooks/useDragOrder";
-import { OnboardingBanner } from "./OnboardingBanner";
 
 interface Props {
   space: string;
@@ -29,24 +28,14 @@ interface Props {
   onArtifactUpdate?: (id: string, fields: Partial<Artifact>) => void;
   /** Remove a single artifact from the parent's state — used for optimistic archive / uninstall / restore so the tile disappears instantly. */
   onArtifactRemove?: (id: string) => void;
-  isFirstRun?: boolean;
   dragOver?: boolean;
   revealId?: string | null;
   /** When true, render the archived-items view: context menu shows Restore. */
   isArchivedView?: boolean;
 }
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, dragOver, revealId, isFirstRun, isArchivedView }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, dragOver, revealId, isArchivedView }: Props) {
   const isAllSpace = space === "__all__";
-
-  // ── Onboarding banner ──
-  const [bannerDismissed, setBannerDismissed] = useState(
-    () => localStorage.getItem("oyster-onboarding-dismissed") === "true"
-  );
-  const handleDismiss = () => {
-    localStorage.setItem("oyster-onboarding-dismissed", "true");
-    setBannerDismissed(true);
-  };
 
   // ── Folder context menu ──
   const [folderCtx, setFolderCtx] = useState<{ name: string; sourceSpaceId?: string; x: number; y: number } | null>(null);
@@ -283,16 +272,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       </div>
 
       <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
-        {isFirstRun && !bannerDismissed && (
-          <OnboardingBanner
-            onImportFromAI={() => {
-              const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
-              if (importArtifact) onArtifactClick(importArtifact);
-            }}
-            onDismiss={handleDismiss}
-          />
-        )}
-        <div className="filter-bar">
+<div className="filter-bar">
           {activeKind && (
             <div className="filter-notice">
               <div className="filter-notice-kind-wrap">
