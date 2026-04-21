@@ -22,6 +22,117 @@ export interface SuggestedSpace {
 }
 
 /**
+ * Richer output shape used by the agent-facing onboarding flow. Adds:
+ *  - `reason`: why these folders went together (shown to the user).
+ *  - `ambiguous`: true when the grouping isn't confident — the user-facing
+ *    agent should ask the user before applying.
+ */
+export interface RichSuggestedSpace extends SuggestedSpace {
+  reason: string;
+  ambiguous: boolean;
+}
+
+export interface FolderInfo {
+  name: string;
+  path: string;
+  markers: string[];         // code-project markers found (.git, package.json, etc.)
+  framework?: string;
+  subProjects?: string[];    // populated for monorepos
+  fileCount: number;         // capped at a sentinel for perf
+  sampleExtensions: string[]; // top few file extensions, for non-code classification
+  isEmpty: boolean;
+}
+
+const HIDDEN_OR_SYSTEM = new Set([
+  "node_modules", "dist", "build", ".next", "out", "coverage",
+  ".cache", ".venv", "venv", "env", "target", "__pycache__",
+]);
+
+/**
+ * List every non-hidden, non-noise subfolder of `containerPath` with
+ * enough metadata for an LLM to classify it (code project, design
+ * dump, writing folder, noise, etc.).
+ */
+export function discoverAllSubfolders(containerPath: string): FolderInfo[] {
+  const out: FolderInfo[] = [];
+  let entries: string[];
+  try { entries = readdirSync(containerPath); } catch { return out; }
+
+  for (const entry of entries) {
+    if (entry.startsWith(".")) continue;
+    if (HIDDEN_OR_SYSTEM.has(entry)) continue;
+    const sub = join(containerPath, entry);
+    try {
+      if (!statSync(sub).isDirectory()) continue;
+    } catch { continue; }
+
+    let subEntries: string[];
+    try { subEntries = readdirSync(sub); } catch { continue; }
+    const markers = PROJECT_MARKERS.filter(m => subEntries.includes(m));
+
+    // Walk a shallow sample to count files + extensions (cap at 200 for perf)
+    const extCounts = new Map<string, number>();
+    let fileCount = 0;
+    const cap = 200;
+    const walk = (dir: string, depth: number) => {
+      if (fileCount >= cap || depth > 2) return;
+      let items: string[];
+      try { items = readdirSync(dir); } catch { return; }
+      for (const item of items) {
+        if (fileCount >= cap) return;
+        if (item.startsWith(".") || HIDDEN_OR_SYSTEM.has(item)) continue;
+        const p = join(dir, item);
+        let st: ReturnType<typeof statSync>;
+        try { st = statSync(p); } catch { continue; }
+        if (st.isDirectory()) {
+          walk(p, depth + 1);
+        } else {
+          fileCount++;
+          const dot = item.lastIndexOf(".");
+          if (dot > 0) {
+            const ext = item.slice(dot).toLowerCase();
+            extCounts.set(ext, (extCounts.get(ext) ?? 0) + 1);
+          }
+        }
+      }
+    };
+    walk(sub, 0);
+
+    const sampleExtensions = Array.from(extCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([ext]) => ext);
+
+    // Detect framework (best-effort, only for package.json candidates)
+    let framework: string | undefined;
+    if (markers.includes("package.json")) {
+      try {
+        const pkg = JSON.parse(readFileSync(join(sub, "package.json"), "utf8"));
+        const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) });
+        const frameworks = ["react", "vue", "next", "vite", "svelte", "angular", "nuxt", "astro"];
+        framework = frameworks.find(f => deps.some(d => d.includes(f)));
+      } catch { /* best effort */ }
+    } else if (markers.includes("go.mod")) framework = "go";
+    else if (markers.includes("Cargo.toml")) framework = "rust";
+    else if (markers.includes("pyproject.toml") || markers.includes("setup.py")) framework = "python";
+    else if (markers.includes("Gemfile")) framework = "ruby";
+    else if (markers.includes("pom.xml") || markers.includes("build.gradle")) framework = "java";
+
+    out.push({
+      name: entry,
+      path: sub,
+      markers,
+      framework,
+      fileCount,
+      sampleExtensions,
+      isEmpty: fileCount === 0,
+    });
+  }
+
+  return out;
+}
+
+/**
  * Check if a dropped folder is a container of projects (like ~/Dev)
  * vs a single project (like ~/Dev/blunderfixer).
  */
@@ -342,4 +453,109 @@ function fallbackGrouping(candidates: Candidate[]): SuggestedSpace[] {
     name: c.name.replace(/[-_]/g, " "),
     folders: [c.path],
   }));
+}
+
+// ── Rich classification (non-code-biased) ──
+//
+// Operates on the full subfolder list (not just marker-matched) so users
+// whose work isn't all code — designers, writers, PMs — get decent
+// grouping too. The LLM classifies each folder (project / noise / unclear),
+// groups related ones, and writes a reason per group.
+
+function folderSummary(f: FolderInfo): string {
+  const markers = f.markers.length > 0 ? `markers: ${f.markers.join(", ")}` : "no markers";
+  const fw = f.framework ? `; ${f.framework}` : "";
+  const exts = f.sampleExtensions.length > 0 ? `; exts ${f.sampleExtensions.join(" ")}` : "";
+  const count = f.isEmpty ? "empty" : `${f.fileCount}${f.fileCount >= 200 ? "+" : ""} files`;
+  return `${f.name} (${markers}${fw}; ${count}${exts})`;
+}
+
+function fallbackRichGrouping(folders: FolderInfo[]): RichSuggestedSpace[] {
+  // No LLM available: treat anything with markers as a project, skip the rest,
+  // and give a basic reason. Non-code folders are returned as "other" so the
+  // agent has *something* to show the user.
+  const projects = folders.filter(f => f.markers.length > 0 && !f.isEmpty);
+  const nonCode = folders.filter(f => f.markers.length === 0 && !f.isEmpty);
+  const out: RichSuggestedSpace[] = projects.map(p => ({
+    name: p.name.replace(/[-_]/g, " "),
+    folders: [p.path],
+    reason: `Has ${p.markers.slice(0, 2).join(", ")}${p.framework ? ` (${p.framework})` : ""}.`,
+    ambiguous: false,
+  }));
+  if (nonCode.length > 0) {
+    out.push({
+      name: "other",
+      folders: nonCode.map(f => f.path),
+      reason: "No code markers; grouped as misc so the user can sort them.",
+      ambiguous: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Rich grouping: classify + group every non-noise subfolder via the LLM.
+ * Returns grouped spaces with a per-group reason and an `ambiguous` flag.
+ */
+export async function groupWithLLMRich(folders: FolderInfo[]): Promise<RichSuggestedSpace[]> {
+  const auth = readAuth();
+  if (!auth) {
+    console.log("[discovery] No auth found, using rich fallback");
+    return fallbackRichGrouping(folders);
+  }
+
+  console.log(`[discovery] Using ${auth.provider} for rich grouping (${folders.length} folders)`);
+
+  const lines = folders.map(folderSummary);
+
+  const prompt = `You are organising a user's workspace. The user may be a developer, designer, writer, PM, researcher, or mixed. Below is every non-hidden subfolder in their projects directory, with metadata. Decide which are real projects worth grouping into spaces, which are noise, and how to group the projects.
+
+Folders:
+${lines.map(l => `- ${l}`).join("\n")}
+
+Rules:
+- Group related projects into one space. Signals: shared prefix or suffix (e.g. oyster-* → one "oyster" space; tokinvest-drc + tokinvest-website → "tokinvest"), monorepos, same framework serving a single product.
+- Isolated third-party libraries / forks (e.g. "graphiti", "stockfish") that the user is not developing themselves belong in "other", not their own space.
+- Tiny config-only folders (single .conf / .nanorc / similar) belong in "other".
+- Skip obvious noise entirely: empty folders, lock/cache dumps, temp directories. Do not mention them in output.
+- Non-code folders (.md notes, .fig design, .docx writing) are first-class projects if they're actively used.
+- Space names: short, lowercase, human (e.g. "oyster", "tokinvest", "writing", "design", not "oyster-technology-www").
+- For every group include a one-sentence reason citing the evidence (shared prefix, dominant extensions, framework, etc.).
+- Set "ambiguous": true when the grouping is a guess (e.g. a single loose folder the user might want elsewhere).
+
+Return ONLY valid JSON, no markdown, no explanation:
+[
+  {"name": "oyster", "folders": ["oyster-os", "oyster-crm", "oyster-technology"], "reason": "Three repos share the 'oyster-' prefix and reference the same product.", "ambiguous": false},
+  {"name": "other", "folders": ["graphiti", "nanorc"], "reason": "Third-party library and single-file config — not user-owned projects.", "ambiguous": true}
+]`;
+
+  let text = await callLLM(auth, prompt);
+  if (!text) {
+    console.log("[discovery] Direct LLM call failed, trying via OpenCode");
+    text = await callViaOpenCode(prompt);
+  }
+  if (!text) {
+    console.log("[discovery] All LLM attempts failed, using rich fallback");
+    return fallbackRichGrouping(folders);
+  }
+
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return fallbackRichGrouping(folders);
+    const raw = JSON.parse(jsonMatch[0]) as Array<{ name: string; folders: string[]; reason?: string; ambiguous?: boolean }>;
+
+    // Map folder names back to full paths
+    const byName = new Map(folders.map(f => [f.name, f.path]));
+    return raw
+      .map(g => ({
+        name: g.name,
+        folders: g.folders.map(f => byName.get(f) ?? f).filter(Boolean),
+        reason: g.reason ?? "",
+        ambiguous: Boolean(g.ambiguous),
+      }))
+      .filter(g => g.folders.length > 0);
+  } catch (err) {
+    console.log(`[discovery] Failed to parse rich LLM response: ${(err as Error).message}`);
+    return fallbackRichGrouping(folders);
+  }
 }

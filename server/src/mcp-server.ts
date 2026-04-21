@@ -10,7 +10,7 @@ import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 import { debug } from "./debug.js";
-import { isContainer, discoverCandidates, groupWithLLM } from "./discovery.js";
+import { discoverAllSubfolders, groupWithLLMRich } from "./discovery.js";
 import { homedir } from "node:os";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
@@ -162,24 +162,32 @@ and has NOT given you an explicit projects folder path, follow this flow:
    If none of those match, ask the user once, concisely:
    *"Where do you keep your projects?"* — don't say "dev folder".
 
-2. **Call \`onboard_container\` with that path.** This one call does the whole job:
-   discovers candidate projects, LLM-groups them (shared prefix, monorepo hints, etc.),
-   creates one space per group, attaches folders, and scans each for artifacts.
+2. **Propose first: call \`discover_container\` with that path.** This returns a
+   grouped plan built by Oyster's embedded LLM — related projects merged into shared
+   spaces, third-party libs and configs into "other", obvious noise skipped. Each
+   group includes a one-sentence \`reason\` and an \`ambiguous\` flag. Nothing is created.
+
+3. **Review the proposal.**
+   - If the response has \`has_ambiguities: false\`, go straight to step 4.
+   - If it has \`has_ambiguities: true\`, show the user a short summary of the
+     ambiguous groups (name + reason + folders) and ask one concise question:
+     *"Does this grouping look right?"* Adjust if they disagree.
+   - Don't dump the full JSON at the user. Summarise in plain language.
+
+4. **Apply: call \`onboard_container\` with the same path.** Creates the spaces,
+   attaches folders, scans. You may skip step 2–3 and call \`onboard_container\`
+   directly if the user said "just do it" or ambiguity tolerance is high — the same
+   pipeline runs internally.
+
    DO NOT loop \`onboard_space\` per folder — that produces naive one-space-per-repo
    output and is the wrong tool for a multi-project container.
 
-3. **Confirm with the user** — list the spaces created and roughly how many artifacts
-   each picked up. Offer to fix up any grouping they disagree with.
-
-**Honest limitation:** the container discovery currently recognises subfolders with
-code-project markers (\`.git\`, \`package.json\`, \`go.mod\`, \`Cargo.toml\`, etc.). A Figma
-dump or a writing folder won't be auto-detected as containing "projects" today. If
-the user's work is non-code, you may need to call \`onboard_space\` per project folder
-(which doesn't need markers), or ask them to point you at individual project folders
-rather than a container. This will improve.
+5. **Confirm back.** List the spaces created and rough artifact counts. Oyster works
+   for any kind of project folder — code, design, writing, research — so don't assume
+   the user's world is all code when summarising.
 
 If the user gave you an explicit path (\`set up Oyster with my projects at ~/foo\`),
-skip step 1 and go straight to \`onboard_container\`.
+skip step 1 and start at step 2.
 
 ## Core concepts
 
@@ -342,9 +350,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "discover_container",
-    "Scan a developer container folder (e.g. ~/Dev) and return a grouped proposal for spaces: repos sharing a prefix or that are monorepo-related get merged into one space. Returns { container, candidates, suggestions } without creating anything. Use this first when a user points you at a dev directory with many repos — do NOT call onboard_space per folder, that produces naive one-space-per-repo output.",
+    "Propose a grouped space plan for a container folder. Discovers every non-noise subfolder (code or non-code) and uses Oyster's embedded LLM to classify + group them: related projects into shared spaces, third-party libs and configs into 'other', obvious noise skipped. Returns per-group reasons and an `ambiguous` flag so the calling agent can decide whether to confirm with the user before applying. Does NOT create anything — pair with onboard_container to apply.",
     {
-      path: z.string().describe("Absolute (or ~ prefixed) path to the container folder — typically the user's ~/Dev or similar"),
+      path: z.string().describe("Absolute (or ~ prefixed) path to the container — a dev folder like ~/Dev, a documents folder, ~/Projects, etc."),
     },
     async ({ path: rawPath }) => {
       try {
@@ -354,21 +362,30 @@ export function createMcpServer(deps: McpDeps): McpServer {
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           return { content: [{ type: "text" as const, text: `Path does not exist or is not a directory: ${folderPath}` }], isError: true };
         }
-        const container = isContainer(folderPath);
-        if (!container) {
+        const folders = discoverAllSubfolders(folderPath);
+        if (folders.length === 0) {
           return {
             content: [{
               type: "text" as const,
-              text: JSON.stringify({ container: false, path: folderPath, hint: "This looks like a single project. Call onboard_space with this path instead." }, null, 2),
+              text: JSON.stringify({ container: false, path: folderPath, hint: "No non-hidden subfolders. Call onboard_space with this path if it's a single project." }, null, 2),
             }],
           };
         }
-        const candidates = discoverCandidates(folderPath);
-        const suggestions = await groupWithLLM(candidates);
+        const suggestions = await groupWithLLMRich(folders);
+        const anyAmbiguous = suggestions.some(s => s.ambiguous);
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ container: true, path: folderPath, candidates, suggestions }, null, 2),
+            text: JSON.stringify({
+              container: true,
+              path: folderPath,
+              subfolder_count: folders.length,
+              suggestions,
+              has_ambiguities: anyAmbiguous,
+              recommended_next_action: anyAmbiguous
+                ? "Show the user the groupings flagged as `ambiguous: true` and confirm before applying."
+                : "Apply the proposal with onboard_container(path) — no user confirmation needed.",
+            }, null, 2),
           }],
         };
       } catch (err) {
@@ -387,9 +404,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "onboard_container",
-    "Smart onboarding for a developer container folder (e.g. ~/Dev). Discovers candidate projects, groups them logically via LLM (related repos share a space — e.g. 'oyster-crm' + 'oyster-technology' land in one 'oyster' space; 'tokinvest-drc' + 'tokinvest-concept' land in 'tokinvest'), creates each space, attaches the folders, and scans them. Use this — NOT onboard_space per folder — when a user points you at a dev directory. Returns a summary of the spaces created and how many artifacts each picked up.",
+    "Smart onboarding for a projects container. Discovers every non-noise subfolder, LLM-groups them (related projects share a space; third-party libs and configs go to 'other'), creates one space per group, attaches the folders, and scans each. Use this — NOT onboard_space per folder — when a user points you at a projects directory (dev or otherwise). Call discover_container first if you want to preview the groupings before applying. Returns a summary of the spaces created with per-group reasons.",
     {
-      path: z.string().describe("Absolute (or ~ prefixed) path to the container folder — typically the user's ~/Dev or similar"),
+      path: z.string().describe("Absolute (or ~ prefixed) path to the container — dev folder, documents folder, projects folder, etc."),
     },
     async ({ path: rawPath }) => {
       try {
@@ -399,8 +416,8 @@ export function createMcpServer(deps: McpDeps): McpServer {
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           return { content: [{ type: "text" as const, text: `Path does not exist or is not a directory: ${folderPath}` }], isError: true };
         }
-        const container = isContainer(folderPath);
-        if (!container) {
+        const folders = discoverAllSubfolders(folderPath);
+        if (folders.length === 0) {
           // Treat as a single project — create one space from it.
           const leafName = basename(folderPath);
           const space = deps.spaceService.createSpace({ name: leafName, repoPath: folderPath });
@@ -410,16 +427,15 @@ export function createMcpServer(deps: McpDeps): McpServer {
               type: "text" as const,
               text: JSON.stringify({
                 container: false,
-                spaces_created: [{ space_id: space.id, name: leafName, folders: [folderPath], scanned: scan.discovered + scan.resurfaced }],
+                spaces_created: [{ space_id: space.id, name: leafName, folders: [folderPath], reason: "Single project (no subfolders discovered).", scanned: scan.discovered + scan.resurfaced }],
               }, null, 2),
             }],
           };
         }
 
-        const candidates = discoverCandidates(folderPath);
-        const suggestions = await groupWithLLM(candidates);
+        const suggestions = await groupWithLLMRich(folders);
 
-        const results: Array<{ space_id: string; name: string; folders: string[]; scanned: number; error?: string }> = [];
+        const results: Array<{ space_id: string; name: string; folders: string[]; reason: string; ambiguous: boolean; scanned: number; error?: string }> = [];
         for (const s of suggestions) {
           try {
             let space;
@@ -439,10 +455,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
               space_id: space.id,
               name: s.name,
               folders: s.folders,
+              reason: s.reason,
+              ambiguous: s.ambiguous,
               scanned: scan.discovered + scan.resurfaced,
             });
           } catch (err) {
-            results.push({ space_id: "", name: s.name, folders: s.folders, scanned: 0, error: (err as Error).message });
+            results.push({ space_id: "", name: s.name, folders: s.folders, reason: s.reason, ambiguous: s.ambiguous, scanned: 0, error: (err as Error).message });
           }
         }
 
