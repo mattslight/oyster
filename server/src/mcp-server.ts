@@ -10,6 +10,8 @@ import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 import { debug } from "./debug.js";
+import { isContainer, discoverCandidates, groupWithLLM } from "./discovery.js";
+import { homedir } from "node:os";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
 // `satisfies` ensures this stays in sync with the ArtifactKind union at compile time.
@@ -170,12 +172,24 @@ scan it for artifacts in one step, or \`scan_space\` to rescan an existing space
 
 ## What agents should do
 
-**Onboarding a project:**
+**Onboarding a single project:**
 1. Call \`list_spaces\` — check if the space already exists (avoid duplicates).
 2. Call \`onboard_space\` with the project name and repo path — creates the space and scans for apps, docs, and diagrams in one step.
 3. Call \`list_artifacts\` with the new space_id to see what was discovered.
 4. To rescan later (e.g. after new files are added), call \`scan_space\`.
 5. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
+
+**Onboarding a developer container (e.g. \`~/Dev\` with many repos):**
+
+DO NOT loop \`onboard_space\` per folder — that produces naive one-space-per-repo output (e.g. separate spaces for \`oyster\`, \`oyster-crm\`, \`oyster-technology\` when they should share one \`oyster\` space).
+
+Instead, use the smart grouping pipeline:
+
+1. Call \`discover_container\` with the container path — returns LLM-grouped suggestions based on shared prefixes, monorepo hints, and framework signals. Dry run, no writes.
+2. (Optional) Present the suggestions to the user for confirmation if the grouping looks questionable.
+3. Call \`onboard_container\` with the same path to execute: creates one space per group, attaches all folders in that group, scans each. Same logic as the drag-a-folder UX.
+
+Shortcut: call \`onboard_container\` directly if you're confident in the grouping — it internally runs the discover step and returns the full result.
 
 **Working with artifacts:**
 - Use \`create_artifact\` to write a new file and register it in one step.
@@ -267,6 +281,133 @@ export function createMcpServer(deps: McpDeps): McpServer {
           content: [{
             type: "text" as const,
             text: JSON.stringify({ space_id: space.id, scan_summary: scanResult }, null, 2),
+          }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── discover_container ──
+  //
+  // Same logic the drag-a-folder wizard uses: detect container folder,
+  // find project-marker dirs, ask an LLM to group them by naming
+  // patterns (shared prefix/suffix, monorepo hints). Returns grouped
+  // suggestions; does NOT create anything. Use before onboard_container
+  // if you want to show the user a preview, or inspect grouping before
+  // committing.
+
+  server.tool(
+    "discover_container",
+    "Scan a developer container folder (e.g. ~/Dev) and return a grouped proposal for spaces: repos sharing a prefix or that are monorepo-related get merged into one space. Returns { container, candidates, suggestions } without creating anything. Use this first when a user points you at a dev directory with many repos — do NOT call onboard_space per folder, that produces naive one-space-per-repo output.",
+    {
+      path: z.string().describe("Absolute (or ~ prefixed) path to the container folder — typically the user's ~/Dev or similar"),
+    },
+    async ({ path: rawPath }) => {
+      try {
+        const folderPath = rawPath.startsWith("~/")
+          ? resolve(join(homedir(), rawPath.slice(2)))
+          : resolve(rawPath);
+        if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+          return { content: [{ type: "text" as const, text: `Path does not exist or is not a directory: ${folderPath}` }], isError: true };
+        }
+        const container = isContainer(folderPath);
+        if (!container) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({ container: false, path: folderPath, hint: "This looks like a single project. Call onboard_space with this path instead." }, null, 2),
+            }],
+          };
+        }
+        const candidates = discoverCandidates(folderPath);
+        const suggestions = await groupWithLLM(candidates);
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ container: true, path: folderPath, candidates, suggestions }, null, 2),
+          }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── onboard_container ──
+  //
+  // One-shot smart onboarding for a dev directory. Matches what
+  // dropping a folder on the desktop does: discover → LLM-group →
+  // create N spaces → attach each group's folders → scan each. Use
+  // this instead of looping onboard_space for the "set up my projects
+  // at ~/Dev" flow.
+
+  server.tool(
+    "onboard_container",
+    "Smart onboarding for a developer container folder (e.g. ~/Dev). Discovers candidate projects, groups them logically via LLM (related repos share a space — e.g. 'oyster-crm' + 'oyster-technology' land in one 'oyster' space; 'tokinvest-drc' + 'tokinvest-concept' land in 'tokinvest'), creates each space, attaches the folders, and scans them. Use this — NOT onboard_space per folder — when a user points you at a dev directory. Returns a summary of the spaces created and how many artifacts each picked up.",
+    {
+      path: z.string().describe("Absolute (or ~ prefixed) path to the container folder — typically the user's ~/Dev or similar"),
+    },
+    async ({ path: rawPath }) => {
+      try {
+        const folderPath = rawPath.startsWith("~/")
+          ? resolve(join(homedir(), rawPath.slice(2)))
+          : resolve(rawPath);
+        if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+          return { content: [{ type: "text" as const, text: `Path does not exist or is not a directory: ${folderPath}` }], isError: true };
+        }
+        const container = isContainer(folderPath);
+        if (!container) {
+          // Treat as a single project — create one space from it.
+          const leafName = basename(folderPath);
+          const space = deps.spaceService.createSpace({ name: leafName, repoPath: folderPath });
+          const scan = await deps.spaceService.scanSpace(space.id);
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                container: false,
+                spaces_created: [{ space_id: space.id, name: leafName, folders: [folderPath], scanned: scan.discovered + scan.resurfaced }],
+              }, null, 2),
+            }],
+          };
+        }
+
+        const candidates = discoverCandidates(folderPath);
+        const suggestions = await groupWithLLM(candidates);
+
+        const results: Array<{ space_id: string; name: string; folders: string[]; scanned: number; error?: string }> = [];
+        for (const s of suggestions) {
+          try {
+            let space;
+            try {
+              space = deps.spaceService.createSpace({ name: s.name });
+            } catch {
+              const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+              const existing = deps.spaceService.getSpace(slug);
+              if (!existing) throw new Error(`Could not create or find space "${s.name}"`);
+              space = existing;
+            }
+            for (const folder of s.folders) {
+              try { deps.spaceService.addPath(space.id, folder); } catch { /* path may already be attached */ }
+            }
+            const scan = await deps.spaceService.scanSpace(space.id);
+            results.push({
+              space_id: space.id,
+              name: s.name,
+              folders: s.folders,
+              scanned: scan.discovered + scan.resurfaced,
+            });
+          } catch (err) {
+            results.push({ space_id: "", name: s.name, folders: s.folders, scanned: 0, error: (err as Error).message });
+          }
+        }
+
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ container: true, path: folderPath, spaces_created: results }, null, 2),
           }],
         };
       } catch (err) {

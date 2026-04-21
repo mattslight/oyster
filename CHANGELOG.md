@@ -8,6 +8,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - MCP-first onboarding dock: a persistent pill in the top-right of Oyster opens a 3-step setup popover — connect your agent, ask your agent to set things up, optionally import memories. Replaces the previous `Import from AI` banner. Step 1 auto-advances when any external MCP client connects; step 2 shows a live action log of your agent's MCP tool calls and auto-completes once the agent has onboarded a space + done anything else. Internal OpenCode traffic is filtered out via a `?internal=1` marker on its MCP URL so the action log only reflects your agent's work. ([#184](https://github.com/mattslight/oyster/issues/184))
 - `GET /api/mcp/status` — fallback endpoint for the onboarding dock (and anyone else who wants a JSON view of which external MCP clients are connected, when they first connected, and how many tool calls they've made).
+- New MCP tools `discover_container` and `onboard_container` — same smart grouping the drag-a-folder wizard uses. Agents pointed at a dev directory (e.g. `~/Dev`) now call one tool that LLM-groups related repos into shared spaces (e.g. `oyster-crm` + `oyster-technology` → one `oyster` space; `tokinvest-drc` + `tokinvest-concept` → `tokinvest`), instead of calling `onboard_space` per folder and ending up with one-space-per-repo. The `get_context` guidance tells agents to prefer these for multi-project setups.
 
 ### Changed
 

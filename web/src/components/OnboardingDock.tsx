@@ -70,10 +70,10 @@ const defaultState: OnboardingState = {
 };
 
 const ACTION_LOG_LIMIT = 50;
-// Step 2 completion heuristic: the agent has called `onboard_space` AND at
-// least one other tool (scan, create_artifact, etc.). That pattern means
-// the agent genuinely did something, not just pinged Oyster.
-const STEP2_REQUIRED_TOOL = "onboard_space";
+// Step 2 completion heuristic: the agent has called one of the onboard-
+// family tools AND at least one other tool. That pattern means the agent
+// genuinely did something (created a space), not just pinged Oyster.
+const STEP2_ONBOARD_TOOLS = new Set(["onboard_container", "onboard_space"]);
 
 interface ToolCall {
   tool: string;
@@ -174,8 +174,8 @@ export function OnboardingDock({ onOpenImport }: OnboardingDockProps = {}) {
   // we only transition once; subsequent tool calls don't toggle state.
   useEffect(() => {
     if (state.step2Complete) return;
-    const hasOnboard = toolCalls.some((c) => c.tool === STEP2_REQUIRED_TOOL && !c.isError);
-    const hasOther = toolCalls.some((c) => c.tool !== STEP2_REQUIRED_TOOL && !c.isError);
+    const hasOnboard = toolCalls.some((c) => STEP2_ONBOARD_TOOLS.has(c.tool) && !c.isError);
+    const hasOther = toolCalls.some((c) => !STEP2_ONBOARD_TOOLS.has(c.tool) && !c.isError);
     if (hasOnboard && hasOther) {
       setState((s) => ({ ...s, step2Complete: true }));
       // If the user is staring at step 2 when it auto-completes, slide
@@ -349,7 +349,7 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
   );
 }
 
-const AGENT_PROMPT = "Set up Oyster with my projects at ~/Dev. Use the oyster MCP tools.";
+const AGENT_PROMPT = "Set up Oyster with my projects at ~/Dev. Use the oyster MCP — call onboard_container to group related repos into shared spaces.";
 
 function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; toolCalls: ToolCall[] }) {
   const [copied, setCopied] = useState(false);
