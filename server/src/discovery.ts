@@ -508,7 +508,9 @@ export async function groupWithLLMRich(folders: FolderInfo[]): Promise<RichSugge
 
   const lines = folders.map(folderSummary);
 
-  const prompt = `You are organising a user's workspace. The user may be a developer, designer, writer, PM, researcher, or mixed. Below is every non-hidden subfolder in their projects directory, with metadata. Decide which are real projects worth grouping into spaces, which are noise, and how to group the projects.
+  const prompt = `You are organising a user's workspace. The user may be a developer, designer, writer, PM, researcher, or mixed. Below is every non-hidden subfolder in their projects directory, with metadata.
+
+CRITICAL: EVERY folder listed below MUST appear exactly once in your output. Silent omissions cause real projects to disappear from the user's workspace.
 
 Folders:
 ${lines.map(l => `- ${l}`).join("\n")}
@@ -517,16 +519,17 @@ Rules:
 - Group related projects into one space. Signals: shared prefix or suffix (e.g. oyster-* → one "oyster" space; tokinvest-drc + tokinvest-website → "tokinvest"), monorepos, same framework serving a single product.
 - Isolated third-party libraries / forks (e.g. "graphiti", "stockfish") that the user is not developing themselves belong in "other", not their own space.
 - Tiny config-only folders (single .conf / .nanorc / similar) belong in "other".
-- Skip obvious noise entirely: empty folders, lock/cache dumps, temp directories. Do not mention them in output.
 - Non-code folders (.md notes, .fig design, .docx writing) are first-class projects if they're actively used.
+- System/noise folders (git worktree scratch directories, cache dumps, truly empty folders, temp dirs) go in a group named "skipped" with a one-sentence reason. They are NOT omitted — they are moved to "skipped" so the user has a complete audit trail.
 - Space names: short, lowercase, human (e.g. "oyster", "tokinvest", "writing", "design", not "oyster-technology-www").
-- For every group include a one-sentence reason citing the evidence (shared prefix, dominant extensions, framework, etc.).
-- Set "ambiguous": true when the grouping is a guess (e.g. a single loose folder the user might want elsewhere).
+- For every group include a one-sentence reason citing the evidence (shared prefix, dominant extensions, framework, why it's noise, etc.).
+- Set "ambiguous": true when the grouping is a guess (e.g. a single loose folder the user might want elsewhere). For "skipped" noise, set ambiguous: false if it's clearly noise, true if you're unsure.
 
 Return ONLY valid JSON, no markdown, no explanation:
 [
   {"name": "oyster", "folders": ["oyster-os", "oyster-crm", "oyster-technology"], "reason": "Three repos share the 'oyster-' prefix and reference the same product.", "ambiguous": false},
-  {"name": "other", "folders": ["graphiti", "nanorc"], "reason": "Third-party library and single-file config — not user-owned projects.", "ambiguous": true}
+  {"name": "other", "folders": ["graphiti", "nanorc"], "reason": "Third-party library and single-file config — not user-owned projects.", "ambiguous": true},
+  {"name": "skipped", "folders": ["repo.worktrees"], "reason": "Git worktree scratch — not a project.", "ambiguous": false}
 ]`;
 
   let text = await callLLM(auth, prompt);
@@ -544,16 +547,40 @@ Return ONLY valid JSON, no markdown, no explanation:
     if (!jsonMatch) return fallbackRichGrouping(folders);
     const raw = JSON.parse(jsonMatch[0]) as Array<{ name: string; folders: string[]; reason?: string; ambiguous?: boolean }>;
 
-    // Map folder names back to full paths
     const byName = new Map(folders.map(f => [f.name, f.path]));
-    return raw
+    const inputNames = new Set(folders.map(f => f.name));
+
+    // Parse LLM output, remap names → paths
+    const parsed: RichSuggestedSpace[] = raw
       .map(g => ({
         name: g.name,
-        folders: g.folders.map(f => byName.get(f) ?? f).filter(Boolean),
+        folders: (g.folders ?? []).filter(f => byName.has(f)),
         reason: g.reason ?? "",
         ambiguous: Boolean(g.ambiguous),
       }))
       .filter(g => g.folders.length > 0);
+
+    // Audit: every input folder MUST appear in output. If the LLM dropped
+    // anything (silent omission, despite the prompt), recover it into a
+    // `review` group so the user / agent still sees it.
+    const covered = new Set<string>();
+    for (const g of parsed) for (const f of g.folders) covered.add(f);
+    const missing = [...inputNames].filter(n => !covered.has(n));
+    if (missing.length > 0) {
+      console.warn(`[discovery] LLM dropped ${missing.length} folder(s), recovering: ${missing.join(", ")}`);
+      parsed.push({
+        name: "review",
+        folders: missing,
+        reason: "The classifier omitted these folders — they might be real projects or noise. Please review.",
+        ambiguous: true,
+      });
+    }
+
+    // Map names → paths for final output
+    return parsed.map(g => ({
+      ...g,
+      folders: g.folders.map(n => byName.get(n) ?? n),
+    }));
   } catch (err) {
     console.log(`[discovery] Failed to parse rich LLM response: ${(err as Error).message}`);
     return fallbackRichGrouping(folders);

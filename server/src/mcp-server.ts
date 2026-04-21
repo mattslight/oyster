@@ -164,8 +164,14 @@ and has NOT given you an explicit projects folder path, follow this flow:
 
 2. **Propose first: call \`discover_container\` with that path.** This returns a
    grouped plan built by Oyster's embedded LLM — related projects merged into shared
-   spaces, third-party libs and configs into "other", obvious noise skipped. Each
-   group includes a one-sentence \`reason\` and an \`ambiguous\` flag. Nothing is created.
+   spaces, third-party libs and configs into "other". Each group includes a one-sentence
+   \`reason\` and an \`ambiguous\` flag. Nothing is created yet.
+
+   Special groups in the output:
+   - \`"skipped"\` — folders the classifier identified as noise (cache, worktree scratch,
+     empty dirs). Will NOT become a space when applied; listed for auditability.
+   - \`"review"\` — folders the classifier dropped silently. Auto-recovered by Oyster so
+     they aren't lost. Show the user these items, since they might be real projects.
 
 3. **Review the proposal.**
    - If the response has \`has_ambiguities: false\`, go straight to step 4.
@@ -435,8 +441,14 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
         const suggestions = await groupWithLLMRich(folders);
 
+        // "skipped" = noise per the LLM; report but don't create a space.
+        // "review" = folders the LLM dropped silently; we DO create it so
+        // the user can triage them on the surface.
+        const toApply = suggestions.filter(s => s.name.toLowerCase() !== "skipped");
+        const skipped = suggestions.filter(s => s.name.toLowerCase() === "skipped");
+
         const results: Array<{ space_id: string; name: string; folders: string[]; reason: string; ambiguous: boolean; scanned: number; error?: string }> = [];
-        for (const s of suggestions) {
+        for (const s of toApply) {
           try {
             let space;
             try {
@@ -467,7 +479,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ container: true, path: folderPath, spaces_created: results }, null, 2),
+            text: JSON.stringify({
+              container: true,
+              path: folderPath,
+              spaces_created: results,
+              skipped_as_noise: skipped.flatMap(s => s.folders.map(f => ({ folder: f, reason: s.reason }))),
+            }, null, 2),
           }],
         };
       } catch (err) {
