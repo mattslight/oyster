@@ -4,9 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-04-21
+
 ### Fixed
 
 - Stopped overriding OpenCode's own model selection with a hardcoded `anthropic/claude-sonnet-4-20250514` string, which broke users authed with OpenAI / Google / other providers (`ProviderModelNotFoundError` → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via `opencode providers login` or env vars. ([#174](https://github.com/mattslight/oyster/issues/174))
+- Claude Code MCP install command now uses `--scope user` so the Oyster MCP follows the user across every project instead of being pinned to the directory they happened to run `claude mcp add` from. Updated in README, landing page, `oyster.to/mcp`, the in-app "Connect your AI" builtin, and the CLI startup banner. ([#175](https://github.com/mattslight/oyster/issues/175))
 
 ## [0.3.7] - 2026-04-20
 
