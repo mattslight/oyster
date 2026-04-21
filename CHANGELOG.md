@@ -4,6 +4,20 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- MCP-first onboarding dock: a persistent pill in the top-right of Oyster opens a 3-step setup popover — connect your agent, ask your agent to set things up, optionally import memories. Replaces the previous `Import from AI` banner. Step 1 auto-advances when any external MCP client connects; step 2 shows a live action log of your agent's MCP tool calls and auto-completes once the agent has onboarded a space + done anything else. Internal OpenCode traffic is filtered out via a `?internal=1` marker on its MCP URL so the action log only reflects your agent's work. ([#184](https://github.com/mattslight/oyster/issues/184))
+- `GET /api/mcp/status` — fallback endpoint for the onboarding dock (and anyone else who wants a JSON view of which external MCP clients are connected, when they first connected, and how many tool calls they've made).
+
+### Changed
+
+- Cloud-AI import prompt now explicitly instructs the remote AI to exclude API keys, tokens, credentials, and personal details about third parties (children, partners, etc.) — addresses feedback that raw exports can leak private context a user would never want pasted back into Oyster.
+- `Connect your AI` builtin artifact updated to match the dock's wording — the headline is now "Connect Oyster to your agent", and body copy leads with what the user gets (an agent driving the workspace) rather than the MCP protocol itself.
+
+### Removed
+
+- `OnboardingBanner.tsx` and its dismissal state — superseded by the dock.
+
 ## [0.3.8] - 2026-04-21
 
 ### Fixed
