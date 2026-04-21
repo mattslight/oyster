@@ -161,6 +161,125 @@
   line-height: 1.5;
 }
 
+/* Step 1 — client tabs */
+
+.onboarding-client-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px 4px;
+  border-radius: 9999px;
+  background: rgba(13, 14, 26, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.onboarding-client-tab {
+  background: none;
+  border: none;
+  color: rgba(232, 233, 240, 0.55);
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.onboarding-client-tab:hover {
+  color: #f0f0f5;
+}
+
+.onboarding-client-tab.active {
+  background: rgba(124, 107, 255, 0.25);
+  color: #fff;
+}
+
+.onboarding-code-hint {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: rgba(232, 233, 240, 0.35);
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.onboarding-code-box {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.onboarding-code-box pre {
+  flex: 1;
+  margin: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.onboarding-code-box code {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.onboarding-code-copy {
+  background: rgba(124, 107, 255, 0.15);
+  border: 1px solid rgba(124, 107, 255, 0.2);
+  color: rgba(232, 233, 240, 0.55);
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.onboarding-code-copy:hover {
+  background: rgba(124, 107, 255, 0.3);
+  color: #fff;
+}
+
+.onboarding-code-copy.copied {
+  background: rgba(74, 222, 128, 0.15);
+  border-color: rgba(74, 222, 128, 0.25);
+  color: #4ade80;
+}
+
+.onboarding-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(232, 233, 240, 0.35);
+  margin-bottom: 10px;
+}
+
+.onboarding-waiting-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: onboarding-waiting-blink 1.2s infinite;
+}
+
+@keyframes onboarding-waiting-blink {
+  50% { opacity: 0.3; }
+}
+
 .onboarding-trust-note {
   background: rgba(74, 222, 128, 0.06);
   border: 1px solid rgba(74, 222, 128, 0.15);

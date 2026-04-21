@@ -1,5 +1,55 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./OnboardingDock.css";
+
+type ClientKey = "claude" | "cursor" | "vscode" | "windsurf";
+
+const CLIENT_TABS: { key: ClientKey; label: string }[] = [
+  { key: "claude", label: "Claude Code" },
+  { key: "cursor", label: "Cursor" },
+  { key: "vscode", label: "VS Code" },
+  { key: "windsurf", label: "Windsurf" },
+];
+
+const CLIENT_CONFIGS: Record<ClientKey, { hint: string; command: (mcpUrl: string) => string }> = {
+  claude: {
+    hint: "run in your terminal",
+    command: (mcpUrl) => `claude mcp add --scope user --transport http oyster ${mcpUrl}`,
+  },
+  cursor: {
+    hint: ".cursor/mcp.json",
+    command: (mcpUrl) =>
+      `{
+  "mcpServers": {
+    "oyster": {
+      "url": "${mcpUrl}"
+    }
+  }
+}`,
+  },
+  vscode: {
+    hint: ".vscode/mcp.json",
+    command: (mcpUrl) =>
+      `{
+  "servers": {
+    "oyster": {
+      "type": "http",
+      "url": "${mcpUrl}"
+    }
+  }
+}`,
+  },
+  windsurf: {
+    hint: "~/.codeium/windsurf/mcp_config.json",
+    command: (mcpUrl) =>
+      `{
+  "mcpServers": {
+    "oyster": {
+      "serverUrl": "${mcpUrl}"
+    }
+  }
+}`,
+  },
+};
 
 const STORAGE_KEY = "oyster-onboarding-state";
 
@@ -134,7 +184,7 @@ export function OnboardingDock() {
             <div className={`progress-dot${state.step3Complete ? " done" : viewingStep === 3 ? " active" : ""}`} />
           </div>
 
-          {viewingStep === 1 && <Step1Placeholder onComplete={markStep1} />}
+          {viewingStep === 1 && <Step1Connect onComplete={markStep1} />}
           {viewingStep === 2 && <Step2Placeholder onComplete={markStep2} />}
           {viewingStep === 3 && <Step3Placeholder onComplete={markStep3} onSkip={skipStep3} />}
 
@@ -155,7 +205,27 @@ export function OnboardingDock() {
 /* manual "done" button here so the flow is navigable end-to-end.      */
 /* ------------------------------------------------------------------ */
 
-function Step1Placeholder({ onComplete }: { onComplete: () => void }) {
+function Step1Connect({ onComplete }: { onComplete: () => void }) {
+  const [client, setClient] = useState<ClientKey>("claude");
+  const [copied, setCopied] = useState(false);
+  const mcpUrl = useMemo(() => `${window.location.origin}/mcp/`, []);
+  const config = CLIENT_CONFIGS[client];
+  const command = useMemo(() => config.command(mcpUrl), [config, mcpUrl]);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(command).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }, [command]);
+
+  // Reset the copied state when the user switches tabs so the button is
+  // truthful about whether the *currently visible* command is in the clipboard.
+  const switchClient = useCallback((next: ClientKey) => {
+    setClient(next);
+    setCopied(false);
+  }, []);
+
   return (
     <div className="onboarding-step">
       <div className="onboarding-step-header">Step 1 of 3</div>
@@ -163,9 +233,39 @@ function Step1Placeholder({ onComplete }: { onComplete: () => void }) {
       <div className="onboarding-step-desc">
         Pick the agent you use. Run the command once — your agent will drive the rest of the setup for you.
       </div>
-      <div className="onboarding-placeholder">[Step 1 content lands in story A2 — client tabs, copyable command, MCP connect detection]</div>
+
+      <div className="onboarding-client-tabs">
+        {CLIENT_TABS.map((t) => (
+          <button
+            key={t.key}
+            className={`onboarding-client-tab${client === t.key ? " active" : ""}`}
+            onClick={() => switchClient(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="onboarding-code-hint">{config.hint}</div>
+      <div className="onboarding-code-box">
+        <pre><code>{command}</code></pre>
+        <button
+          className={`onboarding-code-copy${copied ? " copied" : ""}`}
+          onClick={handleCopy}
+        >
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+
+      <div className="onboarding-waiting">
+        <span className="onboarding-waiting-dot" />
+        Waiting for your agent to connect…
+      </div>
+
       <div className="onboarding-step-actions">
-        <button className="onboarding-btn-primary" onClick={onComplete}>I've connected it →</button>
+        <button className="onboarding-btn-ghost" onClick={onComplete}>
+          I've connected it
+        </button>
       </div>
     </div>
   );
