@@ -69,6 +69,18 @@ const defaultState: OnboardingState = {
   dismissed: false,
 };
 
+const ACTION_LOG_LIMIT = 50;
+// Step 2 completion heuristic: the agent has called `onboard_space` AND at
+// least one other tool (scan, create_artifact, etc.). That pattern means
+// the agent genuinely did something, not just pinged Oyster.
+const STEP2_REQUIRED_TOOL = "onboard_space";
+
+interface ToolCall {
+  tool: string;
+  at: string;
+  isError: boolean;
+}
+
 function loadState(): OnboardingState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -107,10 +119,67 @@ export function OnboardingDock({ onOpenImport }: OnboardingDockProps = {}) {
   const [state, setState] = useState<OnboardingState>(loadState);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [viewingStep, setViewingStep] = useState<StepIndex>(() => activeStep(loadState()));
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const dockRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { saveState(state); }, [state]);
+
+  // On mount, check the REST fallback so refreshes pick up an already-
+  // connected agent immediately without waiting for a new SSE push.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/mcp/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.connected_clients > 0) {
+          setState((s) => (s.step1Complete ? s : { ...s, step1Complete: true }));
+        }
+      })
+      .catch(() => { /* server may not be up yet */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Listen for MCP connect + tool-call SSE events. Shares the channel with
+  // App.tsx's existing EventSource; the server broadcasts to every client.
+  useEffect(() => {
+    const es = new EventSource("/api/ui/events");
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.command === "mcp_client_connected") {
+          setState((s) => (s.step1Complete ? s : { ...s, step1Complete: true }));
+          // If the user is currently staring at step 1, slide them to step 2.
+          setViewingStep((v) => (v === 1 ? 2 : v));
+        }
+        if (event.command === "mcp_tool_called") {
+          const call: ToolCall = {
+            tool: event.payload?.tool ?? "unknown",
+            at: event.payload?.at ?? new Date().toISOString(),
+            isError: Boolean(event.payload?.is_error),
+          };
+          setToolCalls((prev) => {
+            const next = [...prev, call];
+            return next.length > ACTION_LOG_LIMIT ? next.slice(-ACTION_LOG_LIMIT) : next;
+          });
+        }
+      } catch { /* malformed event */ }
+    };
+    return () => es.close();
+  }, []);
+
+  // Step 2 heuristic: once the agent has called `onboard_space` at least
+  // once AND any other tool, mark step 2 complete. Runs in an effect so
+  // we only transition once; subsequent tool calls don't toggle state.
+  useEffect(() => {
+    if (state.step2Complete) return;
+    const hasOnboard = toolCalls.some((c) => c.tool === STEP2_REQUIRED_TOOL && !c.isError);
+    const hasOther = toolCalls.some((c) => c.tool !== STEP2_REQUIRED_TOOL && !c.isError);
+    if (hasOnboard && hasOther) {
+      setState((s) => ({ ...s, step2Complete: true }));
+    }
+  }, [toolCalls, state.step2Complete]);
 
   // Click outside the popover closes it
   useEffect(() => {
@@ -189,7 +258,7 @@ export function OnboardingDock({ onOpenImport }: OnboardingDockProps = {}) {
           </div>
 
           {viewingStep === 1 && <Step1Connect onComplete={markStep1} />}
-          {viewingStep === 2 && <Step2AgentWork onComplete={markStep2} />}
+          {viewingStep === 2 && <Step2AgentWork onComplete={markStep2} toolCalls={toolCalls} />}
           {viewingStep === 3 && (
             <Step3Memories
               onComplete={markStep3}
@@ -283,7 +352,7 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
 
 const AGENT_PROMPT = "Set up Oyster with my projects at ~/Dev. Use the oyster MCP tools.";
 
-function Step2AgentWork({ onComplete }: { onComplete: () => void }) {
+function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; toolCalls: ToolCall[] }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -292,6 +361,8 @@ function Step2AgentWork({ onComplete }: { onComplete: () => void }) {
       setTimeout(() => setCopied(false), 1800);
     });
   }, []);
+
+  const hasActivity = toolCalls.length > 0;
 
   return (
     <div className="onboarding-step">
@@ -311,10 +382,23 @@ function Step2AgentWork({ onComplete }: { onComplete: () => void }) {
         </button>
       </div>
 
-      <div className="onboarding-action-log onboarding-action-log--empty">
-        <span className="onboarding-waiting-dot" />
-        Watching for your agent's activity…
-      </div>
+      {hasActivity ? (
+        <div className="onboarding-action-log">
+          {toolCalls.slice(-10).map((call, i) => (
+            <div key={`${call.at}-${i}`} className="onboarding-action-line">
+              <span className={call.isError ? "onboarding-action-pending" : "onboarding-action-tick"}>
+                {call.isError ? "✗" : "✓"}
+              </span>
+              <span>{call.tool}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="onboarding-action-log onboarding-action-log--empty">
+          <span className="onboarding-waiting-dot" />
+          Watching for your agent's activity…
+        </div>
+      )}
 
       <div className="onboarding-step-actions">
         <button className="onboarding-btn-ghost" onClick={onComplete}>

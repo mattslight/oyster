@@ -121,6 +121,12 @@ interface McpDeps {
   memoryProvider: MemoryProvider;
   pendingReveals: Set<string>;
   broadcastUiEvent: (event: UiCommand) => void;
+  /**
+   * Identifies the caller so we can push tool-call SSE events for external
+   * agents only (Oyster's own OpenCode subprocess would otherwise spam the
+   * action log with its own calls).
+   */
+  clientContext: { isInternal: true } | { isInternal: false; userAgent: string };
 }
 
 function buildContext(userlandDir: string): string {
@@ -185,6 +191,38 @@ Files you create must live under: ${userlandDir}/
 
 export function createMcpServer(deps: McpDeps): McpServer {
   const server = new McpServer({ name: "oyster", version: "1.0.0" });
+
+  // Monkey-patch `server.tool` so every registered tool emits a
+  // `mcp_tool_called` SSE event on completion — but only for external
+  // agents. Our own OpenCode subprocess makes many calls during normal
+  // operation and would otherwise flood the onboarding action log.
+  if (!deps.clientContext.isInternal) {
+    const externalUa = deps.clientContext.userAgent;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const originalTool = (server.tool as any).bind(server);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (server as any).tool = (name: string, ...rest: any[]) => {
+      const handler = rest.pop();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (...args: any[]) => {
+        const result = await handler(...args);
+        try {
+          deps.broadcastUiEvent({
+            version: 1,
+            command: "mcp_tool_called",
+            payload: {
+              tool: name,
+              user_agent: externalUa,
+              at: new Date().toISOString(),
+              is_error: Boolean(result?.isError),
+            },
+          });
+        } catch { /* best effort — never let telemetry break a tool call */ }
+        return result;
+      };
+      return originalTool(name, ...rest, wrapped);
+    };
+  }
 
   // ── get_context ──
 
