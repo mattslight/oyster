@@ -18,13 +18,25 @@ Reddit launch audience = strangers without the friend-bridge Bharat had. A thin 
 
 `docs/superpowers/specs/2026-04-21-onboarding-mcp-first-design.md`
 
+## Terminology discipline
+
+Three concepts currently blur in user copy. UI wording MUST be ruthless:
+
+| Concept | What it is | User-facing language |
+|---|---|---|
+| **AI provider** | The LLM brain Oyster uses internally (Anthropic, OpenAI via OpenCode). Handled at CLI first-run. | Don't surface unless broken. If shown, say *"your AI brain"*, not *"your AI"*. |
+| **Your agent** | External tool (Claude Code, Cursor, Windsurf, Hermes) that drives Oyster via MCP. | Always *"your agent"* or name the specific tool. Never *"your AI"* in step 1. |
+| **MCP** | The protocol connecting the agent to Oyster. | Keep it — audience is dev-heavy, MCP is known. But it's plumbing; lead with what the user gets, not the protocol. |
+
+Step titles reflect this: *"Connect your agent"*, not *"Connect your AI"*.
+
 ## Story list
 
 | # | Story | Effort |
 |---|---|---|
 | A1 | Onboarding shell: `OnboardingChecklist` container + `OnboardingStep` row. Collapsible, active-step gating, persistent dismiss, localStorage step state. Swaps in where `OnboardingBanner` mounts. | 4h |
 | A2 | Step 1 body — Connect your agent via MCP. Tabbed client selector (Claude Code / Cursor / VS Code / Windsurf). Live MCP URL, copy button, manual "I've connected it" confirm. Extract tab UI from `connect-your-ai` builtin. | 1h |
-| A3 | Step 2 body — Drop `~/Dev` (or paste path) → scan → spaces. Primary action is folder drop (builds on #108). Secondary: agent-prompt fallback ("onboard my projects at …"). No separate "done" button — completes on scan result. | 1–2h |
+| A3 | Step 2 body — Drop `~/Dev` → scan → spaces. **Primary path: folder drop** (works without an agent configured; fastest feedback loop; builds on #108). **Secondary path: agent-prompt** — small link under the drop zone: *"Or ask your agent: `onboard my projects at ~/Dev`"*. Never show both at equal weight. Completes on scan result. | 1–2h |
 | A4 | Step 3 body — Import your memories (optional). Trust-first copy: *"Everything stays on your machine."* Clear opt-in, skip button. CTA opens existing #107 import flow. | 30m |
 | A5 | PII-harden the #107 export prompt. Add instruction to the cloud AI: *"exclude API keys, credentials, passwords, and personal details about third parties (children, family, colleagues)"*. Single string change. | 15m |
 | A6 | Delete `OnboardingBanner.tsx`, unreference from `App.tsx`, drop CSS. | 15m |

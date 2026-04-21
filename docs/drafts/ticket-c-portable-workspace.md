@@ -70,3 +70,7 @@ This ticket exists to **hold the shape**. Before we spec or code, we run a dedic
 - **Now:** document the direction, gather user signal on Model 1 vs Model 2
 - **Next:** design session (post Epic A + B)
 - **Later:** promote to an epic once we've picked a model
+
+## Why this stays a single ticket, not an epic
+
+This is a **product-identity question** before it's an engineering question: is Oyster primarily a local MCP-driven workspace *with optional sync*, or is it becoming a *hosted workspace product*? Promoting to an epic now would create false certainty about an answer we don't have. A single exploratory ticket is load-bearing here — it holds the shape without committing to a shape.

@@ -29,6 +29,17 @@ Make Oyster's on-disk data **visible**, **organised**, and **portable**. Fix Mer
 - Provides foundation for Epic C sync (relative paths make replication trivial)
 - Coordinate with Epic A: if we ship B before A, the checklist's "where your workspace lives" hint reflects new location.
 
+## Risk — path leakage
+
+B4 + B5 look small on paper. They are not. Path assumptions leak everywhere: scanner writes, builtin loader, import flows, backup paths, icon paths, log paths, test fixtures. The real failure mode isn't the migration script — it's missing one writer that still emits an absolute path after the change.
+
+Mitigations:
+
+- Grep pass before coding: enumerate every call that touches the filesystem (`fs.writeFile`, `fs.mkdir`, `path.join(HOME, ...)`, hardcoded `.oyster` strings). Produce a checklist. Tick off each one.
+- Unit test: mock `OYSTER_BASE`, assert no code path returns a string starting with `/` or `C:\` from any `storage_config.path`.
+- Smoke test: after migration on matt's install first, exercise every artifact type (create, read, update, open, remove) before touching Bharat/Merlin.
+- Treat `0.4.0` as a **genuine breaking-shape release** even with only three users. Don't ship on a day we can't hotfix.
+
 ## Launch gate
 
 Ship as `0.4.0-beta.0` (minor bump because it's a breaking layout change). Run migration on matt/Bharat/Merlin installs. If all three load clean and their existing artifacts are intact, promote to `0.4.0`.
