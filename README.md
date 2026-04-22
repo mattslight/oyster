@@ -140,3 +140,6 @@ npm run dev
 Copyright (c) 2026 Matthew Slight
 
 You can use, modify, and distribute this software freely. If you run a modified version as a network service, you must make your source code available under the same licence.
+
+
+<!-- Fix #193 -->
