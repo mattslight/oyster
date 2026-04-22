@@ -59,6 +59,8 @@ export interface Space {
   scanError: string | null;
   lastScannedAt: string | null;
   lastScanSummary: Omit<ScanResult, "artifacts"> | null;
+  summaryTitle: string | null;
+  summaryContent: string | null;
   createdAt: string;
   updatedAt: string;
 }

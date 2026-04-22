@@ -12,6 +12,8 @@ export interface SpaceRow {
   last_scan_summary: string | null;
   ai_job_status: string | null;
   ai_job_error: string | null;
+  summary_title: string | null;
+  summary_content: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,11 +63,11 @@ export class SqliteSpaceStore implements SpaceStore {
         INSERT INTO spaces (
           id, display_name, repo_path, color, parent_id, scan_status,
           scan_error, last_scanned_at, last_scan_summary,
-          ai_job_status, ai_job_error
+          ai_job_status, ai_job_error, summary_title, summary_content
         ) VALUES (
           @id, @display_name, @repo_path, @color, @parent_id, @scan_status,
           @scan_error, @last_scanned_at, @last_scan_summary,
-          @ai_job_status, @ai_job_error
+          @ai_job_status, @ai_job_error, @summary_title, @summary_content
         )
       `),
       getPaths: db.prepare("SELECT * FROM space_paths WHERE space_id = ? ORDER BY added_at"),
@@ -92,7 +94,7 @@ export class SqliteSpaceStore implements SpaceStore {
   private static readonly UPDATABLE_COLUMNS = new Set([
     "display_name", "repo_path", "color", "parent_id", "scan_status",
     "scan_error", "last_scanned_at", "last_scan_summary",
-    "ai_job_status", "ai_job_error",
+    "ai_job_status", "ai_job_error", "summary_title", "summary_content",
   ]);
 
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void {

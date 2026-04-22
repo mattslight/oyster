@@ -46,6 +46,8 @@ export function initDb(userlandDir: string): Database.Database {
     "ALTER TABLE artifacts ADD COLUMN source_origin TEXT NOT NULL DEFAULT 'manual'",
     "ALTER TABLE artifacts ADD COLUMN source_ref TEXT",
     "ALTER TABLE spaces ADD COLUMN parent_id TEXT REFERENCES spaces(id)",
+    "ALTER TABLE spaces ADD COLUMN summary_title TEXT",
+    "ALTER TABLE spaces ADD COLUMN summary_content TEXT",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }
   }

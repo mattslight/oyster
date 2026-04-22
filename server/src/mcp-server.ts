@@ -222,6 +222,30 @@ and give a short reason. Never omit folders from the plan without telling the
 user. If you're unsure whether something counts, flag it as an open question
 and let the user decide.
 
+## "Here's my context from another AI" — import playbook
+
+If the user pastes content that describes their spaces / projects / summaries /
+memories — a dump they asked ChatGPT, Claude, or another tool to produce using
+Oyster's import prompt — DON'T treat it as opaque text and DON'T ask what to do
+with it. Extract the structure and apply.
+
+The paste may be YAML, JSON, paraphrased Markdown, or a mix — don't rely on
+strict parsing. Read the content, identify the three categories, and apply via
+these tools:
+
+- **Spaces / projects** → call \`onboard_space({ name })\` once per space.
+  Paths are NOT required; spaces are logical groupings. Don't invent filesystem
+  paths. If the user later points at real folders, attach them then.
+- **Summaries** → call \`set_space_summary({ name, title, content })\` once per
+  space summary in the paste.
+- **Memories** → call \`remember({ content, tags, space })\` once per memory.
+  Use the space name from the memory's \`space\` field; apply verbatim tags
+  if present.
+
+When done, confirm with a short "applied N spaces, M summaries, K memories" and
+offer to attach filesystem paths to any of the spaces if the user wants them
+connected to real folders on disk.
+
 ## Core concepts
 
 **Artifacts** — the items on the desktop. Each artifact has:
@@ -344,11 +368,11 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "onboard_space",
-    "Create a space (or extend one with the same name) by attaching one or more local folders to it, then scan each for apps, docs, and diagrams. If a space with this name already exists, the given paths are attached to that existing space — NOT duplicated into a new one. Pass `paths` (array) for multi-folder spaces, or a single path for a one-folder space. `repo_path` (singular) is still accepted as a back-compat shorthand. Returns `created: true` when a new space was made, `created: false` when paths were attached to an existing space. All discovered assets register as desktop artifacts immediately.",
+    "Create a space (or extend one with the same name) as a logical grouping for work. Spaces are named workspaces the user switches between — they don't require filesystem paths. If `paths` are provided, each folder is attached and scanned for apps, docs, and diagrams; if not, the space is created empty as a logical grouping (summaries, memories, and artifacts can attach later). If a space with this name already exists, any given paths are attached to it — NOT duplicated into a new one. Returns `created: true` when a new space was made, `created: false` when an existing one was extended.",
     {
-      name: z.string().describe("Display name for the space (slugified to ID). If a space with this name already exists, paths are attached to it — no duplicate created."),
-      paths: z.array(z.string()).optional().describe("Absolute local paths to attach (1 or more). Preferred for multi-folder spaces."),
-      repo_path: z.string().optional().describe("Back-compat shorthand for a single path. Either `paths` or `repo_path` is required."),
+      name: z.string().describe("Display name for the space (slugified to ID). If a space with this name already exists, it's extended — no duplicate."),
+      paths: z.array(z.string()).optional().describe("Optional. Absolute local paths to attach and scan. Omit for a logical grouping with no filesystem attachment."),
+      repo_path: z.string().optional().describe("Back-compat shorthand for a single path. Both `paths` and `repo_path` are optional."),
       skip_ai: z.boolean().optional().describe("Reserved for Phase 2 — no-op currently"),
     },
     async ({ name, paths, repo_path }) => {
@@ -356,9 +380,6 @@ export function createMcpServer(deps: McpDeps): McpServer {
         const resolvedPaths = paths && paths.length > 0
           ? paths
           : (repo_path ? [repo_path] : []);
-        if (resolvedPaths.length === 0) {
-          return { content: [{ type: "text" as const, text: "Provide either `paths` (array) or `repo_path` (single)." }], isError: true };
-        }
 
         // Extend-or-create: try to create the space first. If it already
         // exists, look it up by slugified id and attach paths to it. Either
@@ -395,12 +416,41 @@ export function createMcpServer(deps: McpDeps): McpServer {
           }
         }
 
-        const scanResult = await deps.spaceService.scanSpace(space.id);
+        // Only scan when there are paths to walk. Paths-less spaces are
+        // logical groupings — nothing to discover yet.
+        const scanResult = resolvedPaths.length > 0
+          ? await deps.spaceService.scanSpace(space.id)
+          : null;
         return {
           content: [{
             type: "text" as const,
             text: JSON.stringify({ space_id: space.id, created, paths: pathReports, scan_summary: scanResult }, null, 2),
           }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── set_space_summary ──
+
+  server.tool(
+    "set_space_summary",
+    "Attach a short summary (title + content) to a space. Use this to capture what a space is about — context, focus, or scope — in the user's own terms. Upserts on the space's slugified name: if the space exists, its summary is updated; if not, a logical space is created with the summary attached. One summary per space.",
+    {
+      name: z.string().describe("Space name (display name or slug). Looked up by slugified id; created if missing."),
+      title: z.string().describe("Short title for the summary (e.g. 'Chess Training Platform')."),
+      content: z.string().describe("The summary itself — what this space is about, in a sentence or two."),
+    },
+    async ({ name, title, content }) => {
+      try {
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+        let space = deps.spaceService.getSpace(slug);
+        if (!space) space = deps.spaceService.createSpace({ name });
+        const updated = deps.spaceService.setSummary(space.id, title, content);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ space_id: updated.id, title: updated.summaryTitle, content: updated.summaryContent }, null, 2) }],
         };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };

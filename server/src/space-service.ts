@@ -30,6 +30,8 @@ function rowToSpace(row: SpaceRow): Space {
     scanError: row.scan_error,
     lastScannedAt: row.last_scanned_at,
     lastScanSummary: row.last_scan_summary ? JSON.parse(row.last_scan_summary) : null,
+    summaryTitle: row.summary_title,
+    summaryContent: row.summary_content,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -62,6 +64,7 @@ export class SpaceService {
       id, display_name: displayName, repo_path: null, color, parent_id: null,
       scan_status: "none", scan_error: null, last_scanned_at: null,
       last_scan_summary: null, ai_job_status: null, ai_job_error: null,
+      summary_title: null, summary_content: null,
     });
 
     // If a path was provided, add it to space_paths
@@ -106,6 +109,13 @@ export class SpaceService {
     const row = this.spaceStore.getById(id);
     return row ? rowToSpace(row) : null;
   }
+  setSummary(id: string, title: string, content: string): Space {
+    const row = this.spaceStore.getById(id);
+    if (!row) throw new Error(`Space "${id}" not found`);
+    this.spaceStore.update(id, { summary_title: title, summary_content: content });
+    return rowToSpace(this.spaceStore.getById(id)!);
+  }
+
   updateSpace(id: string, fields: { displayName?: string; color?: string }): Space {
     const row = this.spaceStore.getById(id);
     if (!row) throw new Error(`Space "${id}" not found`);
