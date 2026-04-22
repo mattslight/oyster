@@ -232,7 +232,7 @@ export function OnboardingDock({ userSpaceCount = 0, onOpenImport }: OnboardingD
   const done = allDone(state);
 
   const dockLabel = done
-    ? "Set up"
+    ? "All set"
     : `Set up Oyster · ${count}/3`;
 
   return (
