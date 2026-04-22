@@ -254,6 +254,7 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
 
   const resetAll = useCallback(() => {
     setState(defaultState);
+    setToolCalls([]);
     setViewingStep(1);
     setPopoverOpen(true);
   }, []);

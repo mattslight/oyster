@@ -382,9 +382,9 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}`}>
           {isFirstRun ? (
             <>
-              <span className="tagline-bright">Tell your AI to set up Oyster.</span>
+              <span className="tagline-bright">Tell your agent to set up Oyster.</span>
               <br />
-              <div className="chatbar-onboarding-hint" style={{ marginTop: "8px" }}>
+              <div style={{ marginTop: "8px" }}>
                 Try: <em>"Set up Oyster for me."</em>
               </div>
             </>

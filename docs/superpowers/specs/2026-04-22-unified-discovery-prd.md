@@ -43,7 +43,7 @@ One flow. One primitive. No Oyster-owned classifier.
 ## UI surface
 
 - **Onboarding dock** (existing, kept). Step 2 still shows a copyable prompt pointing the user to ask their agent to set things up. The prompt text updates to emphasise *"audit thoroughly, present the plan to me first, then apply"*.
-- **Add Space form** (existing `AddSpaceWizard`, kept — simplified). The simple "give me a name, drop a folder, create a space" form. Used for one-off single-folder adds post-onboarding. The old LLM-grouping discovery panel inside the same file is removed.
+- **No Add Space form.** The previous `AddSpaceWizard` and drag-drop entry are retired in this PR. Single-project and multi-project container onboarding both go through the agent flow. Revisiting drag-drop for adding folders post-onboarding is tracked in #190.
 - **No new first-run UI.** The agent's own chat is the review surface in v1.
 
 ## Out of scope
@@ -59,7 +59,7 @@ A fresh install should pass every one of these:
 
 - External Claude Code connected. User: *"Set up Oyster for me."* → agent audits the filesystem (takes minutes, progress visible in agent chat), presents plan in chat with spaces / reasons / open questions, user confirms, agent calls `onboard_space(...)` per space with multi-path arrays, spaces appear on Oyster's desktop.
 - Same flow through Oyster's own chat bar (no external agent connected) — OpenCode handles it via its own shell tools. Same result.
-- Drag a single folder onto the Oyster desktop → simple Add Space form opens pre-filled → user creates one space with that one folder. No LLM grouping step.
+- Dragging a folder onto the Oyster desktop is a no-op in v1 (previous drag-drop entry retired). Folder attachment is agent-driven via `onboard_space`; post-onboarding drag-drop is tracked in #190.
 - MCP tool list no longer advertises `discover_container` / `onboard_container`. Docs and playbooks don't reference them.
 - Reproduce yesterday's blunderfixer case via the agent flow — if the agent drops a real project, the user catches it in chat ("what about blunderfixer?") and the agent adds it in a follow-up `onboard_space` call. No silent loss.
 

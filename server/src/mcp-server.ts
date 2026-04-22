@@ -11,6 +11,7 @@ import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 import { debug } from "./debug.js";
 import { slugify } from "./utils.js";
+import { recordToolCall } from "./mcp-client-tracker.js";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
 // `satisfies` ensures this stays in sync with the ArtifactKind union at compile time.
@@ -259,10 +260,11 @@ connected to real folders on disk.
 - \`group\`: optional visual group on the desktop surface
 
 **Spaces** — named workspaces (tabs) the user switches between. Each space has an ID,
-display name, optional repo path, and scan status. Use \`list_spaces\` to enumerate them.
-Every workspace has a "home" space by default; the user adds others as they onboard projects.
-Spaces can be onboarded from a local repo — use \`onboard_space\` to create a space and
-scan it for artifacts in one step, or \`scan_space\` to rescan an existing space.
+display name, and scan status. Use \`list_spaces\` to enumerate them. Every workspace
+has a "home" space by default; the user adds others as they onboard projects. Spaces
+are logical groupings — they can optionally have one or more folders attached (scan
+sources). Use \`onboard_space\` to create a space (with or without paths), or
+\`scan_space\` to rescan folders already attached to a space.
 
 **Artifact kinds**:
 - \`app\` — a local web app (React, Vite, etc.) that runs as a process on a port
@@ -323,6 +325,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
       const wrapped = async (...args: any[]) => {
         const result = await handler(...args);
         try {
+          recordToolCall(externalUa);
           deps.broadcastUiEvent({
             version: 1,
             command: "mcp_tool_called",
@@ -400,26 +403,31 @@ export function createMcpServer(deps: McpDeps): McpServer {
           }
         }
 
-        const pathReports: Array<{ path: string; status: "attached" | "already-attached" | "failed"; error?: string }> = [];
+        const pathReports: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }> = [];
         for (const p of resolvedPaths) {
           try {
             deps.spaceService.addPath(space.id, p);
+            // `attached` covers both \"newly added\" and \"already attached to
+            // THIS space\" — spaceStore.addPath is INSERT OR IGNORE so a
+            // duplicate silently no-ops.
             pathReports.push({ path: p, status: "attached" });
           } catch (err) {
             const msg = (err as Error).message;
-            // `addPath` throws when the path is already attached to a DIFFERENT
-            // space, or when the path doesn't exist on disk. Surfaced per-path
-            // so the agent gets a truthful report rather than a whole-call fail.
-            pathReports.push({ path: p, status: /already attached/i.test(msg) ? "already-attached" : "failed", error: msg });
+            // `addPath` only throws for paths that don't exist on disk OR
+            // paths already claimed by a DIFFERENT space (addPath's
+            // conflict guard). The latter means THIS space still has
+            // no folders for that path, so we must not count it as
+            // attached for the scan-guard below.
+            const ownedElsewhere = /already attached/i.test(msg);
+            pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
           }
         }
 
-        // Only scan when at least one path actually attached. If every path
-        // failed (missing on disk, owned by another space), the space may
-        // still have zero folders — scanSpace would throw "no folders" and
-        // the agent would see a confusing scan error on top of per-path
-        // errors already in `paths`.
-        const anyAttached = pathReports.some((r) => r.status === "attached" || r.status === "already-attached");
+        // Only scan when at least one path actually attached to THIS space.
+        // If every path failed (missing on disk, owned by another space),
+        // scanSpace would throw \"no folders\" and the agent would see a
+        // confusing scan error on top of per-path errors already in `paths`.
+        const anyAttached = pathReports.some((r) => r.status === "attached");
         const scanResult = anyAttached ? await deps.spaceService.scanSpace(space.id) : null;
         return {
           content: [{
