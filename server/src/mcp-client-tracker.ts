@@ -14,6 +14,11 @@ export interface ExternalMcpClient {
   toolCalls: number;
 }
 
+// Cap: any local process that can reach /mcp can also rotate its
+// User-Agent header per request, so an unbounded map is a memory-growth
+// surface. Keeping the most recent N entries is fine for the dock's
+// onboarding signal — stale senders drop off once their UA isn't seen.
+const MAX_CLIENTS = 50;
 const clients = new Map<string, ExternalMcpClient>();
 
 function normalizeUa(raw: string | string[] | undefined): string {
@@ -35,9 +40,19 @@ export function recordExternalRequest(
   const now = new Date().toISOString();
   if (existing) {
     existing.lastSeenAt = now;
+    // LRU bump: delete+set moves the entry to the end of Map insertion order.
+    clients.delete(ua);
+    clients.set(ua, existing);
     return { userAgent: ua, isNew: false };
   }
   clients.set(ua, { userAgent: ua, firstSeenAt: now, lastSeenAt: now, toolCalls: 0 });
+  // Evict oldest (least recently seen) until within cap. Map.keys() iterates
+  // in insertion order, so the first key is the oldest.
+  while (clients.size > MAX_CLIENTS) {
+    const oldest = clients.keys().next().value;
+    if (oldest === undefined) break;
+    clients.delete(oldest);
+  }
   return { userAgent: ua, isNew: true };
 }
 

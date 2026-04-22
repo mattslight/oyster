@@ -248,11 +248,21 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
   }, []);
 
   const resetAll = useCallback(() => {
-    setState(defaultState);
+    // Mirror the auto-completion rule that the [userSpaceCount] effect
+    // applies on fresh loads: if a user space already exists, step 1 and
+    // step 2 count as done. Without this, a reset when userSpaceCount
+    // stays constant would strand the user on step 1 forever (the effect
+    // never re-fires because its dep didn't change).
+    const hasSpaces = userSpaceCount > 0;
+    setState({
+      ...defaultState,
+      step1Complete: hasSpaces,
+      step2Complete: hasSpaces,
+    });
     setToolCalls([]);
-    setViewingStep(1);
+    setViewingStep(hasSpaces ? 3 : 1);
     setPopoverOpen(true);
-  }, []);
+  }, [userSpaceCount]);
 
   const count = completedCount(state);
   const done = allDone(state);
@@ -478,8 +488,10 @@ function Step3Memories({
     try {
       await navigator.clipboard.writeText(prompt);
       setSub("b");
-    } catch { /* clipboard blocked — advance anyway so the flow doesn't dead-end */
-      setSub("b");
+    } catch {
+      // Clipboard blocked (permissions / insecure context). Keep the user
+      // on sub-step "a" so the prompt is still visible to copy manually —
+      // advancing would land them on a misleading \"Copied\" screen.
     }
   }, [prompt]);
 

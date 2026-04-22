@@ -26,7 +26,7 @@ One flow. One primitive. No Oyster-owned classifier.
 - **OpenCode is the universal fallback.** Users without an external agent still get the same flow — they ask Oyster's built-in chat bar, which routes to OpenCode, which does the audit with its own shell tools.
 - **Chat-first review.** The plan lands in the agent's chat. The user confirms there. No Oyster-owned review modal in v1 — add one if UAT says chat-only feels cramped.
 - **Ask, don't audit.** If the agent is unsure about a folder, it asks in chat — *"Is stockfish yours, a vendored dependency, or noise?"* No silent drops, no hidden recovery.
-- **Recovery stays open.** After initial onboarding, the user can still create spaces via drag-drop (the Add Space form), ask the agent to add a folder, or re-run discovery any time.
+- **Recovery stays open.** After initial onboarding, the user can ask the agent to add a folder or re-run discovery any time. Post-onboarding drag-drop as an additional entry point is a follow-up (#190).
 
 ## MCP surface
 

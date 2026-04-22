@@ -341,7 +341,7 @@
 <ul>
 <li><code>OnboardingBanner.tsx</code> and its dismissal state — superseded by the dock.</li>
 <li><code>discover_container</code> and <code>onboard_container</code> MCP tools and their supporting server-side classification pipeline (<code>discoverCandidates</code>, <code>groupWithLLM</code>, <code>discoverAllSubfolders</code>, <code>groupWithLLMRich</code>, <code>isContainer</code>). The agent&#39;s own audit produces better groupings than Oyster&#39;s server-side LLM pass could — richer context (git log, READMEs), better handling of non-code projects, better judgement on what&#39;s noise vs a real project.</li>
-<li><code>POST /api/discover</code> and <code>POST /api/discover/import</code> REST endpoints — the drag-drop Add Space form now takes you through the simple &quot;name + folder + create&quot; path. Multi-project container onboarding goes through the agent flow.</li>
+<li><code>POST /api/discover</code> and <code>POST /api/discover/import</code> REST endpoints, along with drag-drop onboarding and the <code>AddSpaceWizard</code> form. Both single-project and multi-project container onboarding now go through the agent flow; bringing drag-drop back as a post-onboarding add path is tracked in <a href="https://github.com/mattslight/oyster/issues/190" rel="noopener noreferrer">#190</a>.</li>
 </ul>
 <h2 id="v-0-3-8"><span class="release-version">0.3.8</span><span class="release-date"> — 2026-04-21</span></h2>
 <h3>Fixed</h3>
