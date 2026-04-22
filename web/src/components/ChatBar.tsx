@@ -383,10 +383,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}`}>
           {isFirstRun ? (
             <>
-              <span className="tagline-bright">Drop a folder to get started</span>
+              <span className="tagline-bright">Tell your AI to set up Oyster.</span>
               <br />
               <div className="chatbar-onboarding-hint" style={{ marginTop: "8px" }}>
-                We'll organise your projects into spaces
+                Try: <em>"Set up Oyster for me."</em>
               </div>
             </>
           ) : tagline ? (
@@ -691,7 +691,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       {/* Onboarding hint */}
       {isFirstRun && isHero && (
         <div className="chatbar-onboarding-hint">
-          or click <code>+</code> to add your projects
+          or drag a folder here to add one yourself
         </div>
       )}
 
