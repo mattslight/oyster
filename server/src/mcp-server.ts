@@ -344,9 +344,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "onboard_space",
-    "Create a space, attach one or more local folders to it, and scan each for apps, docs, and diagrams. Pass `paths` (array) for multi-folder spaces like `oyster` containing all `oyster-*` repos, or a single path for a one-folder space. `repo_path` (singular) is still accepted as a back-compat shorthand. All discovered assets register as desktop artifacts immediately.",
+    "Create a space (or extend one with the same name) by attaching one or more local folders to it, then scan each for apps, docs, and diagrams. If a space with this name already exists, the given paths are attached to that existing space — NOT duplicated into a new one. Pass `paths` (array) for multi-folder spaces, or a single path for a one-folder space. `repo_path` (singular) is still accepted as a back-compat shorthand. Returns `created: true` when a new space was made, `created: false` when paths were attached to an existing space. All discovered assets register as desktop artifacts immediately.",
     {
-      name: z.string().describe("Display name for the space (slugified to ID)"),
+      name: z.string().describe("Display name for the space (slugified to ID). If a space with this name already exists, paths are attached to it — no duplicate created."),
       paths: z.array(z.string()).optional().describe("Absolute local paths to attach (1 or more). Preferred for multi-folder spaces."),
       repo_path: z.string().optional().describe("Back-compat shorthand for a single path. Either `paths` or `repo_path` is required."),
       skip_ai: z.boolean().optional().describe("Reserved for Phase 2 — no-op currently"),
@@ -360,23 +360,38 @@ export function createMcpServer(deps: McpDeps): McpServer {
           return { content: [{ type: "text" as const, text: "Provide either `paths` (array) or `repo_path` (single)." }], isError: true };
         }
 
-        // Create the space with the first path, then attach the rest.
-        const [firstPath, ...restPaths] = resolvedPaths;
-        const space = deps.spaceService.createSpace({ name, repoPath: firstPath });
+        // Extend-or-create: try to create the space first. If it already
+        // exists, look it up by slugified id and attach paths to it. Either
+        // way, every resolvedPath gets added via addPath (which is idempotent
+        // for paths already attached to THIS space).
+        let space;
+        let created = false;
+        try {
+          space = deps.spaceService.createSpace({ name });
+          created = true;
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (/already exists/i.test(msg)) {
+            const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+            const existing = deps.spaceService.getSpace(slug);
+            if (!existing) throw err;
+            space = existing;
+          } else {
+            throw err;
+          }
+        }
 
-        const pathReports: Array<{ path: string; status: "attached" | "already-attached" | "failed"; error?: string }> = [
-          { path: firstPath, status: "attached" },
-        ];
-        for (const p of restPaths) {
+        const pathReports: Array<{ path: string; status: "attached" | "already-attached" | "failed"; error?: string }> = [];
+        for (const p of resolvedPaths) {
           try {
             deps.spaceService.addPath(space.id, p);
             pathReports.push({ path: p, status: "attached" });
           } catch (err) {
             const msg = (err as Error).message;
-            // `addPath` throws when the path is already attached to ANY space.
-            // That's surfaced per-path rather than failing the whole call so
-            // the agent gets a truthful report.
-            pathReports.push({ path: p, status: /already/i.test(msg) ? "already-attached" : "failed", error: msg });
+            // `addPath` throws when the path is already attached to a DIFFERENT
+            // space, or when the path doesn't exist on disk. Surfaced per-path
+            // so the agent gets a truthful report rather than a whole-call fail.
+            pathReports.push({ path: p, status: /already attached/i.test(msg) ? "already-attached" : "failed", error: msg });
           }
         }
 
@@ -384,7 +399,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ space_id: space.id, paths: pathReports, scan_summary: scanResult }, null, 2),
+            text: JSON.stringify({ space_id: space.id, created, paths: pathReports, scan_summary: scanResult }, null, 2),
           }],
         };
       } catch (err) {
