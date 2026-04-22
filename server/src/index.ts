@@ -935,7 +935,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     // `?internal=1` = Oyster's own embedded OpenCode subprocess; anything
     // else is an external agent (Claude Code / Cursor / etc.). The query
     // param is set at config-write time when we compose OpenCode's mcp URL.
-    const isInternal = url.includes("internal=1");
+    // Parse properly — substring matching would false-positive on
+    // `?notinternal=1` or other values containing the literal.
+    const isInternal = new URL(url, "http://localhost").searchParams.get("internal") === "1";
     let externalUa: string | null = null;
 
     if (!isInternal) {

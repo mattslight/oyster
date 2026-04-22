@@ -60,14 +60,12 @@ interface OnboardingState {
   step1Complete: boolean;
   step2Complete: boolean;
   step3Complete: boolean;
-  dismissed: boolean;
 }
 
 const defaultState: OnboardingState = {
   step1Complete: false,
   step2Complete: false,
   step3Complete: false,
-  dismissed: false,
 };
 
 const ACTION_LOG_LIMIT = 50;
@@ -360,6 +358,7 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
         ))}
       </div>
 
+      <div className="onboarding-code-hint">{config.hint}</div>
       <div className="onboarding-code-box">
         <pre><code>{command}</code></pre>
         <button
@@ -424,7 +423,7 @@ function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; too
         <div className="onboarding-action-log">
           {toolCalls.slice(-10).map((call, i) => (
             <div key={`${call.at}-${i}`} className="onboarding-action-line">
-              <span className={call.isError ? "onboarding-action-pending" : "onboarding-action-tick"}>
+              <span className={call.isError ? "onboarding-action-error" : "onboarding-action-tick"}>
                 {call.isError ? "✗" : "✓"}
               </span>
               <span>{humanizeTool(call.tool)}</span>

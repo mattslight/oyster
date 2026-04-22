@@ -340,8 +340,8 @@
   flex-shrink: 0;
 }
 
-.onboarding-action-pending {
-  color: #7c6bff;
+.onboarding-action-error {
+  color: #f87171;
   font-size: 9px;
   flex-shrink: 0;
 }
