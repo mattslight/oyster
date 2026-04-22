@@ -1,107 +1,74 @@
-# Oyster onboarding + ongoing adds — PRD
+# Agent-led onboarding — PRD (minimal first cut)
 
-**Date:** 2026-04-22 (revised after UAT of agent-led audit vs algorithmic pipeline)
-**Status:** Approved direction. Implementation details deferred to build-as-we-go.
-**Related:** Epic A (#184), `docs/superpowers/specs/2026-04-21-onboarding-mcp-first-design.md`, `docs/superpowers/notes/2026-04-22-chunk-3-comparison.md`
+**Date:** 2026-04-22
+**Status:** Approved. Minimal shape; enhancements listed separately at the bottom.
+**Related:** Epic A (#184), `docs/superpowers/specs/2026-04-21-onboarding-mcp-first-design.md`, supersedes the earlier 2026-04-22 version of this file.
 
 ## Why this exists
 
-Early design assumed Oyster could classify and group filesystem contents itself (marker-matching + LLM grouping). UAT showed this is the wrong job for Oyster: the user's agent — whether external (Claude Code, Cursor, Hermes) or embedded (Oyster's OpenCode subprocess) — produces substantially better proposals because it has shell access, git history, READMEs, and conversational context we don't. Oyster's algorithmic approach hit silent drops, narrow audience (code-only), and missed semantic judgements like *"graphiti is upstream tracking, not owned"*.
+The MCP-first onboarding dock shipped on `feat/onboarding-mcp-first`. Testing revealed that an agent with its own shell, git, and conversational context produces a materially better set-up plan than Oyster's server-side LLM pipeline can. The agent found work outside `~/Dev`, classified third-party libraries correctly, proposed a `research` space we'd never have invented, and surfaced its own open questions for the user to push back on — all in the agent's own chat, using tools Oyster doesn't provide.
 
-The product shape that falls out of this:
+The conclusion: Oyster stops trying to classify the filesystem. The agent does that work. Oyster provides primitives and a surface for the output to land on.
 
-- **Oyster provides the workspace substrate** — primitives to create/extend spaces, a review surface, live progress rendering.
-- **The agent provides the intelligence** — audits the filesystem, groups projects, names spaces, flags noise.
-- **Drag-drop and agent-led aren't two flows.** They're two invocations of the same pipeline, where drag-drop uses OpenCode as the fallback agent.
+## The flow
 
-## Two moments, not one
+1. User says to an agent: *"Set up Oyster for me"* or *"Discover my projects"*. The agent is either an external MCP client (Claude Code, Cursor, Windsurf, Hermes, …) or Oyster's own chat bar, which routes to OpenCode. Both speak the same MCP surface.
+2. The agent audits the filesystem with its own shell / read tools — `ls`, `cat`, `git log`, README reading. It probes common project locations (`~/Dev`, `~/Documents`, `~/Desktop`, `~/Projects`, cross-OS equivalents) and applies judgement about what's a real project vs noise vs something to flag for the user.
+3. The agent presents the proposed plan in its own chat — spaces with reasons, items it'd filter as noise, open questions it wants the user to answer before applying.
+4. The user reviews and confirms / adjusts in chat. *"You missed blunderfixer"* / *"Fold oyster-crm into oyster"* / *"Apply as-is"*.
+5. The agent calls `onboard_space(name, paths[])` once per confirmed space. Oyster creates each space, attaches the paths, scans for artifacts. Spaces appear on the desktop.
 
-Setup and ongoing adds have different UX because they're different jobs.
-
-### First-run / re-onboarding (the slow, thorough one)
-
-**When:** first install. Or when the user explicitly says "audit everything again".
-
-**Shape:** agent audits the user's machine (broad sweep — `~/Dev`, `~/Documents`, `~/Projects`, etc., cross-OS), reads git activity / READMEs for context, proposes a set of spaces with rationale, Oyster renders the proposal in a review UI, user confirms/tweaks, apply. Takes minutes.
-
-**Principle — "no black holes":** the audit must be visible as it happens. Every shell call, every project found, every decision made is streamed to the user's screen. The UX is watching a thing happen, not waiting for a thing to finish. The user sees *"found `~/Dev/blunderfixer` (real project, active) ... found `~/Documents/Obsidian Vault` (notes) ... filtering `~/Documents/Zoom` (app data)"* in real time. No silence. No blank screen for 2 minutes. This is the value prop made visible.
-
-**Agent source:** user's external agent if connected; Oyster's embedded OpenCode subprocess otherwise. Same interface either way. User doesn't have to connect anything before first-run — OpenCode is always available.
-
-**Open UX question (decide via mock + UAT):** does the setup flow block the desktop ("welcome, setting up…"), or run inline with a live activity dock? Possibly the former on a true first-run (nothing to show on a fresh desktop anyway), and the latter for a re-audit. Don't commit to a design until we see it.
-
-### Ongoing adds (the fast, scoped one)
-
-**When:** after onboarding, user has a new project. Drags the folder onto the desktop, or asks the agent *"add ~/NewProject to Oyster"*.
-
-**Shape:** single folder, scoped. If it's a project (has markers), one space. If it's a container (rare post-onboarding), OpenCode proposes and the user confirms. No full-machine audit. Seconds, not minutes.
+One flow. One primitive. No Oyster-owned classifier.
 
 ## Principles
 
-- **Oyster is the substrate, not the intelligence.** We don't classify; the agent does. We provide primitives and render proposals.
-- **No black holes.** Anything that takes more than a few seconds shows live progress. Silence is a bug.
-- **Everything visible.** Proposals include what's being imported, what's being excluded (with reason), and *"anything missing?"* — no hidden buckets, no silent drops.
-- **Ask, don't audit.** Defense against errors is the user seeing the proposal and fixing it, not hidden recovery logic.
-- **Recovery stays open.** Post-apply, the user can drag, click, or ask the agent to add anything we missed.
+- **Agent is the brain.** Oyster provides primitives (`list_spaces`, `onboard_space`, `list_artifacts`, `get_context`). Discovery and grouping happen entirely in the agent's shell + context.
+- **OpenCode is the universal fallback.** Users without an external agent still get the same flow — they ask Oyster's built-in chat bar, which routes to OpenCode, which does the audit with its own shell tools.
+- **Chat-first review.** The plan lands in the agent's chat. The user confirms there. No Oyster-owned review modal in v1 — add one if UAT says chat-only feels cramped.
+- **Ask, don't audit.** If the agent is unsure about a folder, it asks in chat — *"Is stockfish yours, a vendored dependency, or noise?"* No silent drops, no hidden recovery.
+- **Recovery stays open.** After initial onboarding, the user can still create spaces via drag-drop (the Add Space form), ask the agent to add a folder, or re-run discovery any time.
 
-## Entry points
+## MCP surface
 
-All produce the same proposal → review → apply pipeline.
+**Kept:**
+- `list_spaces` — enumerate current spaces
+- `list_artifacts(space_id)` — what's in a space
+- `get_context` — the playbook that tells the agent how to do discovery; the onboarding dock's step 2 copy points the agent here
+- `onboard_space(name, paths[])` — atomic primitive. Create a space and attach one or more folder paths. Scans each path. Multi-path lets the agent create `oyster` with all five `oyster-*` folders in one call.
 
-- **First-run:** Oyster opens, prompts *"Let's look at your machine"* (or agent-initiated).
-- **"Audit again" on the dock:** user triggers a fresh sweep.
-- **Drag-drop a folder:** scoped add (via OpenCode if needed).
-- **Agent: *"Set up Oyster"* or *"Add ~/foo"*:** same as the above, initiated from the agent side.
+**Retired:**
+- `discover_container` — Oyster-owned discovery that the agent no longer needs.
+- `onboard_container` — same reason.
 
-## Tools Oyster provides (atomic primitives)
+## UI surface
 
-- `list_spaces` — current state (exists)
-- `list_artifacts(space_id)` — what's in a space (exists)
-- `get_context` — explains the flow to the agent (exists; playbook rewrites per this PRD)
-- `onboard_space(name, paths[])` — atomic: create/extend one space with one or more paths, scan each (exists; may need to accept an array of paths instead of one)
-- `propose_spaces(plan)` — **new** — hands a plan to Oyster; Oyster renders the review UI; user confirms/tweaks; Oyster applies
-- Progress stream (SSE) — exists (`/api/ui/events`), repurposed to carry agent activity during audits
-
-## Tools to retire
-
-- `discover_container` — Oyster shouldn't do discovery
-- `onboard_container` — same, replaced by `propose_spaces` + `onboard_space`
-- `discoverCandidates`, `groupWithLLM`, `discoverAllSubfolders`, `groupWithLLMRich` (in `discovery.ts`) — Oyster-owned classifiers, no longer used
-- `/api/discover` and `/api/discover/import` may simplify or go entirely, depending on how drag-drop wires into the new pipeline
-
-## Verification
-
-A fresh install should pass all of these:
-
-- Open Oyster for the first time → user sees *"let's look at your machine"* and watches the agent discover projects live → review modal with proposals → confirm → desktop populates with spaces.
-- Any silent stretch longer than a few seconds is a bug.
-- Drag a new folder onto a running Oyster → scoped add → new space or added to existing, within seconds.
-- *"Set up Oyster for me"* from Claude Code (no manual path) → same flow as first-run, same review UI.
-- The `blunderfixer`-silent-drop case becomes structurally impossible: the agent's audit names every project it finds; nothing is dropped; if the user disagrees they see it in review and fix it.
+- **Onboarding dock** (existing, kept). Step 2 still shows a copyable prompt pointing the user to ask their agent to set things up. The prompt text updates to emphasise *"audit thoroughly, present the plan to me first, then apply"*.
+- **Add Space form** (existing `AddSpaceWizard`, kept — simplified). The simple "give me a name, drop a folder, create a space" form. Used for one-off single-folder adds post-onboarding. The old LLM-grouping discovery panel inside the same file is removed.
+- **No new first-run UI.** The agent's own chat is the review surface in v1.
 
 ## Out of scope
 
-- Broader artifact-detection changes (what counts as an app / deck / etc. *inside* a project).
-- Memories, sync, or other non-discovery work.
-- Multi-user / collaborative review of a proposal.
+- Changing artifact-detection rules (what counts as an app / deck / etc. inside a project).
+- Non-discovery work (memories, sync, plugin registry).
+- Full-screen live discovery view. The agent's own chat already streams its audit; duplicating that in an Oyster visualisation is an enhancement, not a requirement.
+- GUI review modal on Oyster's desktop. Same — enhancement if chat-only review proves insufficient.
 
-## What we keep from the branch so far
+## Verification
 
-- Bug fix to `onboard_container` (chunk 1, `7cd2502`) — applies equally to whatever tool replaces it; keep the `isContainer` guard logic for the drag-drop single-folder path.
-- PII hardening of the import prompt (shipped earlier) — unchanged.
-- The onboarding dock + MCP connection detection (Epic A A1–A10) — unchanged, though the step 2 "action log" pattern gets repurposed for the audit progress stream.
-- The SSE event infrastructure — unchanged, extended to carry audit activity.
-- The comparison script at `server/scripts/compare-discovery.ts` — keeps as dev tooling for now, though the functions it calls will be deleted. Either delete the script with them or point it at the new agent-led path.
+A fresh install should pass every one of these:
 
-## Implementation notes (for whoever picks this up)
+- External Claude Code connected. User: *"Set up Oyster for me."* → agent audits the filesystem (takes minutes, progress visible in agent chat), presents plan in chat with spaces / reasons / open questions, user confirms, agent calls `onboard_space(...)` per space with multi-path arrays, spaces appear on Oyster's desktop.
+- Same flow through Oyster's own chat bar (no external agent connected) — OpenCode handles it via its own shell tools. Same result.
+- Drag a single folder onto the Oyster desktop → simple Add Space form opens pre-filled → user creates one space with that one folder. No LLM grouping step.
+- MCP tool list no longer advertises `discover_container` / `onboard_container`. Docs and playbooks don't reference them.
+- Reproduce yesterday's blunderfixer case via the agent flow — if the agent drops a real project, the user catches it in chat ("what about blunderfixer?") and the agent adds it in a follow-up `onboard_space` call. No silent loss.
 
-The direction is locked. The exact sequencing is to be decided by what's easiest to land incrementally. Rough instinct:
+## Enhancements — future work, not shipping now
 
-1. Add `propose_spaces` tool + a minimal review modal that can render a plan. This is the new keystone; everything else hangs on it.
-2. Rewrite `get_context`'s first-run playbook: *"don't use our discovery; audit the user's machine yourself with shell tools; call `propose_spaces(plan)` when ready."*
-3. Wire the embedded OpenCode as the fallback invoker when no external agent is connected. Triggered by a dock button or drag-drop.
-4. Repurpose the action-log stream for live audit progress.
-5. Retire the old discovery tools + `discover_container` / `onboard_container` once the new path lands.
-6. Adjust drag-drop to go through the same pipeline (OpenCode audits the single folder, proposes, user reviews).
+Things the plan considered but we're deferring. Layer these on post-UAT only if observed pain calls for them:
 
-Treat existing code as POC. Rewrite what doesn't fit. Unified experience > patches on patches.
+- **Live discovery view.** Full-screen Oyster-owned visualisation of the agent's audit as it runs. May or may not add value over the agent's own chat.
+- **`propose_spaces(plan)` + Oyster-owned review modal.** GUI review surface on the desktop instead of in the agent chat. Useful if plans get long and chat columns are cramped.
+- **OpenCode-specific audit invocation.** A server-side wrapper that kicks off the audit prompt directly in OpenCode (bypassing the user typing it). Relevant only if we want the audit to auto-start on first run.
+- **Drag-drop of a multi-project container.** Today's drag-drop goes to a simple Add Space form. If users want drop-a-dev-folder to trigger multi-space agent audit scoped to that folder, that's a future flow.
+- **Richer post-onboarding add affordances.** Agent commands like *"add ~/NewProject"*, dock buttons for common adds, etc.
