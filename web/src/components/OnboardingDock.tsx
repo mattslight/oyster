@@ -77,6 +77,36 @@ interface ToolCall {
   isError: boolean;
 }
 
+// Tool names as they appear in SSE events are snake_case engineering
+// labels — useful for debugging, tedious as a status feed. Map to short
+// natural-language phrases. Unknown tools fall back to a humanised
+// version of the raw name.
+const TOOL_PHRASES: Record<string, string> = {
+  get_context: "Reading the Oyster playbook",
+  list_spaces: "Checking your spaces",
+  list_artifacts: "Looking at your artifacts",
+  onboard_space: "Creating a space",
+  scan_space: "Scanning for artifacts",
+  create_artifact: "Creating an artifact",
+  update_artifact: "Updating an artifact",
+  remove_artifact: "Removing an artifact",
+  read_artifact: "Reading an artifact",
+  open_artifact: "Opening an artifact",
+  reveal_artifact: "Opening on the surface",
+  gather_repo_context: "Reading a repo",
+  regenerate_icon: "Generating an icon",
+  remember: "Saving a memory",
+  recall: "Recalling a memory",
+  forget: "Forgetting a memory",
+  list_memories: "Checking your memories",
+};
+
+function humanizeTool(tool: string): string {
+  if (TOOL_PHRASES[tool]) return TOOL_PHRASES[tool];
+  const spaced = tool.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function loadState(): OnboardingState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -388,7 +418,7 @@ function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; too
               <span className={call.isError ? "onboarding-action-pending" : "onboarding-action-tick"}>
                 {call.isError ? "✗" : "✓"}
               </span>
-              <span>{call.tool}</span>
+              <span>{humanizeTool(call.tool)}</span>
             </div>
           ))}
         </div>
