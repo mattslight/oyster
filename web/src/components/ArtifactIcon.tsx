@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -67,6 +67,12 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
   // Only show status indicators for managed apps (local_process runtime)
   const isManagedApp = artifact.runtimeKind === "local_process";
 
+  // If the generated icon URL 404s (stale ref, mid-write race, or cache
+  // mismatch in incognito), fall back to the kind glyph rather than showing
+  // the browser's broken-image placeholder.
+  const [iconFailed, setIconFailed] = useState(false);
+  useEffect(() => { setIconFailed(false); }, [artifact.icon]);
+
   const inputRef = useRef<HTMLInputElement>(null);
   // Guard against the double-commit race: Enter or Esc call commit/cancel
   // directly, but then the state flip unmounts the <input> which fires blur,
@@ -92,13 +98,14 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
       onClick={isRenaming ? (e) => e.preventDefault() : onClick}
       onContextMenu={onContextMenu}
     >
-      <div className={`icon-thumb ${artifact.icon ? "icon-thumb-ai" : ""}`} style={artifact.icon ? undefined : { background: config.gradient }}>
-        {artifact.icon ? (
+      <div className={`icon-thumb ${artifact.icon && !iconFailed ? "icon-thumb-ai" : ""}`} style={artifact.icon && !iconFailed ? undefined : { background: config.gradient }}>
+        {artifact.icon && !iconFailed ? (
           <img
             src={artifact.icon}
             alt={artifact.label}
             className="icon-img"
             loading="lazy"
+            onError={() => setIconFailed(true)}
           />
         ) : (
           <>

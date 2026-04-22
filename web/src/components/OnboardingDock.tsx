@@ -86,6 +86,7 @@ const TOOL_PHRASES: Record<string, string> = {
   list_spaces: "Checking your spaces",
   list_artifacts: "Looking at your artifacts",
   onboard_space: "Creating a space",
+  set_space_summary: "Summarising a space",
   scan_space: "Scanning for artifacts",
   create_artifact: "Creating an artifact",
   update_artifact: "Updating an artifact",
@@ -444,18 +445,29 @@ function Step3Memories({
   const [sub, setSub] = useState<"a" | "b">("a");
   const [prompt, setPrompt] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
-  // Fetch the cloud-AI export prompt on mount. Uses the existing /api/import
-  // endpoint (same one the import-from-ai builtin uses) so the prompt stays
-  // in sync with the schema without drifting.
+  // Fetch the cloud-AI export prompt. `loadAttempt` drives the retry button —
+  // bumping it re-runs the effect. `cache: "no-store"` sidesteps stale-response
+  // hangs seen in dev under HMR. Timeout ensures we never sit at "Loading…"
+  // forever if something upstream stalls.
   useEffect(() => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
     let cancelled = false;
-    fetch("/api/import/prompt?provider=chatgpt")
+
+    fetch("/api/import/prompt?provider=chatgpt", { signal: ctrl.signal, cache: "no-store" })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((t) => { if (!cancelled) setPrompt(t); })
-      .catch(() => { if (!cancelled) setLoadError(true); });
-    return () => { cancelled = true; };
-  }, []);
+      .then((t) => {
+        if (cancelled) return;
+        setPrompt(t);
+        setLoadError(false);
+      })
+      .catch(() => { if (!cancelled) setLoadError(true); })
+      .finally(() => clearTimeout(timer));
+
+    return () => { cancelled = true; ctrl.abort(); clearTimeout(timer); };
+  }, [loadAttempt]);
 
   const handleCopy = useCallback(async () => {
     if (!prompt) return;
@@ -466,6 +478,12 @@ function Step3Memories({
       setSub("b");
     }
   }, [prompt]);
+
+  const retry = useCallback(() => {
+    setPrompt(null);
+    setLoadError(false);
+    setLoadAttempt((n) => n + 1);
+  }, []);
 
   if (sub === "b") {
     return (
@@ -496,21 +514,31 @@ function Step3Memories({
         <pre>
           <code>
             {loadError
-              ? "Couldn't load the prompt — refresh to retry."
+              ? "Couldn't load the prompt."
               : prompt ?? "Loading…"}
           </code>
         </pre>
       </div>
 
       <div className="onboarding-step-actions">
-        <button
-          className="onboarding-btn-primary"
-          style={{ flex: 1 }}
-          onClick={handleCopy}
-          disabled={!prompt}
-        >
-          Copy
-        </button>
+        {loadError ? (
+          <button
+            className="onboarding-btn-primary"
+            style={{ flex: 1 }}
+            onClick={retry}
+          >
+            Retry
+          </button>
+        ) : (
+          <button
+            className="onboarding-btn-primary"
+            style={{ flex: 1 }}
+            onClick={handleCopy}
+            disabled={!prompt}
+          >
+            Copy
+          </button>
+        )}
         <button className="onboarding-btn-ghost" onClick={onSkip}>Skip</button>
       </div>
 
