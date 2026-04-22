@@ -23,7 +23,6 @@ function rowToSpace(row: SpaceRow): Space {
   return {
     id: row.id,
     displayName: row.display_name,
-    repoPath: row.repo_path,
     color: row.color,
     parentId: row.parent_id,
     scanStatus: toScanStatus(row.scan_status),
@@ -52,7 +51,7 @@ export class SpaceService {
     private artifactStore: ArtifactStore,
   ) {}
 
-  createSpace(params: { name: string; repoPath?: string }): Space {
+  createSpace(params: { name: string }): Space {
     const displayName = params.name.trim();
     if (!displayName) throw new Error("name must not be empty");
     const id = slugify(displayName);
@@ -61,16 +60,11 @@ export class SpaceService {
 
     const color = SPACE_PALETTE[hashStr(id) % SPACE_PALETTE.length];
     this.spaceStore.insert({
-      id, display_name: displayName, repo_path: null, color, parent_id: null,
+      id, display_name: displayName, color, parent_id: null,
       scan_status: "none", scan_error: null, last_scanned_at: null,
       last_scan_summary: null, ai_job_status: null, ai_job_error: null,
       summary_title: null, summary_content: null,
     });
-
-    // If a path was provided, add it to space_paths
-    if (params.repoPath) {
-      this.addPath(id, params.repoPath);
-    }
 
     return rowToSpace(this.spaceStore.getById(id)!);
   }
@@ -159,8 +153,6 @@ export class SpaceService {
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
     const paths = this.spaceStore.getPaths(spaceId).map(p => p.path);
-    // Fall back to legacy repo_path if no space_paths yet
-    if (paths.length === 0 && row.repo_path) paths.push(row.repo_path);
     if (paths.length === 0) throw new Error(`Space "${spaceId}" has no folders`);
 
     if (this.scanning.has(spaceId)) throw new Error(`Scan already in progress for space "${spaceId}"`);

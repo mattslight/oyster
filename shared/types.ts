@@ -52,7 +52,6 @@ export interface ScanResult {
 export interface Space {
   id: string;
   displayName: string;
-  repoPath: string | null;
   color: string | null;
   parentId: string | null;
   scanStatus: ScanStatus;

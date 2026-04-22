@@ -10,6 +10,7 @@ import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 import { debug } from "./debug.js";
+import { slugify } from "./utils.js";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
 // `satisfies` ensures this stays in sync with the ArtifactKind union at compile time.
@@ -372,14 +373,10 @@ export function createMcpServer(deps: McpDeps): McpServer {
     {
       name: z.string().describe("Display name for the space (slugified to ID). If a space with this name already exists, it's extended — no duplicate."),
       paths: z.array(z.string()).optional().describe("Optional. Absolute local paths to attach and scan. Omit for a logical grouping with no filesystem attachment."),
-      repo_path: z.string().optional().describe("Back-compat shorthand for a single path. Both `paths` and `repo_path` are optional."),
-      skip_ai: z.boolean().optional().describe("Reserved for Phase 2 — no-op currently"),
     },
-    async ({ name, paths, repo_path }) => {
+    async ({ name, paths }) => {
       try {
-        const resolvedPaths = paths && paths.length > 0
-          ? paths
-          : (repo_path ? [repo_path] : []);
+        const resolvedPaths = paths && paths.length > 0 ? paths : [];
 
         // Extend-or-create: try to create the space first. If it already
         // exists, look it up by slugified id and attach paths to it. Either
@@ -393,8 +390,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
         } catch (err) {
           const msg = (err as Error).message;
           if (/already exists/i.test(msg)) {
-            const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-            const existing = deps.spaceService.getSpace(slug);
+            // Reuse the canonical slugify so this lookup can never diverge from
+            // the slug createSpace actually used when the conflicting row was inserted.
+            const existing = deps.spaceService.getSpace(slugify(name));
             if (!existing) throw err;
             space = existing;
           } else {
@@ -416,11 +414,13 @@ export function createMcpServer(deps: McpDeps): McpServer {
           }
         }
 
-        // Only scan when there are paths to walk. Paths-less spaces are
-        // logical groupings — nothing to discover yet.
-        const scanResult = resolvedPaths.length > 0
-          ? await deps.spaceService.scanSpace(space.id)
-          : null;
+        // Only scan when at least one path actually attached. If every path
+        // failed (missing on disk, owned by another space), the space may
+        // still have zero folders — scanSpace would throw "no folders" and
+        // the agent would see a confusing scan error on top of per-path
+        // errors already in `paths`.
+        const anyAttached = pathReports.some((r) => r.status === "attached" || r.status === "already-attached");
+        const scanResult = anyAttached ? await deps.spaceService.scanSpace(space.id) : null;
         return {
           content: [{
             type: "text" as const,
@@ -445,8 +445,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
     async ({ name, title, content }) => {
       try {
-        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-        let space = deps.spaceService.getSpace(slug);
+        let space = deps.spaceService.getSpace(slugify(name));
         if (!space) space = deps.spaceService.createSpace({ name });
         const updated = deps.spaceService.setSummary(space.id, title, content);
         return {
