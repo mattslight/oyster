@@ -70,10 +70,10 @@ const defaultState: OnboardingState = {
 };
 
 const ACTION_LOG_LIMIT = 50;
-// Step 2 completion heuristic: the agent has called one of the onboard-
-// family tools AND at least one other tool. That pattern means the agent
-// genuinely did something (created a space), not just pinged Oyster.
-const STEP2_ONBOARD_TOOLS = new Set(["onboard_container", "onboard_space"]);
+// Step 2 completion heuristic: the agent has called onboard_space AND at
+// least one other tool. That pattern means the agent genuinely did something
+// (created a space), not just pinged Oyster.
+const STEP2_ONBOARD_TOOLS = new Set(["onboard_space"]);
 
 interface ToolCall {
   tool: string;

@@ -4,7 +4,6 @@ import { resolve, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "./space-service.js";
 import { slugify } from "./utils.js";
-import { isContainer, discoverCandidates, groupWithLLM } from "./discovery.js";
 
 /**
  * Handle all /api/resolve-folder and /api/spaces/* routes.
@@ -230,115 +229,6 @@ export async function handleSpacesRequest(
       const status = err.message.includes("already in progress") ? 409 : 400;
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err.message }));
-    });
-    return true;
-  }
-
-  // POST /api/discover — scan a folder, detect if container, return candidates + suggestions
-  if (url === "/api/discover" && req.method === "POST") {
-    const discoverOrigin = req.headers.origin;
-    if (discoverOrigin && !discoverOrigin.startsWith("http://localhost") && !discoverOrigin.startsWith("http://127.0.0.1")) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return true;
-    }
-    let body = "";
-    req.on("data", (chunk: Buffer | string) => (body += chunk));
-    req.on("end", () => {
-      try {
-        const { path: rawPath } = JSON.parse(body);
-        if (!rawPath) throw new Error("path is required");
-        const folderPath = rawPath.startsWith("~/")
-          ? resolve(join(homedir(), rawPath.slice(2)))
-          : resolve(rawPath);
-
-        if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
-          throw new Error("Path does not exist or is not a directory");
-        }
-
-        const container = isContainer(folderPath);
-        if (!container) {
-          // Single project — return as-is, no grouping needed
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ container: false, path: folderPath }));
-          return;
-        }
-
-        const candidates = discoverCandidates(folderPath);
-        // Start LLM grouping
-        groupWithLLM(candidates).then(suggestions => {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ container: true, candidates, suggestions }));
-        }).catch(err => {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: (err as Error).message }));
-        });
-      } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: (err as Error).message }));
-      }
-    });
-    return true;
-  }
-
-  // POST /api/discover/import — batch create spaces from confirmed suggestions
-  if (url === "/api/discover/import" && req.method === "POST") {
-    let body = "";
-    req.on("data", (chunk: Buffer | string) => (body += chunk));
-    req.on("end", async () => {
-      try {
-        const { spaces: spaceList } = JSON.parse(body) as {
-          spaces: Array<{ name: string; folders: string[] }>
-        };
-        if (!spaceList?.length) throw new Error("spaces array is required");
-
-        const results: Array<{ spaceId: string; name: string; scanned: number }> = [];
-
-        for (const s of spaceList) {
-          // "__home__" = import without a space, scan into home
-          const isHome = s.name === "__home__";
-          let spaceId = "home";
-
-          if (!isHome) {
-            let space;
-            try {
-              space = spaceService.createSpace({ name: s.name });
-            } catch {
-              space = spaceService.getSpace(s.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
-              if (!space) throw new Error(`Could not create or find space "${s.name}"`);
-            }
-            spaceId = space.id;
-
-            for (const folder of s.folders) {
-              try {
-                spaceService.addPath(spaceId, folder);
-              } catch { /* path might already be added */ }
-            }
-          }
-
-          // Scan — for home, add paths temporarily then scan
-          if (isHome) {
-            // Ensure home space exists
-            try { spaceService.createSpace({ name: "home" }); } catch {}
-            for (const folder of s.folders) {
-              try { spaceService.addPath("home", folder); } catch {}
-            }
-          }
-
-          const scanResult = await spaceService.scanSpace(spaceId);
-          results.push({
-            spaceId,
-            name: isHome ? "home" : s.name,
-            scanned: scanResult.discovered + scanResult.resurfaced,
-          });
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ imported: results }));
-      } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: (err as Error).message }));
-      }
     });
     return true;
   }

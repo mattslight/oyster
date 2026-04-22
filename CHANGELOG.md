@@ -8,16 +8,19 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - MCP-first onboarding dock: a persistent pill in the top-right of Oyster opens a 3-step setup popover — connect your agent, ask your agent to set things up, optionally import memories. Replaces the previous `Import from AI` banner. Step 1 auto-advances when any external MCP client connects; step 2 shows a live action log of your agent's MCP tool calls and auto-completes once the agent has onboarded a space + done anything else. Internal OpenCode traffic is filtered out via a `?internal=1` marker on its MCP URL so the action log only reflects your agent's work. ([#184](https://github.com/mattslight/oyster/issues/184))
 - `GET /api/mcp/status` — fallback endpoint for the onboarding dock (and anyone else who wants a JSON view of which external MCP clients are connected, when they first connected, and how many tool calls they've made).
-- New MCP tools `discover_container` and `onboard_container` — same smart grouping the drag-a-folder wizard uses. Agents pointed at a dev directory (e.g. `~/Dev`) now call one tool that LLM-groups related repos into shared spaces (e.g. `oyster-crm` + `oyster-technology` → one `oyster` space; `tokinvest-drc` + `tokinvest-concept` → `tokinvest`), instead of calling `onboard_space` per folder and ending up with one-space-per-repo. The `get_context` guidance tells agents to prefer these for multi-project setups.
 
 ### Changed
 
 - Cloud-AI import prompt now explicitly instructs the remote AI to exclude API keys, tokens, credentials, and personal details about third parties (children, partners, etc.) — addresses feedback that raw exports can leak private context a user would never want pasted back into Oyster.
 - `Connect your AI` builtin artifact updated to match the dock's wording — the headline is now "Connect Oyster to your agent", and body copy leads with what the user gets (an agent driving the workspace) rather than the MCP protocol itself.
+- **Onboarding is now agent-led.** Oyster no longer tries to classify the filesystem itself; your connected agent (external MCP client, or Oyster's own chat bar via OpenCode) does the audit with its own shell and file-read tools, proposes a plan in chat, and applies once you confirm. The `get_context` playbook now teaches agents how to run this audit: probe common project locations (not just `~/Dev`), use git log and READMEs for context, present the plan before applying, never silently drop folders.
+- `onboard_space` MCP tool now accepts `paths` (array) for multi-folder spaces in a single call — e.g. an `oyster` space containing every `oyster-*` repo attached via one tool call rather than a loop. `repo_path` (singular) is still accepted as a back-compat shorthand.
 
 ### Removed
 
 - `OnboardingBanner.tsx` and its dismissal state — superseded by the dock.
+- `discover_container` and `onboard_container` MCP tools and their supporting server-side classification pipeline (`discoverCandidates`, `groupWithLLM`, `discoverAllSubfolders`, `groupWithLLMRich`, `isContainer`). The agent's own audit produces better groupings than Oyster's server-side LLM pass could — richer context (git log, READMEs), better handling of non-code projects, better judgement on what's noise vs a real project.
+- `POST /api/discover` and `POST /api/discover/import` REST endpoints — the drag-drop Add Space form now takes you through the simple "name + folder + create" path. Multi-project container onboarding goes through the agent flow.
 
 ## [0.3.8] - 2026-04-21
 
