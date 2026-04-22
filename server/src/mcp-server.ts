@@ -144,56 +144,85 @@ artifacts (interactive documents, apps, diagrams, etc.) live as launchable icons
 Oyster is for anyone whose work is organised as projects — developers, designers,
 writers, PMs, researchers, hackers. Don't assume the user is a dev.
 
-If the user has asked you to set up Oyster (or connect them, or get them started)
-and has NOT given you an explicit projects folder path, follow this flow:
+When the user asks you to set up Oyster / discover their projects / get them
+started, YOU do the audit. Oyster does NOT have a server-side classifier; it
+relies on your intelligence + your own tools (shell, file reads, git log, etc.)
+to understand the user's filesystem and propose a set of spaces.
 
-1. **Find their projects folder** — do not ask them yet. Probe the obvious
-   candidates with local tooling (file listing / shell), in roughly this order,
-   and pick the first one that exists and looks populated:
+### Step 1 — Audit the filesystem (takes minutes, that's fine)
 
-   Dev-flavoured: \`~/Dev\`, \`~/dev\`, \`~/Development\`, \`~/code\`, \`~/repos\`, \`~/src\`.
-   Generic: \`~/Projects\`, \`~/projects\`, \`~/Work\`, \`~/work\`, \`~/workspace\`.
-   Document-flavoured (designers/PMs/writers): \`~/Documents/Projects\`,
-   \`~/Documents/Work\`, \`~/Documents\`.
-   Creator-flavoured: \`~/Design\`, \`~/Figma\`, \`~/Writing\`, \`~/Notes\`.
-   Windows: same substituted under \`%USERPROFILE%\\\` and on other drives
-   (\`C:\\Development\`, \`E:\\Development\`, \`D:\\Work\`, etc.).
+Probe common places where users keep work. Don't limit yourself to \`~/Dev\`.
+Inspect each place with shell / ls / file reads. For each promising subfolder:
 
-   If none of those match, ask the user once, concisely:
-   *"Where do you keep your projects?"* — don't say "dev folder".
+- Is there a \`.git\`? Run \`git -C <path> log -1 --format=%cs\` to see last-commit
+  date — separates active from dormant.
+- Is there a README, \`package.json\`, \`pyproject.toml\`, \`go.mod\`, etc.? Read
+  it briefly to understand what the project actually is.
+- Are there substantive files without code markers (\`.md\`, \`.docx\`, \`.fig\`,
+  \`.key\`)? That's a non-code project — writing, design, PM work — still a
+  project worth a space.
+- Is it a vendored dependency, a third-party fork, or a library the user is
+  tracking rather than actively developing? That's not a user-owned project;
+  it belongs in "other" or flagged as an open question, not its own space.
+- Is it noise (a cache dump, a worktree scratch dir, OS-default folders,
+  app data like \`~/Documents/Zoom\`)? Filter out.
 
-2. **Propose first: call \`discover_container\` with that path.** This returns a
-   grouped plan built by Oyster's embedded LLM — related projects merged into shared
-   spaces, third-party libs and configs into "other". Each group includes a one-sentence
-   \`reason\` and an \`ambiguous\` flag. Nothing is created yet.
+Probe list to start (Mac / Linux; substitute \`%USERPROFILE%\\\` on Windows):
+\`~/Dev\`, \`~/dev\`, \`~/Development\`, \`~/code\`, \`~/repos\`, \`~/src\`,
+\`~/Projects\`, \`~/projects\`, \`~/Work\`, \`~/work\`, \`~/workspace\`,
+\`~/Documents/Projects\`, \`~/Documents/Work\`, \`~/Documents\`, \`~/Desktop\`,
+\`~/Design\`, \`~/Figma\`, \`~/Writing\`, \`~/Notes\`.
 
-   Special groups in the output:
-   - \`"skipped"\` — folders the classifier identified as noise (cache, worktree scratch,
-     empty dirs). Will NOT become a space when applied; listed for auditability.
-   - \`"review"\` — folders the classifier dropped silently. Auto-recovered by Oyster so
-     they aren't lost. Show the user these items, since they might be real projects.
+Windows users: also check other drives — \`C:\\Development\`, \`E:\\Development\`,
+\`D:\\Work\`, etc.
 
-3. **Review the proposal.**
-   - If the response has \`has_ambiguities: false\`, go straight to step 4.
-   - If it has \`has_ambiguities: true\`, show the user a short summary of the
-     ambiguous groups (name + reason + folders) and ask one concise question:
-     *"Does this grouping look right?"* Adjust if they disagree.
-   - Don't dump the full JSON at the user. Summarise in plain language.
+Don't exhaustively scan everything. Stop when you have a clear picture of the
+user's active projects.
 
-4. **Apply: call \`onboard_container\` with the same path.** Creates the spaces,
-   attaches folders, scans. You may skip step 2–3 and call \`onboard_container\`
-   directly if the user said "just do it" or ambiguity tolerance is high — the same
-   pipeline runs internally.
+### Step 2 — Group intelligently
 
-   DO NOT loop \`onboard_space\` per folder — that produces naive one-space-per-repo
-   output and is the wrong tool for a multi-project container.
+- Related things belong together: signals include a shared prefix or suffix
+  in folder names, a monorepo structure, or a common theme.
+- Unrelated odds and ends (single configs, third-party things the user doesn't
+  own) can go in an \`other\` bucket if they matter, or be filtered as noise.
+- Space names are short, lowercase, and human — pick whatever the user
+  would actually call this part of their work.
 
-5. **Confirm back.** List the spaces created and rough artifact counts. Oyster works
-   for any kind of project folder — code, design, writing, research — so don't assume
-   the user's world is all code when summarising.
+### Step 3 — Present the plan to the user in chat BEFORE applying
 
-If the user gave you an explicit path (\`set up Oyster with my projects at ~/foo\`),
-skip step 1 and start at step 2.
+Show:
+- The proposed spaces with the folders in each and a one-sentence reason why.
+- What you'd filter as noise (with reasons).
+- Any open questions you want them to answer first.
+
+Don't apply silently. Don't dump raw JSON. Format it readably — the user is
+reviewing a plan, not consuming an API response.
+
+### Step 4 — Apply once confirmed
+
+For each confirmed space, call \`onboard_space\` with a \`name\` and a \`paths\`
+array (absolute paths). One call creates the space, attaches every path, and
+scans each. For multi-folder spaces make ONE call with all the paths in the
+array — don't loop once per folder.
+
+### Step 5 — Confirm back
+
+Tell the user how many spaces were created and rough artifact counts per space.
+Offer to adjust anything that looks off.
+
+### If the user gave you an explicit path
+
+(e.g. *"set up Oyster with my projects at ~/foo"*)
+
+Skip the probe. Start at Step 1 for just that path — walk its subfolders, apply
+the same judgement, propose, confirm, apply.
+
+### Don't silently drop anything
+
+If you considered a folder and decided it wasn't a project, say so in the plan
+and give a short reason. Never omit folders from the plan without telling the
+user. If you're unsure whether something counts, flag it as an open question
+and let the user decide.
 
 ## Core concepts
 
@@ -201,14 +230,14 @@ skip step 1 and start at step 2.
 - \`id\`: unique identifier (opaque for new artifacts, semantic for legacy ones)
 - \`label\`: display name shown under the icon on the desktop
 - \`kind\`: one of app | deck | diagram | map | notes | table | wireframe
-- \`space\`: which workspace it belongs to (e.g. "home", "tokinvest")
+- \`space\`: which workspace it belongs to (e.g. "home", or any space name the user set up)
 - \`status\`: ready | online | offline | starting | generating
 - \`url\`: how to open it (relative path for static files, localhost:PORT for running apps)
 - \`group\`: optional visual group on the desktop surface
 
 **Spaces** — named workspaces (tabs) the user switches between. Each space has an ID,
 display name, optional repo path, and scan status. Use \`list_spaces\` to enumerate them.
-Common spaces: "home" (default), plus one per project (e.g. "tokinvest", "research").
+Every workspace has a "home" space by default; the user adds others as they onboard projects.
 Spaces can be onboarded from a local repo — use \`onboard_space\` to create a space and
 scan it for artifacts in one step, or \`scan_space\` to rescan an existing space.
 
@@ -230,22 +259,16 @@ scan it for artifacts in one step, or \`scan_space\` to rescan an existing space
 
 **Onboarding a single project:**
 1. Call \`list_spaces\` — check if the space already exists (avoid duplicates).
-2. Call \`onboard_space\` with the project name and repo path — creates the space and scans for apps, docs, and diagrams in one step.
+2. Call \`onboard_space\` with the project name and path — pass \`paths: ["/abs/path"]\` (array). Creates the space, attaches the path, scans for apps, docs, and diagrams.
 3. Call \`list_artifacts\` with the new space_id to see what was discovered.
 4. To rescan later (e.g. after new files are added), call \`scan_space\`.
 5. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
 
 **Onboarding a developer container (e.g. \`~/Dev\` with many repos):**
 
-DO NOT loop \`onboard_space\` per folder — that produces naive one-space-per-repo output (e.g. separate spaces for \`oyster\`, \`oyster-crm\`, \`oyster-technology\` when they should share one \`oyster\` space).
+Don't loop \`onboard_space\` once per folder. Group related projects first (shared prefix / suffix / clear theme), then call \`onboard_space({ name: "oyster", paths: [path1, path2, path3] })\` — one call per grouped space, with every related folder in the \`paths\` array.
 
-Instead, use the smart grouping pipeline:
-
-1. Call \`discover_container\` with the container path — returns LLM-grouped suggestions based on shared prefixes, monorepo hints, and framework signals. Dry run, no writes.
-2. (Optional) Present the suggestions to the user for confirmation if the grouping looks questionable.
-3. Call \`onboard_container\` with the same path to execute: creates one space per group, attaches all folders in that group, scans each. Same logic as the drag-a-folder UX.
-
-Shortcut: call \`onboard_container\` directly if you're confident in the grouping — it internally runs the discover step and returns the full result.
+See the "Set up Oyster for me" playbook above for the full audit + propose + apply flow.
 
 **Working with artifacts:**
 - Use \`create_artifact\` to write a new file and register it in one step.
@@ -309,7 +332,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "list_spaces",
-    "List all spaces (named workspaces) on the Oyster desktop. A space is a tab the user switches between — e.g. 'home', 'tokinvest'.",
+    "List all spaces (named workspaces) on the Oyster desktop. A space is a tab the user switches between — 'home' is always present; others are user-defined.",
     {},
     async () => {
       const spaces = deps.spaceService.listSpaces();
@@ -323,20 +346,47 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "onboard_space",
-    "Create a space, attach it to a local repo, and scan for apps, docs, and diagrams. All discovered assets register as desktop artifacts immediately.",
+    "Create a space, attach one or more local folders to it, and scan each for apps, docs, and diagrams. Pass `paths` (array) for multi-folder spaces like `oyster` containing all `oyster-*` repos, or a single path for a one-folder space. `repo_path` (singular) is still accepted as a back-compat shorthand. All discovered assets register as desktop artifacts immediately.",
     {
       name: z.string().describe("Display name for the space (slugified to ID)"),
-      repo_path: z.string().describe("Absolute local path to the repository root"),
+      paths: z.array(z.string()).optional().describe("Absolute local paths to attach (1 or more). Preferred for multi-folder spaces."),
+      repo_path: z.string().optional().describe("Back-compat shorthand for a single path. Either `paths` or `repo_path` is required."),
       skip_ai: z.boolean().optional().describe("Reserved for Phase 2 — no-op currently"),
     },
-    async ({ name, repo_path }) => {
+    async ({ name, paths, repo_path }) => {
       try {
-        const space = deps.spaceService.createSpace({ name, repoPath: repo_path });
+        const resolvedPaths = paths && paths.length > 0
+          ? paths
+          : (repo_path ? [repo_path] : []);
+        if (resolvedPaths.length === 0) {
+          return { content: [{ type: "text" as const, text: "Provide either `paths` (array) or `repo_path` (single)." }], isError: true };
+        }
+
+        // Create the space with the first path, then attach the rest.
+        const [firstPath, ...restPaths] = resolvedPaths;
+        const space = deps.spaceService.createSpace({ name, repoPath: firstPath });
+
+        const pathReports: Array<{ path: string; status: "attached" | "already-attached" | "failed"; error?: string }> = [
+          { path: firstPath, status: "attached" },
+        ];
+        for (const p of restPaths) {
+          try {
+            deps.spaceService.addPath(space.id, p);
+            pathReports.push({ path: p, status: "attached" });
+          } catch (err) {
+            const msg = (err as Error).message;
+            // `addPath` throws when the path is already attached to ANY space.
+            // That's surfaced per-path rather than failing the whole call so
+            // the agent gets a truthful report.
+            pathReports.push({ path: p, status: /already/i.test(msg) ? "already-attached" : "failed", error: msg });
+          }
+        }
+
         const scanResult = await deps.spaceService.scanSpace(space.id);
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ space_id: space.id, scan_summary: scanResult }, null, 2),
+            text: JSON.stringify({ space_id: space.id, paths: pathReports, scan_summary: scanResult }, null, 2),
           }],
         };
       } catch (err) {
@@ -595,7 +645,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     "Register a file that already exists on disk as a desktop artifact. Use this only when the file already exists. To create new content and register it in one step, use create_artifact instead. The file must be inside userland/. Kind and ID are inferred from the filename if not provided.",
     {
       path: z.string().describe("Absolute path to the file"),
-      space_id: z.string().describe("Space to place the artifact in (e.g. 'home', 'tokinvest')"),
+      space_id: z.string().describe("Space to place the artifact in (use `list_spaces` to see what's available)"),
       label: z.string().describe("Display name on the desktop"),
       id: z.string().optional().describe("Kebab-case ID (inferred from filename if omitted)"),
       artifact_kind: z
