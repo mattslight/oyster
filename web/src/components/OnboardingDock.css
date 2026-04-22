@@ -343,7 +343,6 @@
 
 .onboarding-trust-note {
   background: rgba(74, 222, 128, 0.06);
-  border: 1px solid rgba(74, 222, 128, 0.15);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 11px;
@@ -366,12 +365,12 @@
 .onboarding-btn-primary {
   flex: 1;
   background: rgba(124, 107, 255, 0.2);
-  border: 1px solid rgba(124, 107, 255, 0.3);
+  border: none;
   color: #fff;
   font-family: "Space Grotesk", -apple-system, sans-serif;
   font-size: 12px;
   font-weight: 500;
-  padding: 7px 14px;
+  padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
