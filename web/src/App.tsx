@@ -558,6 +558,7 @@ export default function App() {
       )}
 
       <OnboardingDock
+        userSpaceCount={spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
         onOpenImport={() => {
           const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
           if (importArtifact) handleArtifactClick(importArtifact);

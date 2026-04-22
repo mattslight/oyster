@@ -70,10 +70,6 @@ const defaultState: OnboardingState = {
 };
 
 const ACTION_LOG_LIMIT = 50;
-// Step 2 completion heuristic: the agent has called onboard_space AND at
-// least one other tool. That pattern means the agent genuinely did something
-// (created a space), not just pinged Oyster.
-const STEP2_ONBOARD_TOOLS = new Set(["onboard_space"]);
 
 interface ToolCall {
   tool: string;
@@ -112,10 +108,13 @@ function allDone(state: OnboardingState): boolean {
 }
 
 interface OnboardingDockProps {
+  /** User-defined spaces (from App.tsx). We only look at the count of
+   *  non-system spaces as the completion signal for step 2. */
+  userSpaceCount?: number;
   onOpenImport?: () => void;
 }
 
-export function OnboardingDock({ onOpenImport }: OnboardingDockProps = {}) {
+export function OnboardingDock({ userSpaceCount = 0, onOpenImport }: OnboardingDockProps = {}) {
   const [state, setState] = useState<OnboardingState>(loadState);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [viewingStep, setViewingStep] = useState<StepIndex>(() => activeStep(loadState()));
@@ -169,20 +168,20 @@ export function OnboardingDock({ onOpenImport }: OnboardingDockProps = {}) {
     return () => es.close();
   }, []);
 
-  // Step 2 heuristic: once the agent has called `onboard_space` at least
-  // once AND any other tool, mark step 2 complete. Runs in an effect so
-  // we only transition once; subsequent tool calls don't toggle state.
+  // Step 2 completion rule: at least one user-created space exists.
+  // That's the real signal the agent did useful work — works identically
+  // for external MCP clients (Claude Code, Cursor, ...) and for
+  // Oyster's own chat bar routing to OpenCode (where tool-call events
+  // are filtered). If a user space exists, we also back-fill step 1
+  // (the agent clearly connected, whether or not we caught the event).
   useEffect(() => {
-    if (state.step2Complete) return;
-    const hasOnboard = toolCalls.some((c) => STEP2_ONBOARD_TOOLS.has(c.tool) && !c.isError);
-    const hasOther = toolCalls.some((c) => !STEP2_ONBOARD_TOOLS.has(c.tool) && !c.isError);
-    if (hasOnboard && hasOther) {
-      setState((s) => ({ ...s, step2Complete: true }));
-      // If the user is staring at step 2 when it auto-completes, slide
-      // them to step 3 so the popover reflects the new state.
-      setViewingStep((v) => (v === 2 ? 3 : v));
-    }
-  }, [toolCalls, state.step2Complete]);
+    if (userSpaceCount <= 0) return;
+    setState((s) => {
+      if (s.step1Complete && s.step2Complete) return s;
+      return { ...s, step1Complete: true, step2Complete: true };
+    });
+    setViewingStep((v) => (v === 1 || v === 2 ? 3 : v));
+  }, [userSpaceCount]);
 
   // Click outside the popover closes it
   useEffect(() => {
