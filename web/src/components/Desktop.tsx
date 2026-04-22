@@ -270,7 +270,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       </div>
 
       <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
-<div className="filter-bar">
+        <div className="filter-bar">
           {activeKind && (
             <div className="filter-notice">
               <div className="filter-notice-kind-wrap">

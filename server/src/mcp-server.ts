@@ -323,21 +323,32 @@ export function createMcpServer(deps: McpDeps): McpServer {
       const handler = rest.pop();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wrapped = async (...args: any[]) => {
-        const result = await handler(...args);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let result: any;
+        let isError = false;
         try {
-          recordToolCall(externalUa);
-          deps.broadcastUiEvent({
-            version: 1,
-            command: "mcp_tool_called",
-            payload: {
-              tool: name,
-              user_agent: externalUa,
-              at: new Date().toISOString(),
-              is_error: Boolean(result?.isError),
-            },
-          });
-        } catch { /* best effort — never let telemetry break a tool call */ }
-        return result;
+          result = await handler(...args);
+          return result;
+        } catch (err) {
+          // Re-throw to preserve the SDK's error contract, but record the
+          // call as errored so the action log / status counter stay honest.
+          isError = true;
+          throw err;
+        } finally {
+          try {
+            recordToolCall(externalUa);
+            deps.broadcastUiEvent({
+              version: 1,
+              command: "mcp_tool_called",
+              payload: {
+                tool: name,
+                user_agent: externalUa,
+                at: new Date().toISOString(),
+                is_error: isError || Boolean(result?.isError),
+              },
+            });
+          } catch { /* best effort — never let telemetry break a tool call */ }
+        }
       };
       return originalTool(name, ...rest, wrapped);
     };
@@ -381,25 +392,24 @@ export function createMcpServer(deps: McpDeps): McpServer {
       try {
         const resolvedPaths = paths && paths.length > 0 ? paths : [];
 
-        // Extend-or-create: try to create the space first. If it already
-        // exists, look it up by slugified id and attach paths to it. Either
-        // way, every resolvedPath gets added via addPath (which is idempotent
-        // for paths already attached to THIS space).
-        let space;
+        // Extend-or-create: resolve the canonical slugified id first, reuse
+        // an existing space when present, and only createSpace when missing.
+        // Control flow stays on stable state (a row lookup) rather than
+        // parsing the "already exists" error message. The inner try/catch
+        // still handles a rare concurrent-create race: two parallel callers
+        // both see no existing row, both call createSpace, one wins and the
+        // other gets the "already exists" throw → we look up the winner.
+        const spaceId = slugify(name);
+        let space = deps.spaceService.getSpace(spaceId);
         let created = false;
-        try {
-          space = deps.spaceService.createSpace({ name });
-          created = true;
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (/already exists/i.test(msg)) {
-            // Reuse the canonical slugify so this lookup can never diverge from
-            // the slug createSpace actually used when the conflicting row was inserted.
-            const existing = deps.spaceService.getSpace(slugify(name));
+        if (!space) {
+          try {
+            space = deps.spaceService.createSpace({ name });
+            created = true;
+          } catch (err) {
+            const existing = deps.spaceService.getSpace(spaceId);
             if (!existing) throw err;
             space = existing;
-          } else {
-            throw err;
           }
         }
 

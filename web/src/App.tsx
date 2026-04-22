@@ -9,11 +9,13 @@ import { OnboardingDock } from "./components/OnboardingDock";
 import { windowsReducer } from "./stores/windows";
 import {
   type Artifact,
+  type ArtifactKind,
   fetchArtifacts,
   listArchivedArtifacts,
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/artifacts-api";
+import { subscribeUiEvents } from "./data/ui-events";
 import { shouldOpenFullscreen } from "../../shared/types";
 import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace } from "./data/spaces-api";
 import type { Space } from "../../shared/types";
@@ -162,29 +164,24 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Subscribe to server-pushed UI commands (open artifact, switch space)
-  useEffect(() => {
-    const es = new EventSource("/api/ui/events");
-    es.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data);
-        if (event.command === "open_artifact") {
-          const { spaceId, label, url, artifactKind } = event.payload;
-          setActiveSpace(spaceId);
-          window.history.pushState(null, "", `/s/${spaceId}/a/${event.payload.id}`);
-          dispatch({ type: "CLOSE_ALL_VIEWERS" });
-          dispatch({ type: "OPEN_VIEWER", title: label, path: url, fullscreen: shouldOpenFullscreen(artifactKind) });
-        }
-        if (event.command === "switch_space") {
-          const { spaceId } = event.payload;
-          setActiveSpace(spaceId);
-          window.history.pushState(null, "", `/s/${spaceId}`);
-          dispatch({ type: "CLOSE_ALL_VIEWERS" });
-        }
-      } catch { /* ignore malformed events */ }
-    };
-    return () => es.close();
-  }, []);
+  // Subscribe to server-pushed UI commands (open artifact, switch space).
+  // Uses the shared ui-events subscription so we don't hold a second
+  // EventSource alongside OnboardingDock's.
+  useEffect(() => subscribeUiEvents((event) => {
+    if (event.command === "open_artifact") {
+      const { spaceId, label, url, artifactKind, id } = event.payload as { spaceId: string; label: string; url: string; artifactKind: ArtifactKind; id: string };
+      setActiveSpace(spaceId);
+      window.history.pushState(null, "", `/s/${spaceId}/a/${id}`);
+      dispatch({ type: "CLOSE_ALL_VIEWERS" });
+      dispatch({ type: "OPEN_VIEWER", title: label, path: url, fullscreen: shouldOpenFullscreen(artifactKind) });
+    }
+    if (event.command === "switch_space") {
+      const { spaceId } = event.payload as { spaceId: string };
+      setActiveSpace(spaceId);
+      window.history.pushState(null, "", `/s/${spaceId}`);
+      dispatch({ type: "CLOSE_ALL_VIEWERS" });
+    }
+  }), []);
 
   // Sync state from browser back/forward
   useEffect(() => {

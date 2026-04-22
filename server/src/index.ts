@@ -969,7 +969,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   // ── MCP status (onboarding fallback) ──
+  // Local-origin only — the response discloses which MCP clients are
+  // connected (user-agent strings + timestamps), which a cross-origin
+  // site running in the same browser shouldn't be able to enumerate.
   if (url === "/api/mcp/status" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return;
     json(res, {
       connected_clients: externalClientCount(),
       last_client_connected_at: lastConnectedAt(),

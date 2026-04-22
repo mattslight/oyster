@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { subscribeUiEvents } from "../data/ui-events";
 import "./OnboardingDock.css";
 
 type ClientKey = "claude" | "cursor" | "vscode" | "windsurf";
@@ -170,33 +171,27 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
     return () => { cancelled = true; };
   }, []);
 
-  // Listen for MCP connect + tool-call SSE events. Shares the channel with
-  // App.tsx's existing EventSource; the server broadcasts to every client.
-  useEffect(() => {
-    const es = new EventSource("/api/ui/events");
-    es.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data);
-        if (event.command === "mcp_client_connected") {
-          setState((s) => (s.step1Complete ? s : { ...s, step1Complete: true }));
-          // If the user is currently staring at step 1, slide them to step 2.
-          setViewingStep((v) => (v === 1 ? 2 : v));
-        }
-        if (event.command === "mcp_tool_called") {
-          const call: ToolCall = {
-            tool: event.payload?.tool ?? "unknown",
-            at: event.payload?.at ?? new Date().toISOString(),
-            isError: Boolean(event.payload?.is_error),
-          };
-          setToolCalls((prev) => {
-            const next = [...prev, call];
-            return next.length > ACTION_LOG_LIMIT ? next.slice(-ACTION_LOG_LIMIT) : next;
-          });
-        }
-      } catch { /* malformed event */ }
-    };
-    return () => es.close();
-  }, []);
+  // Listen for MCP connect + tool-call SSE events via the shared subscription
+  // (App.tsx also subscribes) so we only hold one EventSource per tab.
+  useEffect(() => subscribeUiEvents((event) => {
+    if (event.command === "mcp_client_connected") {
+      setState((s) => (s.step1Complete ? s : { ...s, step1Complete: true }));
+      // If the user is currently staring at step 1, slide them to step 2.
+      setViewingStep((v) => (v === 1 ? 2 : v));
+    }
+    if (event.command === "mcp_tool_called") {
+      const payload = event.payload as { tool?: string; at?: string; is_error?: boolean } | undefined;
+      const call: ToolCall = {
+        tool: payload?.tool ?? "unknown",
+        at: payload?.at ?? new Date().toISOString(),
+        isError: Boolean(payload?.is_error),
+      };
+      setToolCalls((prev) => {
+        const next = [...prev, call];
+        return next.length > ACTION_LOG_LIMIT ? next.slice(-ACTION_LOG_LIMIT) : next;
+      });
+    }
+  }), []);
 
   // Step 2 completion rule: at least one user-created space exists.
   // That's the real signal the agent did useful work — works identically
@@ -319,11 +314,16 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
   const config = CLIENT_CONFIGS[client];
   const command = useMemo(() => config.command(mcpUrl), [config, mcpUrl]);
 
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(command).then(() => {
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(command);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    });
+    } catch {
+      // Clipboard access can be denied (permissions, insecure context in
+      // some browsers). Leave `copied` false so the button still shows "copy"
+      // — the command is still visible in the code box for manual copy.
+    }
   }, [command]);
 
   // Reset the copied state when the user switches tabs so the button is
@@ -383,11 +383,14 @@ const AGENT_PROMPT = "Set up Oyster for me. Call the oyster MCP's get_context to
 function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; toolCalls: ToolCall[] }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(AGENT_PROMPT).then(() => {
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(AGENT_PROMPT);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    });
+    } catch {
+      // Clipboard blocked — prompt is still visible in the code box.
+    }
   }, []);
 
   const hasActivity = toolCalls.length > 0;
