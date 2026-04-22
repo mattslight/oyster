@@ -10,7 +10,7 @@ import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 import { debug } from "./debug.js";
-import { discoverAllSubfolders, groupWithLLMRich } from "./discovery.js";
+import { isContainer, discoverAllSubfolders, groupWithLLMRich } from "./discovery.js";
 import { homedir } from "node:os";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
@@ -368,15 +368,21 @@ export function createMcpServer(deps: McpDeps): McpServer {
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           return { content: [{ type: "text" as const, text: `Path does not exist or is not a directory: ${folderPath}` }], isError: true };
         }
-        const folders = discoverAllSubfolders(folderPath);
-        if (folders.length === 0) {
+        if (!isContainer(folderPath)) {
+          // Path is a single project (has its own git/package.json/etc.)
+          // or an empty folder — not a container of multiple projects.
           return {
             content: [{
               type: "text" as const,
-              text: JSON.stringify({ container: false, path: folderPath, hint: "No non-hidden subfolders. Call onboard_space with this path if it's a single project." }, null, 2),
+              text: JSON.stringify({
+                container: false,
+                path: folderPath,
+                hint: "This looks like a single project (or an empty folder), not a container of multiple projects. Call onboard_space with this path instead.",
+              }, null, 2),
             }],
           };
         }
+        const folders = discoverAllSubfolders(folderPath);
         const suggestions = await groupWithLLMRich(folders);
         const anyAmbiguous = suggestions.some(s => s.ambiguous);
         return {
@@ -422,9 +428,10 @@ export function createMcpServer(deps: McpDeps): McpServer {
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           return { content: [{ type: "text" as const, text: `Path does not exist or is not a directory: ${folderPath}` }], isError: true };
         }
-        const folders = discoverAllSubfolders(folderPath);
-        if (folders.length === 0) {
-          // Treat as a single project — create one space from it.
+        if (!isContainer(folderPath)) {
+          // Single project (or empty) — create one space from this folder,
+          // attach the folder, scan. Don't iterate its subdirs; they're
+          // internals of the project, not sibling projects.
           const leafName = basename(folderPath);
           const space = deps.spaceService.createSpace({ name: leafName, repoPath: folderPath });
           const scan = await deps.spaceService.scanSpace(space.id);
@@ -433,12 +440,18 @@ export function createMcpServer(deps: McpDeps): McpServer {
               type: "text" as const,
               text: JSON.stringify({
                 container: false,
-                spaces_created: [{ space_id: space.id, name: leafName, folders: [folderPath], reason: "Single project (no subfolders discovered).", scanned: scan.discovered + scan.resurfaced }],
+                spaces_created: [{
+                  space_id: space.id,
+                  name: leafName,
+                  folders: [folderPath],
+                  reason: "Single project (has its own project markers or is empty — not a container of multiple projects).",
+                  scanned: scan.discovered + scan.resurfaced,
+                }],
               }, null, 2),
             }],
           };
         }
-
+        const folders = discoverAllSubfolders(folderPath);
         const suggestions = await groupWithLLMRich(folders);
 
         // "skipped" = noise per the LLM; report but don't create a space.
