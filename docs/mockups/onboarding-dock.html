@@ -717,8 +717,8 @@
       </div>
       <div class="state-caption state" data-state="s4" style="display:none">Desktop populates <strong>live</strong> via SSE as the agent calls MCP tools. Popover shows the action log.</div>
 
-      <!-- STATE 5 — Memories step: trust-first copy -->
-      <div class="oyster state" data-state="s5" style="display:none">
+      <!-- STATE 5 — Memories step: clickable 3-sub-state prototype (a → b → c → 6) -->
+      <div class="oyster state" data-state="s5" style="display:none" data-substate="a">
         <div class="topbar">
           <div class="topbar-left">
             <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
@@ -747,29 +747,94 @@
             <div class="tile"><div class="tile-icon">🎨</div><div class="tile-label">diagrams</div></div>
           </div>
         </div>
-        <div class="chatbar">
-          <div class="chat-input-fake">Chat, or type / for commands…</div>
+        <!-- Chat bar — default OR highlighted in sub-state b -->
+        <div class="s5-chatbar-a">
+          <div class="chatbar">
+            <div class="chat-input-fake">Chat, or type / for commands…</div>
+          </div>
+        </div>
+        <div class="s5-chatbar-b" style="display:none">
+          <div class="chatbar" style="border: 1px solid rgba(124, 107, 255, 0.5); box-shadow: 0 0 20px rgba(124, 107, 255, 0.25); position: relative; cursor: text;" onclick="s5Advance('c')">
+            <div class="chat-input-fake">Paste the response from your AI here…</div>
+            <div style="position: absolute; top: -22px; right: 16px; font-family: var(--font-mono); font-size: 10px; color: #a597ff; background: rgba(124, 107, 255, 0.2); padding: 2px 8px; border-radius: 9999px;">↓ paste here</div>
+          </div>
+        </div>
+        <div class="s5-chatbar-c" style="display:none">
+          <div style="position: absolute; left: 50%; transform: translateX(-50%); bottom: 88px; width: 600px; max-width: calc(100% - 48px); background: rgba(13,14,26,0.92); border: 1px solid var(--border-soft); border-radius: 14px; padding: 14px; backdrop-filter: blur(16px); z-index: 5;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+              <div style="background: rgba(124, 107, 255, 0.15); border-radius: 10px; padding: 8px 12px; font-size: 12px; max-width: 400px; font-family: var(--font-mono); color: rgba(255,255,255,0.7);">
+                mode: augment<br/>spaces:<br/>&nbsp;&nbsp;- name: "Tokinvest"<br/>memories:<br/>&nbsp;&nbsp;- content: "User prefers..."<br/>...
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); padding: 4px 4px 0;">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: blink 1.2s infinite;"></span>
+              <span>Importing…</span>
+            </div>
+          </div>
+          <div class="chatbar">
+            <div class="chat-input-fake">Ask Oyster anything…</div>
+          </div>
         </div>
 
-        <div class="popover">
+        <!-- Popover — three sub-state variants; JS toggles which one is visible -->
+        <div class="popover s5-popover-a">
           <div class="popover-header">Step 3 of 3 · Optional</div>
           <div class="popover-title">Bring in your memories</div>
-          <div class="popover-desc">Copy context from Claude.ai or ChatGPT. Oyster generates a prompt you paste there, then paste the result back here.</div>
+          <div class="popover-desc">Copy this prompt and give it to your Chat AI.</div>
           <div class="popover-progress">
             <div class="progress-dot done"></div>
             <div class="progress-dot done"></div>
             <div class="progress-dot active"></div>
           </div>
-          <div class="trust-note">
-            <strong>Everything stays on your machine.</strong> Oyster never sends your paste anywhere. You'll review and approve each item before it's saved.
+          <div class="code-box">
+            <code>Based on our past conversations, tell me everything you know about my active projects…</code>
+          </div>
+          <div class="popover-cta" style="margin-top: 12px;">
+            <button class="btn-primary" onclick="s5Advance('b')" style="flex: 1;">Copy</button>
+            <button class="btn-ghost" onclick="document.querySelector('[data-state=\'s6\']').click()" style="flex: 0 0 auto; padding: 7px 14px;">Skip</button>
+          </div>
+          <div style="font-size: 10px; color: rgba(232, 233, 240, 0.35); text-align: center; margin-top: 10px; letter-spacing: 0.02em;">
+            Everything stays on your machine.
+          </div>
+        </div>
+
+        <div class="popover s5-popover-b" style="display:none">
+          <div class="popover-header">Step 3 of 3 · Optional</div>
+          <div class="popover-title">Copied</div>
+          <div class="popover-desc">Paste into your AI. Copy the response.</div>
+          <div class="popover-progress">
+            <div class="progress-dot done"></div>
+            <div class="progress-dot done"></div>
+            <div class="progress-dot active"></div>
+          </div>
+          <div style="background: rgba(74, 222, 128, 0.08); border-radius: 8px; padding: 10px 12px; font-size: 11px; color: rgba(255, 255, 255, 0.8); line-height: 1.5; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 8px;">
+            <span style="color: #4ade80; font-size: 13px;">✓</span>
+            <span>Then paste the response in the chat ↓</span>
           </div>
           <div class="popover-cta">
-            <button class="btn-primary">Open import →</button>
-            <button class="btn-ghost">Skip</button>
+            <button class="btn-primary" onclick="s5Advance('c')">Simulate paste</button>
+            <button class="btn-ghost" onclick="s5Advance('a')">Back</button>
+          </div>
+        </div>
+
+        <div class="popover s5-popover-c" style="display:none">
+          <div class="popover-header">Step 3 of 3 · Optional</div>
+          <div class="popover-title">Importing</div>
+          <div class="popover-desc">Preview coming up in the chat.</div>
+          <div class="popover-progress">
+            <div class="progress-dot done"></div>
+            <div class="progress-dot done"></div>
+            <div class="progress-dot active"></div>
+          </div>
+          <div style="font-size: 11px; color: rgba(232, 233, 240, 0.45); text-align: center; padding: 14px 0 4px;">
+            Working in the chat ↓
+          </div>
+          <div class="popover-cta" style="margin-top: 8px;">
+            <button class="btn-primary" onclick="document.querySelector('[data-state=\'s6\']').click()">Done</button>
           </div>
         </div>
       </div>
-      <div class="state-caption state" data-state="s5" style="display:none">Only step the user completes back in Oyster — because the store is local. Trust-first copy, clear opt-out.</div>
+      <div class="state-caption state" data-state="s5" style="display:none">Clickable prototype: click <strong>Copy prompt</strong> to advance; chat bar highlights; click the chat bar or <strong>Simulate paste</strong> to see importing; <strong>Done</strong> moves to final state. <strong>Skip</strong> on any screen jumps to state 6.</div>
 
       <!-- STATE 6 — Done: dock collapsed -->
       <div class="oyster state" data-state="s6" style="display:none">
@@ -838,8 +903,26 @@
           if (s.classList.contains('state-btn')) return;
           s.style.display = s.dataset.state === target ? '' : 'none';
         });
+        // Reset the step-3 sub-state whenever the user picks a top-level state
+        if (target === 's5') s5Advance('a');
       });
     });
+
+    // Step 3 clickable flow: a (prompt) → b (copied, paste in chat) → c (importing)
+    function s5Advance(sub) {
+      // Scope to the oyster state div, not the state-picker button (both share
+      // data-state="s5"; querySelector returns the first match, which is the
+      // button unless we filter by the parent class).
+      const root = document.querySelector('.oyster[data-state="s5"]');
+      if (!root) return;
+      root.dataset.substate = sub;
+      ['a', 'b', 'c'].forEach(k => {
+        const pop = root.querySelector(`.s5-popover-${k}`);
+        const bar = root.querySelector(`.s5-chatbar-${k}`);
+        if (pop) pop.style.display = k === sub ? '' : 'none';
+        if (bar) bar.style.display = k === sub ? '' : 'none';
+      });
+    }
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();

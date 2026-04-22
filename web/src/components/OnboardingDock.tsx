@@ -141,10 +141,9 @@ interface OnboardingDockProps {
   /** User-defined spaces (from App.tsx). We only look at the count of
    *  non-system spaces as the completion signal for step 2. */
   userSpaceCount?: number;
-  onOpenImport?: () => void;
 }
 
-export function OnboardingDock({ userSpaceCount = 0, onOpenImport }: OnboardingDockProps = {}) {
+export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {}) {
   const [state, setState] = useState<OnboardingState>(loadState);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [viewingStep, setViewingStep] = useState<StepIndex>(() => activeStep(loadState()));
@@ -261,10 +260,6 @@ export function OnboardingDock({ userSpaceCount = 0, onOpenImport }: OnboardingD
   const count = completedCount(state);
   const done = allDone(state);
 
-  const dockLabel = done
-    ? "All set"
-    : `Set up Oyster · ${count}/3`;
-
   return (
     <>
       <button
@@ -272,37 +267,36 @@ export function OnboardingDock({ userSpaceCount = 0, onOpenImport }: OnboardingD
         className={`onboarding-dock${done ? " onboarding-dock--done" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
         onClick={openPopover}
         aria-expanded={popoverOpen}
+        aria-label={done ? "Oyster setup complete" : `Oyster setup — ${count} of 3`}
       >
         {!done && count === 0 && <span className="onboarding-dock-pulse" />}
-        {!done && count > 0 && count < 3 && <span className="onboarding-dock-check">✓</span>}
+        {!done && count > 0 && <span className="onboarding-dock-check">✓</span>}
         {done && <span className="onboarding-dock-check">✓</span>}
-        <span className="onboarding-dock-label">{dockLabel}</span>
+        {!done && (
+          <span className="onboarding-dock-label">{`Set up Oyster · ${count}/3`}</span>
+        )}
       </button>
 
       {popoverOpen && (
         <div ref={popoverRef} className="onboarding-popover" role="dialog" aria-label="Oyster setup">
           <div className="onboarding-popover-arrow" />
 
-          <div className="onboarding-progress">
-            <div className={`progress-dot${state.step1Complete ? " done" : viewingStep === 1 ? " active" : ""}`} />
-            <div className={`progress-dot${state.step2Complete ? " done" : viewingStep === 2 ? " active" : ""}`} />
-            <div className={`progress-dot${state.step3Complete ? " done" : viewingStep === 3 ? " active" : ""}`} />
-          </div>
+          {done ? (
+            <DoneSummary onReset={resetAll} />
+          ) : (
+            <>
+              <div className="onboarding-progress">
+                <div className={`progress-dot${state.step1Complete ? " done" : viewingStep === 1 ? " active" : ""}`} />
+                <div className={`progress-dot${state.step2Complete ? " done" : viewingStep === 2 ? " active" : ""}`} />
+                <div className={`progress-dot${state.step3Complete ? " done" : viewingStep === 3 ? " active" : ""}`} />
+              </div>
 
-          {viewingStep === 1 && <Step1Connect onComplete={markStep1} />}
-          {viewingStep === 2 && <Step2AgentWork onComplete={markStep2} toolCalls={toolCalls} />}
-          {viewingStep === 3 && (
-            <Step3Memories
-              onComplete={markStep3}
-              onSkip={skipStep3}
-              onOpenImport={onOpenImport}
-            />
-          )}
-
-          {done && (
-            <div className="onboarding-done-actions">
-              <button className="onboarding-btn-ghost" onClick={resetAll}>Reset setup</button>
-            </div>
+              {viewingStep === 1 && <Step1Connect onComplete={markStep1} />}
+              {viewingStep === 2 && <Step2AgentWork onComplete={markStep2} toolCalls={toolCalls} />}
+              {viewingStep === 3 && (
+                <Step3Memories onComplete={markStep3} onSkip={skipStep3} />
+              )}
+            </>
           )}
         </div>
       )}
@@ -441,34 +435,103 @@ function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; too
 function Step3Memories({
   onComplete,
   onSkip,
-  onOpenImport,
 }: {
   onComplete: () => void;
   onSkip: () => void;
-  onOpenImport?: () => void;
 }) {
-  const handleOpen = useCallback(() => {
-    onOpenImport?.();
-    onComplete();
-  }, [onOpenImport, onComplete]);
+  // a = prompt ready to copy; b = copied, waiting for user to paste-in-AI
+  // then paste the response into Oyster's chat.
+  const [sub, setSub] = useState<"a" | "b">("a");
+  const [prompt, setPrompt] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  // Fetch the cloud-AI export prompt on mount. Uses the existing /api/import
+  // endpoint (same one the import-from-ai builtin uses) so the prompt stays
+  // in sync with the schema without drifting.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/import/prompt?provider=chatgpt")
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((t) => { if (!cancelled) setPrompt(t); })
+      .catch(() => { if (!cancelled) setLoadError(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!prompt) return;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setSub("b");
+    } catch { /* clipboard blocked — advance anyway so the flow doesn't dead-end */
+      setSub("b");
+    }
+  }, [prompt]);
+
+  if (sub === "b") {
+    return (
+      <div className="onboarding-step">
+        <div className="onboarding-step-title">Copied</div>
+        <div className="onboarding-step-desc">
+          Paste into your Chat AI. Paste the response into Oyster's chat ↓
+        </div>
+        <div className="onboarding-step-actions">
+          <button className="onboarding-btn-primary" style={{ flex: 1 }} onClick={onComplete}>
+            Done
+          </button>
+          <button className="onboarding-btn-ghost" onClick={() => setSub("a")}>Back</button>
+        </div>
+        <div className="onboarding-disclaimer">Everything stays on your machine.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="onboarding-step">
-      <div className="onboarding-step-title">Bring in your memories <span className="onboarding-step-optional">· optional</span></div>
-      <div className="onboarding-step-desc">Pull context from Claude.ai or ChatGPT.</div>
-      <div className="onboarding-trust-note">
-        <strong>Everything stays on your machine.</strong> Oyster never sends your paste anywhere.
+      <div className="onboarding-step-title">
+        Bring in your memories <span className="onboarding-step-optional">· optional</span>
       </div>
+      <div className="onboarding-step-desc">Copy this prompt and give it to your Chat AI.</div>
+
+      <div className="onboarding-code-box">
+        <pre>
+          <code>
+            {loadError
+              ? "Couldn't load the prompt — refresh to retry."
+              : prompt ?? "Loading…"}
+          </code>
+        </pre>
+      </div>
+
       <div className="onboarding-step-actions">
         <button
           className="onboarding-btn-primary"
-          onClick={handleOpen}
-          disabled={!onOpenImport}
-          title={!onOpenImport ? "Import flow not available" : undefined}
+          style={{ flex: 1 }}
+          onClick={handleCopy}
+          disabled={!prompt}
         >
-          Open import →
+          Copy
         </button>
         <button className="onboarding-btn-ghost" onClick={onSkip}>Skip</button>
+      </div>
+
+      <div className="onboarding-disclaimer">Everything stays on your machine.</div>
+    </div>
+  );
+}
+
+// Rendered when the popover opens after all three steps are complete.
+// Keeps the pill's truthful "done" state honest — summary, not a dangling CTA.
+function DoneSummary({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="onboarding-step">
+      <div className="onboarding-step-title">You're all set</div>
+      <div className="onboarding-step-desc">
+        Oyster's ready. Import-from-AI lives on the desktop if you want to revisit.
+      </div>
+      <div className="onboarding-step-actions">
+        <button className="onboarding-btn-ghost" onClick={onReset}>
+          Reset setup
+        </button>
       </div>
     </div>
   );

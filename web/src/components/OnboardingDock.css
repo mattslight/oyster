@@ -34,11 +34,17 @@
 .onboarding-dock--done {
   background: rgba(74, 222, 128, 0.12);
   border-color: rgba(74, 222, 128, 0.25);
-  padding: 5px 10px;
+  /* Glyph-only pill — tighter squared-off padding since there's no label */
+  padding: 5px 9px;
+  gap: 0;
 }
 
 .onboarding-dock--done:hover {
   background: rgba(74, 222, 128, 0.2);
+}
+
+.onboarding-dock--done .onboarding-dock-check {
+  font-size: 11px;
 }
 
 .onboarding-dock-pulse {
@@ -348,6 +354,14 @@
   color: rgba(255, 255, 255, 0.7);
   margin-bottom: 10px;
   line-height: 1.5;
+}
+
+.onboarding-disclaimer {
+  font-size: 10px;
+  color: rgba(232, 233, 240, 0.35);
+  text-align: center;
+  margin-top: 10px;
+  letter-spacing: 0.02em;
 }
 
 .onboarding-trust-note strong {
