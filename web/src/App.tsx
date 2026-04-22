@@ -2,7 +2,6 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Desktop } from "./components/Desktop";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
-import { AddSpaceWizard } from "./components/AddSpaceWizard";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
@@ -25,10 +24,6 @@ export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
-  const [showAddSpaceWizard, setShowAddSpaceWizard] = useState(false);
-  const [droppedFolder, setDroppedFolder] = useState<string | undefined>();
-  const [shellDragOver, setShellDragOver] = useState(false);
-  const dragCounter = useRef(0);
   const getUrlState = useCallback((): { space: string; artifactId: string | null; groupName: string | null; hash: string } => {
     const artifactMatch = window.location.pathname.match(/^\/s\/([^/]+)\/a\/([^/]+)$/);
     if (artifactMatch) {
@@ -337,35 +332,7 @@ export default function App() {
   }
 
   return (
-    <div
-      className={`oyster-shell${shellDragOver ? " shell-drag-over" : ""}`}
-      onDragEnter={(e) => {
-        if (e.dataTransfer.types.includes("Files")) {
-          dragCounter.current++;
-          setShellDragOver(true);
-        }
-      }}
-      onDragLeave={() => {
-        dragCounter.current--;
-        if (dragCounter.current <= 0) {
-          dragCounter.current = 0;
-          setShellDragOver(false);
-        }
-      }}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        dragCounter.current = 0;
-        setShellDragOver(false);
-        const entry = e.dataTransfer.items[0]?.webkitGetAsEntry?.();
-        if (entry?.isDirectory) {
-          setDroppedFolder(entry.name);
-          setShowAddSpaceWizard(true);
-        }
-      }}
-    >
+    <div className="oyster-shell">
       {!connected && (
         <div className="connection-banner">
           <span>Oyster server not connected</span>
@@ -385,7 +352,6 @@ export default function App() {
           window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
         }}
         onSpaceChange={handleSpaceChange}
-        onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         onConvertToSpace={handleConvertToSpace}
         onRefresh={() =>
           loadArtifacts()
@@ -406,7 +372,6 @@ export default function App() {
             handleArtifactClick(importArtifact);
           }
         }}
-        dragOver={shellDragOver}
         revealId={revealId}
       />
 
@@ -526,28 +491,12 @@ export default function App() {
         activeSpace={activeSpace}
         onSpaceChange={handleSpaceChange}
         inputRef={chatInputRef}
-        onAddSpace={() => setShowAddSpaceWizard(true)}
         onSpaceUpdate={handleSpaceUpdate}
         onSpaceDelete={handleSpaceDelete}
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
         isFirstRun={isFirstRun}
       />
-
-      {showAddSpaceWizard && (
-        <AddSpaceWizard
-          spaces={spaces}
-          initialFolder={droppedFolder}
-          onClose={() => { setShowAddSpaceWizard(false); setDroppedFolder(undefined); }}
-          onComplete={(newSpaceId) => {
-            setShowAddSpaceWizard(false);
-            setDroppedFolder(undefined);
-            fetchSpaces().then(setSpaces);
-            loadArtifacts().then(setArtifacts);
-            if (newSpaceId) handleSpaceChange(newSpaceId);
-          }}
-        />
-      )}
 
       {spotlightOpen && (
         <SpotlightSearch

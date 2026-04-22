@@ -92,7 +92,6 @@ interface Props {
   spaces?: Space[];
   activeSpace?: string;
   onSpaceChange?: (space: string) => void;
-  onAddSpace?: () => void;
   onSpaceUpdate?: (id: string, fields: { displayName?: string; color?: string }) => void;
   onSpaceDelete?: (id: string, folderName?: string) => void;
   inputRef?: React.RefObject<HTMLInputElement | null>;
@@ -106,7 +105,7 @@ const SPACE_PALETTE = [
   "#8f5a9e", "#3a8a7a", "#9e7c2a", "#8f4a5a",
 ];
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onAddSpace, onSpaceUpdate, onSpaceDelete, inputRef: externalInputRef, artifacts = [], onArtifactOpen, isFirstRun }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onSpaceUpdate, onSpaceDelete, inputRef: externalInputRef, artifacts = [], onArtifactOpen, isFirstRun }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -672,26 +671,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
               );
             })}
 
-            {/* Add space */}
-            {onAddSpace && (
-              <button
-                className="space-pill space-pill--add"
-                onClick={onAddSpace}
-                title="Add space"
-                style={{ position: "relative" }}
-              >
-                <span style={{ position: "relative", zIndex: 1 }}>+</span>
-              </button>
-            )}
           </div>
           </LayoutGroup>
-        </div>
-      )}
-
-      {/* Onboarding hint */}
-      {isFirstRun && isHero && (
-        <div className="chatbar-onboarding-hint">
-          or drag a folder here to add one yourself
         </div>
       )}
 
