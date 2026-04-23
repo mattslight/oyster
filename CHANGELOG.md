@@ -2,29 +2,27 @@
 
 All notable changes to Oyster are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0-beta.0] - 2026-04-23
 
 ### Added
 
-- MCP-first onboarding dock: a persistent pill in the top-right of Oyster opens a 3-step setup popover — connect your agent, ask your agent to set things up, optionally import memories. Replaces the previous `Import from AI` banner. Step 1 auto-advances when any external MCP client connects; step 2 shows a live action log of your agent's MCP tool calls and auto-completes as soon as at least one user-created space exists. Internal OpenCode traffic is filtered out via a `?internal=1` marker on its MCP URL so the action log only reflects your agent's work. ([#184](https://github.com/mattslight/oyster/issues/184))
-- `GET /api/mcp/status` — fallback endpoint for the onboarding dock (and anyone else who wants a JSON view of which external MCP clients are connected, when they first connected, and how many tool calls they've made).
+- **Onboarding pill.** A persistent setup companion in the top-right of a fresh Oyster walks you through three steps: connect your AI agent, ask it to set things up, and optionally import memories from another AI. Progress tracks automatically as you go. ([#184](https://github.com/mattslight/oyster/issues/184))
+- **Agent-led discovery.** Connect Claude Code, Cursor, Windsurf, VS Code — or use Oyster's own chat bar — and ask *"set up Oyster for me."* Your agent audits your filesystem, proposes a set of spaces in chat, and creates them once you confirm.
+- **Cloud-AI import.** Bring your context across from another AI: copy Oyster's import prompt into ChatGPT or Claude, paste the response back into Oyster's chat, and your spaces, summaries, and memories are seeded in one pass.
+- **Logical-only spaces.** Spaces no longer need a folder on disk. Create a conceptual space ("Work", "Reading") first; attach folders later, or keep it purely for memories and artifacts.
 
 ### Changed
 
-- Cloud-AI import prompt now explicitly instructs the remote AI to exclude API keys, tokens, credentials, and personal details about third parties (children, partners, etc.) — addresses feedback that raw exports can leak private context a user would never want pasted back into Oyster.
-- `Connect your AI` builtin artifact updated to match the dock's wording — the headline is now "Connect Oyster to your agent", and body copy leads with what the user gets (an agent driving the workspace) rather than the MCP protocol itself.
-- **Onboarding is now agent-led.** Oyster no longer tries to classify the filesystem itself; your connected agent (external MCP client, or Oyster's own chat bar via OpenCode) does the audit with its own shell and file-read tools, proposes a plan in chat, and applies once you confirm. The `get_context` playbook now teaches agents how to run this audit: probe common project locations (not just `~/Dev`), use git log and READMEs for context, present the plan before applying, never silently drop folders.
-- `onboard_space` MCP tool now takes `paths` (optional array) — create a space with one or more folders attached in a single call, or omit `paths` entirely for a logical grouping with no filesystem attachment (summaries, memories, and artifacts can attach later). The previous single-path `repo_path` parameter has been dropped; pass `paths: ["/single/path"]` instead.
-- New `set_space_summary(name, title, content)` MCP tool — attaches a short summary to a space (what it's about, in a sentence or two). Upserts on the space's slugified name; creates the space if missing.
-- `get_context` playbook now teaches agents how to handle pasted import payloads from another AI: extract spaces, summaries, and memories from the text and apply them via `onboard_space` + `set_space_summary` + `remember`. Agents should not rely on strict YAML parsing — the paste may be YAML, JSON, or paraphrased Markdown.
-- Step 3 of the onboarding dock (import memories) now fetches with an 8s timeout and a Retry button, so an upstream hiccup no longer leaves the popover stuck on "Loading…". `cache: "no-store"` sidesteps stale-response hangs seen under Vite HMR.
-- Artifact icons now fall back to the kind glyph if the generated icon URL fails to load, instead of showing the browser's broken-image placeholder. Covers the intermittent race where a stale or mid-write icon URL 404s.
+- **Safer imports.** When Oyster asks another AI to export your context, it now explicitly tells that AI to leave out credentials and third-party personal details — so a raw export can't leak context you wouldn't want on your desktop.
+- **Clearer first-run copy.** The hero bar leads with *"Tell your agent to set up Oyster"*, and the connect-your-AI builtin leads with what you get (an agent driving your workspace) rather than protocol terminology.
+- **Drag-and-drop onboarding retired for this release.** Onboarding now goes through your agent; post-onboarding drag-drop to add folders later will return in a future release ([#190](https://github.com/mattslight/oyster/issues/190)).
 
-### Removed
+### Fixed
 
-- `OnboardingBanner.tsx` and its dismissal state — superseded by the dock.
-- `discover_container` and `onboard_container` MCP tools and their supporting server-side classification pipeline (`discoverCandidates`, `groupWithLLM`, `discoverAllSubfolders`, `groupWithLLMRich`, `isContainer`). The agent's own audit produces better groupings than Oyster's server-side LLM pass could — richer context (git log, READMEs), better handling of non-code projects, better judgement on what's noise vs a real project.
-- `POST /api/discover` and `POST /api/discover/import` REST endpoints, along with drag-drop onboarding and the `AddSpaceWizard` form. Both single-project and multi-project container onboarding now go through the agent flow; bringing drag-drop back as a post-onboarding add path is tracked in [#190](https://github.com/mattslight/oyster/issues/190).
+- **Broken icon placeholders** when a generated icon briefly 404s — Oyster now shows the kind glyph and silently retries.
+- **Import step stuck on "Loading…"** — an 8-second timeout and a retry button handle slow or failed fetches.
+- **Escape closes the onboarding popover** (consistent with other overlays).
+- **Cross-origin hardening** on local API endpoints that surface connected-agent activity.
 
 ## [0.3.8] - 2026-04-21
 
