@@ -1,9 +1,8 @@
 # Launch readiness — 0.4.0-beta.0
 
-Captured 2026-04-23. Readiness items are what has to be true before we press
-the Reddit button. Post-readiness (Reddit post → listen → triage) is
-deliberately out of scope for this doc and planned separately once readiness
-is done.
+Captured 2026-04-23. Readiness items are what has to be true before the
+alpha launch. Post-readiness (launch → listen → triage) is deliberately
+out of scope for this doc and planned separately once readiness is done.
 
 ## Readiness items
 
@@ -46,14 +45,15 @@ Implementation direction (final shape decided during the work):
 
 Ships as 0.4.0-beta.1. Not a bandaid — the proper fix.
 
-### 3. #185 — userland epic → ship #182 (location visibility)
+### 3. #185 — userland hygiene epic (ships #182 + #172)
 
 **Confirmed hit** — Merlin couldn't find his workspace on his Windows install.
 
-Scope for readiness: **#182 only** (location visibility). Move userland out
-of the hidden `~/.oyster/` path into somewhere a user naturally expects their
-work to live, or surface the location prominently in the UI + docs. Full
-design sits in the epic.
+Scope for readiness: **both #182 and #172** under the epic. #182 moves
+userland out of the hidden `~/.oyster/` path into somewhere a user
+naturally expects it (or surfaces the location prominently in the UI +
+docs). #172 is covered separately below. Full epic design wraps both plus
+the portability / relative-paths angle, which is out of readiness.
 
 ### 4. #172 — userland layout
 
@@ -77,12 +77,12 @@ Scope: separate user content from system state into clear top-level directories
 
 So we don't drift:
 
-- Reddit post copy, channel selection, or timing
+- Alpha launch channel, post copy, and timing
 - Landing page rewrite
 - oyster-os.com redirect
 - #87 builtin icons (icing, not cake)
 - #76 topbar overflow (early adopters on desktop)
-- Reorg primitives #192 / views-as-queries #193 (gated on Reddit signal)
+- Reorg primitives #192 / views-as-queries #193 (gated on alpha feedback)
 - Plugin system work (no market pressure yet)
 
 ## Done gate
