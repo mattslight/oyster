@@ -47,8 +47,8 @@ import {
   killOpenCode,
   startAutoApprover,
   proxyToOpenCode,
-  proxySSE,
 } from "./opencode-manager.js";
+import { attachChatEventClient } from "./opencode-events.js";
 import { sweepOrphanOpenCodeProcesses } from "./opencode-orphan-sweep.js";
 import { spawnSession, attachWebSocket } from "./pty-manager.js";
 import { createMcpServer } from "./mcp-server.js";
@@ -626,7 +626,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url === "/api/chat/events" || url.startsWith("/api/chat/events?")) {
-    await proxySSE(req, res, "/event", getOpenCodePort());
+    attachChatEventClient(req, res);
     return;
   }
 

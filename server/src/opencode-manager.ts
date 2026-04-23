@@ -1,5 +1,6 @@
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, execSync } from "node:child_process";
+import { broadcastRaw, broadcastSynthetic } from "./opencode-events.js";
 
 let shuttingDown = false;
 let opencodeRestarts = 0;
@@ -65,8 +66,35 @@ export function spawnOpenCodeServe(
     }
   });
 
+  // #203: some opencode failures (notably ProviderModelNotFoundError when
+  // no provider is authed) surface *only* on stderr — no HTTP error, no
+  // session.error SSE event, the browser sits at "thinking..." forever.
+  // Buffer stderr across chunks (the error and its "data: { ... }" block
+  // can land in separate writes), pattern-match known failures, and
+  // inject a synthetic session.error so the banner handler in
+  // useChatEvents.ts surfaces it via the existing UI.
+  let stderrBuffer = "";
+  const MODEL_NOT_FOUND_RE = /ProviderModelNotFoundError[\s\S]*?providerID:\s*"([^"]+)"[\s\S]*?modelID:\s*"([^"]+)"/;
   child.stderr?.on("data", (data: Buffer) => {
-    console.error(`[opencode-serve] ${data.toString().trim()}`);
+    const text = data.toString();
+    console.error(`[opencode-serve] ${text.trim()}`);
+    stderrBuffer = (stderrBuffer + text).slice(-4000);
+    const match = stderrBuffer.match(MODEL_NOT_FOUND_RE);
+    if (match) {
+      const [full, providerID, modelID] = match;
+      broadcastSynthetic({
+        type: "session.error",
+        properties: {
+          error: {
+            data: {
+              message: `Model not found: ${providerID}/${modelID}`,
+            },
+          },
+        },
+      });
+      // Drop consumed bytes so we don't re-fire on the same error.
+      stderrBuffer = stderrBuffer.slice(stderrBuffer.indexOf(full) + full.length);
+    }
   });
 
   function scheduleRestart(reason: string) {
@@ -140,7 +168,17 @@ export function startAutoApprover(
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+            const text = decoder.decode(value, { stream: true });
+
+            // Fan out the raw SSE bytes to any connected browser clients
+            // before we parse them for our own reactive behaviour below.
+            // This replaces the previous per-client proxySSE — a single
+            // upstream subscription avoids multiplying opencode load by
+            // the number of open tabs, and gives us a place to inject
+            // server-originated synthetic events.
+            broadcastRaw(text);
+
+            buffer += text;
 
             // Parse SSE lines
             const lines = buffer.split("\n");
@@ -227,56 +265,3 @@ export async function proxyToOpenCode(
   }
 }
 
-export async function proxySSE(
-  req: IncomingMessage,
-  res: ServerResponse,
-  targetPath: string,
-  opencodePort: number,
-) {
-  const url = `http://127.0.0.1:${opencodePort}${targetPath}`;
-  const controller = new AbortController();
-
-  try {
-    const upstream = await fetch(url, {
-      headers: { Accept: "text/event-stream" },
-      signal: controller.signal,
-    });
-
-    if (!upstream.ok || !upstream.body) {
-      res.writeHead(upstream.status);
-      res.end();
-      return;
-    }
-
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-    });
-
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
-
-    async function pump() {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          res.write(chunk);
-        }
-      } catch {}
-      res.end();
-    }
-
-    pump();
-
-    req.on("close", () => {
-      controller.abort();
-    });
-  } catch {
-    res.writeHead(502);
-    res.end();
-  }
-}
