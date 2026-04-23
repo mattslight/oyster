@@ -635,17 +635,18 @@ export function createMcpServer(deps: McpDeps): McpServer {
     {
       space_id: z.string().describe("Space to place the artifact in"),
       label: z.string().describe("Display name on the desktop. Also determines the filename (slugified)."),
-      artifact_kind: z.enum(ARTIFACT_KINDS).describe("Kind determines file extension: notes→.md, diagram→.mmd, others→.html"),
+      artifact_kind: z.enum(ARTIFACT_KINDS).describe("Default file extension: notes→.md, diagram→.mmd, others→.html. Use the `extension` field to override (e.g. a notes artifact with raw HTML)."),
       content: z.string().describe("File content to write"),
       subdir: z.string().optional().describe("Subdirectory within the space (e.g. 'invoices'). Must be a relative path."),
       group_name: z.string().optional().describe("Visual group on the surface"),
       source_origin: z.enum(["manual", "ai_generated"]).optional().describe("Provenance of the artifact. Defaults to 'manual'. Use 'ai_generated' when the content was produced by an AI agent."),
+      extension: z.enum([".md", ".html", ".mmd", ".mermaid"]).optional().describe("Override the file extension. Use when the content format differs from the kind's default (e.g. a `notes` artifact containing raw HTML — pass '.html' so the viewer renders it as HTML instead of markdown). The viewer picks its renderer from the extension, not the kind."),
     },
-    async ({ space_id, label, artifact_kind, content, subdir, group_name, source_origin }) => {
-      debug("mcp", "create_artifact invoked", { label, space_id, kind: artifact_kind, subdir: subdir ?? null });
+    async ({ space_id, label, artifact_kind, content, subdir, group_name, source_origin, extension }) => {
+      debug("mcp", "create_artifact invoked", { label, space_id, kind: artifact_kind, subdir: subdir ?? null, extension: extension ?? null });
       try {
         const artifact = await deps.service.createArtifact(
-          { space_id, label, artifact_kind, content, subdir, group_name, source_origin },
+          { space_id, label, artifact_kind, content, subdir, group_name, source_origin, extension },
           deps.userlandDir,
         );
         return {
