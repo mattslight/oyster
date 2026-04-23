@@ -77,6 +77,10 @@ body {
   color: rgba(255, 255, 255, 0.4);
 }
 
+.ai-error-banner {
+  max-width: min(680px, calc(100vw - 32px));
+}
+
 .connection-hint code {
   background: rgba(255, 255, 255, 0.08);
   padding: 2px 6px;

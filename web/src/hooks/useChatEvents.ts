@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { subscribeToEvents, type ChatEvent } from "../data/chat-api";
+import { subscribeToEvents, formatChatError, type ChatEvent, type OpenCodeError } from "../data/chat-api";
 import type { Message, MessagePart, ToolPart, QuestionOption } from "./useChatSession";
 import { TOOL_LABELS, extractToolHint } from "./tool-labels";
 
@@ -8,6 +8,7 @@ interface UseChatEventsOptions {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setStreaming: (streaming: boolean) => void;
   setStatusText: (text: string) => void;
+  setAiError?: (message: string | null) => void;
 }
 
 export function useChatEvents({
@@ -15,6 +16,7 @@ export function useChatEvents({
   setMessages,
   setStreaming,
   setStatusText,
+  setAiError,
 }: UseChatEventsOptions) {
   // Track current assistant message being streamed
   const currentAssistantMsg = useRef<string | null>(null);
@@ -80,7 +82,17 @@ export function useChatEvents({
         }
 
         case "message.updated": {
-          const info = props.info as { id: string; role: string; sessionID: string };
+          const info = props.info as {
+            id: string;
+            role: string;
+            sessionID: string;
+            error?: OpenCodeError;
+          };
+          if (info.error) {
+            setAiError?.(formatChatError("stream", info.error.data?.statusCode, info.error.data?.message));
+            setStreaming(false);
+            setStatusText("");
+          }
           if (info.role === "assistant") {
             currentAssistantMsg.current = info.id;
             setMessages((prev) => {
@@ -111,6 +123,7 @@ export function useChatEvents({
           }
 
           if (field === "text") {
+            setAiError?.(null);
             if (!textPartsMap.current.has(messageId)) {
               textPartsMap.current.set(messageId, new Map());
             }
@@ -210,6 +223,20 @@ export function useChatEvents({
           break;
         }
 
+        case "session.error": {
+          const err = props.error as OpenCodeError | undefined;
+          setAiError?.(formatChatError("stream", err?.data?.statusCode, err?.data?.message));
+          setStreaming(false);
+          setStatusText("");
+          break;
+        }
+
+        case "session.idle": {
+          setStreaming(false);
+          setStatusText("");
+          break;
+        }
+
         case "question.asked": {
           const q = props as {
             id: string;
@@ -237,7 +264,7 @@ export function useChatEvents({
     });
 
     return unsubscribe;
-  }, [sessionId, setMessages, setStreaming, setStatusText]);
+  }, [sessionId, setMessages, setStreaming, setStatusText, setAiError]);
 
   function resetTracking() {
     currentAssistantMsg.current = null;

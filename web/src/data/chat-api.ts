@@ -47,6 +47,47 @@ export async function getOrCreateSession(): Promise<string> {
   return session.id;
 }
 
+// Shape emitted on the OpenCode SSE stream when a provider call fails.
+export interface OpenCodeError {
+  data?: { message?: string; statusCode?: number };
+}
+
+// Build user-facing banner text for any chat failure. Three buckets:
+// auth → actionable reconnect hint; transient → retry hint; else → raw.
+export function formatChatError(
+  source: "http" | "stream",
+  status: number | undefined,
+  body: string | undefined,
+): string {
+  if (source === "http" && status === 502) {
+    try {
+      const parsed = JSON.parse(body || "{}");
+      if (parsed?.error === "opencode serve unavailable") {
+        return "Can't reach the AI engine — restart Oyster to recover";
+      }
+    } catch { /* fall through */ }
+    return "AI engine unavailable — check that Oyster is running";
+  }
+  if (status === 401) return "AI provider auth failed — run: opencode providers login";
+  if (status === 429 || (typeof status === "number" && status >= 500)) {
+    return "AI provider unavailable — try again in a moment";
+  }
+  if (source === "http") {
+    return `Couldn't send message${status ? ` (HTTP ${status})` : ""}`;
+  }
+  return body?.trim() || "AI request failed";
+}
+
+export class ChatSendError extends Error {
+  status: number;
+  body: string;
+  constructor(status: number, body: string) {
+    super(`sendMessage failed: ${status}`);
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function sendMessage(
   sessionId: string,
   text: string
@@ -61,7 +102,11 @@ export async function sendMessage(
       agent: "oyster",
     }),
   });
-  if (!res.ok) throw new Error(`sendMessage failed: ${res.status}`);
+  if (!res.ok) {
+    let body = "";
+    try { body = await res.text(); } catch { /* ignore */ }
+    throw new ChatSendError(res.status, body);
+  }
 }
 
 export function subscribeToEvents(

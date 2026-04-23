@@ -2,6 +2,12 @@
 
 All notable changes to Oyster are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Silent AI failures now surface.** When your AI provider rejects a message (expired key, rate limit, provider outage) Oyster shows a banner with the reason and, for auth failures, the exact command to reconnect — instead of the chat bar staying mute. ([#201](https://github.com/mattslight/oyster/issues/201))
+
 ## [0.4.0-beta.0] - 2026-04-23
 
 ### Added
@@ -303,7 +309,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.0...HEAD
+[0.4.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.3.8...v0.4.0-beta.0
 [0.3.5]: https://github.com/mattslight/oyster/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/mattslight/oyster/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/mattslight/oyster/compare/v0.3.2...v0.3.3

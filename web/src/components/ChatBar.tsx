@@ -4,7 +4,7 @@ import { motion, LayoutGroup } from "framer-motion";
 import { spaceColor } from "../utils/spaceColor";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { sendMessage, replyToQuestion } from "../data/chat-api";
+import { sendMessage, replyToQuestion, formatChatError, ChatSendError } from "../data/chat-api";
 import { useChatSession } from "../hooks/useChatSession";
 import { useChatEvents } from "../hooks/useChatEvents";
 import type { ToolPart } from "../hooks/useChatSession";
@@ -98,6 +98,7 @@ interface Props {
   artifacts?: Artifact[];
   onArtifactOpen?: (artifact: Artifact) => void;
   isFirstRun?: boolean;
+  onAiError?: (message: string | null) => void;
 }
 
 const SPACE_PALETTE = [
@@ -105,7 +106,7 @@ const SPACE_PALETTE = [
   "#8f5a9e", "#3a8a7a", "#9e7c2a", "#8f4a5a",
 ];
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onSpaceUpdate, onSpaceDelete, inputRef: externalInputRef, artifacts = [], onArtifactOpen, isFirstRun }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onSpaceUpdate, onSpaceDelete, inputRef: externalInputRef, artifacts = [], onArtifactOpen, isFirstRun, onAiError }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -240,7 +241,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   // Reset index when items change
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSlashIndex(0); }, [slashItems.length]);
-  const { resetTracking } = useChatEvents({ sessionId, setMessages, setStreaming, setStatusText });
+  const { resetTracking } = useChatEvents({ sessionId, setMessages, setStreaming, setStatusText, setAiError: onAiError });
 
   useEffect(() => {
     if (expanded) {
@@ -348,6 +349,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     setStreaming(true);
     setExpanded(true);
     setStatusText("thinking...");
+    onAiError?.(null);
 
     // Push session URL on first message so refresh reloads this conversation
     pushSessionUrl();
@@ -361,8 +363,12 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       console.error("Failed to send message:", err);
       setStreaming(false);
       setStatusText("");
+      const msg = err instanceof ChatSendError
+        ? formatChatError("http", err.status, err.body)
+        : "Can't reach Oyster — check that the server is running";
+      onAiError?.(msg);
     }
-  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts]);
+  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError]);
 
   function handleCopyChat() {
     const text = messages
