@@ -30,10 +30,22 @@ export function attachChatEventClient(req: IncomingMessage, res: ServerResponse)
 
 // Mirror broadcastUiEvent's leak-safe pattern in index.ts: if close
 // doesn't fire cleanly, ended/destroyed responses would otherwise stay
-// in the set and we'd throw on every subsequent broadcast.
+// in the set and we'd throw on every subsequent broadcast. We also
+// cap per-client buffering — chat SSE can emit many tokens per second
+// during a long assistant response, so a stalled tab could otherwise
+// grow Node's internal writable buffer without bound.
+const MAX_CLIENT_BUFFER_BYTES = 1_000_000;
+
 export function broadcastRaw(chunk: string) {
   for (const res of clients) {
     if (res.writableEnded || res.destroyed) {
+      clients.delete(res);
+      continue;
+    }
+    if (res.writableLength > MAX_CLIENT_BUFFER_BYTES) {
+      // Client can't keep up — drop rather than grow forever.
+      // EventSource in the browser will auto-reconnect.
+      try { res.end(); } catch { /* best effort */ }
       clients.delete(res);
       continue;
     }
