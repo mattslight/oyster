@@ -47,8 +47,8 @@ import {
   killOpenCode,
   startAutoApprover,
   proxyToOpenCode,
-  proxySSE,
 } from "./opencode-manager.js";
+import { attachChatEventClient } from "./opencode-events.js";
 import { sweepOrphanOpenCodeProcesses } from "./opencode-orphan-sweep.js";
 import { spawnSession, attachWebSocket } from "./pty-manager.js";
 import { createMcpServer } from "./mcp-server.js";
@@ -625,8 +625,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // Chat SSE carries assistant output. Same origin gate as /api/ui/events:
+  // a cross-origin page in the same browser must not be able to open an
+  // EventSource against a running local Oyster and read the user's chat.
   if (url === "/api/chat/events" || url.startsWith("/api/chat/events?")) {
-    await proxySSE(req, res, "/event", getOpenCodePort());
+    if (rejectIfNonLocalOrigin()) return;
+    attachChatEventClient(req, res);
     return;
   }
 
