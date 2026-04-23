@@ -57,12 +57,14 @@ const KIND_EXT: Record<ArtifactKind, string> = {
   app: ".html", deck: ".html", wireframe: ".html", table: ".html", map: ".html",
 };
 
-const ALLOWED_EXTENSIONS = new Set([".md", ".html", ".mmd", ".mermaid", ".txt"]);
+// Extensions the viewer's MIME map (server/src/index.ts) knows how to serve
+// with a correct Content-Type. Keep in sync if the map grows.
+const ALLOWED_EXTENSIONS = new Set([".md", ".html", ".mmd", ".mermaid"]);
 
 function normalizeExtension(raw: string): string {
-  const trimmed = raw.trim().toLowerCase();
-  const withDot = trimmed.startsWith(".") ? trimmed : `.${trimmed}`;
-  if (!/^\.[a-z0-9]+$/.test(withDot) || !ALLOWED_EXTENSIONS.has(withDot)) {
+  const normalized = raw.trim().toLowerCase();
+  const withDot = normalized.startsWith(".") ? normalized : `.${normalized}`;
+  if (!ALLOWED_EXTENSIONS.has(withDot)) {
     throw new Error(`extension must be one of ${[...ALLOWED_EXTENSIONS].join(", ")}`);
   }
   return withDot;
