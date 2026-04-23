@@ -49,6 +49,7 @@ import {
   proxyToOpenCode,
   proxySSE,
 } from "./opencode-manager.js";
+import { sweepOrphanOpenCodeProcesses } from "./opencode-orphan-sweep.js";
 import { spawnSession, attachWebSocket } from "./pty-manager.js";
 import { createMcpServer } from "./mcp-server.js";
 import {
@@ -231,9 +232,13 @@ process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); me
 process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); process.exit(0); });
 process.on("uncaughtException", (err) => {
   console.error(`[oyster] uncaught exception: ${err.message}`);
+  markShuttingDown();
+  try { killOpenCode(); } catch { /* best effort */ }
 });
 process.on("unhandledRejection", (err) => {
   console.error(`[oyster] unhandled rejection: ${err instanceof Error ? err.message : err}`);
+  markShuttingDown();
+  try { killOpenCode(); } catch { /* best effort */ }
 });
 
 // ── UI push events (SSE) ──
@@ -1075,6 +1080,14 @@ httpServer.listen(port, () => {
   console.log(`Oyster server listening on http://localhost:${port}`);
   console.log(`  WebSocket: ws://localhost:${port}`);
   console.log(`  API:       http://localhost:${port}/api/artifacts`);
+
+  // Reap any orphaned opencode-ai processes from a prior Oyster run that
+  // didn't shut down cleanly (SIGKILL, crash, laptop sleep). See #191.
+  const sweep = sweepOrphanOpenCodeProcesses();
+  if (sweep.killed.length > 0) {
+    console.log(`[opencode-sweep] reaped ${sweep.killed.length} orphan opencode-ai process(es): ${sweep.killed.join(", ")}`);
+  }
+  for (const msg of sweep.errors) console.warn(`[opencode-sweep] ${msg}`);
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
