@@ -625,7 +625,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // Chat SSE carries assistant output. Same origin gate as /api/ui/events:
+  // a cross-origin page in the same browser must not be able to open an
+  // EventSource against a running local Oyster and read the user's chat.
   if (url === "/api/chat/events" || url.startsWith("/api/chat/events?")) {
+    if (rejectIfNonLocalOrigin()) return;
     attachChatEventClient(req, res);
     return;
   }

@@ -10,12 +10,17 @@ type SyntheticEvent = { type: string; properties?: Record<string, unknown> };
 
 const clients = new Set<ServerResponse>();
 
+// Caller is responsible for the local-origin check (the same
+// rejectIfNonLocalOrigin gate used for /api/ui/events). Chat SSE
+// carries assistant output — a cross-origin page in the same browser
+// must not be able to open an EventSource against it. We also don't
+// set Access-Control-Allow-Origin here; the outer handler's wildcard
+// header would otherwise make this world-readable.
 export function attachChatEventClient(req: IncomingMessage, res: ServerResponse) {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
-    "Access-Control-Allow-Origin": "*",
   });
   clients.add(res);
   req.on("close", () => {
@@ -23,9 +28,20 @@ export function attachChatEventClient(req: IncomingMessage, res: ServerResponse)
   });
 }
 
+// Mirror broadcastUiEvent's leak-safe pattern in index.ts: if close
+// doesn't fire cleanly, ended/destroyed responses would otherwise stay
+// in the set and we'd throw on every subsequent broadcast.
 export function broadcastRaw(chunk: string) {
   for (const res of clients) {
-    try { res.write(chunk); } catch { /* client gone; will be removed on close */ }
+    if (res.writableEnded || res.destroyed) {
+      clients.delete(res);
+      continue;
+    }
+    try {
+      res.write(chunk);
+    } catch {
+      clients.delete(res);
+    }
   }
 }
 
