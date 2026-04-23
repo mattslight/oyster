@@ -234,11 +234,16 @@ process.on("uncaughtException", (err) => {
   console.error(`[oyster] uncaught exception: ${err.message}`);
   markShuttingDown();
   try { killOpenCode(); } catch { /* best effort */ }
+  // Fail fast — the server is in an unknown state with opencode-ai dead and
+  // restart disabled. Exiting non-zero lets the user restart cleanly rather
+  // than leaving a zombie that silently drops every chat message.
+  process.exit(1);
 });
 process.on("unhandledRejection", (err) => {
   console.error(`[oyster] unhandled rejection: ${err instanceof Error ? err.message : err}`);
   markShuttingDown();
   try { killOpenCode(); } catch { /* best effort */ }
+  process.exit(1);
 });
 
 // ── UI push events (SSE) ──
@@ -1081,14 +1086,22 @@ httpServer.listen(port, () => {
   console.log(`  WebSocket: ws://localhost:${port}`);
   console.log(`  API:       http://localhost:${port}/api/artifacts`);
 
-  // Reap any orphaned opencode-ai processes from a prior Oyster run that
-  // didn't shut down cleanly (SIGKILL, crash, laptop sleep). See #191.
-  const sweep = sweepOrphanOpenCodeProcesses();
-  if (sweep.killed.length > 0) {
-    console.log(`[opencode-sweep] reaped ${sweep.killed.length} orphan opencode-ai process(es): ${sweep.killed.join(", ")}`);
-  }
-  for (const msg of sweep.errors) console.warn(`[opencode-sweep] ${msg}`);
-
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
+
+  // Reap any orphaned opencode-ai processes from a prior Oyster run that
+  // didn't shut down cleanly (SIGKILL, crash, laptop sleep). See #191.
+  // Deferred to the next tick so a slow ps/PowerShell enumeration cannot
+  // block the listen callback and delay the first request.
+  setImmediate(() => {
+    try {
+      const sweep = sweepOrphanOpenCodeProcesses(OPENCODE_BIN);
+      if (sweep.killed.length > 0) {
+        console.log(`[opencode-sweep] reaped ${sweep.killed.length} orphan opencode-ai process(es): ${sweep.killed.join(", ")}`);
+      }
+      for (const msg of sweep.errors) console.warn(`[opencode-sweep] ${msg}`);
+    } catch (err) {
+      console.warn(`[opencode-sweep] failed: ${err instanceof Error ? err.message : err}`);
+    }
+  });
 });
