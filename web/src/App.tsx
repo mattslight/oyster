@@ -96,6 +96,7 @@ export default function App() {
   }, [artifacts, openGroup, activeSpace]);
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
   const [connected, setConnected] = useState(true);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Active-space-aware artifact loader. Mirrors current activeSpace via a ref
   // so callers don't have to thread it through every closure (polling,
@@ -336,6 +337,11 @@ export default function App() {
           <span className="connection-hint">Run <code>oyster</code> to start</span>
         </div>
       )}
+      {connected && aiError && (
+        <div className="connection-banner ai-error-banner">
+          <span>{aiError}</span>
+        </div>
+      )}
       <Desktop
         space={activeSpace}
         spaces={spaces.map(s => s.id)}
@@ -493,6 +499,7 @@ export default function App() {
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
         isFirstRun={isFirstRun}
+        onAiError={setAiError}
       />
 
       {spotlightOpen && (
