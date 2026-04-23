@@ -55,18 +55,23 @@ of the hidden `~/.oyster/` path into somewhere a user naturally expects their
 work to live, or surface the location prominently in the UI + docs. Full
 design sits in the epic.
 
-### 4. #172 — userland layout grab-bag
+### 4. #172 — userland layout
 
-**Out of readiness.** Optional; can be picked up post-launch if Reddit
-feedback surfaces it. The location fix (#182) is what Merlin actually hit;
-layout (#172) is second-order.
+**In readiness.** Once #182 makes userland visible, a user opening the folder
+immediately sees the current grab-bag — spaces, artifact directories, system
+files (`oyster.db`, `memory.db`, `icons/`, `src/`), and orphan markdown files
+all at the root. Shipping location visibility without layout tidy would
+expose the mess as a first impression.
+
+Scope: separate user content from system state into clear top-level directories
+(final shape decided during the work). Final layout lands with the #185 epic.
 
 ## Open decisions
 
 | Question | Decision | Notes |
 |---|---|---|
 | #191 scope | **Proactive fix** (parent-death monitoring + process-group isolation + startup sweep as belt-and-braces). Not a bandaid. | Decided 2026-04-23. |
-| #172 in readiness? | **Out.** | Optional; post-launch if Reddit surfaces it. |
+| #172 in readiness? | **In.** | Updated 2026-04-23. Shipping #182 (visibility) without #172 (layout) would expose the grab-bag as a first impression. |
 
 ## What readiness explicitly is NOT
 
@@ -87,5 +92,6 @@ Readiness is done when:
 - Smoke test passes cold on a clean machine.
 - 0.4.0-beta.1 shipped with the #191 proactive fix.
 - #182 location visibility shipped (in 0.4.0-beta.1 or a separate beta, whichever serves the smoke test).
+- #172 userland layout shipped alongside #182 so a newly-visible userland doesn't expose the grab-bag.
 
 Post-readiness plan gets written separately once the gate is closed.
