@@ -79,6 +79,13 @@ body {
 
 .ai-error-banner {
   max-width: min(680px, calc(100vw - 32px));
+  flex-wrap: wrap;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.ai-error-banner > span {
+  min-width: 0;
 }
 
 .connection-hint code {

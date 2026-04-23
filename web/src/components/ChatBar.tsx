@@ -243,6 +243,11 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   useEffect(() => { setSlashIndex(0); }, [slashItems.length]);
   const { resetTracking } = useChatEvents({ sessionId, setMessages, setStreaming, setStatusText, setAiError: onAiError });
 
+  // Clear any stale AI error when switching sessions — banner shouldn't leak across conversations.
+  useEffect(() => {
+    onAiError?.(null);
+  }, [sessionId, onAiError]);
+
   useEffect(() => {
     if (expanded) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
