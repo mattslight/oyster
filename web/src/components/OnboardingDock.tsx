@@ -216,8 +216,15 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
       if (dockRef.current.contains(target)) return;
       setPopoverOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPopoverOpen(false);
+    }
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [popoverOpen]);
 
   const openPopover = useCallback(() => {

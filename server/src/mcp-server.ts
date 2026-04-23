@@ -337,12 +337,16 @@ export function createMcpServer(deps: McpDeps): McpServer {
         } finally {
           try {
             recordToolCall(externalUa);
+            // SSE payload intentionally excludes the user-agent — the dock
+            // only needs tool name + error flag for the action log, and
+            // stripping the UA keeps the stream leaner if the origin gate
+            // is ever misconfigured. Full UA is in /api/mcp/status (local-
+            // origin only).
             deps.broadcastUiEvent({
               version: 1,
               command: "mcp_tool_called",
               payload: {
                 tool: name,
-                user_agent: externalUa,
                 at: new Date().toISOString(),
                 is_error: isError || Boolean(result?.isError),
               },

@@ -516,8 +516,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // GET /api/ui/events — SSE stream for UI commands
+  // GET /api/ui/events — SSE stream for UI commands.
+  // Local-origin only. The stream carries `mcp_client_connected` +
+  // `mcp_tool_called` events (connected-agent telemetry), which a
+  // cross-origin page in the same browser must not be able to observe
+  // by opening an EventSource against a running local Oyster.
   if (url === "/api/ui/events") {
+    if (rejectIfNonLocalOrigin()) return;
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -944,10 +949,14 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       const { userAgent, isNew } = recordExternalRequest(req.headers["user-agent"]);
       externalUa = userAgent;
       if (isNew) {
+        // Broadcast a bare "a new client connected" signal — enough for
+        // the dock to flip step 1, with no UA leaked on the SSE stream
+        // even if the origin gate is somehow bypassed. Exact UA is still
+        // available via /api/mcp/status (local-origin only).
         broadcastUiEvent({
           version: 1,
           command: "mcp_client_connected",
-          payload: { userAgent, at: new Date().toISOString() },
+          payload: { at: new Date().toISOString() },
         });
       }
     }
