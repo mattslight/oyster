@@ -14,12 +14,19 @@ export function getOpenCodePort(): number {
 
 export function killOpenCode() {
   if (opencodeChild) {
-    if (process.platform === "win32" && opencodeChild.pid) {
-      try { execSync(`taskkill /PID ${opencodeChild.pid} /T /F`, { stdio: "ignore" }); } catch (err) {
+    const pid = opencodeChild.pid;
+    if (process.platform === "win32" && pid) {
+      try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" }); } catch (err) {
         console.warn(`[opencode-serve] taskkill failed: ${err instanceof Error ? err.message : err}`);
       }
-    } else {
-      opencodeChild.kill("SIGTERM");
+    } else if (pid) {
+      // Child is its own process-group leader (detached: true on spawn), so
+      // signalling -pid cascades to any workers opencode-ai itself spawned.
+      try {
+        process.kill(-pid, "SIGTERM");
+      } catch {
+        try { opencodeChild.kill("SIGTERM"); } catch { /* already gone */ }
+      }
     }
     opencodeChild = null;
   }
@@ -39,6 +46,10 @@ export function spawnOpenCodeServe(
     env: cleanEnv,
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
+    // Give the child its own process group on Unix so killOpenCode can
+    // cascade SIGTERM to any workers it spawned. Windows uses taskkill /T
+    // which walks the tree directly and has no equivalent concept.
+    detached: process.platform !== "win32",
   });
   opencodeChild = child;
 

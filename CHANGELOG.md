@@ -7,6 +7,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 ### Fixed
 
 - **Silent AI failures now surface.** When your AI provider rejects a message (expired key, rate limit, provider outage) Oyster shows a banner with the reason and, for auth failures, the exact command to reconnect — instead of the chat bar staying mute. ([#201](https://github.com/mattslight/oyster/issues/201))
+- **AI engine no longer piles up after crashes or force-quits.** Previous Oyster sessions that died without a clean shutdown used to leave their AI engine subprocess running forever, and across days of use these could stack up and fill your swap. Oyster now reaps any orphaned engines on startup, and uses OS-level process groups so a graceful shutdown kills the whole engine tree in one go. ([#191](https://github.com/mattslight/oyster/issues/191))
 
 ## [0.4.0-beta.0] - 2026-04-23
 
