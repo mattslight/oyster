@@ -26,16 +26,25 @@ matters if this doesn't pass.
 **Confirmed hit** — happens daily on Matt's laptop (100+ orphan `opencode-ai
 serve` processes, 20.9 GB swap, system unusable).
 
-Scope for readiness: **reactive startup sweep only.** On server boot, enumerate
-running `opencode-ai serve` processes whose cwd is our userland, kill them
-before spawning fresh. Bounded to our own userland path — no false positives
-against other opencode users.
+Scope for readiness: **proactive fix — parent-death monitoring.** The child
+should terminate itself when its parent (the Oyster server) dies, regardless
+of how the parent died (SIGKILL, crash, laptop sleep, OOM). This is the
+structurally correct fix — other long-running subprocess hosts (Electron,
+PM2, Docker) all handle this at the OS level.
 
-**Proactive parent-death monitoring is follow-up work**, not readiness. It
-prevents new orphans from being created; the reactive sweep cleans up
-accumulated harm, which is what's making the laptop unusable today. Ship
-reactive for 0.4.0-beta.1; proactive can land on a normal release cadence
-after launch.
+Implementation direction (final shape decided during the work):
+
+- Parent-death detection in the spawned child — on Linux, `prctl(PR_SET_PDEATHSIG, SIGTERM)`;
+  on macOS, child polls its own `ppid` and self-terminates when it becomes 1
+  (reparented to launchd). A small Node wrapper that supervises the real
+  child process is the likely shape.
+- Process-group isolation so the restart loop can't race a spawn against a
+  not-yet-killed previous child.
+- Include a startup orphan sweep as a belt-and-braces safety net — addresses
+  any orphans accumulated before this fix lands, bounded to our own userland
+  path so no false positives.
+
+Ships as 0.4.0-beta.1. Not a bandaid — the proper fix.
 
 ### 3. #185 — userland epic → ship #182 (location visibility)
 
@@ -54,10 +63,10 @@ layout (#172) is second-order.
 
 ## Open decisions
 
-| Question | Default applied | Flag if different |
+| Question | Decision | Notes |
 |---|---|---|
-| #191 scope: reactive sweep only, or reactive + proactive? | **Reactive only** for readiness; proactive is follow-up. | Say so and proactive moves into readiness. |
-| #172 in readiness? | **Out.** | Say so and it moves in. |
+| #191 scope | **Proactive fix** (parent-death monitoring + process-group isolation + startup sweep as belt-and-braces). Not a bandaid. | Decided 2026-04-23. |
+| #172 in readiness? | **Out.** | Optional; post-launch if Reddit surfaces it. |
 
 ## What readiness explicitly is NOT
 
@@ -76,7 +85,7 @@ So we don't drift:
 Readiness is done when:
 
 - Smoke test passes cold on a clean machine.
-- 0.4.0-beta.1 shipped with #191 reactive sweep.
+- 0.4.0-beta.1 shipped with the #191 proactive fix.
 - #182 location visibility shipped (in 0.4.0-beta.1 or a separate beta, whichever serves the smoke test).
 
 Post-readiness plan gets written separately once the gate is closed.
