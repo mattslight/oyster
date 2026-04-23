@@ -325,15 +325,26 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
 function Step1Connect({ onComplete }: { onComplete: () => void }) {
   const [client, setClient] = useState<ClientKey>("claude");
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
   const mcpUrl = useMemo(() => `${window.location.origin}/mcp/`, []);
   const config = CLIENT_CONFIGS[client];
   const command = useMemo(() => config.command(mcpUrl), [config, mcpUrl]);
+
+  // Clear any pending "reset copied" timer if the user advances (unmount)
+  // or re-copies before the 1.8s window elapses.
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(command);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copiedTimerRef.current = null;
+      }, 1800);
     } catch {
       // Clipboard access can be denied (permissions, insecure context in
       // some browsers). Leave `copied` false so the button still shows "copy"
@@ -398,12 +409,21 @@ const AGENT_PROMPT = "Set up Oyster for me. Call the oyster MCP's get_context to
 
 function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; toolCalls: ToolCall[] }) {
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(AGENT_PROMPT);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copiedTimerRef.current = null;
+      }, 1800);
     } catch {
       // Clipboard blocked — prompt is still visible in the code box.
     }
