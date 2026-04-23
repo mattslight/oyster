@@ -57,6 +57,17 @@ const KIND_EXT: Record<ArtifactKind, string> = {
   app: ".html", deck: ".html", wireframe: ".html", table: ".html", map: ".html",
 };
 
+const ALLOWED_EXTENSIONS = new Set([".md", ".html", ".mmd", ".mermaid", ".txt"]);
+
+function normalizeExtension(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  const withDot = trimmed.startsWith(".") ? trimmed : `.${trimmed}`;
+  if (!/^\.[a-z0-9]+$/.test(withDot) || !ALLOWED_EXTENSIONS.has(withDot)) {
+    throw new Error(`extension must be one of ${[...ALLOWED_EXTENSIONS].join(", ")}`);
+  }
+  return withDot;
+}
+
 // ── Service ──
 
 export class ArtifactService {
@@ -285,6 +296,7 @@ export class ArtifactService {
       subdir?: string;
       group_name?: string;
       source_origin?: "manual" | "discovered" | "ai_generated";
+      extension?: string;
     },
     userlandDir: string,
   ): Promise<Artifact> {
@@ -306,7 +318,9 @@ export class ArtifactService {
       throw new Error("subdir must stay within the space directory");
     }
 
-    const ext = KIND_EXT[params.artifact_kind];
+    const ext = params.extension !== undefined
+      ? normalizeExtension(params.extension)
+      : KIND_EXT[params.artifact_kind];
     const absPath = join(targetDir, `${slug}${ext}`);
     debug("artifact-svc", "createArtifact writing file", { id, slug, absPath });
 
