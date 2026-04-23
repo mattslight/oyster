@@ -312,6 +312,7 @@
   </div>
 
   <nav class="version-pills" aria-label="Jump to version">
+      <a class="version-pill" href="#v-unreleased">Unreleased</a>
       <a class="version-pill" href="#v-0-3-8">0.3</a>
       <a class="version-pill" href="#v-0-2-4">0.2</a>
       <a class="version-pill" href="#v-0-1-21">0.1</a>
@@ -319,6 +320,29 @@
   </nav>
 
   <main class="entries">
+<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.5...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
+<h3>Added</h3>
+<ul>
+<li>MCP-first onboarding dock: a persistent pill in the top-right of Oyster opens a 3-step setup popover — connect your agent, ask your agent to set things up, optionally import memories. Replaces the previous <code>Import from AI</code> banner. Step 1 auto-advances when any external MCP client connects; step 2 shows a live action log of your agent&#39;s MCP tool calls and auto-completes as soon as at least one user-created space exists. Internal OpenCode traffic is filtered out via a <code>?internal=1</code> marker on its MCP URL so the action log only reflects your agent&#39;s work. (<a href="https://github.com/mattslight/oyster/issues/184" rel="noopener noreferrer">#184</a>)</li>
+<li><code>GET /api/mcp/status</code> — fallback endpoint for the onboarding dock (and anyone else who wants a JSON view of which external MCP clients are connected, when they first connected, and how many tool calls they&#39;ve made).</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Cloud-AI import prompt now explicitly instructs the remote AI to exclude API keys, tokens, credentials, and personal details about third parties (children, partners, etc.) — addresses feedback that raw exports can leak private context a user would never want pasted back into Oyster.</li>
+<li><code>Connect your AI</code> builtin artifact updated to match the dock&#39;s wording — the headline is now &quot;Connect Oyster to your agent&quot;, and body copy leads with what the user gets (an agent driving the workspace) rather than the MCP protocol itself.</li>
+<li><strong>Onboarding is now agent-led.</strong> Oyster no longer tries to classify the filesystem itself; your connected agent (external MCP client, or Oyster&#39;s own chat bar via OpenCode) does the audit with its own shell and file-read tools, proposes a plan in chat, and applies once you confirm. The <code>get_context</code> playbook now teaches agents how to run this audit: probe common project locations (not just <code>~/Dev</code>), use git log and READMEs for context, present the plan before applying, never silently drop folders.</li>
+<li><code>onboard_space</code> MCP tool now takes <code>paths</code> (optional array) — create a space with one or more folders attached in a single call, or omit <code>paths</code> entirely for a logical grouping with no filesystem attachment (summaries, memories, and artifacts can attach later). The previous single-path <code>repo_path</code> parameter has been dropped; pass <code>paths: [&quot;/single/path&quot;]</code> instead.</li>
+<li>New <code>set_space_summary(name, title, content)</code> MCP tool — attaches a short summary to a space (what it&#39;s about, in a sentence or two). Upserts on the space&#39;s slugified name; creates the space if missing.</li>
+<li><code>get_context</code> playbook now teaches agents how to handle pasted import payloads from another AI: extract spaces, summaries, and memories from the text and apply them via <code>onboard_space</code> + <code>set_space_summary</code> + <code>remember</code>. Agents should not rely on strict YAML parsing — the paste may be YAML, JSON, or paraphrased Markdown.</li>
+<li>Step 3 of the onboarding dock (import memories) now fetches with an 8s timeout and a Retry button, so an upstream hiccup no longer leaves the popover stuck on &quot;Loading…&quot;. <code>cache: &quot;no-store&quot;</code> sidesteps stale-response hangs seen under Vite HMR.</li>
+<li>Artifact icons now fall back to the kind glyph if the generated icon URL fails to load, instead of showing the browser&#39;s broken-image placeholder. Covers the intermittent race where a stale or mid-write icon URL 404s.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li><code>OnboardingBanner.tsx</code> and its dismissal state — superseded by the dock.</li>
+<li><code>discover_container</code> and <code>onboard_container</code> MCP tools and their supporting server-side classification pipeline (<code>discoverCandidates</code>, <code>groupWithLLM</code>, <code>discoverAllSubfolders</code>, <code>groupWithLLMRich</code>, <code>isContainer</code>). The agent&#39;s own audit produces better groupings than Oyster&#39;s server-side LLM pass could — richer context (git log, READMEs), better handling of non-code projects, better judgement on what&#39;s noise vs a real project.</li>
+<li><code>POST /api/discover</code> and <code>POST /api/discover/import</code> REST endpoints, along with drag-drop onboarding and the <code>AddSpaceWizard</code> form. Both single-project and multi-project container onboarding now go through the agent flow; bringing drag-drop back as a post-onboarding add path is tracked in <a href="https://github.com/mattslight/oyster/issues/190" rel="noopener noreferrer">#190</a>.</li>
+</ul>
 <h2 id="v-0-3-8"><span class="release-version">0.3.8</span><span class="release-date"> — 2026-04-21</span></h2>
 <h3>Fixed</h3>
 <ul>

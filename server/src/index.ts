@@ -51,6 +51,12 @@ import {
 } from "./opencode-manager.js";
 import { spawnSession, attachWebSocket } from "./pty-manager.js";
 import { createMcpServer } from "./mcp-server.js";
+import {
+  recordExternalRequest,
+  listExternalClients,
+  externalClientCount,
+  lastConnectedAt,
+} from "./mcp-client-tracker.js";
 import { SqliteFtsMemoryProvider } from "./memory-store.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
@@ -510,8 +516,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // GET /api/ui/events — SSE stream for UI commands
+  // GET /api/ui/events — SSE stream for UI commands.
+  // Local-origin only. The stream carries `mcp_client_connected` +
+  // `mcp_tool_called` events (connected-agent telemetry), which a
+  // cross-origin page in the same browser must not be able to observe
+  // by opening an EventSource against a running local Oyster.
   if (url === "/api/ui/events") {
+    if (rejectIfNonLocalOrigin()) return;
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -916,7 +927,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   // ── MCP server ──
-  if (url === "/mcp" || url === "/mcp/") {
+  if (url === "/mcp" || url.startsWith("/mcp/") || url.startsWith("/mcp?")) {
     // Localhost-only: reject non-local origins and don't emit wildcard CORS
     const origin = req.headers.origin;
     if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
@@ -926,11 +937,59 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     // Override the wildcard CORS header set at the top of handleHttpRequest
     res.setHeader("Access-Control-Allow-Origin", origin || `http://localhost:${PREFERRED_PORT}`);
 
-    const mcpServer = createMcpServer({ store, service: artifactService, userlandDir: USERLAND_DIR, iconGenerator, spaceService, memoryProvider, pendingReveals, broadcastUiEvent });
+    // `?internal=1` = Oyster's own embedded OpenCode subprocess; anything
+    // else is an external agent (Claude Code / Cursor / etc.). The query
+    // param is set at config-write time when we compose OpenCode's mcp URL.
+    // Parse properly — substring matching would false-positive on
+    // `?notinternal=1` or other values containing the literal.
+    const isInternal = new URL(url, "http://localhost").searchParams.get("internal") === "1";
+    let externalUa: string | null = null;
+
+    if (!isInternal) {
+      const { userAgent, isNew } = recordExternalRequest(req.headers["user-agent"]);
+      externalUa = userAgent;
+      if (isNew) {
+        // Broadcast a bare "a new client connected" signal — enough for
+        // the dock to flip step 1, with no UA leaked on the SSE stream
+        // even if the origin gate is somehow bypassed. Exact UA is still
+        // available via /api/mcp/status (local-origin only).
+        broadcastUiEvent({
+          version: 1,
+          command: "mcp_client_connected",
+          payload: { at: new Date().toISOString() },
+        });
+      }
+    }
+
+    const mcpServer = createMcpServer({
+      store,
+      service: artifactService,
+      userlandDir: USERLAND_DIR,
+      iconGenerator,
+      spaceService,
+      memoryProvider,
+      pendingReveals,
+      broadcastUiEvent,
+      clientContext: isInternal ? { isInternal: true } : { isInternal: false, userAgent: externalUa ?? "unknown" },
+    });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close(); mcpServer.close(); });
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res);
+    return;
+  }
+
+  // ── MCP status (onboarding fallback) ──
+  // Local-origin only — the response discloses which MCP clients are
+  // connected (user-agent strings + timestamps), which a cross-origin
+  // site running in the same browser shouldn't be able to enumerate.
+  if (url === "/api/mcp/status" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return;
+    json(res, {
+      connected_clients: externalClientCount(),
+      last_client_connected_at: lastConnectedAt(),
+      clients: listExternalClients(),
+    });
     return;
   }
 
@@ -994,16 +1053,19 @@ function findPort(preferred: number, maxAttempts = 10): Promise<number> {
 
 const port = await findPort(PREFERRED_PORT);
 
-// Write OpenCode config with the actual port so MCP URL is always correct
+// Write OpenCode config with the actual port so MCP URL is always correct.
+// ?internal=1 lets the /mcp handler distinguish OpenCode's own traffic from
+// external agents (Claude Code, Cursor, etc.) without relying on UA sniffing.
+const INTERNAL_MCP_URL = `http://localhost:${port}/mcp/?internal=1`;
 const opencodeConfig = readFileSync(join(PROJECT_ROOT, ".opencode", "config.toml"), "utf8")
   .replace(/# MCP config is written dynamically.*/, "")
   .trimEnd()
-  + `\n\n[mcp.oyster]\ntype = "remote"\nurl = "http://localhost:${port}/mcp/"\n`;
+  + `\n\n[mcp.oyster]\ntype = "remote"\nurl = "${INTERNAL_MCP_URL}"\n`;
 writeFileSync(join(USERLAND_DIR, ".opencode", "config.toml"), opencodeConfig);
 
 // Also write opencode.json (OpenCode reads this from cwd)
 const sourceOpencode = JSON.parse(readFileSync(join(PROJECT_ROOT, "opencode.json"), "utf8"));
-sourceOpencode.mcp = { oyster: { type: "remote", url: `http://localhost:${port}/mcp/` } };
+sourceOpencode.mcp = { oyster: { type: "remote", url: INTERNAL_MCP_URL } };
 writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode, null, 2) + "\n");
 
 const httpServer = createServer(handleHttpRequest);

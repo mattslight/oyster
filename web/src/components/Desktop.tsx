@@ -10,7 +10,6 @@ import { spaceColor } from "../utils/spaceColor";
 import { useDesktopPreferences } from "../hooks/useDesktopPreferences";
 import { useDesktopSections, kindLabel } from "../hooks/useDesktopSections";
 import { useDragOrder } from "../hooks/useDragOrder";
-import { OnboardingBanner } from "./OnboardingBanner";
 
 interface Props {
   space: string;
@@ -21,7 +20,6 @@ interface Props {
   onArtifactStop?: (artifact: Artifact) => void;
   onGroupClick: (groupName: string) => void;
   onSpaceChange: (space: string) => void;
-  onAddSpace?: (folderName?: string) => void;
   onConvertToSpace?: (groupName: string, merge?: boolean, sourceSpaceId?: string) => void;
   onImportFromAI?: (spaceId?: string) => void;
   onRefresh?: () => void;
@@ -29,24 +27,13 @@ interface Props {
   onArtifactUpdate?: (id: string, fields: Partial<Artifact>) => void;
   /** Remove a single artifact from the parent's state — used for optimistic archive / uninstall / restore so the tile disappears instantly. */
   onArtifactRemove?: (id: string) => void;
-  isFirstRun?: boolean;
-  dragOver?: boolean;
   revealId?: string | null;
   /** When true, render the archived-items view: context menu shows Restore. */
   isArchivedView?: boolean;
 }
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onAddSpace, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, dragOver, revealId, isFirstRun, isArchivedView }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView }: Props) {
   const isAllSpace = space === "__all__";
-
-  // ── Onboarding banner ──
-  const [bannerDismissed, setBannerDismissed] = useState(
-    () => localStorage.getItem("oyster-onboarding-dismissed") === "true"
-  );
-  const handleDismiss = () => {
-    localStorage.setItem("oyster-onboarding-dismissed", "true");
-    setBannerDismissed(true);
-  };
 
   // ── Folder context menu ──
   const [folderCtx, setFolderCtx] = useState<{ name: string; sourceSpaceId?: string; x: number; y: number } | null>(null);
@@ -192,7 +179,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
           color1="#07060f"
           color2="#7c6bff"
           color3="#5227FF"
-          timeSpeed={dragOver ? 2 : 0.15}
+          timeSpeed={0.15}
           colorBalance={0}
           warpStrength={2}
           warpFrequency={6.5}
@@ -283,15 +270,6 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       </div>
 
       <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
-        {isFirstRun && !bannerDismissed && (
-          <OnboardingBanner
-            onImportFromAI={() => {
-              const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
-              if (importArtifact) onArtifactClick(importArtifact);
-            }}
-            onDismiss={handleDismiss}
-          />
-        )}
         <div className="filter-bar">
           {activeKind && (
             <div className="filter-notice">
@@ -352,12 +330,6 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                   Import from AI
                 </button>
               )}
-              <button className="empty-space-action" onClick={() => onAddSpace?.()}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.7 }}>
-                  <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
-                </svg>
-                Import folder
-              </button>
             </div>
           </div>
         )}

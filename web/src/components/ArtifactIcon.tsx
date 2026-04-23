@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -67,6 +67,35 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
   // Only show status indicators for managed apps (local_process runtime)
   const isManagedApp = artifact.runtimeKind === "local_process";
 
+  // If the generated icon URL 404s (stale ref, mid-write race, or cache
+  // mismatch in incognito), fall back to the kind glyph rather than showing
+  // the browser's broken-image placeholder.
+  const [iconFailed, setIconFailed] = useState(false);
+  const iconRetryCountRef = useRef(0);
+
+  // Clear on URL change OR iconStatus transition (e.g. regenerate → ready),
+  // and reset the retry budget for the new icon lifecycle.
+  useEffect(() => {
+    iconRetryCountRef.current = 0;
+    setIconFailed(false);
+  }, [artifact.icon, artifact.iconStatus]);
+
+  // Auto-retry after a short delay so a transient 404 (e.g. during
+  // regenerate_icon, where the old file is unlinked before the new one
+  // is written) recovers without requiring a full URL change. Bounded so
+  // a permanently-missing icon can't spin in an infinite retry loop
+  // burning network requests.
+  const MAX_ICON_RETRIES = 3;
+  useEffect(() => {
+    if (!iconFailed || !artifact.icon) return;
+    if (iconRetryCountRef.current >= MAX_ICON_RETRIES) return;
+    const timer = window.setTimeout(() => {
+      iconRetryCountRef.current += 1;
+      setIconFailed(false);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [artifact.icon, iconFailed]);
+
   const inputRef = useRef<HTMLInputElement>(null);
   // Guard against the double-commit race: Enter or Esc call commit/cancel
   // directly, but then the state flip unmounts the <input> which fires blur,
@@ -92,13 +121,14 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
       onClick={isRenaming ? (e) => e.preventDefault() : onClick}
       onContextMenu={onContextMenu}
     >
-      <div className={`icon-thumb ${artifact.icon ? "icon-thumb-ai" : ""}`} style={artifact.icon ? undefined : { background: config.gradient }}>
-        {artifact.icon ? (
+      <div className={`icon-thumb ${artifact.icon && !iconFailed ? "icon-thumb-ai" : ""}`} style={artifact.icon && !iconFailed ? undefined : { background: config.gradient }}>
+        {artifact.icon && !iconFailed ? (
           <img
             src={artifact.icon}
             alt={artifact.label}
             className="icon-img"
             loading="lazy"
+            onError={() => setIconFailed(true)}
           />
         ) : (
           <>

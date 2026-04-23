@@ -52,13 +52,14 @@ export interface ScanResult {
 export interface Space {
   id: string;
   displayName: string;
-  repoPath: string | null;
   color: string | null;
   parentId: string | null;
   scanStatus: ScanStatus;
   scanError: string | null;
   lastScannedAt: string | null;
   lastScanSummary: Omit<ScanResult, "artifacts"> | null;
+  summaryTitle: string | null;
+  summaryContent: string | null;
   createdAt: string;
   updatedAt: string;
 }

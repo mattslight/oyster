@@ -2,18 +2,20 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Desktop } from "./components/Desktop";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
-import { AddSpaceWizard } from "./components/AddSpaceWizard";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
+import { OnboardingDock } from "./components/OnboardingDock";
 import { windowsReducer } from "./stores/windows";
 import {
   type Artifact,
+  type ArtifactKind,
   fetchArtifacts,
   listArchivedArtifacts,
   startApp as startAppApi,
   stopApp as stopAppApi,
 } from "./data/artifacts-api";
+import { subscribeUiEvents } from "./data/ui-events";
 import { shouldOpenFullscreen } from "../../shared/types";
 import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace } from "./data/spaces-api";
 import type { Space } from "../../shared/types";
@@ -24,10 +26,6 @@ export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
-  const [showAddSpaceWizard, setShowAddSpaceWizard] = useState(false);
-  const [droppedFolder, setDroppedFolder] = useState<string | undefined>();
-  const [shellDragOver, setShellDragOver] = useState(false);
-  const dragCounter = useRef(0);
   const getUrlState = useCallback((): { space: string; artifactId: string | null; groupName: string | null; hash: string } => {
     const artifactMatch = window.location.pathname.match(/^\/s\/([^/]+)\/a\/([^/]+)$/);
     if (artifactMatch) {
@@ -166,29 +164,24 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Subscribe to server-pushed UI commands (open artifact, switch space)
-  useEffect(() => {
-    const es = new EventSource("/api/ui/events");
-    es.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data);
-        if (event.command === "open_artifact") {
-          const { spaceId, label, url, artifactKind } = event.payload;
-          setActiveSpace(spaceId);
-          window.history.pushState(null, "", `/s/${spaceId}/a/${event.payload.id}`);
-          dispatch({ type: "CLOSE_ALL_VIEWERS" });
-          dispatch({ type: "OPEN_VIEWER", title: label, path: url, fullscreen: shouldOpenFullscreen(artifactKind) });
-        }
-        if (event.command === "switch_space") {
-          const { spaceId } = event.payload;
-          setActiveSpace(spaceId);
-          window.history.pushState(null, "", `/s/${spaceId}`);
-          dispatch({ type: "CLOSE_ALL_VIEWERS" });
-        }
-      } catch { /* ignore malformed events */ }
-    };
-    return () => es.close();
-  }, []);
+  // Subscribe to server-pushed UI commands (open artifact, switch space).
+  // Uses the shared ui-events subscription so we don't hold a second
+  // EventSource alongside OnboardingDock's.
+  useEffect(() => subscribeUiEvents((event) => {
+    if (event.command === "open_artifact") {
+      const { spaceId, label, url, artifactKind, id } = event.payload as { spaceId: string; label: string; url: string; artifactKind: ArtifactKind; id: string };
+      setActiveSpace(spaceId);
+      window.history.pushState(null, "", `/s/${spaceId}/a/${id}`);
+      dispatch({ type: "CLOSE_ALL_VIEWERS" });
+      dispatch({ type: "OPEN_VIEWER", title: label, path: url, fullscreen: shouldOpenFullscreen(artifactKind) });
+    }
+    if (event.command === "switch_space") {
+      const { spaceId } = event.payload as { spaceId: string };
+      setActiveSpace(spaceId);
+      window.history.pushState(null, "", `/s/${spaceId}`);
+      dispatch({ type: "CLOSE_ALL_VIEWERS" });
+    }
+  }), []);
 
   // Sync state from browser back/forward
   useEffect(() => {
@@ -336,35 +329,7 @@ export default function App() {
   }
 
   return (
-    <div
-      className={`oyster-shell${shellDragOver ? " shell-drag-over" : ""}`}
-      onDragEnter={(e) => {
-        if (e.dataTransfer.types.includes("Files")) {
-          dragCounter.current++;
-          setShellDragOver(true);
-        }
-      }}
-      onDragLeave={() => {
-        dragCounter.current--;
-        if (dragCounter.current <= 0) {
-          dragCounter.current = 0;
-          setShellDragOver(false);
-        }
-      }}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        dragCounter.current = 0;
-        setShellDragOver(false);
-        const entry = e.dataTransfer.items[0]?.webkitGetAsEntry?.();
-        if (entry?.isDirectory) {
-          setDroppedFolder(entry.name);
-          setShowAddSpaceWizard(true);
-        }
-      }}
-    >
+    <div className="oyster-shell">
       {!connected && (
         <div className="connection-banner">
           <span>Oyster server not connected</span>
@@ -384,7 +349,6 @@ export default function App() {
           window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
         }}
         onSpaceChange={handleSpaceChange}
-        onAddSpace={(folder) => { setDroppedFolder(folder); setShowAddSpaceWizard(true); }}
         onConvertToSpace={handleConvertToSpace}
         onRefresh={() =>
           loadArtifacts()
@@ -405,8 +369,6 @@ export default function App() {
             handleArtifactClick(importArtifact);
           }
         }}
-        isFirstRun={isFirstRun}
-        dragOver={shellDragOver}
         revealId={revealId}
       />
 
@@ -526,28 +488,12 @@ export default function App() {
         activeSpace={activeSpace}
         onSpaceChange={handleSpaceChange}
         inputRef={chatInputRef}
-        onAddSpace={() => setShowAddSpaceWizard(true)}
         onSpaceUpdate={handleSpaceUpdate}
         onSpaceDelete={handleSpaceDelete}
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
         isFirstRun={isFirstRun}
       />
-
-      {showAddSpaceWizard && (
-        <AddSpaceWizard
-          spaces={spaces}
-          initialFolder={droppedFolder}
-          onClose={() => { setShowAddSpaceWizard(false); setDroppedFolder(undefined); }}
-          onComplete={(newSpaceId) => {
-            setShowAddSpaceWizard(false);
-            setDroppedFolder(undefined);
-            fetchSpaces().then(setSpaces);
-            loadArtifacts().then(setArtifacts);
-            if (newSpaceId) handleSpaceChange(newSpaceId);
-          }}
-        />
-      )}
 
       {spotlightOpen && (
         <SpotlightSearch
@@ -556,6 +502,10 @@ export default function App() {
           onClose={() => setSpotlightOpen(false)}
         />
       )}
+
+      <OnboardingDock
+        userSpaceCount={spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
+      />
     </div>
   );
 }

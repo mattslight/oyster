@@ -27,8 +27,10 @@ export default defineConfig(({ mode }) => ({
         headers: { Accept: 'text/event-stream' },
       },
       '/api': target,
+      '/mcp': target,
       '/docs': target,
       '/artifacts': target,
+      '/.well-known': target,
     }
   }
 }))

@@ -157,6 +157,8 @@ export function generatePrompt(ctx: PromptContext): string {
     prompt += `RULES:
 - Include: projects, key decisions, preferences, recurring themes, important context.
 - Exclude: one-off questions, ephemeral chat, anything not durable.
+- Exclude: API keys, access tokens, passwords, credentials, or any secret values.
+- Exclude: personal details about third parties (children, partners, family, colleagues) — especially names, ages, schools, health, finances.
 - Use ONLY this one space: "${name}". Do not create other spaces.
 - Summaries: one for the space, 2-3 sentences.
 - Memories: durable facts and preferences related to ${name}.
@@ -200,6 +202,8 @@ ${SCHEMA_EXAMPLE}`;
   prompt += `RULES:
 - Only include durable items worth keeping: ongoing projects, recurring themes, stable preferences, important decisions.
 - Exclude one-off conversational details, temporary questions, or ephemeral topics.
+- Exclude: API keys, access tokens, passwords, credentials, or any secret values.
+- Exclude: personal details about third parties (children, partners, family, colleagues) — especially names, ages, schools, health, finances.
 - Every project belongs to exactly one space.
 - Summaries: one per space, 2-3 sentences describing what the space is about.
 - Memories: durable facts, preferences, or constraints. Not opinions or emotional colour from a single conversation.

@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE TABLE IF NOT EXISTS spaces (
   id                TEXT PRIMARY KEY,
   display_name      TEXT NOT NULL,
-  repo_path         TEXT UNIQUE,
   color             TEXT,
   scan_status       TEXT NOT NULL DEFAULT 'none'
     CHECK (scan_status IN ('none','scanning','complete','error')),
@@ -46,6 +45,8 @@ export function initDb(userlandDir: string): Database.Database {
     "ALTER TABLE artifacts ADD COLUMN source_origin TEXT NOT NULL DEFAULT 'manual'",
     "ALTER TABLE artifacts ADD COLUMN source_ref TEXT",
     "ALTER TABLE spaces ADD COLUMN parent_id TEXT REFERENCES spaces(id)",
+    "ALTER TABLE spaces ADD COLUMN summary_title TEXT",
+    "ALTER TABLE spaces ADD COLUMN summary_content TEXT",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }
   }
@@ -61,11 +62,19 @@ export function initDb(userlandDir: string): Database.Database {
     )
   `);
 
-  // Migrate: move existing repo_path values into space_paths
-  db.exec(`
-    INSERT OR IGNORE INTO space_paths (space_id, path)
-    SELECT id, repo_path FROM spaces WHERE repo_path IS NOT NULL
-  `);
+  // Retire the legacy spaces.repo_path column. Fresh installs never had it
+  // (removed from the SCHEMA above); existing installs get data migrated
+  // into space_paths first, then the column dropped. Both statements
+  // tolerate every combination: column present + populated, column present
+  // + empty, column already gone, or SQLite < 3.35 (no DROP COLUMN support —
+  // column stays, rest of the server still works since nothing reads it).
+  try {
+    db.exec(`
+      INSERT OR IGNORE INTO space_paths (space_id, path)
+      SELECT id, repo_path FROM spaces WHERE repo_path IS NOT NULL
+    `);
+  } catch { /* column already dropped */ }
+  try { db.exec(`ALTER TABLE spaces DROP COLUMN repo_path`); } catch { /* already dropped, fresh install, or SQLite < 3.35 */ }
 
   try {
     db.exec(`

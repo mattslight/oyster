@@ -1,30 +1,8 @@
-import type { Space, ScanResult } from "../../../shared/types";
+import type { Space } from "../../../shared/types";
 
 export async function fetchSpaces(): Promise<Space[]> {
   const res = await fetch("/api/spaces");
   if (!res.ok) return [];
-  return res.json();
-}
-
-export async function createSpace(params: { name: string; repoPath?: string }): Promise<Space> {
-  const res = await fetch("/api/spaces", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function triggerScan(spaceId: string): Promise<ScanResult> {
-  const res = await fetch(`/api/spaces/${spaceId}/scan`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
   return res.json();
 }
 
@@ -65,18 +43,4 @@ export async function deleteSpace(spaceId: string, folderName?: string): Promise
     const body = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error ?? `HTTP ${res.status}`);
   }
-}
-
-export async function addPath(spaceId: string, path: string): Promise<string> {
-  const res = await fetch(`/api/spaces/${spaceId}/paths`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
-  const data = await res.json() as { path: string };
-  return data.path;
 }

@@ -10,6 +10,8 @@ import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 import { debug } from "./debug.js";
+import { slugify } from "./utils.js";
+import { recordToolCall } from "./mcp-client-tracker.js";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
 // `satisfies` ensures this stays in sync with the ArtifactKind union at compile time.
@@ -121,6 +123,12 @@ interface McpDeps {
   memoryProvider: MemoryProvider;
   pendingReveals: Set<string>;
   broadcastUiEvent: (event: UiCommand) => void;
+  /**
+   * Identifies the caller so we can push tool-call SSE events for external
+   * agents only (Oyster's own OpenCode subprocess would otherwise spam the
+   * action log with its own calls).
+   */
+  clientContext: { isInternal: true } | { isInternal: false; userAgent: string };
 }
 
 function buildContext(userlandDir: string): string {
@@ -131,22 +139,132 @@ Oyster is a personal AI-native desktop OS that runs in your browser.
 It is NOT a chat interface or a file browser — it is a spatial desktop surface where
 artifacts (interactive documents, apps, diagrams, etc.) live as launchable icons.
 
+## "Set up Oyster for me" — first-run playbook
+
+Oyster is for anyone whose work is organised as projects — developers, designers,
+writers, PMs, researchers, hackers. Don't assume the user is a dev.
+
+When the user asks you to set up Oyster / discover their projects / get them
+started, YOU do the audit. Oyster does NOT have a server-side classifier; it
+relies on your intelligence + your own tools (shell, file reads, git log, etc.)
+to understand the user's filesystem and propose a set of spaces.
+
+### Step 1 — Audit the filesystem (takes minutes, that's fine)
+
+Probe common places where users keep work. Don't limit yourself to \`~/Dev\`.
+Inspect each place with shell / ls / file reads. For each promising subfolder:
+
+- Is there a \`.git\`? Run \`git -C <path> log -1 --format=%cs\` to see last-commit
+  date — separates active from dormant.
+- Is there a README, \`package.json\`, \`pyproject.toml\`, \`go.mod\`, etc.? Read
+  it briefly to understand what the project actually is.
+- Are there substantive files without code markers (\`.md\`, \`.docx\`, \`.fig\`,
+  \`.key\`)? That's a non-code project — writing, design, PM work — still a
+  project worth a space.
+- Is it a vendored dependency, a third-party fork, or a library the user is
+  tracking rather than actively developing? That's not a user-owned project;
+  it belongs in "other" or flagged as an open question, not its own space.
+- Is it noise (a cache dump, a worktree scratch dir, OS-default folders,
+  app data like \`~/Documents/Zoom\`)? Filter out.
+
+Probe list to start (Mac / Linux; substitute \`%USERPROFILE%\\\` on Windows):
+\`~/Dev\`, \`~/dev\`, \`~/Development\`, \`~/code\`, \`~/repos\`, \`~/src\`,
+\`~/Projects\`, \`~/projects\`, \`~/Work\`, \`~/work\`, \`~/workspace\`,
+\`~/Documents/Projects\`, \`~/Documents/Work\`, \`~/Documents\`, \`~/Desktop\`,
+\`~/Design\`, \`~/Figma\`, \`~/Writing\`, \`~/Notes\`.
+
+Windows users: also check other drives — \`C:\\Development\`, \`E:\\Development\`,
+\`D:\\Work\`, etc.
+
+Don't exhaustively scan everything. Stop when you have a clear picture of the
+user's active projects.
+
+### Step 2 — Group intelligently
+
+- Related things belong together: signals include a shared prefix or suffix
+  in folder names, a monorepo structure, or a common theme.
+- Unrelated odds and ends (single configs, third-party things the user doesn't
+  own) can go in an \`other\` bucket if they matter, or be filtered as noise.
+- Space names are short, lowercase, and human — pick whatever the user
+  would actually call this part of their work.
+
+### Step 3 — Present the plan to the user in chat BEFORE applying
+
+Show:
+- The proposed spaces with the folders in each and a one-sentence reason why.
+- What you'd filter as noise (with reasons).
+- Any open questions you want them to answer first.
+
+Don't apply silently. Don't dump raw JSON. Format it readably — the user is
+reviewing a plan, not consuming an API response.
+
+### Step 4 — Apply once confirmed
+
+For each confirmed space, call \`onboard_space\` with a \`name\` and a \`paths\`
+array (absolute paths). One call creates the space, attaches every path, and
+scans each. For multi-folder spaces make ONE call with all the paths in the
+array — don't loop once per folder.
+
+### Step 5 — Confirm back
+
+Tell the user how many spaces were created and rough artifact counts per space.
+Offer to adjust anything that looks off.
+
+### If the user gave you an explicit path
+
+(e.g. *"set up Oyster with my projects at ~/foo"*)
+
+Skip the probe. Start at Step 1 for just that path — walk its subfolders, apply
+the same judgement, propose, confirm, apply.
+
+### Don't silently drop anything
+
+If you considered a folder and decided it wasn't a project, say so in the plan
+and give a short reason. Never omit folders from the plan without telling the
+user. If you're unsure whether something counts, flag it as an open question
+and let the user decide.
+
+## "Here's my context from another AI" — import playbook
+
+If the user pastes content that describes their spaces / projects / summaries /
+memories — a dump they asked ChatGPT, Claude, or another tool to produce using
+Oyster's import prompt — DON'T treat it as opaque text and DON'T ask what to do
+with it. Extract the structure and apply.
+
+The paste may be YAML, JSON, paraphrased Markdown, or a mix — don't rely on
+strict parsing. Read the content, identify the three categories, and apply via
+these tools:
+
+- **Spaces / projects** → call \`onboard_space({ name })\` once per space.
+  Paths are NOT required; spaces are logical groupings. Don't invent filesystem
+  paths. If the user later points at real folders, attach them then.
+- **Summaries** → call \`set_space_summary({ name, title, content })\` once per
+  space summary in the paste.
+- **Memories** → call \`remember({ content, tags, space })\` once per memory.
+  Use the space name from the memory's \`space\` field; apply verbatim tags
+  if present.
+
+When done, confirm with a short "applied N spaces, M summaries, K memories" and
+offer to attach filesystem paths to any of the spaces if the user wants them
+connected to real folders on disk.
+
 ## Core concepts
 
 **Artifacts** — the items on the desktop. Each artifact has:
 - \`id\`: unique identifier (opaque for new artifacts, semantic for legacy ones)
 - \`label\`: display name shown under the icon on the desktop
 - \`kind\`: one of app | deck | diagram | map | notes | table | wireframe
-- \`space\`: which workspace it belongs to (e.g. "home", "tokinvest")
+- \`space\`: which workspace it belongs to (e.g. "home", or any space name the user set up)
 - \`status\`: ready | online | offline | starting | generating
 - \`url\`: how to open it (relative path for static files, localhost:PORT for running apps)
 - \`group\`: optional visual group on the desktop surface
 
 **Spaces** — named workspaces (tabs) the user switches between. Each space has an ID,
-display name, optional repo path, and scan status. Use \`list_spaces\` to enumerate them.
-Common spaces: "home" (default), plus one per project (e.g. "tokinvest", "research").
-Spaces can be onboarded from a local repo — use \`onboard_space\` to create a space and
-scan it for artifacts in one step, or \`scan_space\` to rescan an existing space.
+display name, and scan status. Use \`list_spaces\` to enumerate them. Every workspace
+has a "home" space by default; the user adds others as they onboard projects. Spaces
+are logical groupings — they can optionally have one or more folders attached (scan
+sources). Use \`onboard_space\` to create a space (with or without paths), or
+\`scan_space\` to rescan folders already attached to a space.
 
 **Artifact kinds**:
 - \`app\` — a local web app (React, Vite, etc.) that runs as a process on a port
@@ -164,12 +282,18 @@ scan it for artifacts in one step, or \`scan_space\` to rescan an existing space
 
 ## What agents should do
 
-**Onboarding a project:**
+**Onboarding a single project:**
 1. Call \`list_spaces\` — check if the space already exists (avoid duplicates).
-2. Call \`onboard_space\` with the project name and repo path — creates the space and scans for apps, docs, and diagrams in one step.
+2. Call \`onboard_space\` with the project name and path — pass \`paths: ["/abs/path"]\` (array). Creates the space, attaches the path, scans for apps, docs, and diagrams.
 3. Call \`list_artifacts\` with the new space_id to see what was discovered.
 4. To rescan later (e.g. after new files are added), call \`scan_space\`.
 5. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
+
+**Onboarding a developer container (e.g. \`~/Dev\` with many repos):**
+
+Don't loop \`onboard_space\` once per folder. Group related projects first (shared prefix / suffix / clear theme), then call \`onboard_space({ name: "oyster", paths: [path1, path2, path3] })\` — one call per grouped space, with every related folder in the \`paths\` array.
+
+See the "Set up Oyster for me" playbook above for the full audit + propose + apply flow.
 
 **Working with artifacts:**
 - Use \`create_artifact\` to write a new file and register it in one step.
@@ -186,6 +310,54 @@ Files you create must live under: ${userlandDir}/
 export function createMcpServer(deps: McpDeps): McpServer {
   const server = new McpServer({ name: "oyster", version: "1.0.0" });
 
+  // Monkey-patch `server.tool` so every registered tool emits a
+  // `mcp_tool_called` SSE event on completion — but only for external
+  // agents. Our own OpenCode subprocess makes many calls during normal
+  // operation and would otherwise flood the onboarding action log.
+  if (!deps.clientContext.isInternal) {
+    const externalUa = deps.clientContext.userAgent;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const originalTool = (server.tool as any).bind(server);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (server as any).tool = (name: string, ...rest: any[]) => {
+      const handler = rest.pop();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wrapped = async (...args: any[]) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let result: any;
+        let isError = false;
+        try {
+          result = await handler(...args);
+          return result;
+        } catch (err) {
+          // Re-throw to preserve the SDK's error contract, but record the
+          // call as errored so the action log / status counter stay honest.
+          isError = true;
+          throw err;
+        } finally {
+          try {
+            recordToolCall(externalUa);
+            // SSE payload intentionally excludes the user-agent — the dock
+            // only needs tool name + error flag for the action log, and
+            // stripping the UA keeps the stream leaner if the origin gate
+            // is ever misconfigured. Full UA is in /api/mcp/status (local-
+            // origin only).
+            deps.broadcastUiEvent({
+              version: 1,
+              command: "mcp_tool_called",
+              payload: {
+                tool: name,
+                at: new Date().toISOString(),
+                is_error: isError || Boolean(result?.isError),
+              },
+            });
+          } catch { /* best effort — never let telemetry break a tool call */ }
+        }
+      };
+      return originalTool(name, ...rest, wrapped);
+    };
+  }
+
   // ── get_context ──
 
   server.tool(
@@ -201,7 +373,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "list_spaces",
-    "List all spaces (named workspaces) on the Oyster desktop. A space is a tab the user switches between — e.g. 'home', 'tokinvest'.",
+    "List all spaces (named workspaces) on the Oyster desktop. A space is a tab the user switches between — 'home' is always present; others are user-defined.",
     {},
     async () => {
       const spaces = deps.spaceService.listSpaces();
@@ -215,21 +387,91 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "onboard_space",
-    "Create a space, attach it to a local repo, and scan for apps, docs, and diagrams. All discovered assets register as desktop artifacts immediately.",
+    "Create a space (or extend one with the same name) as a logical grouping for work. Spaces are named workspaces the user switches between — they don't require filesystem paths. If `paths` are provided, each folder is attached and scanned for apps, docs, and diagrams; if not, the space is created empty as a logical grouping (summaries, memories, and artifacts can attach later). If a space with this name already exists, any given paths are attached to it — NOT duplicated into a new one. Returns `created: true` when a new space was made, `created: false` when an existing one was extended.",
     {
-      name: z.string().describe("Display name for the space (slugified to ID)"),
-      repo_path: z.string().describe("Absolute local path to the repository root"),
-      skip_ai: z.boolean().optional().describe("Reserved for Phase 2 — no-op currently"),
+      name: z.string().describe("Display name for the space (slugified to ID). If a space with this name already exists, it's extended — no duplicate."),
+      paths: z.array(z.string()).optional().describe("Optional. Absolute local paths to attach and scan. Omit for a logical grouping with no filesystem attachment."),
     },
-    async ({ name, repo_path }) => {
+    async ({ name, paths }) => {
       try {
-        const space = deps.spaceService.createSpace({ name, repoPath: repo_path });
-        const scanResult = await deps.spaceService.scanSpace(space.id);
+        const resolvedPaths = paths && paths.length > 0 ? paths : [];
+
+        // Extend-or-create: resolve the canonical slugified id first, reuse
+        // an existing space when present, and only createSpace when missing.
+        // Control flow stays on stable state (a row lookup) rather than
+        // parsing the "already exists" error message. The inner try/catch
+        // still handles a rare concurrent-create race: two parallel callers
+        // both see no existing row, both call createSpace, one wins and the
+        // other gets the "already exists" throw → we look up the winner.
+        const spaceId = slugify(name);
+        let space = deps.spaceService.getSpace(spaceId);
+        let created = false;
+        if (!space) {
+          try {
+            space = deps.spaceService.createSpace({ name });
+            created = true;
+          } catch (err) {
+            const existing = deps.spaceService.getSpace(spaceId);
+            if (!existing) throw err;
+            space = existing;
+          }
+        }
+
+        const pathReports: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }> = [];
+        for (const p of resolvedPaths) {
+          try {
+            deps.spaceService.addPath(space.id, p);
+            // `attached` covers both \"newly added\" and \"already attached to
+            // THIS space\" — spaceStore.addPath is INSERT OR IGNORE so a
+            // duplicate silently no-ops.
+            pathReports.push({ path: p, status: "attached" });
+          } catch (err) {
+            const msg = (err as Error).message;
+            // `addPath` only throws for paths that don't exist on disk OR
+            // paths already claimed by a DIFFERENT space (addPath's
+            // conflict guard). The latter means THIS space still has
+            // no folders for that path, so we must not count it as
+            // attached for the scan-guard below.
+            const ownedElsewhere = /already attached/i.test(msg);
+            pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
+          }
+        }
+
+        // Only scan when at least one path actually attached to THIS space.
+        // If every path failed (missing on disk, owned by another space),
+        // scanSpace would throw \"no folders\" and the agent would see a
+        // confusing scan error on top of per-path errors already in `paths`.
+        const anyAttached = pathReports.some((r) => r.status === "attached");
+        const scanResult = anyAttached ? await deps.spaceService.scanSpace(space.id) : null;
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ space_id: space.id, scan_summary: scanResult }, null, 2),
+            text: JSON.stringify({ space_id: space.id, created, paths: pathReports, scan_summary: scanResult }, null, 2),
           }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── set_space_summary ──
+
+  server.tool(
+    "set_space_summary",
+    "Attach a short summary (title + content) to a space. Use this to capture what a space is about — context, focus, or scope — in the user's own terms. Upserts on the space's slugified name: if the space exists, its summary is updated; if not, a logical space is created with the summary attached. One summary per space.",
+    {
+      name: z.string().describe("Space name (display name or slug). Looked up by slugified id; created if missing."),
+      title: z.string().describe("Short title for the summary (e.g. 'Chess Training Platform')."),
+      content: z.string().describe("The summary itself — what this space is about, in a sentence or two."),
+    },
+    async ({ name, title, content }) => {
+      try {
+        let space = deps.spaceService.getSpace(slugify(name));
+        if (!space) space = deps.spaceService.createSpace({ name });
+        const updated = deps.spaceService.setSummary(space.id, title, content);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ space_id: updated.id, title: updated.summaryTitle, content: updated.summaryContent }, null, 2) }],
         };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
@@ -326,7 +568,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     "Register a file that already exists on disk as a desktop artifact. Use this only when the file already exists. To create new content and register it in one step, use create_artifact instead. The file must be inside userland/. Kind and ID are inferred from the filename if not provided.",
     {
       path: z.string().describe("Absolute path to the file"),
-      space_id: z.string().describe("Space to place the artifact in (e.g. 'home', 'tokinvest')"),
+      space_id: z.string().describe("Space to place the artifact in (use `list_spaces` to see what's available)"),
       label: z.string().describe("Display name on the desktop"),
       id: z.string().optional().describe("Kebab-case ID (inferred from filename if omitted)"),
       artifact_kind: z
