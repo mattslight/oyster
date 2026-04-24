@@ -323,14 +323,11 @@
 <h2 id="v-0-4-0-beta-3"><span class="release-version">0.4.0-beta.3</span><span class="release-date"> — 2026-04-24</span></h2>
 <h3>Changed</h3>
 <ul>
-<li><strong>Fresh-install hero now says <em>&quot;Welcome to your surface. Ask: <code>Set up Oyster</code>&quot;</em></strong> instead of <em>&quot;Tell your agent…&quot;</em>. The old copy implied an external MCP client the user had yet to connect; the new copy reuses the existing brand line and names exactly what to type. The <code>Set up Oyster</code> pill is click-to-send, so users get a one-tap starter while still learning that the chatbar is where they talk to Oyster.</li>
+<li><strong>Clearer first-run hero.</strong> <em>&quot;Welcome to your surface. Ask: <code>Set up Oyster</code>&quot;</em> — tap the prompt pill to send it, or type your own.</li>
 </ul>
 <h3>Fixed</h3>
 <ul>
-<li><strong>Windows: embedded opencode terminal now includes Oyster in the agent tab-cycle.</strong> The <code>.opencode/agents/oyster.md</code> definition wasn&#39;t being picked up by opencode&#39;s TUI on Windows (worked on Mac), so only <code>build</code> / <code>plan</code> appeared. The agent is now inlined into the generated <code>opencode.json</code> as well, which the TUI reads directly.</li>
-<li><strong>Windows: orphan-opencode sweep no longer errors on startup.</strong> The PowerShell enumeration was being mangled by cmd.exe quoting (the embedded <code>|</code> in the output format string got parsed as a shell pipe), producing &quot;empty pipe element&quot; on every boot. Now passed via <code>-EncodedCommand</code> so cmd.exe never sees the script body.</li>
-<li><strong>Windows: artifact iframes use the thin dark scrollbar</strong> instead of the chunky native Windows one. Applied globally via the bridge script so every builtin and AI-generated artifact gets it for free.</li>
-<li><strong>Windows: onboarding code snippet uses the thin dark scrollbar</strong> instead of the chunky native Windows one.</li>
+<li><strong>Windows polish.</strong> Cleaner startup (no more alarming error messages in the terminal), thin dark scrollbars on artifacts and setup dialogs to match Mac, and the built-in terminal now recognises Oyster as an AI agent option.</li>
 </ul>
 <h2 id="v-0-4-0-beta-2"><span class="release-version">0.4.0-beta.2</span><span class="release-date"> — 2026-04-24</span></h2>
 <h3>Fixed</h3>

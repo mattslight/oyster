@@ -8,14 +8,11 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
-- **Fresh-install hero now says *"Welcome to your surface. Ask: `Set up Oyster`"*** instead of *"Tell your agent…"*. The old copy implied an external MCP client the user had yet to connect; the new copy reuses the existing brand line and names exactly what to type. The `Set up Oyster` pill is click-to-send, so users get a one-tap starter while still learning that the chatbar is where they talk to Oyster.
+- **Clearer first-run hero.** *"Welcome to your surface. Ask: `Set up Oyster`"* — tap the prompt pill to send it, or type your own.
 
 ### Fixed
 
-- **Windows: embedded opencode terminal now includes Oyster in the agent tab-cycle.** The `.opencode/agents/oyster.md` definition wasn't being picked up by opencode's TUI on Windows (worked on Mac), so only `build` / `plan` appeared. The agent is now inlined into the generated `opencode.json` as well, which the TUI reads directly.
-- **Windows: orphan-opencode sweep no longer errors on startup.** The PowerShell enumeration was being mangled by cmd.exe quoting (the embedded `|` in the output format string got parsed as a shell pipe), producing "empty pipe element" on every boot. Now passed via `-EncodedCommand` so cmd.exe never sees the script body.
-- **Windows: artifact iframes use the thin dark scrollbar** instead of the chunky native Windows one. Applied globally via the bridge script so every builtin and AI-generated artifact gets it for free.
-- **Windows: onboarding code snippet uses the thin dark scrollbar** instead of the chunky native Windows one.
+- **Windows polish.** Cleaner startup (no more alarming error messages in the terminal), thin dark scrollbars on artifacts and setup dialogs to match Mac, and the built-in terminal now recognises Oyster as an AI agent option.
 
 ## [0.4.0-beta.2] - 2026-04-24
 
