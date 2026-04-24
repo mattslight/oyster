@@ -4,6 +4,11 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows: orphan-opencode sweep no longer errors on startup.** The PowerShell enumeration was being mangled by cmd.exe quoting (the embedded `|` in the output format string got parsed as a shell pipe), producing "empty pipe element" on every boot. Now passed via `-EncodedCommand` so cmd.exe never sees the script body.
+- **Windows: onboarding code snippet uses the thin dark scrollbar** instead of the chunky native Windows one.
+
 ## [0.4.0-beta.2] - 2026-04-24
 
 ### Fixed

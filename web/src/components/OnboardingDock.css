@@ -244,15 +244,22 @@
   max-height: 180px;
   overflow-y: auto;
   scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 .onboarding-code-box pre::-webkit-scrollbar {
   height: 4px;
   width: 4px;
 }
+.onboarding-code-box pre::-webkit-scrollbar-track {
+  background: transparent;
+}
 .onboarding-code-box pre::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
+}
+.onboarding-code-box pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .onboarding-code-box code {
