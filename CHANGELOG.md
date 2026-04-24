@@ -4,9 +4,11 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0-beta.3] - 2026-04-24
+
 ### Changed
 
-- **Fresh-install hero now says *"Welcome to your surface. Type: Set up Oyster"*** instead of *"Tell your agent…"*. The old copy implied an external MCP client the user had yet to connect; the new copy uses the existing brand line and tells the user exactly what to type. The chatbar itself remains the entry point — no extra buttons or suggestion chips.
+- **Fresh-install hero now says *"Welcome to your surface. Ask: `Set up Oyster`"*** instead of *"Tell your agent…"*. The old copy implied an external MCP client the user had yet to connect; the new copy reuses the existing brand line and names exactly what to type. The `Set up Oyster` pill is click-to-send, so users get a one-tap starter while still learning that the chatbar is where they talk to Oyster.
 
 ### Fixed
 
