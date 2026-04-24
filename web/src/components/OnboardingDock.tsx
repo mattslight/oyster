@@ -174,8 +174,6 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
   useEffect(() => subscribeUiEvents((event) => {
     if (event.command === "mcp_client_connected") {
       setState((s) => (s.step1Complete ? s : { ...s, step1Complete: true }));
-      // If the user is currently staring at step 1, slide them to step 2.
-      setViewingStep((v) => (v === 1 ? 2 : v));
     }
     if (event.command === "mcp_tool_called") {
       const payload = event.payload as { tool?: string; at?: string; is_error?: boolean } | undefined;
@@ -193,18 +191,32 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
 
   // Step 2 completion rule: at least one user-created space exists.
   // That's the real signal the agent did useful work — works identically
-  // for external MCP clients (Claude Code, Cursor, ...) and for
-  // Oyster's own chat bar routing to OpenCode (where tool-call events
-  // are filtered). If a user space exists, we also back-fill step 1
-  // (the agent clearly connected, whether or not we caught the event).
+  // for external MCP clients (Claude Code, Cursor, ...) and for Oyster's
+  // own chat bar. We deliberately do NOT back-fill step 1 here: internal
+  // chatbar users haven't connected an MCP client and should still see
+  // that step offered. Step 1 gets marked complete only via an actual
+  // MCP connection event (see /api/mcp/status + mcp_client_connected).
   useEffect(() => {
     if (userSpaceCount <= 0) return;
-    setState((s) => {
-      if (s.step1Complete && s.step2Complete) return s;
-      return { ...s, step1Complete: true, step2Complete: true };
-    });
-    setViewingStep((v) => (v === 1 || v === 2 ? 3 : v));
+    setState((s) => (s.step2Complete ? s : { ...s, step2Complete: true }));
   }, [userSpaceCount]);
+
+  // Auto-advance the popover to the next still-incomplete step whenever
+  // the currently-viewed step flips complete. Covers every path: manual
+  // "I've connected it" / "I'm done" clicks, MCP SSE events, and the
+  // userSpaceCount side effect. Keeping this in one place avoids the
+  // earlier bug where step-1 handlers jumped to step 2 unconditionally,
+  // even when step 2 was already done (should've gone to step 3).
+  useEffect(() => {
+    setViewingStep((v) => {
+      const viewingDone =
+        (v === 1 && state.step1Complete) ||
+        (v === 2 && state.step2Complete) ||
+        (v === 3 && state.step3Complete);
+      if (viewingDone && !allDone(state)) return activeStep(state);
+      return v;
+    });
+  }, [state.step1Complete, state.step2Complete, state.step3Complete]);
 
   // Click outside the popover closes it
   useEffect(() => {
@@ -232,14 +244,14 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
     setPopoverOpen((v) => !v);
   }, [state]);
 
+  // `markStepN` just flips the state flag — the auto-advance effect above
+  // moves `viewingStep` to the next incomplete step.
   const markStep1 = useCallback(() => {
     setState((s) => ({ ...s, step1Complete: true }));
-    setViewingStep(2);
   }, []);
 
   const markStep2 = useCallback(() => {
     setState((s) => ({ ...s, step2Complete: true }));
-    setViewingStep(3);
   }, []);
 
   const markStep3 = useCallback(() => {
@@ -253,19 +265,19 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
   }, []);
 
   const resetAll = useCallback(() => {
-    // Mirror the auto-completion rule that the [userSpaceCount] effect
-    // applies on fresh loads: if a user space already exists, step 1 and
-    // step 2 count as done. Without this, a reset when userSpaceCount
-    // stays constant would strand the user on step 1 forever (the effect
-    // never re-fires because its dep didn't change).
+    // Mirror the [userSpaceCount] effect's rule: if a user space already
+    // exists, step 2 counts as done. Step 1 (MCP connect) does NOT get
+    // auto-marked — it needs an actual MCP connection event regardless of
+    // what other setup has happened. Without this carry-forward, the
+    // reset would strand the user on step 2 forever (the effect never
+    // re-fires because `userSpaceCount` doesn't change).
     const hasSpaces = userSpaceCount > 0;
     setState({
       ...defaultState,
-      step1Complete: hasSpaces,
       step2Complete: hasSpaces,
     });
     setToolCalls([]);
-    setViewingStep(hasSpaces ? 3 : 1);
+    setViewingStep(1);
     setPopoverOpen(true);
   }, [userSpaceCount]);
 
