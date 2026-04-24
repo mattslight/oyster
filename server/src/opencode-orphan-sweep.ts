@@ -66,6 +66,11 @@ function sweepWindows(opencodeBin: string | undefined): { killed: number[]; erro
   // opencode-ai.exe image. The PS query below returns ProcessId and
   // CommandLine for every process whose CommandLine mentions opencode-ai;
   // we filter down to orphans + Oyster-owned paths on the JS side.
+  // Pass the script via -EncodedCommand (base64 UTF-16LE) so cmd.exe never
+  // sees the pipes, braces, or quotes embedded in the PowerShell body —
+  // previously `execSync` with `-Command "..."` was mangled by cmd.exe's
+  // quoting rules (the `|` inside `"{0}|{1}"` got parsed as a shell pipe,
+  // yielding "empty pipe element" errors).
   const script = `
     $procs = Get-CimInstance Win32_Process |
       Where-Object { $_.CommandLine -and $_.CommandLine -match 'opencode-ai' }
@@ -78,9 +83,10 @@ function sweepWindows(opencodeBin: string | undefined): { killed: number[]; erro
       }
     }
   `.trim();
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
   let output = "";
   try {
-    output = execSync(`powershell -NoProfile -Command "${script.replace(/"/g, '\\"')}"`, {
+    output = execSync(`powershell -NoProfile -EncodedCommand ${encoded}`, {
       encoding: "utf8",
       timeout: ENUMERATION_TIMEOUT_MS,
     });
