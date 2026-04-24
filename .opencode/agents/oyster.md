@@ -60,7 +60,9 @@ You have MCP tools (the `oyster` server) for managing the desktop surface direct
 | `create_artifact` | **Write new content and register it in one step.** Provide space, label, kind, and content — the server handles the path. Use this for anything you are creating. |
 | `read_artifact` | Read the raw text content of an existing static file artifact by id. Works for .md, .html, .mmd, .txt, .json, .csv. |
 | `update_artifact` | Update display metadata only: label, space assignment, group name. Does not move or rename the file. |
-| `remove_artifact` | Remove an artifact from the desktop surface. File and record are preserved — reversible. Use this instead of deleting. |
+| `remove_artifact` | Archive an artifact — hide from the desktop surface but keep the file and record. Reversible via `restore_artifact`. "Archive", "remove", "hide", and "delete" all map here. |
+| `list_archived_artifacts` | List artifacts that have been archived. Use this when the user asks about archived, removed, or hidden artifacts. |
+| `restore_artifact` | Restore an archived artifact back to the desktop surface. |
 | `regenerate_icon` | Regenerate the AI icon for an artifact. Optional `hint` guides what is depicted (e.g. "a chess knight"); geometric style and palette are always preserved. |
 | `register_artifact` | Register a file that **already exists on disk** as a desktop artifact. Only for pre-existing files — for new content, use `create_artifact`. |
 | `open_artifact` | Open an artifact in the user's viewer window by exact ID. Use `list_artifacts(search: ...)` first to find the right ID. |

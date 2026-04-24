@@ -1481,34 +1481,32 @@ body {
 }
 
 /* ── Archived-view shortcut ── */
-/* Small pill bottom-right of the surface. Low-key — visible to anyone
-   looking for it but doesn't steal attention from the primary grid. */
+/* Etched into the surface — icon only, very low contrast by default.
+   No pill chrome, no label. Matches the subtle view-toggle aesthetic in
+   the topbar: visible to anyone looking for it, ignored by anyone not. */
 .archived-shortcut {
   position: fixed;
-  bottom: 16px;
-  left: 16px;
+  /* Match the version badge at bottom: 8px / right: 12px on the opposite
+     corner so the two etched marks share a baseline. The icon glyph sits
+     centred in a 4px inset box so its visual bottom aligns with the 11px
+     version text. */
+  bottom: 4px;
+  left: 8px;
   z-index: 90;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 500;
-  padding: 6px 12px;
-  color: rgba(232, 233, 240, 0.55);
-  background: rgba(20, 22, 40, 0.65);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9999px;
+  justify-content: center;
+  padding: 4px;
+  color: var(--text-dim);
+  opacity: 0.25;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  transition: opacity 0.2s ease, color 0.2s ease;
 }
 .archived-shortcut:hover,
 .archived-shortcut:focus-visible {
-  color: rgba(232, 233, 240, 0.9);
-  background: rgba(30, 32, 54, 0.85);
-  border-color: rgba(124, 107, 255, 0.4);
+  opacity: 0.85;
   outline: none;
 }
 

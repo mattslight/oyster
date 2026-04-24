@@ -307,7 +307,12 @@ See the "Set up Oyster for me" playbook above for the full audit + propose + app
 - After \`create_artifact\`, always call \`reveal_artifact\` with the new artifact's id — this switches the user's desktop to the right space and highlights the icon so they know where it landed.
 - Use \`read_artifact\` to read the content of an existing static file artifact.
 - Use \`update_artifact\` to rename, reassign to a different space, or change the group.
-- Use \`remove_artifact\` to hide an artifact from the surface (reversible).
+- Use \`remove_artifact\` to archive an artifact (hide from surface, reversible). The file and record are preserved and accessible via the archived view.
+
+**Archived / removed artifacts:**
+- Archived artifacts don't appear in the default \`list_artifacts\` results. Use \`list_archived_artifacts\` to see what's been removed.
+- Use \`restore_artifact\` to bring one back to the live surface.
+- The user can also browse their archived items via the archive icon at the bottom-left of the desktop, or the \`#archived\` space pill.
 
 Do NOT read or write the SQLite databases under Oyster's \`db/\` folder directly.
 Files you create must live under: ${userlandDir}/
@@ -697,15 +702,52 @@ export function createMcpServer(deps: McpDeps): McpServer {
   );
 
   // ── remove_artifact ──
+  // Alias: "archive_artifact" is the same concept — the file and DB row are
+  // preserved, just hidden from the live surface. Users see these as
+  // "archived"; the tool name stays `remove_artifact` for backward-compat
+  // but the description leads with both terms so the agent can match either
+  // phrasing in user requests.
 
   server.tool(
     "remove_artifact",
-    "Remove an artifact from the desktop surface. The file and record are preserved — the artifact simply stops appearing on the surface. This is reversible.",
+    "Archive (remove) an artifact from the desktop surface. The file and record are preserved — the artifact simply stops appearing on the live surface and moves into the archived view. This is reversible via `restore_artifact`. Use this when the user says archive, remove, hide, or delete an artifact.",
     { id: z.string().describe("Artifact ID to remove") },
     async ({ id }) => {
       try {
         deps.service.removeArtifact(id);
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" removed from surface` }] };
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" removed from surface (moved to archived view)` }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── list_archived_artifacts ──
+
+  server.tool(
+    "list_archived_artifacts",
+    "List artifacts that have been archived (removed from the live surface). These still exist on disk and in the DB — they just don't render on the desktop until restored. Use this when the user asks about archived, removed, or hidden artifacts.",
+    {},
+    async () => {
+      try {
+        const archived = await deps.service.getArchivedArtifacts();
+        return { content: [{ type: "text" as const, text: JSON.stringify(archived, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── restore_artifact ──
+
+  server.tool(
+    "restore_artifact",
+    "Restore an archived artifact so it reappears on the desktop surface. Inverse of `remove_artifact`. Use when the user asks to un-archive, restore, or bring back a removed artifact.",
+    { id: z.string().describe("Artifact ID to restore from the archived view") },
+    async ({ id }) => {
+      try {
+        deps.service.restoreArtifact(id);
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" restored to the desktop surface` }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
       }

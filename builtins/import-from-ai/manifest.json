@@ -1,6 +1,6 @@
 {
   "id": "import-from-ai",
-  "name": "Import from AI",
+  "name": "Import Memories",
   "type": "app",
   "runtime": "static",
   "entrypoint": "src/index.html",

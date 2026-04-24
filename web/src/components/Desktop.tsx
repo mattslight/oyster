@@ -395,7 +395,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                     <polyline points="7 10 12 15 17 10" />
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
-                  Import from AI
+                  Import Memories
                 </button>
               )}
             </div>
@@ -645,11 +645,10 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
         <button
           className="archived-shortcut"
           onClick={() => onSpaceChange("__archived__")}
-          title="View archived artifacts"
+          title="Archived"
           aria-label="View archived artifacts"
         >
-          <Archive size={14} strokeWidth={2} />
-          <span>Archived</span>
+          <Archive size={20} strokeWidth={1.75} />
         </button>
       )}
     </div>
