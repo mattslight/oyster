@@ -1,6 +1,6 @@
 # Userland Layout & Visibility — Design Spec
 
-> **Status (2026-04-24):** Draft. Merges #172 (internal layout) + #182 (visibility/location) into a single piece of work. Written for discussion before implementation — no code until approved.
+> **Status (2026-04-24):** Implemented — PR #210 ships the layout described here. Merges #172 (internal layout) + #182 (visibility/location) into a single piece of work. This document now records the shipped layout rather than a pre-implementation proposal; the "Open questions (answered)" section preserves the decisions made along the way.
 
 ## Problem
 
@@ -22,18 +22,20 @@ A new user should be able to
 
 ```
 ~/Oyster/
-├── db/          oyster.db + memory.db (core system state)
-├── config/      opencode.json
-├── apps/        everything with a manifest.json (installable bundles)
-├── backups/     existing backup-YYYY-MM-DD/ pattern
-└── spaces/      one folder per user space, holds Oyster-owned content for that space
-    ├── home/
-    ├── tokinvest/
-    │   ├── invoices/
-    │   ├── research/
-    │   └── presentations/
-    ├── blunderfixer/
-    └── oyster/
+├── db/              oyster.db + memory.db (core system state)
+├── config/          reserved for future Oyster-specific config
+├── apps/            everything with a manifest.json (installable bundles)
+├── backups/         existing backup-YYYY-MM-DD/ pattern
+├── spaces/          one folder per user space, holds Oyster-owned content for that space
+│   ├── home/
+│   ├── tokinvest/
+│   │   ├── invoices/
+│   │   ├── research/
+│   │   └── presentations/
+│   ├── blunderfixer/
+│   └── oyster/
+├── .opencode/       opencode-ai's config dir — stays at root for CWD walk-up
+└── opencode.json    opencode-ai's project config — stays at root for the same reason
 ```
 
 Five top-level concepts. Every one named in plain English. Nothing speculative.

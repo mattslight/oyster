@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join, dirname, sep } from "node:path";
+import { extname, join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, renderMermaid } from "./renderers.js";
 import { handleSpacesRequest } from "./spaces-routes.js";
@@ -168,13 +168,21 @@ function resolveArtifactsUrl(relativePath: string): string | null {
   // walking every space directory when those miss — that's a real-but-rare
   // case (AI-generated app inside a user space whose icon URL is just
   // /artifacts/<app>/icon.png with no space hint).
+  // Containment helper — a raw string startsWith(OYSTER_HOME) would let
+  // "/Users/me/OysterX/..." pass when OYSTER_HOME is "/Users/me/Oyster".
+  // Resolve both and require an exact match or a path-sep-terminated prefix.
+  const root = resolve(OYSTER_HOME);
+  const isInsideRoot = (candidate: string): boolean => {
+    const r = resolve(candidate);
+    return r === root || r.startsWith(root + sep);
+  };
   const fixedCandidates = [
     join(OYSTER_HOME, relativePath),
     join(APPS_DIR, relativePath),
     join(SPACES_DIR, relativePath),
   ];
   for (const candidate of fixedCandidates) {
-    if (!candidate.startsWith(OYSTER_HOME)) continue;
+    if (!isInsideRoot(candidate)) continue;
     if (existsSync(candidate)) return candidate;
   }
   const firstSegment = relativePath.split("/")[0];
@@ -182,7 +190,7 @@ function resolveArtifactsUrl(relativePath: string): string | null {
   try {
     for (const spaceName of readdirSync(SPACES_DIR)) {
       const candidate = join(SPACES_DIR, spaceName, relativePath);
-      if (candidate.startsWith(OYSTER_HOME) && existsSync(candidate)) return candidate;
+      if (isInsideRoot(candidate) && existsSync(candidate)) return candidate;
     }
   } catch { /* SPACES_DIR might not exist on a fresh install */ }
   return null;
@@ -676,8 +684,14 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       // regenerated icon would overwrite a shared icon.png. Route those to
       // the per-artifact dedicated dir at OYSTER_HOME/icons/<id>/ instead;
       // ArtifactService.resolveIcon checks that path first.
+      //
+      // Containment must use resolve() + sep-terminated prefix — a raw
+      // startsWith(OYSTER_HOME) would match "/.../OysterX/..." too.
       const srcIdx = sourcePath.lastIndexOf(`${sep}src${sep}`);
-      const isManifestBundle = srcIdx !== -1 && sourcePath.slice(0, srcIdx).startsWith(OYSTER_HOME);
+      const bundleRoot = srcIdx !== -1 ? resolve(sourcePath.slice(0, srcIdx)) : null;
+      const rootPath = resolve(OYSTER_HOME);
+      const isManifestBundle = bundleRoot !== null
+        && (bundleRoot === rootPath || bundleRoot.startsWith(rootPath + sep));
       artifactDir = isManifestBundle ? sourcePath.slice(0, srcIdx) : join(OYSTER_HOME, "icons", id);
       label = artifact.label;
       artifactKind = artifact.artifactKind;

@@ -315,7 +315,8 @@ See the "Set up Oyster for me" playbook above for the full audit + propose + app
 - The user can also browse their archived items via the archive icon at the bottom-left of the desktop, or the \`#archived\` space pill.
 
 Do NOT read or write the SQLite databases under Oyster's \`db/\` folder directly.
-Files you create must live under: ${userlandDir}/
+
+Create user content via \`create_artifact\` — it writes under \`${userlandDir}/spaces/<space-id>/\` automatically. Do not write directly into \`${userlandDir}/db/\`, \`${userlandDir}/backups/\`, or treat the workspace root as a general write location; \`apps/\` is reserved for installed app bundles.
 `.trim();
 }
 
