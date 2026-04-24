@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, cpSync, readdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -27,16 +27,36 @@ function getAppVersion(): string {
  * Copies the entire userland directory (DB, artifacts, icons, configs)
  * to ~/oyster-backups/auto/backup-{date}/. One backup per day.
  * Rotates old auto backups, keeping the last 5 days.
+ *
+ * Post-#207: the DB now lives at `<root>/db/oyster.db`. This function
+ * also accepts the legacy `<root>/oyster.db` location so old installs
+ * still get backed up if anyone runs them. Dev-vs-installed detection
+ * now covers both `~/Oyster/` (installed, new) and `~/.oyster/userland/`
+ * (installed, pre-migration) — anything else is treated as dev.
  */
 export function runStartupBackup(userlandDir: string): void {
   if (!existsSync(userlandDir)) return;
-  if (!existsSync(join(userlandDir, "oyster.db"))) return;
+  // DB might be at the flat root (legacy) or inside db/ (post-#207).
+  // If neither exists, there's nothing to back up.
+  const hasDb = existsSync(join(userlandDir, "db", "oyster.db"))
+             || existsSync(join(userlandDir, "oyster.db"));
+  if (!hasDb) return;
 
   try {
-    const isDev = !userlandDir.includes(join(homedir(), ".oyster"));
-    const autoDir = isDev
-      ? join(homedir(), "oyster-backups", "dev")
-      : join(homedir(), "oyster-backups", "auto");
+    // Normalise both sides so the installed-vs-dev check is path-separator
+    // agnostic (Windows uses `\`, POSIX uses `/`). Without resolve() a
+    // Windows installed path (`C:\Users\x\Oyster`) wouldn't match the
+    // "installed" prefix check against a POSIX-style string and backups
+    // would silently go to the dev folder.
+    const normUserland = resolve(userlandDir);
+    const installedRoots = [
+      resolve(join(homedir(), "Oyster")),             // post-#207 installed
+      resolve(join(homedir(), ".oyster", "userland")), // pre-migration installed
+    ];
+    const isInstalled = installedRoots.some((r) => normUserland === r || normUserland.startsWith(r + sep));
+    const autoDir = isInstalled
+      ? join(homedir(), "oyster-backups", "auto")
+      : join(homedir(), "oyster-backups", "dev");
     mkdirSync(autoDir, { recursive: true });
 
     // One backup per day — stable name per date

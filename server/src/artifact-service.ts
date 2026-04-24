@@ -128,8 +128,9 @@ export class ArtifactService {
     for (const e of entries) {
       if (e.filePath && archivedPaths.has(e.filePath)) continue;
       // Manifest-based gen ids are "gen:<plugin-folder>"; strip the prefix
-      // to get the folder name under ~/.oyster/userland/. Used as pluginId
-      // so Uninstall has a stable handle even after the DB reconciles the
+      // to get the folder name (under `apps/` for installed bundles, under
+      // `spaces/<space>/` for AI-generated ones). Used as pluginId so
+      // Uninstall has a stable handle even after the DB reconciles the
       // artifact to a UUID.
       const pluginFolderId = e.plugin && e.id.startsWith("gen:") ? e.id.slice(4) : undefined;
 
@@ -300,7 +301,12 @@ export class ArtifactService {
       source_origin?: "manual" | "discovered" | "ai_generated";
       extension?: string;
     },
-    userlandDir: string,
+    // Caller provides the pre-resolved path to this space's native folder
+    // (e.g. `~/Oyster/spaces/tokinvest`). The service stays layout-agnostic;
+    // the resolver lives in index.ts so swapping to a first-class sources
+    // table later (#208) is a one-function change at the top, not a sweep
+    // through every service caller.
+    spaceNativePath: string,
   ): Promise<Artifact> {
     debug("artifact-svc", "createArtifact called", { label: params.label, space_id: params.space_id, kind: params.artifact_kind, subdir: params.subdir ?? null });
     const label = params.label.trim();
@@ -314,7 +320,7 @@ export class ArtifactService {
     const id = crypto.randomUUID();
 
     // Subdir containment check (resolved path, not string scan)
-    const baseDir = join(userlandDir, space_id);
+    const baseDir = spaceNativePath;
     const targetDir = params.subdir ? resolve(baseDir, params.subdir) : baseDir;
     if (targetDir !== baseDir && !targetDir.startsWith(baseDir + sep)) {
       throw new Error("subdir must stay within the space directory");
@@ -333,11 +339,14 @@ export class ArtifactService {
     }
     writeFileSync(absPath, params.content, { encoding: "utf8", flag: "wx" });
 
-    // Register — best-effort rollback on DB failure
+    // Register — best-effort rollback on DB failure.
+    // Approved-root check confirms the file we just wrote stayed within the
+    // space's native folder (stricter than the old `[userlandDir]` check —
+    // the subdir containment above already guarantees this).
     try {
       return await this.registerArtifact(
         { path: absPath, space_id, label, artifact_kind: params.artifact_kind, group_name: params.group_name, id, source_origin: params.source_origin },
-        [userlandDir],
+        [spaceNativePath],
       );
     } catch (err) {
       try { unlinkSync(absPath); } catch {}

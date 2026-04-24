@@ -23,7 +23,7 @@ Browser → http://localhost:4444
 
 **OpenCode** — AI engine, spawned as a subprocess by the server. Not user-facing. Configured via `.opencode/agents/oyster.md` and `.opencode/config.toml`.
 
-**SQLite** (`~/.oyster/userland/oyster.db`) — artefact and space registry. Fast, local, no infrastructure.
+**SQLite** (`~/Oyster/db/oyster.db` installed; `./userland/db/oyster.db` dev) — artefact and space registry. Fast, local, no infrastructure.
 
 **Memory (v1)** — SQLite FTS5-backed `remember` / `recall` / `forget` / `list_memories` tools in `server/src/memory-store.ts`. Richer cross-session / graph-based memory is future work.
 
@@ -31,7 +31,7 @@ Browser → http://localhost:4444
 
 **Spaces** — organisational nodes. Each space has an ID, display name, optional repo path, and colour. Navigated via pills at the bottom of the chat bar, or via `#space` / `/s space` commands.
 
-**Artefacts** — typed outputs on the surface (app, notes, diagram, deck, wireframe, table, map). Registered in SQLite, files in `~/.oyster/userland/`. `source_origin` tracks provenance: `manual` | `discovered` | `ai_generated`.
+**Artefacts** — typed outputs on the surface (app, notes, diagram, deck, wireframe, table, map). Registered in SQLite, files in `~/Oyster/spaces/<space-id>/` (user work) or `~/Oyster/apps/` (installed bundles). `source_origin` tracks provenance: `manual` | `discovered` | `ai_generated`.
 
 **MCP** — the server exposes 19 tools at `/mcp/` (15 artifact/space + 4 memory). Any MCP client (Claude Code, Cursor, etc.) can connect and control the surface.
 
@@ -81,7 +81,7 @@ npm run build:changelog  # renders CHANGELOG.md → docs/changelog.html
 - Never write to SQLite directly from agent — use MCP tools
 - `source_origin: 'ai_generated'` on all agent-created artifacts
 - SQLite migrations are additive `ALTER TABLE ... ADD COLUMN` with try/catch (idempotent)
-- Userland data lives at `~/.oyster/userland/` (not in the package directory)
+- User workspace lives at `~/Oyster/` (installed) or `./userland/` (dev), split into `db/`, `config/`, `apps/`, `backups/`, `spaces/`. See `docs/plans/userland-layout.md` for the full layout.
 - Always use feature branches, never commit to main directly
 - Add a `CHANGELOG.md` entry in the same PR as any user-visible change; run `npm run build:changelog` to refresh `docs/changelog.html` (also auto-runs via the `version` lifecycle on `npm run release`)
 

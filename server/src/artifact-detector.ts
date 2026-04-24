@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, dirname, basename, sep, isAbsolute, normalize } from "node:path";
+import { join, dirname, basename, relative, sep, isAbsolute, normalize } from "node:path";
 import {
   registerGeneratedArtifact,
   updateGeneratedArtifact,
@@ -8,10 +8,12 @@ import { IconGenerator } from "./icon-generator.js";
 import { debug, debugEnabled } from "./debug.js";
 
 // ── Artifact detection ──
-// Artifacts live in userland/<id>/ with a manifest.json and src/ directory.
-// The server detects them by scanning for manifest.json files or falling back
-// to filename-based inference. New artifacts start as "generating" and
-// transition to "ready" after quiescence + entrypoint exists.
+// App bundles live in directories with a manifest.json and src/. They're
+// detected by scanning for manifest.json or falling back to filename-based
+// inference. New artifacts start as "generating" and transition to "ready"
+// after quiescence + entrypoint exists. Installed and builtin apps are
+// discovered under APPS_DIR, and space-scoped generated apps are discovered
+// under SPACES_DIR/<space-id>/.
 
 const seenArtifacts = new Set<string>();
 
@@ -176,7 +178,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
   const filePath = normalize(isAbs ? rawPath : `${userlandDir}${rawPath}`);
   if (debugEnabled) debug("watcher", "file.edited", { rawPath, filePath, isAbs });
 
-  // Check if this file is inside userland
+  // Check if this file is inside the watched artifacts root
   if (filePath.startsWith(artifactsDir)) {
     const relativePath = filePath.slice(artifactsDir.length);
     const topDir = relativePath.split(sep)[0];
@@ -243,7 +245,11 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
 }
 
 // Scan userland subdirectories for existing artifacts on startup
-export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconGenerator) {
+export function scanExistingArtifacts(
+  artifactsDir: string,
+  iconGenerator: IconGenerator,
+  opts: { manifestOnly?: boolean } = {},
+) {
   if (existsSync(artifactsDir)) {
     try {
       const entries = readdirSync(artifactsDir);
@@ -260,6 +266,13 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
           registerArtifactFromManifest(manifest, artifactDir, iconGenerator);
           continue;
         }
+
+        // Under SPACES_DIR, organisational subfolders (invoices/, research/,
+        // presentations/) hold many single-file artifacts and must NOT be
+        // registered as their own artifact. Skip the fallback scan when
+        // manifestOnly is set; manifest-based bundles (e.g. an AI-generated
+        // app under a space) still work because they took the branch above.
+        if (opts.manifestOnly) continue;
 
         // Fallback: look for index.html or any HTML/MD file and register as ready
         try {
@@ -288,8 +301,13 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
             if (!seenArtifacts.has(id)) {
               const name = inferName(foundFile);
               const type = inferType(foundFile);
-              // URLs must use forward slashes; sep is "\" on Windows, so rewrite.
-              const serveRelative = `/artifacts/${foundFile.slice(artifactsDir.length).split(sep).join("/")}`;
+              // Use path.relative so callers can pass the root with or
+              // without a trailing separator — a raw slice(artifactsDir.length)
+              // produced leading-slash URLs like `/artifacts//invoices/...`
+              // when the caller didn't trail-slash, which broke the resolver.
+              // URLs also need forward slashes; sep is "\" on Windows.
+              const relFromRoot = relative(artifactsDir, foundFile).split(sep).join("/");
+              const serveRelative = `/artifacts/${relFromRoot}`;
               seenArtifacts.add(id);
               console.log(`[artifact-detect] scan: ${name} (${type}) → ${serveRelative}`);
               registerGeneratedArtifact({

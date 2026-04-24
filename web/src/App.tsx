@@ -464,8 +464,13 @@ export default function App() {
       )}
 
       {openGroup && (() => {
+        // In __all__ and __archived__ views, artifacts have real space_ids
+        // (home, oyster, …) — not the meta-space's id. Skip the space-match
+        // filter in those cases; the `artifacts` prop is already scoped to
+        // the right dataset (all artifacts, or archived artifacts).
+        const isMetaSpace = activeSpace === "__all__" || activeSpace === "__archived__";
         const groupArtifacts = artifacts.filter(
-          (a) => a.spaceId === activeSpace && a.groupName?.toLowerCase() === openGroup.toLowerCase()
+          (a) => (isMetaSpace || a.spaceId === activeSpace) && a.groupName?.toLowerCase() === openGroup.toLowerCase()
         );
         const displayName = groupArtifacts[0]?.groupName || openGroup;
         return (

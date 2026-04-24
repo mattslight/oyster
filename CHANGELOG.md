@@ -4,6 +4,19 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **"Where are my files?" tile.** Shows your live workspace paths, not a generic doc. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Archive shortcut** — icon bottom-left opens the archived view. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Right-click → Regenerate icon** on any tile, including builtins. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Agent can list and restore archived artifacts.** Previously it couldn't see them. ([#207](https://github.com/mattslight/oyster/issues/207))
+
+### Changed
+
+- **Workspace moves to `~/Oyster/`** (from hidden `~/.oyster/userland/`). Visible in Finder / Explorer, with clear sub-folders: `db/`, `apps/`, `spaces/<project>/`, `backups/`. Your content is browsable outside Oyster. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Styled confirm / rename dialogs** replace the default browser prompts for uninstall, archive, and folder rename. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **"Import from AI" → "Import Memories"** — same tile, clearer name. ([#207](https://github.com/mattslight/oyster/issues/207))
+
 ### Fixed
 
 - **Your AI can now create HTML-styled documents (invoices, receipts, letters).** Agents can save artifacts as HTML so they render on the surface the way they were designed — white paper, printable layout. Previously every agent-created notes artifact was forced into markdown and shown through the dark markdown wrapper, so pages meant for white paper looked wrong.

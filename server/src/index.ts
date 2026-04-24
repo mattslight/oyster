@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join, dirname, sep } from "node:path";
+import { extname, join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, renderMermaid } from "./renderers.js";
 import { handleSpacesRequest } from "./spaces-routes.js";
@@ -12,6 +12,7 @@ import {
   waitForReady,
   updateGeneratedArtifact,
   getGeneratedArtifactEntries,
+  type ArtifactKind,
 } from "./process-manager.js";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
@@ -106,9 +107,94 @@ const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
-// Installed → ~/.oyster/userland, dev → ./userland
-const USERLAND_DIR = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
-const ARTIFACTS_DIR = join(USERLAND_DIR, "")  + sep;
+// ── Oyster userland layout (#207) ──
+//
+//   OYSTER_HOME — the user's Oyster workspace root.
+//     Installed → ~/Oyster/            (visible; migrated from ~/.oyster/userland/)
+//     Dev       → ./userland/          (unchanged; feature-branch dev writes here)
+//   DB_DIR      — oyster.db, memory.db. At OYSTER_HOME/db/.
+//   APPS_DIR    — installed app bundles (builtins + community). At OYSTER_HOME/apps/.
+//   SPACES_DIR  — one folder per user space. At OYSTER_HOME/spaces/.
+//   CONFIG_DIR  — reserved for future Oyster-specific config.
+//   BACKUPS_DIR — snapshots. At OYSTER_HOME/backups/.
+//
+// opencode-ai's own config (opencode.json, .opencode/) stays at OYSTER_HOME
+// root because opencode discovers it via CWD walk-up; moving it would
+// require a spawn-flag change out of scope for this PR.
+const OYSTER_HOME = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), "Oyster") : join(PACKAGE_ROOT, "userland"));
+const DB_DIR = join(OYSTER_HOME, "db");
+const CONFIG_DIR = join(OYSTER_HOME, "config");
+const APPS_DIR = join(OYSTER_HOME, "apps");
+const SPACES_DIR = join(OYSTER_HOME, "spaces");
+const BACKUPS_DIR = join(OYSTER_HOME, "backups");
+
+// Retained for callsites that still pass the userland root down the stack
+// (e.g. opencode-ai's spawn CWD, reconcileGeneratedArtifact's base path).
+// Alias to OYSTER_HOME to minimise the surface of this PR.
+const USERLAND_DIR = OYSTER_HOME;
+
+// Resolver for a space's native folder (where `create_artifact` writes).
+// Every callsite that used to compute `join(USERLAND_DIR, space_id)` goes
+// through this, so swapping to a first-class sources table later (#208) is
+// a one-function change.
+function getNativeSourcePath(spaceId: string): string {
+  return join(SPACES_DIR, spaceId);
+}
+
+// For the watcher and scanExistingArtifacts, which walk a single directory
+// looking for app-bundle folders. In the new layout, bundles live under
+// APPS_DIR (installed) or SPACES_DIR/<space>/ (AI-generated). Both need to
+// be scanned; see the callsites below.
+const ARTIFACTS_DIR = join(OYSTER_HOME, "")  + sep;
+
+// Resolve a /artifacts/<relativePath> URL to a file on disk. The icon
+// resolver in artifact-service emits URLs like /artifacts/<folder>/icon.png
+// using just the folder name (the artifact's bundle dir), so this handler
+// has to try every place that folder could live after #207:
+//
+//   OYSTER_HOME/<rel>          — dedicated icons/<id>/ + legacy flat
+//   APPS_DIR/<rel>             — installed bundles (builtins + community)
+//   SPACES_DIR/<rel>           — <rel> starts with a space name (e.g. blunderfixer/icon.png)
+//   SPACES_DIR/<space>/<rel>   — <rel> is a bundle folder inside a space (e.g. car-racer/icon.png
+//                                 which lives at spaces/home/car-racer/)
+//
+// Returns the first existing candidate under OYSTER_HOME (path-traversal guard),
+// or null. Used by both /api/resolve-artifact-path and the static /artifacts/
+// server so they stay in sync.
+function resolveArtifactsUrl(relativePath: string): string | null {
+  // Fast path: check the three fixed candidates first. This covers the vast
+  // majority of requests (icons/, APPS_DIR builtins, space-name-as-first-seg)
+  // without touching the filesystem beyond `existsSync`. Only fall back to
+  // walking every space directory when those miss — that's a real-but-rare
+  // case (AI-generated app inside a user space whose icon URL is just
+  // /artifacts/<app>/icon.png with no space hint).
+  // Containment helper — a raw string startsWith(OYSTER_HOME) would let
+  // "/Users/me/OysterX/..." pass when OYSTER_HOME is "/Users/me/Oyster".
+  // Resolve both and require an exact match or a path-sep-terminated prefix.
+  const root = resolve(OYSTER_HOME);
+  const isInsideRoot = (candidate: string): boolean => {
+    const r = resolve(candidate);
+    return r === root || r.startsWith(root + sep);
+  };
+  const fixedCandidates = [
+    join(OYSTER_HOME, relativePath),
+    join(APPS_DIR, relativePath),
+    join(SPACES_DIR, relativePath),
+  ];
+  for (const candidate of fixedCandidates) {
+    if (!isInsideRoot(candidate)) continue;
+    if (existsSync(candidate)) return candidate;
+  }
+  const firstSegment = relativePath.split("/")[0];
+  if (!firstSegment || firstSegment === "icons") return null;
+  try {
+    for (const spaceName of readdirSync(SPACES_DIR)) {
+      const candidate = join(SPACES_DIR, spaceName, relativePath);
+      if (isInsideRoot(candidate) && existsSync(candidate)) return candidate;
+    }
+  } catch { /* SPACES_DIR might not exist on a fresh install */ }
+  return null;
+}
 
 // ── MIME types ──
 
@@ -137,23 +223,44 @@ function syncIfNewer(src: string, dest: string) {
 }
 
 function bootstrapUserland() {
-  mkdirSync(USERLAND_DIR, { recursive: true });
-  mkdirSync(`${USERLAND_DIR}/.opencode/agents`, { recursive: true });
+  mkdirSync(OYSTER_HOME, { recursive: true });
+  mkdirSync(DB_DIR, { recursive: true });
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  mkdirSync(APPS_DIR, { recursive: true });
+  mkdirSync(SPACES_DIR, { recursive: true });
+  mkdirSync(BACKUPS_DIR, { recursive: true });
+  mkdirSync(`${OYSTER_HOME}/.opencode/agents`, { recursive: true });
 
   syncIfNewer(
     `${PROJECT_ROOT}/.opencode/agents/oyster.md`,
-    `${USERLAND_DIR}/.opencode/agents/oyster.md`,
+    `${OYSTER_HOME}/.opencode/agents/oyster.md`,
   );
   syncIfNewer(
     `${PROJECT_ROOT}/.opencode/config.toml`,
-    `${USERLAND_DIR}/.opencode/config.toml`,
+    `${OYSTER_HOME}/.opencode/config.toml`,
   );
 
-  // Seed built-in artifacts into userland on first install (copy-if-absent — no overwrite)
+  // Drop a static README at the Oyster root so users browsing in
+  // Finder / Explorer can orient themselves without starting the app.
+  // This is deliberately static and broad (getting-started, shortcut
+  // commands, layout hints). The in-app "Where are my files?" builtin
+  // shows the *live* per-install paths — different audience, different
+  // content.
+  const readmeSrc = join(PROJECT_ROOT, "assets", "oyster-home-readme.md");
+  if (existsSync(readmeSrc)) {
+    syncIfNewer(readmeSrc, `${OYSTER_HOME}/README.md`);
+  }
+
+  // Ensure a default "home" space folder exists so create_artifact can
+  // always resolve a landing spot, even on a fresh install with no other
+  // spaces created yet.
+  mkdirSync(join(SPACES_DIR, "home"), { recursive: true });
+
+  // Seed built-in app bundles into apps/ on first install (copy-if-absent — no overwrite)
   const builtinsDir = join(PROJECT_ROOT, "builtins");
   if (existsSync(builtinsDir)) {
     for (const entry of readdirSync(builtinsDir)) {
-      const dest = join(USERLAND_DIR, entry);
+      const dest = join(APPS_DIR, entry);
       if (!existsSync(dest)) {
         cpSync(join(builtinsDir, entry), dest, { recursive: true });
         console.log(`[bootstrap] installed built-in: ${entry}`);
@@ -163,8 +270,8 @@ function bootstrapUserland() {
 }
 
 // ── Auto-backup userland before bootstrap/upgrade and before touching the DB ──
-runStartupBackup(USERLAND_DIR);
-setImportStatePath(USERLAND_DIR);
+runStartupBackup(OYSTER_HOME);
+setImportStatePath(OYSTER_HOME);
 
 bootstrapUserland();
 
@@ -178,9 +285,12 @@ delete cleanEnv["OPENAI_API_KEY"];
 
 // ── Artifact store ──
 
-const db = initDb(USERLAND_DIR);
+const db = initDb(DB_DIR);
 const store = new SqliteArtifactStore(db);
-const artifactService = new ArtifactService(store, USERLAND_DIR);
+// artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
+// — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
+// not inside DB_DIR.
+const artifactService = new ArtifactService(store, OYSTER_HOME);
 const spaceStore = new SqliteSpaceStore(db);
 
 // Shared resolver: try raw id, then slugified id, then case-insensitive display_name.
@@ -195,7 +305,7 @@ function resolveSpaceRow(name: string) {
   );
 }
 const spaceService = new SpaceService(spaceStore, store);
-const memoryProvider = new SqliteFtsMemoryProvider(USERLAND_DIR);
+const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
 await memoryProvider.init();
 
 // ── Initialize subsystems ──
@@ -206,6 +316,25 @@ const pendingReveals = new Set<string>();
 spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 
 // OpenCode spawn is deferred until after port resolution (see below)
+// Scan every location where app bundles can live after #207:
+//   APPS_DIR               — installed builtins + community apps
+//   SPACES_DIR/<space>/    — AI-generated apps owned by a space
+//   OYSTER_HOME            — anything still at the root (legacy / newly-generated
+//                            before the agent's CWD gets re-pointed in a follow-up)
+scanExistingArtifacts(APPS_DIR, iconGenerator);
+if (existsSync(SPACES_DIR)) {
+  for (const spaceEntry of readdirSync(SPACES_DIR)) {
+    const spaceDir = join(SPACES_DIR, spaceEntry);
+    try {
+      // manifestOnly: true — space folders contain organisational
+      // subfolders (invoices/, research/) with many single-file artifacts.
+      // The fallback scan would misregister each subfolder as a bogus
+      // gen:<folder> bundle; only manifest-based AI-generated apps
+      // should be picked up here.
+      if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, iconGenerator, { manifestOnly: true });
+    } catch { /* skip unreadable */ }
+  }
+}
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 
 // Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path).
@@ -349,13 +478,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       filePath = artifactService.getDocFile(docsMatch[1]);
     }
 
-    // /artifacts/... → userland directory
+    // /artifacts/... → resolveArtifactsUrl walks the split layout.
     if (!filePath && targetUrl.startsWith("/artifacts/")) {
       const relativePath = targetUrl.slice("/artifacts/".length).split("?")[0];
-      const candidate = join(ARTIFACTS_DIR, relativePath);
-      if (candidate.startsWith(ARTIFACTS_DIR) && existsSync(candidate)) {
-        filePath = candidate;
-      }
+      const resolved = resolveArtifactsUrl(relativePath);
+      if (resolved) filePath = resolved;
     }
 
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -367,6 +494,31 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // the same reason /api/artifacts/archived is: it contains user-private
   // artifact metadata that a malicious cross-origin site could otherwise
   // enumerate against a running local Oyster.
+  // /api/workspace → the resolved Oyster workspace layout, used by the
+  // "Where are my files?" builtin so it shows this user's actual paths
+  // (respects OYSTER_USERLAND + dev vs installed). Local-origin gated for
+  // the same reason as /api/artifacts — paths are user-private.
+  if (url === "/api/workspace") {
+    if (rejectIfNonLocalOrigin()) return;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      oysterHome: OYSTER_HOME,
+      paths: {
+        db: DB_DIR,
+        apps: APPS_DIR,
+        spaces: SPACES_DIR,
+        backups: BACKUPS_DIR,
+      },
+      platform: process.platform,
+      spaces: (() => {
+        try { return readdirSync(SPACES_DIR).filter((e) => {
+          try { return statSync(join(SPACES_DIR, e)).isDirectory(); } catch { return false; }
+        }); } catch { return []; }
+      })(),
+    }));
+    return;
+  }
+
   if (url === "/api/artifacts") {
     if (rejectIfNonLocalOrigin()) return;
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
@@ -478,9 +630,111 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // POST /api/plugins/:id/uninstall — remove the plugin folder from userland.
-  // The artifact detector + getAllArtifacts self-heal the in-memory and DB
-  // entries; no separate cleanup needed here. Mirrors `oyster uninstall <id>`.
+  // POST /api/artifacts/:id/icon/regenerate — trigger a fresh AI icon for
+  // an artifact. Mirrors the MCP `regenerate_icon` tool so the UI can offer
+  // a right-click "Regenerate icon" action without going through chat.
+  //
+  // Builtins: their id is `gen:<folder>` and they have no DB row. The
+  // service-layer lookup would miss them; handle directly from APPS_DIR.
+  // Overwriting the icon.png there persists across restarts (bootstrap is
+  // add-only) — next `npm install -g oyster-os` upgrade would reset it,
+  // which is acceptable.
+  const iconRegenMatch = url.match(/^\/api\/artifacts\/([^/]+)\/icon\/regenerate$/);
+  if (iconRegenMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    const id = decodeURIComponent(iconRegenMatch[1]);
+
+    let label: string | undefined;
+    let artifactKind: string | undefined;
+    let artifactDir: string | undefined;
+
+    if (id.startsWith("gen:")) {
+      // Builtin or unreconciled generated artifact — look up by walking the
+      // same candidate roots the scanner walks: APPS_DIR for installed /
+      // builtin bundles, plus each SPACES_DIR/<space>/ for space-scoped
+      // generated ones (matches scanExistingArtifacts' coverage).
+      const folderId = id.slice("gen:".length);
+      // Strict whitelist — stops traversal via URL-encoded "../", backslashes,
+      // etc. before it hits the filesystem. Mirrors the validation on
+      // /api/plugins/:id/uninstall; keep the two in sync.
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(folderId)) {
+        sendJson({ error: `Invalid artifact id '${id}'` }, 400); return;
+      }
+      const candidateDirs: string[] = [join(APPS_DIR, folderId)];
+      try {
+        for (const spaceName of readdirSync(SPACES_DIR)) {
+          const spaceDir = join(SPACES_DIR, spaceName);
+          try {
+            if (!statSync(spaceDir).isDirectory()) continue;
+          } catch { continue; }
+          candidateDirs.push(join(spaceDir, folderId));
+        }
+      } catch { /* SPACES_DIR missing on a fresh install */ }
+
+      // Defence in depth: even with the whitelist above, verify every
+      // candidate is actually inside OYSTER_HOME via resolve()+sep before
+      // reading it. Normalises path segments (handles any accidental `..`
+      // that slipped past the allowlist, double slashes, etc.) — does NOT
+      // follow symlinks; realpathSync would be needed for that, and is
+      // filed as future hardening since the allowlist already bars the
+      // usual traversal vectors.
+      const rootPath = resolve(OYSTER_HOME);
+      const resolvedDir = candidateDirs.find((d) => {
+        const r = resolve(d);
+        if (r !== rootPath && !r.startsWith(rootPath + sep)) return false;
+        return existsSync(join(d, "manifest.json"));
+      });
+      if (!resolvedDir) {
+        sendJson({ error: `Artifact "${id}" not found` }, 404); return;
+      }
+      try {
+        const manifest = JSON.parse(readFileSync(join(resolvedDir, "manifest.json"), "utf8"));
+        label = manifest.name;
+        artifactKind = manifest.type;
+        artifactDir = resolvedDir;
+      } catch (err) {
+        sendJson({ error: `Failed to read manifest for "${id}": ${(err as Error).message}` }, 500); return;
+      }
+    } else {
+      const artifact = await artifactService.getArtifactById(id);
+      if (!artifact) { sendJson({ error: `Artifact "${id}" not found` }, 404); return; }
+      const sourcePath = artifactService.getDocFile(id);
+      if (!sourcePath) { sendJson({ error: "Icon regeneration is only supported for static file artifacts" }, 400); return; }
+      // Only write the icon into a bundle root when the source is laid out
+      // as a manifest-based bundle (source file lives under a `src/` dir).
+      // For single-file artifacts (a loose .md / .html) the "natural dir" is
+      // the containing folder — which might hold many artifacts — so the
+      // regenerated icon would overwrite a shared icon.png. Route those to
+      // the per-artifact dedicated dir at OYSTER_HOME/icons/<id>/ instead;
+      // ArtifactService.resolveIcon checks that path first.
+      //
+      // Containment must use resolve() + sep-terminated prefix — a raw
+      // startsWith(OYSTER_HOME) would match "/.../OysterX/..." too.
+      const srcIdx = sourcePath.lastIndexOf(`${sep}src${sep}`);
+      const bundleRoot = srcIdx !== -1 ? resolve(sourcePath.slice(0, srcIdx)) : null;
+      const rootPath = resolve(OYSTER_HOME);
+      const isManifestBundle = bundleRoot !== null
+        && (bundleRoot === rootPath || bundleRoot.startsWith(rootPath + sep));
+      artifactDir = isManifestBundle ? sourcePath.slice(0, srcIdx) : join(OYSTER_HOME, "icons", id);
+      label = artifact.label;
+      artifactKind = artifact.artifactKind;
+    }
+
+    mkdirSync(artifactDir!, { recursive: true });
+    const queued = iconGenerator.forceEnqueue(id, label!, artifactKind! as ArtifactKind, artifactDir!);
+    if (!queued) {
+      sendJson({ error: "Icon generation is disabled on this install (FAL_KEY not configured)" }, 503);
+      return;
+    }
+    sendJson({ status: "queued", id, label });
+    return;
+  }
+
+  // POST /api/plugins/:id/uninstall — remove an app bundle from disk.
+  // Post-#207 the bundle could live at APPS_DIR/<id>/ (installed) or
+  // SPACES_DIR/<space>/<id>/ (AI-generated under a space). Search both,
+  // plus legacy OYSTER_HOME/<id>/ for any un-migrated install.
+  // The artifact detector + getAllArtifacts self-heal DB entries.
   const pluginUninstallMatch = url.match(/^\/api\/plugins\/([^/]+)\/uninstall$/);
   if (pluginUninstallMatch && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return;
@@ -489,8 +743,26 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       sendJson({ error: `Invalid plugin id '${id}'` }, 400);
       return;
     }
-    const dir = join(USERLAND_DIR, id);
-    if (!existsSync(dir)) {
+    const candidates: string[] = [
+      join(APPS_DIR, id),
+      join(OYSTER_HOME, id),
+    ];
+    try {
+      for (const spaceName of readdirSync(SPACES_DIR)) {
+        candidates.push(join(SPACES_DIR, spaceName, id));
+      }
+    } catch { /* no SPACES_DIR yet on fresh install */ }
+
+    // resolve()+sep-terminated-prefix check — the raw startsWith would let
+    // an `OysterX` sibling match `Oyster`. Same hardening pattern used in
+    // resolveArtifactsUrl and the icon-regen endpoint.
+    const rootPath = resolve(OYSTER_HOME);
+    const dir = candidates.find((c) => {
+      const r = resolve(c);
+      if (r !== rootPath && !r.startsWith(rootPath + sep)) return false;
+      return existsSync(c);
+    });
+    if (!dir) {
       sendJson({ error: `'${id}' is not installed` }, 404);
       return;
     }
@@ -501,7 +773,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     }
     try {
       rmSync(dir, { recursive: true, force: true });
-      sendJson({ id, uninstalled: true });
+      sendJson({ id, uninstalled: true, path: dir });
     } catch (err) {
       sendError(err, 500);
     }
@@ -679,19 +951,15 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   // ── Static file serving for /artifacts/ ──
+  // Uses the shared resolveArtifactsUrl walker so this stays in sync with the
+  // /api/resolve-artifact-path helper above. The walker enforces the
+  // path-traversal guard (must stay under OYSTER_HOME).
   if (url.startsWith("/artifacts/")) {
     const urlPath = url.split("?")[0];
     const relativePath = urlPath.slice("/artifacts/".length);
-    const filePath = join(ARTIFACTS_DIR, relativePath);
+    const filePath = resolveArtifactsUrl(relativePath);
 
-    // Security: prevent path traversal
-    if (!filePath.startsWith(ARTIFACTS_DIR)) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
-    }
-
-    if (!existsSync(filePath)) {
+    if (!filePath) {
       res.writeHead(404);
       res.end("Not found");
       return;
@@ -873,7 +1141,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
         const executeDeps: ExecuteDeps = {
           createSpace: (name) => spaceService.createSpace({ name }),
-          createArtifact: (params) => artifactService.createArtifact(params, USERLAND_DIR),
+          createArtifact: (params) => artifactService.createArtifact(params, getNativeSourcePath(params.space_id)),
           remember: (input) => memoryProvider.remember(input),
           findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
           resolveSpaceByName: (name) => {
@@ -979,6 +1247,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       store,
       service: artifactService,
       userlandDir: USERLAND_DIR,
+      getNativeSourcePath,
       iconGenerator,
       spaceService,
       memoryProvider,

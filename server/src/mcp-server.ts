@@ -118,6 +118,13 @@ interface McpDeps {
   store: ArtifactStore;
   service: ArtifactService;
   userlandDir: string;
+  /**
+   * Resolves a space id to its native folder on disk
+   * (e.g. `~/Oyster/spaces/tokinvest`). Passed in from index.ts so this
+   * module stays layout-agnostic — the MCP `create_artifact` handler uses
+   * it to route new content into the correct sub-tree.
+   */
+  getNativeSourcePath: (spaceId: string) => string;
   iconGenerator: IconGenerator;
   spaceService: SpaceService;
   memoryProvider: MemoryProvider;
@@ -300,10 +307,16 @@ See the "Set up Oyster for me" playbook above for the full audit + propose + app
 - After \`create_artifact\`, always call \`reveal_artifact\` with the new artifact's id — this switches the user's desktop to the right space and highlights the icon so they know where it landed.
 - Use \`read_artifact\` to read the content of an existing static file artifact.
 - Use \`update_artifact\` to rename, reassign to a different space, or change the group.
-- Use \`remove_artifact\` to hide an artifact from the surface (reversible).
+- Use \`remove_artifact\` to archive an artifact (hide from surface, reversible). The file and record are preserved and accessible via the archived view.
 
-Do NOT read or write the SQLite database (userland/oyster.db) directly.
-Files you create must live under: ${userlandDir}/
+**Archived / removed artifacts:**
+- Archived artifacts don't appear in the default \`list_artifacts\` results. Use \`list_archived_artifacts\` to see what's been removed.
+- Use \`restore_artifact\` to bring one back to the live surface.
+- The user can also browse their archived items via the archive icon at the bottom-left of the desktop, or the \`#archived\` space pill.
+
+Do NOT read or write the SQLite databases under Oyster's \`db/\` folder directly.
+
+Create user content via \`create_artifact\` — it writes under \`${userlandDir}/spaces/<space-id>/\` automatically. Do not write directly into \`${userlandDir}/db/\`, \`${userlandDir}/backups/\`, or treat the workspace root as a general write location; \`apps/\` is reserved for installed app bundles.
 `.trim();
 }
 
@@ -565,7 +578,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "register_artifact",
-    "Register a file that already exists on disk as a desktop artifact. Use this only when the file already exists. To create new content and register it in one step, use create_artifact instead. The file must be inside userland/. Kind and ID are inferred from the filename if not provided.",
+    "Register a file that already exists on disk as a desktop artifact. Use this only when the file already exists. To create new content and register it in one step, use create_artifact instead. Any absolute path the server can read is accepted; prefer files the user controls (inside a registered space folder or a repo the user has attached). Kind and ID are inferred from the filename if not provided.",
     {
       path: z.string().describe("Absolute path to the file"),
       space_id: z.string().describe("Space to place the artifact in (use `list_spaces` to see what's available)"),
@@ -631,7 +644,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "create_artifact",
-    "Create a new file inside userland and register it as a desktop artifact in one step. The server computes the file path from space_id and label — you provide the content. Appears immediately on the user's desktop.",
+    "Create a new file under the space's native folder (<workspace>/spaces/<space-id>/...) and register it as a desktop artifact in one step. The server computes the file path from space_id, label, and optional subdir — you provide the content. Do not try to write into <workspace>/db/, <workspace>/apps/, or the workspace root; those are reserved. Appears immediately on the user's desktop.",
     {
       space_id: z.string().describe("Space to place the artifact in"),
       label: z.string().describe("Display name on the desktop. Also determines the filename (slugified)."),
@@ -647,7 +660,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
       try {
         const artifact = await deps.service.createArtifact(
           { space_id, label, artifact_kind, content, subdir, group_name, source_origin, extension },
-          deps.userlandDir,
+          deps.getNativeSourcePath(space_id),
         );
         return {
           content: [{ type: "text" as const, text: JSON.stringify(artifact, null, 2) }],
@@ -690,15 +703,52 @@ export function createMcpServer(deps: McpDeps): McpServer {
   );
 
   // ── remove_artifact ──
+  // Alias: "archive_artifact" is the same concept — the file and DB row are
+  // preserved, just hidden from the live surface. Users see these as
+  // "archived"; the tool name stays `remove_artifact` for backward-compat
+  // but the description leads with both terms so the agent can match either
+  // phrasing in user requests.
 
   server.tool(
     "remove_artifact",
-    "Remove an artifact from the desktop surface. The file and record are preserved — the artifact simply stops appearing on the surface. This is reversible.",
+    "Archive (remove) an artifact from the desktop surface. The file and record are preserved — the artifact simply stops appearing on the live surface and moves into the archived view. This is reversible via `restore_artifact`. Use this when the user says archive, remove, hide, or delete an artifact.",
     { id: z.string().describe("Artifact ID to remove") },
     async ({ id }) => {
       try {
         deps.service.removeArtifact(id);
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" removed from surface` }] };
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" removed from surface (moved to archived view)` }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── list_archived_artifacts ──
+
+  server.tool(
+    "list_archived_artifacts",
+    "List artifacts that have been archived (removed from the live surface). These still exist on disk and in the DB — they just don't render on the desktop until restored. Use this when the user asks about archived, removed, or hidden artifacts.",
+    {},
+    async () => {
+      try {
+        const archived = await deps.service.getArchivedArtifacts();
+        return { content: [{ type: "text" as const, text: JSON.stringify(archived, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── restore_artifact ──
+
+  server.tool(
+    "restore_artifact",
+    "Restore an archived artifact so it reappears on the desktop surface. Inverse of `remove_artifact`. Use when the user asks to un-archive, restore, or bring back a removed artifact.",
+    { id: z.string().describe("Artifact ID to restore from the archived view") },
+    async ({ id }) => {
+      try {
+        deps.service.restoreArtifact(id);
+        return { content: [{ type: "text" as const, text: `Artifact "${id}" restored to the desktop surface` }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
       }
