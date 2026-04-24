@@ -245,7 +245,11 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
 }
 
 // Scan userland subdirectories for existing artifacts on startup
-export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconGenerator) {
+export function scanExistingArtifacts(
+  artifactsDir: string,
+  iconGenerator: IconGenerator,
+  opts: { manifestOnly?: boolean } = {},
+) {
   if (existsSync(artifactsDir)) {
     try {
       const entries = readdirSync(artifactsDir);
@@ -262,6 +266,13 @@ export function scanExistingArtifacts(artifactsDir: string, iconGenerator: IconG
           registerArtifactFromManifest(manifest, artifactDir, iconGenerator);
           continue;
         }
+
+        // Under SPACES_DIR, organisational subfolders (invoices/, research/,
+        // presentations/) hold many single-file artifacts and must NOT be
+        // registered as their own artifact. Skip the fallback scan when
+        // manifestOnly is set; manifest-based bundles (e.g. an AI-generated
+        // app under a space) still work because they took the branch above.
+        if (opts.manifestOnly) continue;
 
         // Fallback: look for index.html or any HTML/MD file and register as ready
         try {

@@ -64,6 +64,9 @@ export function PromptModal({
           placeholder={placeholder}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          // Labelled by the modal title so screen readers announce e.g.
+          // "Rename folder, edit text" instead of an unlabelled textbox.
+          aria-labelledby="prompt-modal-title"
         />
         <div className="confirm-modal-actions">
           <button

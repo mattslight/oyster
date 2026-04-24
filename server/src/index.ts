@@ -326,7 +326,12 @@ if (existsSync(SPACES_DIR)) {
   for (const spaceEntry of readdirSync(SPACES_DIR)) {
     const spaceDir = join(SPACES_DIR, spaceEntry);
     try {
-      if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, iconGenerator);
+      // manifestOnly: true — space folders contain organisational
+      // subfolders (invoices/, research/) with many single-file artifacts.
+      // The fallback scan would misregister each subfolder as a bogus
+      // gen:<folder> bundle; only manifest-based AI-generated apps
+      // should be picked up here.
+      if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, iconGenerator, { manifestOnly: true });
     } catch { /* skip unreadable */ }
   }
 }
