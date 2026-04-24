@@ -146,7 +146,7 @@ Additions worth considering at the same time:
 
 ## Planned External Repos
 
-The Oyster monorepo stays focused on the host. Plugins and their ecosystem live in separate repos, following Obsidian's model:
+The Oyster monorepo stays focused on the host. Apps and their ecosystem live in separate repos, following Obsidian's model:
 
 | Repo | Purpose | Equivalent to |
 |---|---|---|
