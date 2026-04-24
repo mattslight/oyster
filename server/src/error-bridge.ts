@@ -1,7 +1,18 @@
 // server/src/error-bridge.ts
 // Exports the error bridge script and an injection function.
 
-const BRIDGE_SCRIPT = `<script data-oyster-bridge>
+// Thin dark scrollbars so Windows artifact iframes don't show the chunky
+// native Win32 bar. Chromium (all platforms) honours scrollbar-color; the
+// ::-webkit-scrollbar rules keep older WebViews consistent.
+const SCROLLBAR_STYLE = `<style data-oyster-scrollbar>
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+</style>`;
+
+const BRIDGE_SCRIPT = SCROLLBAR_STYLE + `<script data-oyster-bridge>
 (function() {
   if (window.__oysterBridge) return;
   window.__oysterBridge = true;
