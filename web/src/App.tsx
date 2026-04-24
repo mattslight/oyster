@@ -24,13 +24,17 @@ import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
 // is a fresh install — lets us iterate on 0/3 hero copy without touching
-// the real userland. Runs synchronously at module load so the clear
-// happens before <OnboardingDock> reads localStorage in its useState
-// initialiser. Dev-only convention; no-op in production if unused.
-const FORCE_ONBOARDING = typeof window !== "undefined" &&
+// the real userland. Gated on `import.meta.env.DEV` so it's a strict
+// no-op in production builds (Vite dead-code-strips the block). Runs
+// synchronously at module load so the clear happens before
+// <OnboardingDock> reads localStorage in its useState initialiser.
+const FORCE_ONBOARDING = import.meta.env.DEV &&
+  typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("onboarding") === "force";
-if (FORCE_ONBOARDING && typeof localStorage !== "undefined") {
-  localStorage.removeItem("oyster-onboarding-state");
+if (FORCE_ONBOARDING) {
+  try {
+    localStorage.removeItem("oyster-onboarding-state");
+  } catch { /* privacy-mode browsers can throw — matches OnboardingDock */ }
 }
 
 export default function App() {
