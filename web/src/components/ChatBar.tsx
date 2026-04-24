@@ -393,11 +393,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}`}>
           {isFirstRun ? (
             <>
-              <span className="tagline-dim">Start here.</span>{" "}
-              <span className="tagline-bright">Ask Oyster to set things up.</span>
+              <span className="tagline-bright">Welcome to your surface.</span>
               <br />
               <div style={{ marginTop: "8px" }}>
-                Try: <em>"Set up Oyster for me."</em>
+                Type: <em>Set up Oyster</em>
               </div>
             </>
           ) : tagline ? (

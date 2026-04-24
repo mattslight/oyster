@@ -6,7 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
-- **Fresh-install hero now says *"Ask Oyster to set things up"*** instead of *"Tell your agent…"*. The old "your agent" wording implied an external MCP client the user had yet to connect, which contradicted the fact that Oyster's built-in agent is already running by the time the browser loads. Adds a *"Start here."* lead-in so first-timers know the chatbar is the entry point.
+- **Fresh-install hero now says *"Welcome to your surface. Type: Set up Oyster"*** instead of *"Tell your agent…"*. The old copy implied an external MCP client the user had yet to connect; the new copy uses the existing brand line and tells the user exactly what to type. The chatbar itself remains the entry point — no extra buttons or suggestion chips.
 
 ### Fixed
 
