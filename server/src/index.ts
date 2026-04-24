@@ -1349,6 +1349,32 @@ writeFileSync(join(USERLAND_DIR, ".opencode", "config.toml"), opencodeConfig);
 // Also write opencode.json (OpenCode reads this from cwd)
 const sourceOpencode = JSON.parse(readFileSync(join(PROJECT_ROOT, "opencode.json"), "utf8"));
 sourceOpencode.mcp = { oyster: { type: "remote", url: INTERNAL_MCP_URL } };
+
+// Inline the Oyster agent definition. We also copy the .md file into
+// `.opencode/agents/` (bootstrapUserland), but opencode's filesystem-based
+// agent discovery doesn't fire on Windows — the file is on disk but the
+// agent never shows up in `tab` cycle, and our HTTP proxy's `agent: "oyster"`
+// gets silently downgraded to the default build agent. Baking the agent
+// into opencode.json side-steps discovery entirely and keeps Mac/Linux
+// working too.
+try {
+  const agentSrc = readFileSync(join(PROJECT_ROOT, ".opencode", "agents", "oyster.md"), "utf8");
+  const fm = agentSrc.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (fm) {
+    const [, frontmatter, body] = fm;
+    const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+    sourceOpencode.agent = {
+      ...(sourceOpencode.agent || {}),
+      oyster: {
+        description: descMatch ? descMatch[1].trim() : "Oyster OS agent",
+        prompt: body.trim(),
+      },
+    };
+  }
+} catch (err) {
+  console.warn(`[bootstrap] could not inline oyster agent: ${err instanceof Error ? err.message : err}`);
+}
+
 writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode, null, 2) + "\n");
 
 const httpServer = createServer(handleHttpRequest);
