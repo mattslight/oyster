@@ -8,6 +8,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - **Windows: embedded opencode terminal now includes Oyster in the agent tab-cycle.** The `.opencode/agents/oyster.md` definition wasn't being picked up by opencode's TUI on Windows (worked on Mac), so only `build` / `plan` appeared. The agent is now inlined into the generated `opencode.json` as well, which the TUI reads directly.
 - **Windows: orphan-opencode sweep no longer errors on startup.** The PowerShell enumeration was being mangled by cmd.exe quoting (the embedded `|` in the output format string got parsed as a shell pipe), producing "empty pipe element" on every boot. Now passed via `-EncodedCommand` so cmd.exe never sees the script body.
+- **Windows: artifact iframes use the thin dark scrollbar** instead of the chunky native Windows one. Applied globally via the bridge script so every builtin and AI-generated artifact gets it for free.
 - **Windows: onboarding code snippet uses the thin dark scrollbar** instead of the chunky native Windows one.
 
 ## [0.4.0-beta.2] - 2026-04-24
