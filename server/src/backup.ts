@@ -27,16 +27,30 @@ function getAppVersion(): string {
  * Copies the entire userland directory (DB, artifacts, icons, configs)
  * to ~/oyster-backups/auto/backup-{date}/. One backup per day.
  * Rotates old auto backups, keeping the last 5 days.
+ *
+ * Post-#207: the DB now lives at `<root>/db/oyster.db`. This function
+ * also accepts the legacy `<root>/oyster.db` location so old installs
+ * still get backed up if anyone runs them. Dev-vs-installed detection
+ * now covers both `~/Oyster/` (installed, new) and `~/.oyster/userland/`
+ * (installed, pre-migration) — anything else is treated as dev.
  */
 export function runStartupBackup(userlandDir: string): void {
   if (!existsSync(userlandDir)) return;
-  if (!existsSync(join(userlandDir, "oyster.db"))) return;
+  // DB might be at the flat root (legacy) or inside db/ (post-#207).
+  // If neither exists, there's nothing to back up.
+  const hasDb = existsSync(join(userlandDir, "db", "oyster.db"))
+             || existsSync(join(userlandDir, "oyster.db"));
+  if (!hasDb) return;
 
   try {
-    const isDev = !userlandDir.includes(join(homedir(), ".oyster"));
-    const autoDir = isDev
-      ? join(homedir(), "oyster-backups", "dev")
-      : join(homedir(), "oyster-backups", "auto");
+    const installedRoots = [
+      join(homedir(), "Oyster"),            // post-#207 installed
+      join(homedir(), ".oyster", "userland"), // pre-migration installed
+    ];
+    const isInstalled = installedRoots.some((r) => userlandDir === r || userlandDir.startsWith(r + "/"));
+    const autoDir = isInstalled
+      ? join(homedir(), "oyster-backups", "auto")
+      : join(homedir(), "oyster-backups", "dev");
     mkdirSync(autoDir, { recursive: true });
 
     // One backup per day — stable name per date

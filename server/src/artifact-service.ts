@@ -128,8 +128,9 @@ export class ArtifactService {
     for (const e of entries) {
       if (e.filePath && archivedPaths.has(e.filePath)) continue;
       // Manifest-based gen ids are "gen:<plugin-folder>"; strip the prefix
-      // to get the folder name under ~/.oyster/userland/. Used as pluginId
-      // so Uninstall has a stable handle even after the DB reconciles the
+      // to get the folder name (under `apps/` for installed bundles, under
+      // `spaces/<space>/` for AI-generated ones). Used as pluginId so
+      // Uninstall has a stable handle even after the DB reconciles the
       // artifact to a UUID.
       const pluginFolderId = e.plugin && e.id.startsWith("gen:") ? e.id.slice(4) : undefined;
 
@@ -300,10 +301,11 @@ export class ArtifactService {
       source_origin?: "manual" | "discovered" | "ai_generated";
       extension?: string;
     },
-    // Caller provides the path to this space's native folder.
-    // Phase 1 of #207: today every caller resolves to `join(userlandDir, space_id)`.
-    // Phase 2 will switch to `join(SPACES_DIR, space_id)`. Taking a pre-resolved
-    // path here means the service doesn't need to know about the layout shape.
+    // Caller provides the pre-resolved path to this space's native folder
+    // (e.g. `~/Oyster/spaces/tokinvest`). The service stays layout-agnostic;
+    // the resolver lives in index.ts so swapping to a first-class sources
+    // table later (#208) is a one-function change at the top, not a sweep
+    // through every service caller.
     spaceNativePath: string,
   ): Promise<Artifact> {
     debug("artifact-svc", "createArtifact called", { label: params.label, space_id: params.space_id, kind: params.artifact_kind, subdir: params.subdir ?? null });

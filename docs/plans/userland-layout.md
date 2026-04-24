@@ -172,7 +172,7 @@ Visible, not hidden. Users should be able to find backups.
 ### `config/` — core config
 
 - `opencode.json` — AI engine config.
-- `.opencode/agents/oyster.md`, `.opencode/config.toml` — OpenCode sub-config. Currently lives at userland root; moves under `config/.opencode/` so all config is in one place.
+- `.opencode/agents/oyster.md`, `.opencode/config.toml` — OpenCode sub-config. **Stays at `OYSTER_HOME/.opencode/`** (not inside `config/`). opencode-ai discovers these via CWD walk-up; moving them into `config/` would require a spawn-flag change out of scope for this PR. `opencode.json` stays at root for the same reason. The `config/` directory exists for future Oyster-specific config.
 
 ### `apps/` — installable bundles
 

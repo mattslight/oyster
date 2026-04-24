@@ -573,20 +573,13 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               Restore
             </button>
           ) : artifactCtx.artifact.builtin ? (
-            // Builtins are re-seeded from the package on every boot. Most
-            // metadata is frozen (label, space, group), but the icon file
-            // sits next to the manifest and can be regenerated — the new
-            // PNG persists across restarts (bootstrap is add-only) until
-            // an `npm i -g oyster-os` upgrade resets it.
-            <>
-              <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>
-                Regenerate icon
-              </button>
-              <div className="space-ctx-sep" />
-              <span className="space-ctx-confirm" style={{ padding: "6px 12px", fontSize: "0.8em", opacity: 0.6 }}>
-                Label, space and group are read-only (built-in)
-              </span>
-            </>
+            // Builtins are re-seeded from the package on every boot. The
+            // icon is the one thing safely mutable — it sits next to the
+            // manifest and persists across restarts (bootstrap is add-only)
+            // until an `npm i -g oyster-os` upgrade resets it.
+            <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>
+              Regenerate icon
+            </button>
           ) : (
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>

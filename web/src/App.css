@@ -1486,7 +1486,7 @@ body {
 .archived-shortcut {
   position: fixed;
   bottom: 16px;
-  right: 16px;
+  left: 16px;
   z-index: 90;
   display: inline-flex;
   align-items: center;
@@ -2359,7 +2359,9 @@ body {
   z-index: 9999;
   min-width: 140px;
   padding: 4px;
-  background: var(--window-chrome);
+  /* Near-opaque — context menus shouldn't show tile contents through them.
+     Keep the blur as a small safety net for whatever sits behind. */
+  background: rgba(22, 23, 40, 0.97);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: 10px;

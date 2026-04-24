@@ -105,6 +105,9 @@
 
   <script>
     (async () => {
+      // Use textContent + DOM-node creation (not innerHTML with string
+      // concatenation) — space names are user-controlled and paths could
+      // contain any characters; innerHTML would open a DOM-XSS surface.
       try {
         const res = await fetch("/api/workspace");
         if (!res.ok) throw new Error("workspace api " + res.status);
@@ -114,20 +117,38 @@
         document.getElementById("oyster-home").textContent = info.oysterHome;
         document.getElementById("finder-word").textContent = info.platform === "win32" ? "Explorer" : "Finder";
 
-        const setPath = (id, p) => { document.getElementById(id).innerHTML = '<code>' + p + '</code>'; };
-        setPath("spaces-path", info.paths.spaces);
-        setPath("apps-path", info.paths.apps);
-        setPath("db-path", info.paths.db);
-        setPath("backups-path", info.paths.backups);
+        const setPathCell = (id, p) => {
+          const cell = document.getElementById(id);
+          cell.replaceChildren();
+          const code = document.createElement("code");
+          code.textContent = p;
+          cell.appendChild(code);
+        };
+        setPathCell("spaces-path", info.paths.spaces);
+        setPathCell("apps-path", info.paths.apps);
+        setPathCell("db-path", info.paths.db);
+        setPathCell("backups-path", info.paths.backups);
 
         // Spaces list
         const sl = document.getElementById("spaces-list");
+        sl.replaceChildren();
         if (info.spaces && info.spaces.length) {
-          sl.innerHTML = info.spaces.map(s =>
-            '<li><span class="lbl">' + s + '</span><code>' + info.paths.spaces + sep + s + '</code></li>'
-          ).join('');
+          for (const name of info.spaces) {
+            const li = document.createElement("li");
+            const lbl = document.createElement("span");
+            lbl.className = "lbl";
+            lbl.textContent = name;
+            const code = document.createElement("code");
+            code.textContent = info.paths.spaces + sep + name;
+            li.appendChild(lbl);
+            li.appendChild(code);
+            sl.appendChild(li);
+          }
         } else {
-          sl.innerHTML = '<li class="desc">No spaces yet. Ask your AI to set up Oyster, or create one via the chat bar.</li>';
+          const li = document.createElement("li");
+          li.className = "desc";
+          li.textContent = "No spaces yet. Ask your AI to set up Oyster, or create one via the chat bar.";
+          sl.appendChild(li);
         }
 
         // Examples — use a real space name where available
@@ -138,7 +159,25 @@
         document.getElementById("ex-app").textContent = info.paths.spaces + sep + "<space>" + sep + "<app-name>" + sep;
         document.getElementById("ex-installed").textContent = info.paths.apps + sep + "<app-name>" + sep;
       } catch (err) {
-        document.getElementById("oyster-home").innerHTML = '<span class="loading">couldn\'t reach /api/workspace: ' + err.message + '</span>';
+        const oh = document.getElementById("oyster-home");
+        oh.replaceChildren();
+        const span = document.createElement("span");
+        span.className = "loading";
+        span.textContent = "couldn't reach /api/workspace: " + err.message;
+        oh.appendChild(span);
+        // Clear the remaining "loading…" placeholders so the page doesn't look half-rendered.
+        const sl = document.getElementById("spaces-list");
+        sl.replaceChildren();
+        const fallback = document.createElement("li");
+        fallback.className = "desc";
+        fallback.textContent = "Couldn't load paths — see error above.";
+        sl.appendChild(fallback);
+        for (const id of ["spaces-path", "apps-path", "db-path", "backups-path"]) {
+          document.getElementById(id).textContent = "—";
+        }
+        for (const id of ["ex-invoice", "ex-note", "ex-app", "ex-installed"]) {
+          document.getElementById(id).textContent = "—";
+        }
       }
     })();
   </script>

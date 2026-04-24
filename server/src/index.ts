@@ -162,23 +162,29 @@ const ARTIFACTS_DIR = join(OYSTER_HOME, "")  + sep;
 // or null. Used by both /api/resolve-artifact-path and the static /artifacts/
 // server so they stay in sync.
 function resolveArtifactsUrl(relativePath: string): string | null {
-  const candidates: string[] = [
+  // Fast path: check the three fixed candidates first. This covers the vast
+  // majority of requests (icons/, APPS_DIR builtins, space-name-as-first-seg)
+  // without touching the filesystem beyond `existsSync`. Only fall back to
+  // walking every space directory when those miss — that's a real-but-rare
+  // case (AI-generated app inside a user space whose icon URL is just
+  // /artifacts/<app>/icon.png with no space hint).
+  const fixedCandidates = [
     join(OYSTER_HOME, relativePath),
     join(APPS_DIR, relativePath),
     join(SPACES_DIR, relativePath),
   ];
-  const firstSegment = relativePath.split("/")[0];
-  if (firstSegment && firstSegment !== "icons") {
-    try {
-      for (const spaceName of readdirSync(SPACES_DIR)) {
-        candidates.push(join(SPACES_DIR, spaceName, relativePath));
-      }
-    } catch { /* SPACES_DIR might not exist on a fresh install */ }
-  }
-  for (const candidate of candidates) {
+  for (const candidate of fixedCandidates) {
     if (!candidate.startsWith(OYSTER_HOME)) continue;
     if (existsSync(candidate)) return candidate;
   }
+  const firstSegment = relativePath.split("/")[0];
+  if (!firstSegment || firstSegment === "icons") return null;
+  try {
+    for (const spaceName of readdirSync(SPACES_DIR)) {
+      const candidate = join(SPACES_DIR, spaceName, relativePath);
+      if (candidate.startsWith(OYSTER_HOME) && existsSync(candidate)) return candidate;
+    }
+  } catch { /* SPACES_DIR might not exist on a fresh install */ }
   return null;
 }
 
@@ -651,9 +657,16 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       if (!artifact) { sendJson({ error: `Artifact "${id}" not found` }, 404); return; }
       const sourcePath = artifactService.getDocFile(id);
       if (!sourcePath) { sendJson({ error: "Icon regeneration is only supported for static file artifacts" }, 400); return; }
+      // Only write the icon into a bundle root when the source is laid out
+      // as a manifest-based bundle (source file lives under a `src/` dir).
+      // For single-file artifacts (a loose .md / .html) the "natural dir" is
+      // the containing folder — which might hold many artifacts — so the
+      // regenerated icon would overwrite a shared icon.png. Route those to
+      // the per-artifact dedicated dir at OYSTER_HOME/icons/<id>/ instead;
+      // ArtifactService.resolveIcon checks that path first.
       const srcIdx = sourcePath.lastIndexOf(`${sep}src${sep}`);
-      const naturalDir = srcIdx !== -1 ? sourcePath.slice(0, srcIdx) : dirname(sourcePath);
-      artifactDir = naturalDir.startsWith(OYSTER_HOME) ? naturalDir : join(OYSTER_HOME, "icons", id);
+      const isManifestBundle = srcIdx !== -1 && sourcePath.slice(0, srcIdx).startsWith(OYSTER_HOME);
+      artifactDir = isManifestBundle ? sourcePath.slice(0, srcIdx) : join(OYSTER_HOME, "icons", id);
       label = artifact.label;
       artifactKind = artifact.artifactKind;
     }
@@ -1177,6 +1190,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       store,
       service: artifactService,
       userlandDir: USERLAND_DIR,
+      getNativeSourcePath,
       iconGenerator,
       spaceService,
       memoryProvider,

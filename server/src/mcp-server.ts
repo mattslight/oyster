@@ -118,6 +118,13 @@ interface McpDeps {
   store: ArtifactStore;
   service: ArtifactService;
   userlandDir: string;
+  /**
+   * Resolves a space id to its native folder on disk
+   * (e.g. `~/Oyster/spaces/tokinvest`). Passed in from index.ts so this
+   * module stays layout-agnostic — the MCP `create_artifact` handler uses
+   * it to route new content into the correct sub-tree.
+   */
+  getNativeSourcePath: (spaceId: string) => string;
   iconGenerator: IconGenerator;
   spaceService: SpaceService;
   memoryProvider: MemoryProvider;
@@ -302,7 +309,7 @@ See the "Set up Oyster for me" playbook above for the full audit + propose + app
 - Use \`update_artifact\` to rename, reassign to a different space, or change the group.
 - Use \`remove_artifact\` to hide an artifact from the surface (reversible).
 
-Do NOT read or write the SQLite database (userland/oyster.db) directly.
+Do NOT read or write the SQLite databases under Oyster's \`db/\` folder directly.
 Files you create must live under: ${userlandDir}/
 `.trim();
 }
@@ -647,7 +654,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
       try {
         const artifact = await deps.service.createArtifact(
           { space_id, label, artifact_kind, content, subdir, group_name, source_origin, extension },
-          deps.userlandDir,
+          deps.getNativeSourcePath(space_id),
         );
         return {
           content: [{ type: "text" as const, text: JSON.stringify(artifact, null, 2) }],
