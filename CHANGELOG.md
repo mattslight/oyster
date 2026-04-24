@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Setup dock no longer skips the "Connect your AI" step.** After Oyster created your first space via the chat bar, the dock was jumping straight to *"Bring in your memories"* — incorrectly treating MCP as already done. The MCP step now remains offered until you actually connect an external agent.
+
 ## [0.4.0-beta.3] - 2026-04-24
 
 ### Changed
