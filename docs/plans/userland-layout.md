@@ -363,7 +363,7 @@ Not in the merged #172+#182 PR, but captured so the full picture is visible:
 ## Acceptance
 
 - Fresh `npm i -g oyster-os` install creates `~/Oyster/{db,config,apps,backups,spaces}/` and nothing else. `spaces/home/` exists as the default.
-- Existing `~/.oyster/userland/` installs migrate cleanly on first startup of the new version; all artifacts still resolve; backup snapshot captured.
+- Existing `~/.oyster/userland/` installs are **not** auto-migrated on first startup in this PR — migration is via the manual reorg steps documented above (author's prod), or via fresh install for early users without content worth migrating.
 - Users browsing `~/Oyster/` can name every top-level folder without help. A user looking for their tokinvest invoice finds `~/Oyster/spaces/tokinvest/invoices/ms-2026-001.md` without Oyster running.
 - Agent playbook rule in `.opencode/agents/oyster.md` directs AI-generated content through `create_artifact`; no more drift of homeless content into registered repos.
 - `oyster.to` and `oyster-sample-plugin` repo renames filed as follow-up tickets (not gate-blocking).

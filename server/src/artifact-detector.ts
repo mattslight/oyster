@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, dirname, basename, sep, isAbsolute, normalize } from "node:path";
+import { join, dirname, basename, relative, sep, isAbsolute, normalize } from "node:path";
 import {
   registerGeneratedArtifact,
   updateGeneratedArtifact,
@@ -301,8 +301,13 @@ export function scanExistingArtifacts(
             if (!seenArtifacts.has(id)) {
               const name = inferName(foundFile);
               const type = inferType(foundFile);
-              // URLs must use forward slashes; sep is "\" on Windows, so rewrite.
-              const serveRelative = `/artifacts/${foundFile.slice(artifactsDir.length).split(sep).join("/")}`;
+              // Use path.relative so callers can pass the root with or
+              // without a trailing separator — a raw slice(artifactsDir.length)
+              // produced leading-slash URLs like `/artifacts//invoices/...`
+              // when the caller didn't trail-slash, which broke the resolver.
+              // URLs also need forward slashes; sep is "\" on Windows.
+              const relFromRoot = relative(artifactsDir, foundFile).split(sep).join("/");
+              const serveRelative = `/artifacts/${relFromRoot}`;
               seenArtifacts.add(id);
               console.log(`[artifact-detect] scan: ${name} (${type}) → ${serveRelative}`);
               registerGeneratedArtifact({

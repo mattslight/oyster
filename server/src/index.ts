@@ -654,6 +654,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       // builtin bundles, plus each SPACES_DIR/<space>/ for space-scoped
       // generated ones (matches scanExistingArtifacts' coverage).
       const folderId = id.slice("gen:".length);
+      // Strict whitelist — stops traversal via URL-encoded "../", backslashes,
+      // etc. before it hits the filesystem. Mirrors the validation on
+      // /api/plugins/:id/uninstall; keep the two in sync.
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(folderId)) {
+        sendJson({ error: `Invalid artifact id '${id}'` }, 400); return;
+      }
       const candidateDirs: string[] = [join(APPS_DIR, folderId)];
       try {
         for (const spaceName of readdirSync(SPACES_DIR)) {
@@ -665,7 +671,16 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         }
       } catch { /* SPACES_DIR missing on a fresh install */ }
 
-      const resolvedDir = candidateDirs.find((d) => existsSync(join(d, "manifest.json")));
+      // Defence in depth: even with the whitelist above, verify every
+      // candidate is actually inside OYSTER_HOME via resolve()+sep before
+      // reading it. Protects against symlinks and any future weakening of
+      // the whitelist.
+      const rootPath = resolve(OYSTER_HOME);
+      const resolvedDir = candidateDirs.find((d) => {
+        const r = resolve(d);
+        if (r !== rootPath && !r.startsWith(rootPath + sep)) return false;
+        return existsSync(join(d, "manifest.json"));
+      });
       if (!resolvedDir) {
         sendJson({ error: `Artifact "${id}" not found` }, 404); return;
       }
