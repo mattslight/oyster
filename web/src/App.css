@@ -833,6 +833,23 @@ body {
   border-radius: 6px;
   padding: 3px 10px;
   margin-left: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.chatbar-hero-prompt:hover:not(:disabled) {
+  background: rgba(124, 107, 255, 0.18);
+  border-color: rgba(124, 107, 255, 0.4);
+}
+
+.chatbar-hero-prompt:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.chatbar-hero-prompt:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .chatbar-hero .chatbar-oyster {

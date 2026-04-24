@@ -265,9 +265,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [expanded, setExpanded]);
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || streaming || !sessionId) return;
-    const content = input;
+  const handleSend = useCallback(async (override?: string) => {
+    const raw = override ?? input;
+    if (!raw.trim() || streaming || !sessionId) return;
+    const content = raw;
 
     // ── # commands — instant space switch, no LLM call ──
     if (content.trim().startsWith("#") && onSpaceChange) {
@@ -395,7 +396,16 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             <>
               <span className="tagline-bright">Welcome to your surface.</span>
               <div className="chatbar-hero-sub">
-                Ask: <code className="chatbar-hero-prompt">Set up Oyster</code>
+                Ask:{" "}
+                <button
+                  type="button"
+                  className="chatbar-hero-prompt"
+                  onClick={() => handleSend("Set up Oyster")}
+                  disabled={!sessionId || streaming}
+                  title="Click to send, or type it yourself"
+                >
+                  Set up Oyster
+                </button>
               </div>
             </>
           ) : tagline ? (
@@ -601,7 +611,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         />
         <button
           className="chatbar-send"
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={streaming || !input.trim()}
         >
           {streaming ? "..." : "↑"}
