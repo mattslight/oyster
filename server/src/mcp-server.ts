@@ -644,7 +644,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "create_artifact",
-    "Create a new file inside userland and register it as a desktop artifact in one step. The server computes the file path from space_id and label — you provide the content. Appears immediately on the user's desktop.",
+    "Create a new file under the space's native folder (<workspace>/spaces/<space-id>/...) and register it as a desktop artifact in one step. The server computes the file path from space_id, label, and optional subdir — you provide the content. Do not try to write into <workspace>/db/, <workspace>/apps/, or the workspace root; those are reserved. Appears immediately on the user's desktop.",
     {
       space_id: z.string().describe("Space to place the artifact in"),
       label: z.string().describe("Display name on the desktop. Also determines the filename (slugified)."),

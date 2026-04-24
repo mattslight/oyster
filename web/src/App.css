@@ -1632,6 +1632,12 @@ body {
   background: rgba(255, 90, 95, 1);
 }
 
+.confirm-modal-btn:disabled,
+.confirm-modal-btn:disabled:hover {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* ── Spotlight Search ── */
 
 .spotlight-overlay {

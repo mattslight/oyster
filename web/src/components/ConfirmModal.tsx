@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface Props {
@@ -25,9 +25,17 @@ export function ConfirmModal({
   onConfirm, onCancel,
 }: Props) {
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  // Guards against rapid double-clicks queuing duplicate destructive ops
+  // (uninstall, archive). First click sets submitting; subsequent clicks
+  // are ignored until the caller closes the modal (which resets on next
+  // open via the useEffect below).
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSubmitting(false);
+      return;
+    }
     confirmBtnRef.current?.focus();
     // Only handle Escape here. Enter is handled implicitly by the focused
     // confirm button — if we also listened for Enter on window, a single
@@ -72,7 +80,12 @@ export function ConfirmModal({
             ref={confirmBtnRef}
             type="button"
             className={`confirm-modal-btn confirm-modal-btn--confirm${destructive ? " confirm-modal-btn--destructive" : ""}`}
-            onClick={onConfirm}
+            disabled={submitting}
+            onClick={() => {
+              if (submitting) return;
+              setSubmitting(true);
+              onConfirm();
+            }}
           >
             {confirmLabel}
           </button>
