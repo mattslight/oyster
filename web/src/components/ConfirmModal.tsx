@@ -29,13 +29,17 @@ export function ConfirmModal({
   useEffect(() => {
     if (!open) return;
     confirmBtnRef.current?.focus();
+    // Only handle Escape here. Enter is handled implicitly by the focused
+    // confirm button — if we also listened for Enter on window, a single
+    // keypress would fire both this handler and the button's native click,
+    // double-invoking onConfirm (spotted in review — would have caused
+    // double-uninstall / double-archive).
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") { e.stopPropagation(); onCancel(); }
-      else if (e.key === "Enter") { e.stopPropagation(); onConfirm(); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel, onConfirm]);
+  }, [open, onCancel]);
 
   if (!open) return null;
 

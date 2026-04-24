@@ -635,11 +635,12 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       />
 
       {/*
-        Archived-view shortcut: small pill at bottom-right of the surface.
-        Until now the archived view was only reachable via `#archived` in the
-        chat bar — that's fine for power users but invisible to everyone else.
-        Hidden when already viewing archived (it would self-reference) and
-        when renaming (to not cover the input).
+        Archived-view shortcut: icon at bottom-left of the surface, mirroring
+        the version badge on the bottom-right so the two etched marks share
+        a baseline. Until now the archived view was only reachable via
+        `#archived` in the chat bar — fine for power users but invisible to
+        everyone else. Hidden when already viewing archived (self-reference)
+        and when renaming (to not cover the input).
       */}
       {space !== "__archived__" && renamingId === null && (
         <button
