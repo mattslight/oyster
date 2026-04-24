@@ -636,19 +636,31 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     let artifactDir: string | undefined;
 
     if (id.startsWith("gen:")) {
-      // Builtin or unreconciled generated artifact — look up from the in-memory
-      // registry rather than the DB.
+      // Builtin or unreconciled generated artifact — look up by walking the
+      // same candidate roots the scanner walks: APPS_DIR for installed /
+      // builtin bundles, plus each SPACES_DIR/<space>/ for space-scoped
+      // generated ones (matches scanExistingArtifacts' coverage).
       const folderId = id.slice("gen:".length);
-      const guess = join(APPS_DIR, folderId);
-      const manifestPath = join(guess, "manifest.json");
-      if (!existsSync(manifestPath)) {
-        sendJson({ error: `Artifact "${id}" not found in ${APPS_DIR}` }, 404); return;
+      const candidateDirs: string[] = [join(APPS_DIR, folderId)];
+      try {
+        for (const spaceName of readdirSync(SPACES_DIR)) {
+          const spaceDir = join(SPACES_DIR, spaceName);
+          try {
+            if (!statSync(spaceDir).isDirectory()) continue;
+          } catch { continue; }
+          candidateDirs.push(join(spaceDir, folderId));
+        }
+      } catch { /* SPACES_DIR missing on a fresh install */ }
+
+      const resolvedDir = candidateDirs.find((d) => existsSync(join(d, "manifest.json")));
+      if (!resolvedDir) {
+        sendJson({ error: `Artifact "${id}" not found` }, 404); return;
       }
       try {
-        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+        const manifest = JSON.parse(readFileSync(join(resolvedDir, "manifest.json"), "utf8"));
         label = manifest.name;
         artifactKind = manifest.type;
-        artifactDir = guess;
+        artifactDir = resolvedDir;
       } catch (err) {
         sendJson({ error: `Failed to read manifest for "${id}": ${(err as Error).message}` }, 500); return;
       }

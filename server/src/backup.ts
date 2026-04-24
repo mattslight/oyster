@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, cpSync, readdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -43,11 +43,17 @@ export function runStartupBackup(userlandDir: string): void {
   if (!hasDb) return;
 
   try {
+    // Normalise both sides so the installed-vs-dev check is path-separator
+    // agnostic (Windows uses `\`, POSIX uses `/`). Without resolve() a
+    // Windows installed path (`C:\Users\x\Oyster`) wouldn't match the
+    // "installed" prefix check against a POSIX-style string and backups
+    // would silently go to the dev folder.
+    const normUserland = resolve(userlandDir);
     const installedRoots = [
-      join(homedir(), "Oyster"),            // post-#207 installed
-      join(homedir(), ".oyster", "userland"), // pre-migration installed
+      resolve(join(homedir(), "Oyster")),             // post-#207 installed
+      resolve(join(homedir(), ".oyster", "userland")), // pre-migration installed
     ];
-    const isInstalled = installedRoots.some((r) => userlandDir === r || userlandDir.startsWith(r + "/"));
+    const isInstalled = installedRoots.some((r) => normUserland === r || normUserland.startsWith(r + sep));
     const autoDir = isInstalled
       ? join(homedir(), "oyster-backups", "auto")
       : join(homedir(), "oyster-backups", "dev");

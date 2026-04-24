@@ -1486,10 +1486,10 @@ body {
    the topbar: visible to anyone looking for it, ignored by anyone not. */
 .archived-shortcut {
   position: fixed;
-  /* Match the version badge at bottom: 8px / right: 12px on the opposite
-     corner so the two etched marks share a baseline. The icon glyph sits
-     centred in a 4px inset box so its visual bottom aligns with the 11px
-     version text. */
+  /* Mirror of the version badge — that one sits at bottom: 8px / right: 12px;
+     this one sits at the opposite bottom-left corner so the two etched marks
+     share a baseline. Icon glyph in a 4px inset box so its visual bottom
+     aligns with the 11px version text on the far side. */
   bottom: 4px;
   left: 8px;
   z-index: 90;

@@ -11,9 +11,9 @@ import { debug, debugEnabled } from "./debug.js";
 // App bundles live in directories with a manifest.json and src/. They're
 // detected by scanning for manifest.json or falling back to filename-based
 // inference. New artifacts start as "generating" and transition to "ready"
-// after quiescence + entrypoint exists. Today these bundles sit at the
-// userland root; after #207 phase 2, installed apps live in APPS_DIR and
-// AI-generated apps in SPACES_DIR/<space-id>/.
+// after quiescence + entrypoint exists. Installed and builtin apps are
+// discovered under APPS_DIR, and space-scoped generated apps are discovered
+// under SPACES_DIR/<space-id>/.
 
 const seenArtifacts = new Set<string>();
 
