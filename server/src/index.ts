@@ -673,8 +673,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
       // Defence in depth: even with the whitelist above, verify every
       // candidate is actually inside OYSTER_HOME via resolve()+sep before
-      // reading it. Protects against symlinks and any future weakening of
-      // the whitelist.
+      // reading it. Normalises path segments (handles any accidental `..`
+      // that slipped past the allowlist, double slashes, etc.) — does NOT
+      // follow symlinks; realpathSync would be needed for that, and is
+      // filed as future hardening since the allowlist already bars the
+      // usual traversal vectors.
       const rootPath = resolve(OYSTER_HOME);
       const resolvedDir = candidateDirs.find((d) => {
         const r = resolve(d);
@@ -750,7 +753,15 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       }
     } catch { /* no SPACES_DIR yet on fresh install */ }
 
-    const dir = candidates.find((c) => c.startsWith(OYSTER_HOME) && existsSync(c));
+    // resolve()+sep-terminated-prefix check — the raw startsWith would let
+    // an `OysterX` sibling match `Oyster`. Same hardening pattern used in
+    // resolveArtifactsUrl and the icon-regen endpoint.
+    const rootPath = resolve(OYSTER_HOME);
+    const dir = candidates.find((c) => {
+      const r = resolve(c);
+      if (r !== rootPath && !r.startsWith(rootPath + sep)) return false;
+      return existsSync(c);
+    });
     if (!dir) {
       sendJson({ error: `'${id}' is not installed` }, 404);
       return;

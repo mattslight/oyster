@@ -136,7 +136,7 @@ Different folders have different write-ownership rules. Oyster can edit content 
 |---|---|---|
 | Registered external repo (`~/Dev/oyster-os`) | Yes — via agent, MCP, or user | **User / git** — branches, commits, PRs, deploys. Oyster is a collaborator, not the owner. |
 | Oyster-owned app (`~/Oyster/apps/<id>/`) | No — install / update / uninstall only | **Oyster** — atomic unit, updates replace the bundle. User edits are expected to get clobbered on next update. |
-| Oyster-owned files (`~/Oyster/files/`) | Yes | User, via Oyster's UI (and optionally git, if they choose) |
+| Oyster-owned content (`~/Oyster/spaces/<space-id>/`) | Yes | User, via Oyster's UI (and optionally git, if they choose) |
 | Core system (`~/Oyster/db/`, `~/Oyster/config/`) | Internal only | Oyster |
 
 ### Bundle discipline (borrowed from macOS `.app`)
@@ -151,7 +151,7 @@ This is the macOS `/Applications` (disposable bundle) vs `~/Library/Application 
 
 ### Where published apps come from
 
-Lifecycle: `files/my-thing/` → user hits "publish" → packaged with manifest → moves to `apps/my-thing/`. Reversible.
+Lifecycle: `spaces/<space-id>/my-thing/` → user hits "publish" → packaged with manifest → moves to `apps/my-thing/`. Reversible. (Publish flow itself is out of scope for this PR; see `#116`.)
 
 ### Where hotpluggable memory goes
 
@@ -180,7 +180,7 @@ Visible, not hidden. Users should be able to find backups.
 
 - Builtins (`connect-your-ai`, `quick-start`, `import-from-ai`, `the-worlds-your-oyster`) — shipped with the npm package, copied on first run.
 - User-installed (community): `pomodoro`, etc.
-- User-published: `my-app/` after promotion from `files/`.
+- User-published: `my-app/` after promotion from `spaces/<space-id>/my-app/`.
 
 Each has `manifest.json`. UI distinguishes them via manifest `source` field.
 
@@ -257,7 +257,7 @@ Rationale: they're known-broken leftovers (the generator started, failed before 
 
 ## Naming collisions
 
-Within `files/`, two single-file artifacts could have the same name (e.g. two home-space notes called `brief.md`). Current behaviour: `create_artifact` in `artifact-service.ts` handles this by generating unique filenames on creation. Need to verify this during migration — if any two existing artifacts would land at the same path in `files/`, append a suffix (`brief-1.md`) and update `storage_config.path` accordingly.
+Within a space folder (`~/Oyster/spaces/<space-id>/`), two single-file artifacts could have the same name (e.g. two home-space notes called `brief.md`). Current behaviour: `create_artifact` in `artifact-service.ts` handles this by generating unique filenames on creation. Needed to verify during the manual reorg — if any two existing artifacts would land at the same path, suffix-append (`brief-1.md`) and update `storage_config.path`.
 
 Same applies inside `apps/`: two apps with the same `id` shouldn't exist today (DB enforces), but migration should defend against it.
 

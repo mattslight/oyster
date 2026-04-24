@@ -159,11 +159,14 @@
         document.getElementById("ex-app").textContent = info.paths.spaces + sep + "<space>" + sep + "<app-name>" + sep;
         document.getElementById("ex-installed").textContent = info.paths.apps + sep + "<app-name>" + sep;
       } catch (err) {
+        // `err` might not be an Error instance (a plain string, a DOMException, etc.).
+        // Treating it as Error would render "undefined" or throw. Coerce safely.
+        const message = err instanceof Error ? err.message : String(err);
         const oh = document.getElementById("oyster-home");
         oh.replaceChildren();
         const span = document.createElement("span");
         span.className = "loading";
-        span.textContent = "couldn't reach /api/workspace: " + err.message;
+        span.textContent = "couldn't reach /api/workspace: " + message;
         oh.appendChild(span);
         // Clear the remaining "loading…" placeholders so the page doesn't look half-rendered.
         const sl = document.getElementById("spaces-list");
