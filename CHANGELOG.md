@@ -4,9 +4,11 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0-beta.2] - 2026-04-24
+
 ### Fixed
 
-- **`oyster install <id>` now works.** The CLI was writing to the pre-0.4 hidden workspace path while the server scans the new `~/Oyster/apps/` — so installs silently landed where nothing looked. Community plugins now install and appear on the surface after a restart.
+- **`oyster install <id>` now works.** The CLI was writing to the pre-0.4 hidden workspace path while the server scans the new `~/Oyster/apps/` — so installs silently landed where nothing looked. Community plugins now install and appear on the surface after a restart. ([#212](https://github.com/mattslight/oyster/pull/212))
 
 ## [0.4.0-beta.1] - 2026-04-24
 
