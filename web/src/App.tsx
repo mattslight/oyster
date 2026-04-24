@@ -22,6 +22,17 @@ import type { Space } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
 
+// `?onboarding=force` wipes the dock's persisted state and pretends this
+// is a fresh install — lets us iterate on 0/3 hero copy without touching
+// the real userland. Runs synchronously at module load so the clear
+// happens before <OnboardingDock> reads localStorage in its useState
+// initialiser. Dev-only convention; no-op in production if unused.
+const FORCE_ONBOARDING = typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("onboarding") === "force";
+if (FORCE_ONBOARDING && typeof localStorage !== "undefined") {
+  localStorage.removeItem("oyster-onboarding-state");
+}
+
 export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -247,7 +258,8 @@ export default function App() {
   }, [activeSpace, handleSpaceChange]);
 
   const isHero = activeSpace === "home";
-  const isFirstRun = spaces.filter(s => s.id !== "home" && s.id !== "__all__").length === 0;
+  const isFirstRun = FORCE_ONBOARDING ||
+    spaces.filter(s => s.id !== "home" && s.id !== "__all__").length === 0;
 
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
@@ -516,7 +528,7 @@ export default function App() {
       )}
 
       <OnboardingDock
-        userSpaceCount={spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
+        userSpaceCount={FORCE_ONBOARDING ? 0 : spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
       />
     </div>
   );

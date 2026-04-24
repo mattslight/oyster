@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Fresh-install hero now says *"Ask Oyster to set things up"*** instead of *"Tell your agent…"*. The old "your agent" wording implied an external MCP client the user had yet to connect, which contradicted the fact that Oyster's built-in agent is already running by the time the browser loads. Adds a *"Start here."* lead-in so first-timers know the chatbar is the entry point.
+
 ### Fixed
 
 - **Windows: orphan-opencode sweep no longer errors on startup.** The PowerShell enumeration was being mangled by cmd.exe quoting (the embedded `|` in the output format string got parsed as a shell pipe), producing "empty pipe element" on every boot. Now passed via `-EncodedCommand` so cmd.exe never sees the script body.
