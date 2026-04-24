@@ -8,10 +8,12 @@ import { IconGenerator } from "./icon-generator.js";
 import { debug, debugEnabled } from "./debug.js";
 
 // ── Artifact detection ──
-// Artifacts live in userland/<id>/ with a manifest.json and src/ directory.
-// The server detects them by scanning for manifest.json files or falling back
-// to filename-based inference. New artifacts start as "generating" and
-// transition to "ready" after quiescence + entrypoint exists.
+// App bundles live in directories with a manifest.json and src/. They're
+// detected by scanning for manifest.json or falling back to filename-based
+// inference. New artifacts start as "generating" and transition to "ready"
+// after quiescence + entrypoint exists. Today these bundles sit at the
+// userland root; after #207 phase 2, installed apps live in APPS_DIR and
+// AI-generated apps in SPACES_DIR/<space-id>/.
 
 const seenArtifacts = new Set<string>();
 
@@ -176,7 +178,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
   const filePath = normalize(isAbs ? rawPath : `${userlandDir}${rawPath}`);
   if (debugEnabled) debug("watcher", "file.edited", { rawPath, filePath, isAbs });
 
-  // Check if this file is inside userland
+  // Check if this file is inside the watched artifacts root
   if (filePath.startsWith(artifactsDir)) {
     const relativePath = filePath.slice(artifactsDir.length);
     const topDir = relativePath.split(sep)[0];

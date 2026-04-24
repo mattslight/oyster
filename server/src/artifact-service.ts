@@ -300,7 +300,11 @@ export class ArtifactService {
       source_origin?: "manual" | "discovered" | "ai_generated";
       extension?: string;
     },
-    userlandDir: string,
+    // Caller provides the path to this space's native folder.
+    // Phase 1 of #207: today every caller resolves to `join(userlandDir, space_id)`.
+    // Phase 2 will switch to `join(SPACES_DIR, space_id)`. Taking a pre-resolved
+    // path here means the service doesn't need to know about the layout shape.
+    spaceNativePath: string,
   ): Promise<Artifact> {
     debug("artifact-svc", "createArtifact called", { label: params.label, space_id: params.space_id, kind: params.artifact_kind, subdir: params.subdir ?? null });
     const label = params.label.trim();
@@ -314,7 +318,7 @@ export class ArtifactService {
     const id = crypto.randomUUID();
 
     // Subdir containment check (resolved path, not string scan)
-    const baseDir = join(userlandDir, space_id);
+    const baseDir = spaceNativePath;
     const targetDir = params.subdir ? resolve(baseDir, params.subdir) : baseDir;
     if (targetDir !== baseDir && !targetDir.startsWith(baseDir + sep)) {
       throw new Error("subdir must stay within the space directory");
@@ -333,11 +337,14 @@ export class ArtifactService {
     }
     writeFileSync(absPath, params.content, { encoding: "utf8", flag: "wx" });
 
-    // Register — best-effort rollback on DB failure
+    // Register — best-effort rollback on DB failure.
+    // Approved-root check confirms the file we just wrote stayed within the
+    // space's native folder (stricter than the old `[userlandDir]` check —
+    // the subdir containment above already guarantees this).
     try {
       return await this.registerArtifact(
         { path: absPath, space_id, label, artifact_kind: params.artifact_kind, group_name: params.group_name, id, source_origin: params.source_origin },
-        [userlandDir],
+        [spaceNativePath],
       );
     } catch (err) {
       try { unlinkSync(absPath); } catch {}

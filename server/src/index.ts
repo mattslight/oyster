@@ -106,9 +106,41 @@ const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
-// Installed → ~/.oyster/userland, dev → ./userland
-const USERLAND_DIR = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
-const ARTIFACTS_DIR = join(USERLAND_DIR, "")  + sep;
+// ── Oyster userland layout ──
+// Phase 1 of #207: introduce named directory roles that today all resolve
+// to the flat userland directory. Phase 2 will split them into the visible
+// `~/Oyster/{db,config,apps,backups,spaces}/` layout.
+//
+//   OYSTER_HOME — the user's Oyster workspace root.
+//     Installed → ~/.oyster/userland (current) → ~/Oyster (phase 2)
+//     Dev       → ./userland
+//   DB_DIR      — where oyster.db and memory.db live. Today = OYSTER_HOME.
+//   CONFIG_DIR  — opencode.json + .opencode/. Today = OYSTER_HOME.
+//   APPS_DIR    — installed app bundles (builtins + community). Today = OYSTER_HOME.
+//   SPACES_DIR  — one folder per user space. Today = OYSTER_HOME (flat).
+//
+// Keeping them all equal to OYSTER_HOME means this phase is a pure refactor.
+// Tests and user files stay exactly where they are.
+const OYSTER_HOME = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
+const DB_DIR = OYSTER_HOME;
+const CONFIG_DIR = OYSTER_HOME;
+const APPS_DIR = OYSTER_HOME;
+const SPACES_DIR = OYSTER_HOME;
+
+// Retained for callsites that pass a "userland root" down the stack. Alias
+// to OYSTER_HOME so we can rename one name at a time across files in this
+// refactor without breaking anything.
+const USERLAND_DIR = OYSTER_HOME;
+
+// Resolver for a space's native folder (where `create_artifact` writes).
+// All code that today computes `join(USERLAND_DIR, space_id)` should go
+// through this. Phase 2 will change the implementation to use SPACES_DIR
+// and that's the only place the new path needs to land.
+function getNativeSourcePath(spaceId: string): string {
+  return join(SPACES_DIR, spaceId);
+}
+
+const ARTIFACTS_DIR = join(OYSTER_HOME, "")  + sep;
 
 // ── MIME types ──
 
@@ -873,7 +905,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
         const executeDeps: ExecuteDeps = {
           createSpace: (name) => spaceService.createSpace({ name }),
-          createArtifact: (params) => artifactService.createArtifact(params, USERLAND_DIR),
+          createArtifact: (params) => artifactService.createArtifact(params, getNativeSourcePath(params.space_id)),
           remember: (input) => memoryProvider.remember(input),
           findMemory: (content, spaceId) => memoryProvider.findExact(content, spaceId ?? undefined),
           resolveSpaceByName: (name) => {

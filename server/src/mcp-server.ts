@@ -565,7 +565,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "register_artifact",
-    "Register a file that already exists on disk as a desktop artifact. Use this only when the file already exists. To create new content and register it in one step, use create_artifact instead. The file must be inside userland/. Kind and ID are inferred from the filename if not provided.",
+    "Register a file that already exists on disk as a desktop artifact. Use this only when the file already exists. To create new content and register it in one step, use create_artifact instead. Any absolute path the server can read is accepted; prefer files the user controls (inside a registered space folder or a repo the user has attached). Kind and ID are inferred from the filename if not provided.",
     {
       path: z.string().describe("Absolute path to the file"),
       space_id: z.string().describe("Space to place the artifact in (use `list_spaces` to see what's available)"),

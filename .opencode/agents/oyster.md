@@ -74,6 +74,7 @@ You have MCP tools (the `oyster` server) for managing the desktop surface direct
 
 - **At the start of any Oyster task** — call `get_context` first. It gives you the documented workflow for onboarding, artifact creation, and tool sequencing. Do not improvise the flow from scratch.
 - **Creating something new**: call `create_artifact(space_id, label, artifact_kind, content)`. Do not write files manually then register — that is the old flow.
+- **Where new content lands**: `create_artifact` writes inside the user's Oyster workspace, organised by space (e.g. invoices, research notes, generated apps). Never bypass it by raw-writing files into a registered repo — that's the codebase's territory, not the workspace's. If the content doesn't belong in a repo (invoices, presentations, research, loose notes), it goes through `create_artifact`. Raw `Write` is only for editing existing code inside a repo the user owns.
 - **After `create_artifact`**: always call `reveal_artifact(id)` — this switches the user's desktop to the right space and highlights the new icon so they know where it landed.
 - **Editing an existing artifact**: call `read_artifact(id)` to get the current content, edit the file at `source_path` (from `list_artifacts`), surface updates automatically.
 - **Reorganising**: use `update_artifact(id, { space_id, group_name, label })` to move between spaces or groups.
