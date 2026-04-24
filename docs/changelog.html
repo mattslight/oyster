@@ -312,6 +312,7 @@
   </div>
 
   <nav class="version-pills" aria-label="Jump to version">
+      <a class="version-pill" href="#v-unreleased">Unreleased</a>
       <a class="version-pill" href="#v-0-4-0-beta-1">0.4</a>
       <a class="version-pill" href="#v-0-3-8">0.3</a>
       <a class="version-pill" href="#v-0-2-4">0.2</a>
@@ -320,6 +321,11 @@
   </nav>
 
   <main class="entries">
+<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.1...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>oyster install &lt;id&gt;</code> now works.</strong> The CLI was writing to the pre-0.4 hidden workspace path while the server scans the new <code>~/Oyster/apps/</code> — so installs silently landed where nothing looked. Community plugins now install and appear on the surface after a restart.</li>
+</ul>
 <h2 id="v-0-4-0-beta-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.0...v0.4.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.1</span></a><span class="release-date"> — 2026-04-24</span></h2>
 <h3>Added</h3>
 <ul>
