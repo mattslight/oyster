@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Where are my files?</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #7c6bff;
+      --text: #f0f0f5;
+      --text-dim: rgba(232,233,240,0.55);
+      --text-muted: rgba(232,233,240,0.3);
+      --surface: rgba(22,23,40,0.6);
+      --border: rgba(124,107,255,0.18);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      padding: 48px 24px 80px;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+    .glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,107,255,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 100% 110%, rgba(124,107,255,0.08) 0%, transparent 60%);
+    }
+    .wrap { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+    .lead { color: var(--text-dim); font-size: 1rem; margin-bottom: 32px; }
+    code, .path {
+      font-family: var(--font-mono);
+      font-size: 0.9em;
+      background: rgba(124,107,255,0.08);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 4px;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .primary {
+      display: block;
+      padding: 18px 22px;
+      font-family: var(--font-mono);
+      font-size: 1.05rem;
+      background: rgba(124,107,255,0.12);
+      border: 1px solid rgba(124,107,255,0.3);
+      border-radius: 10px;
+      margin: 20px 0 36px;
+      user-select: all;
+    }
+    h2 { font-size: 1.1rem; font-weight: 600; margin: 28px 0 12px; letter-spacing: -0.01em; }
+    ul { list-style: none; padding: 0; margin: 12px 0; }
+    li { margin: 10px 0; }
+    li .lbl { color: var(--text); font-weight: 500; margin-right: 8px; }
+    li .desc { color: var(--text-dim); font-size: 0.92em; margin-left: 8px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    td.k { color: var(--text-dim); white-space: nowrap; padding-right: 16px; }
+    .note { color: var(--text-muted); font-size: 0.88em; margin-top: 20px; line-height: 1.55; }
+    .note code { background: transparent; border: none; padding: 0; color: var(--text-dim); }
+    .loading { color: var(--text-muted); font-family: var(--font-mono); }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="wrap">
+    <h1>Where are my files?</h1>
+    <p class="lead">Your Oyster workspace lives here. Open it in <span id="finder-word">Finder</span> any time — your content is self-describing on disk, no Oyster needed to read it.</p>
+
+    <div class="primary" id="oyster-home"><span class="loading">loading…</span></div>
+
+    <h2>What's inside</h2>
+    <table>
+      <tr><td class="k">spaces/</td><td id="spaces-path" class="path-cell"></td></tr>
+      <tr><td class="k">apps/</td><td id="apps-path" class="path-cell"></td></tr>
+      <tr><td class="k">db/</td><td id="db-path" class="path-cell"></td></tr>
+      <tr><td class="k">backups/</td><td id="backups-path" class="path-cell"></td></tr>
+    </table>
+
+    <h2>Your spaces</h2>
+    <ul id="spaces-list"><li class="loading">loading…</li></ul>
+
+    <h2>Finding a specific file</h2>
+    <table>
+      <tr><td class="k">A tokinvest invoice</td><td><code id="ex-invoice"></code></td></tr>
+      <tr><td class="k">A note in home</td><td><code id="ex-note"></code></td></tr>
+      <tr><td class="k">An AI-generated app</td><td><code id="ex-app"></code></td></tr>
+      <tr><td class="k">An installed app</td><td><code id="ex-installed"></code></td></tr>
+    </table>
+
+    <p class="note">
+      <strong>Moving things:</strong> use Oyster (the agent or the UI) for moves and renames so the filesystem and the database stay in sync. Finder-only moves aren't reconciled yet.<br><br>
+      <strong>External repos:</strong> Oyster can also surface artifacts from repos elsewhere on disk (e.g. <code>~/Dev/my-project/</code>). Those files stay where they are — Oyster keeps a pointer, not a copy.
+    </p>
+  </div>
+
+  <script>
+    (async () => {
+      try {
+        const res = await fetch("/api/workspace");
+        if (!res.ok) throw new Error("workspace api " + res.status);
+        const info = await res.json();
+        const sep = info.platform === "win32" ? "\\" : "/";
+
+        document.getElementById("oyster-home").textContent = info.oysterHome;
+        document.getElementById("finder-word").textContent = info.platform === "win32" ? "Explorer" : "Finder";
+
+        const setPath = (id, p) => { document.getElementById(id).innerHTML = '<code>' + p + '</code>'; };
+        setPath("spaces-path", info.paths.spaces);
+        setPath("apps-path", info.paths.apps);
+        setPath("db-path", info.paths.db);
+        setPath("backups-path", info.paths.backups);
+
+        // Spaces list
+        const sl = document.getElementById("spaces-list");
+        if (info.spaces && info.spaces.length) {
+          sl.innerHTML = info.spaces.map(s =>
+            '<li><span class="lbl">' + s + '</span><code>' + info.paths.spaces + sep + s + '</code></li>'
+          ).join('');
+        } else {
+          sl.innerHTML = '<li class="desc">No spaces yet. Ask your AI to set up Oyster, or create one via the chat bar.</li>';
+        }
+
+        // Examples — use a real space name where available
+        const tokinvest = info.spaces.find(s => s === "tokinvest") || "<space>";
+        const home = info.spaces.find(s => s === "home") || info.spaces[0] || "home";
+        document.getElementById("ex-invoice").textContent = info.paths.spaces + sep + tokinvest + sep + "invoices" + sep + "<name>.md";
+        document.getElementById("ex-note").textContent = info.paths.spaces + sep + home + sep + "<name>.md";
+        document.getElementById("ex-app").textContent = info.paths.spaces + sep + "<space>" + sep + "<app-name>" + sep;
+        document.getElementById("ex-installed").textContent = info.paths.apps + sep + "<app-name>" + sep;
+      } catch (err) {
+        document.getElementById("oyster-home").innerHTML = '<span class="loading">couldn\'t reach /api/workspace: ' + err.message + '</span>';
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -12,6 +12,7 @@ import {
   waitForReady,
   updateGeneratedArtifact,
   getGeneratedArtifactEntries,
+  type ArtifactKind,
 } from "./process-manager.js";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
@@ -146,6 +147,41 @@ function getNativeSourcePath(spaceId: string): string {
 // be scanned; see the callsites below.
 const ARTIFACTS_DIR = join(OYSTER_HOME, "")  + sep;
 
+// Resolve a /artifacts/<relativePath> URL to a file on disk. The icon
+// resolver in artifact-service emits URLs like /artifacts/<folder>/icon.png
+// using just the folder name (the artifact's bundle dir), so this handler
+// has to try every place that folder could live after #207:
+//
+//   OYSTER_HOME/<rel>          — dedicated icons/<id>/ + legacy flat
+//   APPS_DIR/<rel>             — installed bundles (builtins + community)
+//   SPACES_DIR/<rel>           — <rel> starts with a space name (e.g. blunderfixer/icon.png)
+//   SPACES_DIR/<space>/<rel>   — <rel> is a bundle folder inside a space (e.g. car-racer/icon.png
+//                                 which lives at spaces/home/car-racer/)
+//
+// Returns the first existing candidate under OYSTER_HOME (path-traversal guard),
+// or null. Used by both /api/resolve-artifact-path and the static /artifacts/
+// server so they stay in sync.
+function resolveArtifactsUrl(relativePath: string): string | null {
+  const candidates: string[] = [
+    join(OYSTER_HOME, relativePath),
+    join(APPS_DIR, relativePath),
+    join(SPACES_DIR, relativePath),
+  ];
+  const firstSegment = relativePath.split("/")[0];
+  if (firstSegment && firstSegment !== "icons") {
+    try {
+      for (const spaceName of readdirSync(SPACES_DIR)) {
+        candidates.push(join(SPACES_DIR, spaceName, relativePath));
+      }
+    } catch { /* SPACES_DIR might not exist on a fresh install */ }
+  }
+  for (const candidate of candidates) {
+    if (!candidate.startsWith(OYSTER_HOME)) continue;
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 // ── MIME types ──
 
 const MIME: Record<string, string> = {
@@ -189,6 +225,17 @@ function bootstrapUserland() {
     `${PROJECT_ROOT}/.opencode/config.toml`,
     `${OYSTER_HOME}/.opencode/config.toml`,
   );
+
+  // Drop a static README at the Oyster root so users browsing in
+  // Finder / Explorer can orient themselves without starting the app.
+  // This is deliberately static and broad (getting-started, shortcut
+  // commands, layout hints). The in-app "Where are my files?" builtin
+  // shows the *live* per-install paths — different audience, different
+  // content.
+  const readmeSrc = join(PROJECT_ROOT, "assets", "oyster-home-readme.md");
+  if (existsSync(readmeSrc)) {
+    syncIfNewer(readmeSrc, `${OYSTER_HOME}/README.md`);
+  }
 
   // Ensure a default "home" space folder exists so create_artifact can
   // always resolve a landing spot, even on a fresh install with no other
@@ -412,34 +459,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       filePath = artifactService.getDocFile(docsMatch[1]);
     }
 
-    // /artifacts/... → resolves across the layout in priority order:
-    //   OYSTER_HOME/icons/<id>/...        — dedicated icons (URL: /artifacts/icons/...)
-    //   APPS_DIR/<name>/...               — installed apps (builtins + community)
-    //   SPACES_DIR/<space>/<name>/...     — AI-generated apps under their owning space
-    //   OYSTER_HOME/<name>/...            — legacy fallback for pre-migration
+    // /artifacts/... → resolveArtifactsUrl walks the split layout.
     if (!filePath && targetUrl.startsWith("/artifacts/")) {
       const relativePath = targetUrl.slice("/artifacts/".length).split("?")[0];
-      const candidates: string[] = [
-        join(APPS_DIR, relativePath),
-        join(OYSTER_HOME, relativePath), // icons/<id>/icon.png + legacy flat
-      ];
-      // Scan per-space app dirs for the first path segment matching <name>
-      const firstSegment = relativePath.split("/")[0];
-      if (firstSegment && firstSegment !== "icons") {
-        try {
-          for (const spaceName of readdirSync(SPACES_DIR)) {
-            const candidate = join(SPACES_DIR, spaceName, relativePath);
-            candidates.push(candidate);
-          }
-        } catch { /* SPACES_DIR might not exist on a fresh install */ }
-      }
-      for (const candidate of candidates) {
-        // Containment check — candidate must stay under OYSTER_HOME, else reject
-        // (protects against path-traversal via /artifacts/../etc).
-        if (!candidate.startsWith(OYSTER_HOME) || !existsSync(candidate)) continue;
-        filePath = candidate;
-        break;
-      }
+      const resolved = resolveArtifactsUrl(relativePath);
+      if (resolved) filePath = resolved;
     }
 
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -451,6 +475,31 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // the same reason /api/artifacts/archived is: it contains user-private
   // artifact metadata that a malicious cross-origin site could otherwise
   // enumerate against a running local Oyster.
+  // /api/workspace → the resolved Oyster workspace layout, used by the
+  // "Where are my files?" builtin so it shows this user's actual paths
+  // (respects OYSTER_USERLAND + dev vs installed). Local-origin gated for
+  // the same reason as /api/artifacts — paths are user-private.
+  if (url === "/api/workspace") {
+    if (rejectIfNonLocalOrigin()) return;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      oysterHome: OYSTER_HOME,
+      paths: {
+        db: DB_DIR,
+        apps: APPS_DIR,
+        spaces: SPACES_DIR,
+        backups: BACKUPS_DIR,
+      },
+      platform: process.platform,
+      spaces: (() => {
+        try { return readdirSync(SPACES_DIR).filter((e) => {
+          try { return statSync(join(SPACES_DIR, e)).isDirectory(); } catch { return false; }
+        }); } catch { return []; }
+      })(),
+    }));
+    return;
+  }
+
   if (url === "/api/artifacts") {
     if (rejectIfNonLocalOrigin()) return;
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
@@ -562,9 +611,68 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // POST /api/plugins/:id/uninstall — remove the plugin folder from userland.
-  // The artifact detector + getAllArtifacts self-heal the in-memory and DB
-  // entries; no separate cleanup needed here. Mirrors `oyster uninstall <id>`.
+  // POST /api/artifacts/:id/icon/regenerate — trigger a fresh AI icon for
+  // an artifact. Mirrors the MCP `regenerate_icon` tool so the UI can offer
+  // a right-click "Regenerate icon" action without going through chat.
+  //
+  // Builtins: their id is `gen:<folder>` and they have no DB row. The
+  // service-layer lookup would miss them; handle directly from APPS_DIR.
+  // Overwriting the icon.png there persists across restarts (bootstrap is
+  // add-only) — next `npm install -g oyster-os` upgrade would reset it,
+  // which is acceptable.
+  const iconRegenMatch = url.match(/^\/api\/artifacts\/([^/]+)\/icon\/regenerate$/);
+  if (iconRegenMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    const id = decodeURIComponent(iconRegenMatch[1]);
+
+    let label: string | undefined;
+    let artifactKind: string | undefined;
+    let artifactDir: string | undefined;
+
+    if (id.startsWith("gen:")) {
+      // Builtin or unreconciled generated artifact — look up from the in-memory
+      // registry rather than the DB.
+      const folderId = id.slice("gen:".length);
+      const guess = join(APPS_DIR, folderId);
+      const manifestPath = join(guess, "manifest.json");
+      if (!existsSync(manifestPath)) {
+        sendJson({ error: `Artifact "${id}" not found in ${APPS_DIR}` }, 404); return;
+      }
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+        label = manifest.name;
+        artifactKind = manifest.type;
+        artifactDir = guess;
+      } catch (err) {
+        sendJson({ error: `Failed to read manifest for "${id}": ${(err as Error).message}` }, 500); return;
+      }
+    } else {
+      const artifact = await artifactService.getArtifactById(id);
+      if (!artifact) { sendJson({ error: `Artifact "${id}" not found` }, 404); return; }
+      const sourcePath = artifactService.getDocFile(id);
+      if (!sourcePath) { sendJson({ error: "Icon regeneration is only supported for static file artifacts" }, 400); return; }
+      const srcIdx = sourcePath.lastIndexOf(`${sep}src${sep}`);
+      const naturalDir = srcIdx !== -1 ? sourcePath.slice(0, srcIdx) : dirname(sourcePath);
+      artifactDir = naturalDir.startsWith(OYSTER_HOME) ? naturalDir : join(OYSTER_HOME, "icons", id);
+      label = artifact.label;
+      artifactKind = artifact.artifactKind;
+    }
+
+    mkdirSync(artifactDir!, { recursive: true });
+    const queued = iconGenerator.forceEnqueue(id, label!, artifactKind! as ArtifactKind, artifactDir!);
+    if (!queued) {
+      sendJson({ error: "Icon generation is disabled on this install (FAL_KEY not configured)" }, 503);
+      return;
+    }
+    sendJson({ status: "queued", id, label });
+    return;
+  }
+
+  // POST /api/plugins/:id/uninstall — remove an app bundle from disk.
+  // Post-#207 the bundle could live at APPS_DIR/<id>/ (installed) or
+  // SPACES_DIR/<space>/<id>/ (AI-generated under a space). Search both,
+  // plus legacy OYSTER_HOME/<id>/ for any un-migrated install.
+  // The artifact detector + getAllArtifacts self-heal DB entries.
   const pluginUninstallMatch = url.match(/^\/api\/plugins\/([^/]+)\/uninstall$/);
   if (pluginUninstallMatch && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return;
@@ -573,8 +681,18 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       sendJson({ error: `Invalid plugin id '${id}'` }, 400);
       return;
     }
-    const dir = join(USERLAND_DIR, id);
-    if (!existsSync(dir)) {
+    const candidates: string[] = [
+      join(APPS_DIR, id),
+      join(OYSTER_HOME, id),
+    ];
+    try {
+      for (const spaceName of readdirSync(SPACES_DIR)) {
+        candidates.push(join(SPACES_DIR, spaceName, id));
+      }
+    } catch { /* no SPACES_DIR yet on fresh install */ }
+
+    const dir = candidates.find((c) => c.startsWith(OYSTER_HOME) && existsSync(c));
+    if (!dir) {
       sendJson({ error: `'${id}' is not installed` }, 404);
       return;
     }
@@ -585,7 +703,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     }
     try {
       rmSync(dir, { recursive: true, force: true });
-      sendJson({ id, uninstalled: true });
+      sendJson({ id, uninstalled: true, path: dir });
     } catch (err) {
       sendError(err, 500);
     }
@@ -763,19 +881,15 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   // ── Static file serving for /artifacts/ ──
+  // Uses the shared resolveArtifactsUrl walker so this stays in sync with the
+  // /api/resolve-artifact-path helper above. The walker enforces the
+  // path-traversal guard (must stay under OYSTER_HOME).
   if (url.startsWith("/artifacts/")) {
     const urlPath = url.split("?")[0];
     const relativePath = urlPath.slice("/artifacts/".length);
-    const filePath = join(ARTIFACTS_DIR, relativePath);
+    const filePath = resolveArtifactsUrl(relativePath);
 
-    // Security: prevent path traversal
-    if (!filePath.startsWith(ARTIFACTS_DIR)) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
-    }
-
-    if (!existsSync(filePath)) {
+    if (!filePath) {
       res.writeHead(404);
       res.end("Not found");
       return;

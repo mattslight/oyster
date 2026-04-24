@@ -1480,6 +1480,160 @@ body {
   width: 100%;
 }
 
+/* ── Archived-view shortcut ── */
+/* Small pill bottom-right of the surface. Low-key — visible to anyone
+   looking for it but doesn't steal attention from the primary grid. */
+.archived-shortcut {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  color: rgba(232, 233, 240, 0.55);
+  background: rgba(20, 22, 40, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.archived-shortcut:hover,
+.archived-shortcut:focus-visible {
+  color: rgba(232, 233, 240, 0.9);
+  background: rgba(30, 32, 54, 0.85);
+  border-color: rgba(124, 107, 255, 0.4);
+  outline: none;
+}
+
+/* ── Confirm / alert modal ── */
+/* In-app replacement for window.confirm(). Matches the spotlight
+   aesthetic — backdrop blur, glass panel, subtle border. */
+
+.confirm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  /* Sits above everything — chat bar (900), spotlight (200), viewer windows
+     (1000), tooltips (9999). Modal dialogs must beat all of them. */
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.confirm-modal-panel {
+  width: 460px;
+  max-width: 100%;
+  background: rgba(13, 14, 26, 0.94);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  padding: 24px;
+  color: var(--text, #f0f0f5);
+  font-family: inherit;
+}
+
+.confirm-modal-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 10px;
+  letter-spacing: -0.01em;
+}
+
+.confirm-modal-body {
+  color: rgba(232, 233, 240, 0.72);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  word-break: break-word;
+}
+
+.confirm-modal-body code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+  background: rgba(124, 107, 255, 0.08);
+  border: 1px solid rgba(124, 107, 255, 0.15);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.prompt-modal-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text, #f0f0f5);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(124, 107, 255, 0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 20px;
+  outline: none;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.prompt-modal-input:focus {
+  border-color: rgba(124, 107, 255, 0.7);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-modal-btn {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.confirm-modal-btn--cancel {
+  background: transparent;
+  color: rgba(232, 233, 240, 0.65);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.confirm-modal-btn--cancel:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 233, 240, 0.9);
+}
+
+.confirm-modal-btn--confirm {
+  background: rgba(124, 107, 255, 0.85);
+  color: #ffffff;
+  border-color: rgba(124, 107, 255, 1);
+}
+.confirm-modal-btn--confirm:hover,
+.confirm-modal-btn--confirm:focus-visible {
+  background: rgba(124, 107, 255, 1);
+  outline: none;
+}
+
+.confirm-modal-btn--destructive {
+  background: rgba(255, 90, 95, 0.85);
+  border-color: rgba(255, 90, 95, 1);
+}
+.confirm-modal-btn--destructive:hover,
+.confirm-modal-btn--destructive:focus-visible {
+  background: rgba(255, 90, 95, 1);
+}
+
 /* ── Spotlight Search ── */
 
 .spotlight-overlay {

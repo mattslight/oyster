@@ -61,6 +61,11 @@ export async function uninstallPlugin(id: string): Promise<void> {
   if (!res.ok) await throwFromResponse(res);
 }
 
+export async function regenerateIcon(id: string): Promise<void> {
+  const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}/icon/regenerate`, { method: "POST" });
+  if (!res.ok) await throwFromResponse(res);
+}
+
 export async function renameGroup(
   spaceId: string,
   oldName: string,

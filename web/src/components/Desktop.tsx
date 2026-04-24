@@ -1,9 +1,11 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { LayoutGrid, List, ArrowDownAZ, Tag, Clock, Folder, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { LayoutGrid, List, ArrowDownAZ, Tag, Clock, Folder, AlignLeft, AlignCenter, AlignRight, Archive } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
-import { archiveArtifact, archiveGroup, renameGroup, restoreArtifact, uninstallPlugin, updateArtifact } from "../data/artifacts-api";
+import { archiveArtifact, archiveGroup, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, updateArtifact } from "../data/artifacts-api";
 import { ArtifactIcon, typeConfig } from "./ArtifactIcon";
+import { ConfirmModal } from "./ConfirmModal";
+import { PromptModal } from "./PromptModal";
 import { GroupIcon } from "./GroupIcon";
 import Grainient from "./reactbits/Grainient";
 import { spaceColor } from "../utils/spaceColor";
@@ -32,7 +34,7 @@ interface Props {
   isArchivedView?: boolean;
 }
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Folder context menu ──
@@ -62,6 +64,35 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   // ── Inline rename state — when set, the matching tile swaps its label for an input ──
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
+  // ── Confirm / alert modal state ──
+  // Replaces native window.confirm() / alert() with styled in-app dialogs.
+  // Destructive actions (uninstall, archive) get a red confirm button.
+  type ConfirmState = {
+    open: boolean;
+    title: string;
+    body?: React.ReactNode;
+    confirmLabel?: string;
+    destructive?: boolean;
+    onConfirm: () => void;
+  };
+  const [confirmState, setConfirmState] = useState<ConfirmState>({
+    open: false, title: "", onConfirm: () => {},
+  });
+  type AlertState = { open: boolean; title: string; body?: React.ReactNode };
+  const [alertState, setAlertState] = useState<AlertState>({ open: false, title: "" });
+
+  type PromptState = {
+    open: boolean;
+    title: string;
+    body?: React.ReactNode;
+    initialValue?: string;
+    confirmLabel?: string;
+    onSubmit: (value: string) => void;
+  };
+  const [promptState, setPromptState] = useState<PromptState>({
+    open: false, title: "", onSubmit: () => {},
+  });
+
   // ── Context-menu action handlers ──
   // Optimistic updates go first via onArtifactUpdate / onArtifactRemove so
   // the UI responds instantly; onRefresh is called only on failure (to
@@ -84,25 +115,46 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     } catch (err) {
       // Revert the optimistic change on failure.
       onArtifactUpdate?.(artifact.id, { label: artifact.label });
-      alert(`Rename failed: ${(err as Error).message}`);
+      setAlertState({ open: true, title: "Rename failed", body: (err as Error).message });
     }
   }
   async function handleArchiveArtifact(artifact: Artifact) {
     setArtifactCtx(null);
     onArtifactRemove?.(artifact.id);
     try { await archiveArtifact(artifact.id); }
-    catch (err) { onRefresh?.(); alert(`Archive failed: ${(err as Error).message}`); }
+    catch (err) { onRefresh?.(); setAlertState({ open: true, title: "Archive failed", body: (err as Error).message }); }
   }
-  async function handleUninstallPlugin(artifact: Artifact) {
+  function handleUninstallPlugin(artifact: Artifact) {
     setArtifactCtx(null);
     // `artifact.id` is a DB UUID once reconciled; the plugin folder is named
     // by manifest id, exposed as `pluginId`. Fall back to id only as a last
     // resort (pre-reconcile or mis-tagged entries).
     const folderId = artifact.pluginId ?? artifact.id;
-    if (!window.confirm(`Uninstall "${artifact.label}"? This removes the plugin folder "~/.oyster/userland/${folderId}".`)) return;
-    onArtifactRemove?.(artifact.id);
-    try { await uninstallPlugin(folderId); }
-    catch (err) { onRefresh?.(); alert(`Uninstall failed: ${(err as Error).message}`); }
+    // Queue the confirm modal; the actual uninstall fires on confirm.
+    setConfirmState({
+      open: true,
+      title: `Uninstall "${artifact.label}"?`,
+      body: <>This removes the app's folder from your Oyster workspace.</>,
+      confirmLabel: "Uninstall",
+      destructive: true,
+      onConfirm: async () => {
+        setConfirmState((s) => ({ ...s, open: false }));
+        onArtifactRemove?.(artifact.id);
+        try { await uninstallPlugin(folderId); }
+        catch (err) { onRefresh?.(); setAlertState({ open: true, title: "Uninstall failed", body: (err as Error).message }); }
+      },
+    });
+  }
+  async function handleRegenerateIcon(artifact: Artifact) {
+    setArtifactCtx(null);
+    try {
+      await regenerateIcon(artifact.id);
+      // The icon-generator writes the new file and the next /api/artifacts
+      // poll will pick up the refreshed iconStatus.
+      onRefresh?.();
+    } catch (err) {
+      setAlertState({ open: true, title: "Regenerate icon failed", body: (err as Error).message });
+    }
   }
   async function handleRestoreArtifact(artifact: Artifact) {
     setArtifactCtx(null);
@@ -110,24 +162,40 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     // refetches the archived list and confirms.
     onArtifactRemove?.(artifact.id);
     try { await restoreArtifact(artifact.id); }
-    catch (err) { onRefresh?.(); alert(`Restore failed: ${(err as Error).message}`); }
+    catch (err) { onRefresh?.(); setAlertState({ open: true, title: "Restore failed", body: (err as Error).message }); }
   }
-  async function handleRenameGroup(oldName: string, sourceSpaceId?: string) {
-    setFolderCtx(null);
-    const next = window.prompt("Rename folder", oldName);
-    if (next === null) return;
-    const trimmed = next.trim();
-    if (!trimmed || trimmed === oldName) return;
-    const targetSpace = sourceSpaceId ?? space;
-    try { await renameGroup(targetSpace, oldName, trimmed); onRefresh?.(); }
-    catch (err) { alert(`Rename folder failed: ${(err as Error).message}`); }
-  }
-  async function handleArchiveGroup(name: string, sourceSpaceId?: string) {
+  function handleRenameGroup(oldName: string, sourceSpaceId?: string) {
     setFolderCtx(null);
     const targetSpace = sourceSpaceId ?? space;
-    if (!window.confirm(`Archive folder "${name}" and all its artifacts?`)) return;
-    try { await archiveGroup(targetSpace, name); onRefresh?.(); }
-    catch (err) { alert(`Archive folder failed: ${(err as Error).message}`); }
+    setPromptState({
+      open: true,
+      title: "Rename folder",
+      initialValue: oldName,
+      confirmLabel: "Rename",
+      onSubmit: async (value: string) => {
+        setPromptState((s) => ({ ...s, open: false }));
+        const trimmed = value.trim();
+        if (!trimmed || trimmed === oldName) return;
+        try { await renameGroup(targetSpace, oldName, trimmed); onRefresh?.(); }
+        catch (err) { setAlertState({ open: true, title: "Rename folder failed", body: (err as Error).message }); }
+      },
+    });
+  }
+  function handleArchiveGroup(name: string, sourceSpaceId?: string) {
+    setFolderCtx(null);
+    const targetSpace = sourceSpaceId ?? space;
+    setConfirmState({
+      open: true,
+      title: `Archive folder "${name}"?`,
+      body: <>All artifacts inside are archived with it. You can restore from the archived view later.</>,
+      confirmLabel: "Archive",
+      destructive: true,
+      onConfirm: async () => {
+        setConfirmState((s) => ({ ...s, open: false }));
+        try { await archiveGroup(targetSpace, name); onRefresh?.(); }
+        catch (err) { setAlertState({ open: true, title: "Archive folder failed", body: (err as Error).message }); }
+      },
+    });
   }
 
   // ── Topbar auto-hide ──
@@ -505,16 +573,27 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               Restore
             </button>
           ) : artifactCtx.artifact.builtin ? (
-            // Builtins are re-seeded from the package on every boot — the
-            // menu is a no-op read-only marker rather than surfacing actions
-            // that would either fail or be reverted on next start.
-            <span className="space-ctx-confirm" style={{ padding: "6px 12px" }}>
-              Read-only (built-in)
-            </span>
+            // Builtins are re-seeded from the package on every boot. Most
+            // metadata is frozen (label, space, group), but the icon file
+            // sits next to the manifest and can be regenerated — the new
+            // PNG persists across restarts (bootstrap is add-only) until
+            // an `npm i -g oyster-os` upgrade resets it.
+            <>
+              <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>
+                Regenerate icon
+              </button>
+              <div className="space-ctx-sep" />
+              <span className="space-ctx-confirm" style={{ padding: "6px 12px", fontSize: "0.8em", opacity: 0.6 }}>
+                Label, space and group are read-only (built-in)
+              </span>
+            </>
           ) : (
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>
                 Rename
+              </button>
+              <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>
+                Regenerate icon
               </button>
               <div className="space-ctx-sep" />
               {artifactCtx.artifact.plugin ? (
@@ -530,6 +609,55 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
           )}
         </div>,
         document.body,
+      )}
+
+      <ConfirmModal
+        open={confirmState.open}
+        title={confirmState.title}
+        body={confirmState.body}
+        confirmLabel={confirmState.confirmLabel}
+        destructive={confirmState.destructive}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
+      />
+
+      <ConfirmModal
+        open={alertState.open}
+        title={alertState.title}
+        body={alertState.body}
+        confirmLabel="OK"
+        cancelLabel={null}
+        onConfirm={() => setAlertState({ open: false, title: "" })}
+        onCancel={() => setAlertState({ open: false, title: "" })}
+      />
+
+      <PromptModal
+        open={promptState.open}
+        title={promptState.title}
+        body={promptState.body}
+        initialValue={promptState.initialValue}
+        confirmLabel={promptState.confirmLabel}
+        onSubmit={promptState.onSubmit}
+        onCancel={() => setPromptState((s) => ({ ...s, open: false }))}
+      />
+
+      {/*
+        Archived-view shortcut: small pill at bottom-right of the surface.
+        Until now the archived view was only reachable via `#archived` in the
+        chat bar — that's fine for power users but invisible to everyone else.
+        Hidden when already viewing archived (it would self-reference) and
+        when renaming (to not cover the input).
+      */}
+      {space !== "__archived__" && renamingId === null && (
+        <button
+          className="archived-shortcut"
+          onClick={() => onSpaceChange("__archived__")}
+          title="View archived artifacts"
+          aria-label="View archived artifacts"
+        >
+          <Archive size={14} strokeWidth={2} />
+          <span>Archived</span>
+        </button>
       )}
     </div>
   );
