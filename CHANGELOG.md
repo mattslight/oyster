@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Fresh-install hero now says *"Welcome to your surface. Type: Set up Oyster"*** instead of *"Tell your agent…"*. The old copy implied an external MCP client the user had yet to connect; the new copy uses the existing brand line and tells the user exactly what to type. The chatbar itself remains the entry point — no extra buttons or suggestion chips.
+
 ### Fixed
 
 - **Windows: embedded opencode terminal now includes Oyster in the agent tab-cycle.** The `.opencode/agents/oyster.md` definition wasn't being picked up by opencode's TUI on Windows (worked on Mac), so only `build` / `plan` appeared. The agent is now inlined into the generated `opencode.json` as well, which the TUI reads directly.

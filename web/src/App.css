@@ -816,6 +816,42 @@ body {
   color: var(--text);
 }
 
+.chatbar-hero-sub {
+  margin-top: 14px;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0;
+}
+
+.chatbar-hero-prompt {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.95em;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 10px;
+  margin-left: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.chatbar-hero-prompt:hover:not(:disabled) {
+  background: rgba(124, 107, 255, 0.18);
+  border-color: rgba(124, 107, 255, 0.4);
+}
+
+.chatbar-hero-prompt:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.chatbar-hero-prompt:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .chatbar-hero .chatbar-oyster {
   width: 40px;
   height: 40px;
