@@ -87,7 +87,7 @@ oyster uninstall pomodoro
 Implementation: ~50 lines. `gh api` or raw HTTPS → fetch release assets → validate `manifest.json` → write to `~/.oyster/plugins/<id>/` → signal the server to re-scan. Plus a matching slash command in chat (`/install <repo>`).
 
 ### Tier 3 — Curated community directory
-Obsidian: author submits a PR to `obsidianmd/obsidian-releases` adding one entry to `community-plugins.json`:
+Obsidian's pattern: author submits a PR to `obsidianmd/obsidian-releases` adding one entry to `community-plugins.json`. The JSON shape (shown here with an Oyster-style example, since we're documenting what Oyster's equivalent will look like):
 ```json
 { "id": "pomodoro", "name": "Pomodoro", "author": "mattslight",
   "description": "…", "repo": "mattslight/oyster-sample-app" }
