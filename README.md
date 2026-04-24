@@ -111,7 +111,7 @@ Early v1. Local-first. Single-user. Built for fast iteration.
 
 **Next:** smoother onboarding, faster artefact navigation, better repo import.
 
-**Vision:** plugins, dynamic UI that reshapes to fit the task, build & share apps.
+**Vision:** community apps, dynamic UI that reshapes to fit the task, build & share apps.
 
 See every shipped change in the [changelog](https://oyster.to/changelog).
 

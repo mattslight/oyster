@@ -126,7 +126,7 @@ Oyster's loader reads the manifest and wires up accordingly:
 - `type: service, provides: memory` → swaps in as the memory backend
 - `source: builtin` → UI gates destructive operations (delete / edit)
 
-This aligns with how `docs/plans/plugin-system.md` already frames it ("apps and plugins are the same concern"); this spec commits to **app** as the dominant noun.
+This aligns with how `docs/plans/apps-system.md` already frames it ("apps and plugins are the same concern"); this spec commits to **app** as the dominant noun.
 
 ### Lifecycle ownership
 

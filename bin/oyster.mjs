@@ -11,7 +11,7 @@ import { homedir, tmpdir } from "node:os";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB cap on plugin bundles
+const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB cap on app bundles
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const API_TIMEOUT_MS = 10_000;
 // The community registry is the trust root for `oyster install <id>`. A merged
@@ -36,9 +36,9 @@ if (args.includes("--help") || args.includes("-h") || args[0] === "help") {
   process.exit(0);
 }
 
-// ── Plugin subcommands ──
+// ── App subcommands ──
 
-const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const APP_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const REPO_PATTERN = /^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,64}$/;
 
 const cmd = args[0];
@@ -62,9 +62,9 @@ function printHelp() {
 
   Usage:
     oyster                            Start the server (default)
-    oyster install <id|owner/repo>    Install a plugin by registry id, or directly from a repo
-    oyster uninstall <id>             Remove an installed plugin
-    oyster list                       List installed plugins
+    oyster install <id|owner/repo>    Install an app by registry id, or directly from a repo
+    oyster uninstall <id>             Remove an installed app
+    oyster list                       List installed apps
     oyster --version                  Print version
     oyster --help                     Show this help
 
@@ -78,13 +78,13 @@ function printHelp() {
 // via the registry, letting the caller assert the downloaded manifest.id
 // matches what the user typed. For direct <owner>/<repo> installs there's
 // nothing to cross-check against, so expectedId is null.
-async function resolvePluginArg(arg) {
+async function resolveAppArg(arg) {
   if (!arg) {
-    throw new Error("install expects a plugin id or <owner>/<repo>, e.g. 'oyster install pomodoro'");
+    throw new Error("install expects an app id or <owner>/<repo>, e.g. 'oyster install pomodoro'");
   }
   if (REPO_PATTERN.test(arg)) return { repo: arg, expectedId: null };
-  if (!PLUGIN_ID_PATTERN.test(arg)) {
-    throw new Error(`'${arg}' is neither a valid plugin id nor an <owner>/<repo> path.`);
+  if (!APP_ID_PATTERN.test(arg)) {
+    throw new Error(`'${arg}' is neither a valid app id nor an <owner>/<repo> path.`);
   }
   console.log(`\n  Looking up '${arg}' in the community registry...`);
   const registry = await fetchJson(REGISTRY_URL);
@@ -93,7 +93,7 @@ async function resolvePluginArg(arg) {
   }
   const matches = registry.filter((p) => p && p.id === arg);
   if (matches.length === 0) {
-    throw new Error(`'${arg}' is not listed in the community registry. Try 'oyster install <owner>/<repo>' for plugins that aren't listed, or browse https://oyster.to/plugins.`);
+    throw new Error(`'${arg}' is not listed in the community registry. Try 'oyster install <owner>/<repo>' for apps that aren't listed, or browse https://oyster.to/apps.`);
   }
   if (matches.length > 1) {
     throw new Error(`Registry has ${matches.length} entries with id '${arg}' — report this to the registry maintainer.`);
@@ -107,14 +107,14 @@ async function resolvePluginArg(arg) {
 }
 
 async function cmdInstall(arg) {
-  const { repo, expectedId } = await resolvePluginArg(arg);
+  const { repo, expectedId } = await resolveAppArg(arg);
 
   console.log(`\n  Fetching latest release of ${repo}...`);
   const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
   const assets = release.assets || [];
   const zipAsset = assets.find((a) => a.name.toLowerCase().endsWith(".zip"));
   if (!zipAsset) {
-    throw new Error(`No .zip asset found in release ${release.tag_name || "?"} of ${repo}. Plugin authors: attach a zipped bundle to the release.`);
+    throw new Error(`No .zip asset found in release ${release.tag_name || "?"} of ${repo}. App authors: attach a zipped bundle to the release.`);
   }
   console.log(`  Release: ${release.tag_name} (${zipAsset.name}, ${(zipAsset.size / 1024).toFixed(1)} KB)`);
 
@@ -131,11 +131,11 @@ async function cmdInstall(arg) {
 
     const manifestRoot = locateManifestRoot(extractDir);
     const manifest = JSON.parse(readFileSync(join(manifestRoot, "manifest.json"), "utf8"));
-    if (!manifest.id || !PLUGIN_ID_PATTERN.test(manifest.id)) {
-      throw new Error(`Invalid plugin id in manifest: '${manifest.id}'. Must match ${PLUGIN_ID_PATTERN}.`);
+    if (!manifest.id || !APP_ID_PATTERN.test(manifest.id)) {
+      throw new Error(`Invalid app id in manifest: '${manifest.id}'. Must match ${APP_ID_PATTERN}.`);
     }
     if (expectedId && manifest.id !== expectedId) {
-      throw new Error(`Registry mismatch: '${expectedId}' points to ${repo}, but that plugin declares id '${manifest.id}'. Refusing install so 'oyster uninstall ${expectedId}' stays honest. Report to the registry maintainer.`);
+      throw new Error(`Registry mismatch: '${expectedId}' points to ${repo}, but that app declares id '${manifest.id}'. Refusing install so 'oyster uninstall ${expectedId}' stays honest. Report to the registry maintainer.`);
     }
 
     const userlandDir = join(OYSTER_HOME, "userland");
@@ -143,7 +143,7 @@ async function cmdInstall(arg) {
     const destDir = join(userlandDir, manifest.id);
 
     if (existsSync(destDir)) {
-      throw new Error(`Plugin '${manifest.id}' is already installed at ${destDir}. Run 'oyster uninstall ${manifest.id}' first.`);
+      throw new Error(`App '${manifest.id}' is already installed at ${destDir}. Run 'oyster uninstall ${manifest.id}' first.`);
     }
 
     try {
@@ -162,8 +162,8 @@ async function cmdInstall(arg) {
 }
 
 function cmdUninstall(id) {
-  if (!id || !PLUGIN_ID_PATTERN.test(id)) {
-    throw new Error("uninstall expects a valid plugin id, e.g. 'oyster uninstall pomodoro'");
+  if (!id || !APP_ID_PATTERN.test(id)) {
+    throw new Error("uninstall expects a valid app id, e.g. 'oyster uninstall pomodoro'");
   }
   const dir = join(OYSTER_HOME, "userland", id);
   if (!existsSync(dir)) {
@@ -171,7 +171,7 @@ function cmdUninstall(id) {
   }
   const manifestPath = join(dir, "manifest.json");
   if (!existsSync(manifestPath)) {
-    throw new Error(`${dir} has no manifest.json — refusing to remove a folder that isn't a plugin.`);
+    throw new Error(`${dir} has no manifest.json — refusing to remove a folder that isn't an app.`);
   }
   rmSync(dir, { recursive: true, force: true });
   console.log(`\n  ✓ Uninstalled ${id}\n`);
@@ -180,7 +180,7 @@ function cmdUninstall(id) {
 function cmdList() {
   const userlandDir = join(OYSTER_HOME, "userland");
   if (!existsSync(userlandDir)) {
-    console.log("\n  No plugins installed.\n");
+    console.log("\n  No apps installed.\n");
     return;
   }
   const rows = [];
@@ -194,7 +194,7 @@ function cmdList() {
     } catch {}
   }
   if (rows.length === 0) {
-    console.log("\n  No plugins installed.\n");
+    console.log("\n  No apps installed.\n");
     return;
   }
   const idWidth = Math.max(8, ...rows.map((r) => r.id.length));
@@ -269,7 +269,7 @@ function assertNoZipSlip(rootDir) {
       const full = join(dir, entry.name);
       const real = realpathSync(full);
       if (real !== realRoot && !real.startsWith(rootPrefix)) {
-        throw new Error(`Unsafe archive entry escapes plugin dir: ${entry.name} → ${real}`);
+        throw new Error(`Unsafe archive entry escapes app dir: ${entry.name} → ${real}`);
       }
       if (entry.isDirectory()) walk(full);
     }
