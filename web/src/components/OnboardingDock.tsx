@@ -193,17 +193,22 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
 
   // Step 2 completion rule: at least one user-created space exists.
   // That's the real signal the agent did useful work — works identically
-  // for external MCP clients (Claude Code, Cursor, ...) and for
-  // Oyster's own chat bar routing to OpenCode (where tool-call events
-  // are filtered). If a user space exists, we also back-fill step 1
-  // (the agent clearly connected, whether or not we caught the event).
+  // for external MCP clients (Claude Code, Cursor, ...) and for Oyster's
+  // own chat bar. We deliberately do NOT back-fill step 1 here: internal
+  // chatbar users haven't connected an MCP client and should still see
+  // that step offered. Step 1 gets marked complete only via an actual
+  // MCP connection event (see /api/mcp/status + mcp_client_connected).
   useEffect(() => {
     if (userSpaceCount <= 0) return;
     setState((s) => {
-      if (s.step1Complete && s.step2Complete) return s;
-      return { ...s, step1Complete: true, step2Complete: true };
+      if (s.step2Complete) return s;
+      const next = { ...s, step2Complete: true };
+      // If the user was viewing step 2 when it auto-completed, move them
+      // to whatever's actually still active (step 1 if MCP not done yet,
+      // otherwise step 3).
+      setViewingStep((v) => v === 2 ? activeStep(next) : v);
+      return next;
     });
-    setViewingStep((v) => (v === 1 || v === 2 ? 3 : v));
   }, [userSpaceCount]);
 
   // Click outside the popover closes it
@@ -253,19 +258,19 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
   }, []);
 
   const resetAll = useCallback(() => {
-    // Mirror the auto-completion rule that the [userSpaceCount] effect
-    // applies on fresh loads: if a user space already exists, step 1 and
-    // step 2 count as done. Without this, a reset when userSpaceCount
-    // stays constant would strand the user on step 1 forever (the effect
-    // never re-fires because its dep didn't change).
+    // Mirror the [userSpaceCount] effect's rule: if a user space already
+    // exists, step 2 counts as done. Step 1 (MCP connect) does NOT get
+    // auto-marked — it needs an actual MCP connection event regardless of
+    // what other setup has happened. Without this carry-forward, the
+    // reset would strand the user on step 2 forever (the effect never
+    // re-fires because `userSpaceCount` doesn't change).
     const hasSpaces = userSpaceCount > 0;
     setState({
       ...defaultState,
-      step1Complete: hasSpaces,
       step2Complete: hasSpaces,
     });
     setToolCalls([]);
-    setViewingStep(hasSpaces ? 3 : 1);
+    setViewingStep(1);
     setPopoverOpen(true);
   }, [userSpaceCount]);
 
