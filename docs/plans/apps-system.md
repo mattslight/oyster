@@ -90,18 +90,18 @@ Implementation: ~50 lines. `gh api` or raw HTTPS → fetch release assets → va
 Obsidian: author submits a PR to `obsidianmd/obsidian-releases` adding one entry to `community-plugins.json`:
 ```json
 { "id": "pomodoro", "name": "Pomodoro", "author": "mattslight",
-  "description": "…", "repo": "mattslight/oyster-sample-plugin" }
+  "description": "…", "repo": "mattslight/oyster-sample-app" }
 ```
 Obsidian's in-app UI reads that JSON, fetches each plugin's manifest + release assets from GitHub, renders browse/search/install.
 
-**Oyster equivalent:** an `oyster-community-plugins` repo with the same JSON shape, surfaced in the Oyster UI as a browsable gallery. Not needed until there are plugins worth browsing.
+**Oyster equivalent:** an `oyster-community-apps` repo with the same JSON shape, surfaced in the Oyster UI as a browsable gallery. Not needed until there are apps worth browsing.
 
 ### Launch sequencing
 - **Tier 1** → ship now. Pomodoro proves it. No code changes required beyond adding `~/.oyster/plugins/` to the scan paths.
 - **Tier 2** → ship when there's a second third-party plugin to validate against. `oyster install` CLI + `/install` slash command.
 - **Tier 3** → ship when the community is real. Until then it's over-engineering.
 
-## First Use Case: Pomodoro (separate repo: `mattslight/oyster-sample-plugin`)
+## First Use Case: Pomodoro (separate repo: `mattslight/oyster-sample-app`)
 
 A classic 25/5/15 focus timer. Single-file `runtime: "static"` app, no dependencies, no network, no storage capability declared (uses `localStorage` which the iframe manages itself — scoped to the iframe origin, invisible to Oyster).
 
@@ -150,10 +150,10 @@ The Oyster monorepo stays focused on the host. Plugins and their ecosystem live 
 
 | Repo | Purpose | Equivalent to |
 |---|---|---|
-| `mattslight/oyster-sample-plugin` | **Template repo** (GitHub "Use this template") that currently hosts the Pomodoro plugin as the reference third-party implementation. May split later into a minimal hello-world template + a dedicated pomodoro repo; for now one repo serves both roles. | `obsidianmd/obsidian-sample-plugin` |
-| `mattslight/oyster-community-plugins` | Registry repo containing `community-plugins.json`. Single source of truth for both `oyster.to/plugins` page and the in-app browser (Tier 3). Authors submit a PR to list. | `obsidianmd/obsidian-releases` |
+| `mattslight/oyster-sample-app` | **Template repo** (GitHub "Use this template") that currently hosts the Pomodoro app as the reference third-party implementation. May split later into a minimal hello-world template + a dedicated pomodoro repo; for now one repo serves both roles. | `obsidianmd/obsidian-sample-plugin` |
+| `mattslight/oyster-community-apps` | Registry repo containing `community-apps.json`. Single source of truth for both `oyster.to/apps` page and the in-app browser (Tier 3). Authors submit a PR to list. | `obsidianmd/obsidian-releases` |
 
-**oyster.to/plugins** — static-hosted page that fetches `community-plugins.json` at runtime. Discovery only; install still happens via CLI/in-app. Zero backend.
+**oyster.to/apps** — static-hosted page that fetches `community-apps.json` at runtime. Discovery only; install still happens via CLI/in-app. Zero backend.
 
 ## References
 

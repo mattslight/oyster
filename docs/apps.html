@@ -393,8 +393,8 @@
   <div class="submit-section">
     <div class="submit-card">
       <div class="submit-title">Built an app?</div>
-      <p class="submit-desc">The registry is an open repo. Submit a PR adding one entry to <code style="font-family:'IBM Plex Mono', monospace; color:#a99eff;">community-plugins.json</code> and your app lands here.</p>
-      <a class="submit-cta" href="https://github.com/mattslight/oyster-community-plugins">
+      <p class="submit-desc">Community app registry for Oyster. Submit a PR to <code style="font-family:'IBM Plex Mono', monospace; color:#a99eff;">community-apps.json</code> to list your app.</p>
+      <a class="submit-cta" href="https://github.com/mattslight/oyster-community-apps">
         Submit an app
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M7 17l10-10"/><path d="M7 7h10v10"/>
@@ -426,8 +426,8 @@
   </div>
 
   <script>
-    const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-community-plugins/main/community-plugins.json";
-    const FALLBACK_URL = "https://cdn.jsdelivr.net/gh/mattslight/oyster-community-plugins@main/community-plugins.json";
+    const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-community-apps/main/community-apps.json";
+    const FALLBACK_URL = "https://cdn.jsdelivr.net/gh/mattslight/oyster-community-apps@main/community-apps.json";
 
     // Strict patterns — the registry is user-submitted via PR, and the
     // install command is copied into a user's shell. Reject anything that
@@ -584,16 +584,16 @@
         }
         if (apps.length === 0) {
           if (raw.length === 0) {
-            renderState(`No apps listed yet. <a href="https://github.com/mattslight/oyster-community-plugins">Submit the first one</a>.`);
+            renderState(`No apps listed yet. <a href="https://github.com/mattslight/oyster-community-apps">Submit the first one</a>.`);
           } else {
-            renderState(`The registry has ${raw.length} ${raw.length === 1 ? "entry" : "entries"} but none passed validation. <a href="https://github.com/mattslight/oyster-community-plugins/issues">Report an issue</a>.`);
+            renderState(`The registry has ${raw.length} ${raw.length === 1 ? "entry" : "entries"} but none passed validation. <a href="https://github.com/mattslight/oyster-community-apps/issues">Report an issue</a>.`);
           }
           return;
         }
         root.innerHTML = apps.map(renderCard).join("");
         bindCopyButtons();
       } catch (err) {
-        renderState(`Couldn't load the app registry. <a href="https://github.com/mattslight/oyster-community-plugins">View on GitHub</a>.`);
+        renderState(`Couldn't load the app registry. <a href="https://github.com/mattslight/oyster-community-apps">View on GitHub</a>.`);
         console.error(err);
       }
     }

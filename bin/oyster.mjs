@@ -18,7 +18,7 @@ const API_TIMEOUT_MS = 10_000;
 // PR to that repo can redirect any id to any repo — delegation is to the
 // registry maintainer, not verified here. Direct `oyster install <owner>/<repo>`
 // bypasses the registry entirely.
-const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-community-plugins/main/community-plugins.json";
+const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-community-apps/main/community-apps.json";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
@@ -70,7 +70,7 @@ function printHelp() {
 
   Examples:
     oyster install pomodoro                           # resolved via community registry
-    oyster install mattslight/oyster-sample-plugin    # explicit repo path
+    oyster install mattslight/oyster-sample-app       # explicit repo path
 `);
 }
 
