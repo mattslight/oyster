@@ -22,7 +22,13 @@ const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-commun
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
-const OYSTER_HOME = join(homedir(), ".oyster");
+// Detect installed vs dev-from-source by checking if we're under node_modules.
+// Matches the server's own `isInstalledPackage` signal so paths stay in sync.
+const isInstalledPackage = PACKAGE_ROOT.includes(`${sep}node_modules${sep}`);
+// Mirror server/src/index.ts OYSTER_HOME derivation so `oyster install` writes
+// where the server scans. Installed: ~/Oyster/. Dev: <repo>/userland/.
+const OYSTER_HOME = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), "Oyster") : join(PACKAGE_ROOT, "userland"));
+const APPS_DIR = join(OYSTER_HOME, "apps");
 
 // ── CLI flags ──
 const args = process.argv.slice(2);
@@ -138,9 +144,8 @@ async function cmdInstall(arg) {
       throw new Error(`Registry mismatch: '${expectedId}' points to ${repo}, but that plugin declares id '${manifest.id}'. Refusing install so 'oyster uninstall ${expectedId}' stays honest. Report to the registry maintainer.`);
     }
 
-    const userlandDir = join(OYSTER_HOME, "userland");
-    mkdirSync(userlandDir, { recursive: true });
-    const destDir = join(userlandDir, manifest.id);
+    mkdirSync(APPS_DIR, { recursive: true });
+    const destDir = join(APPS_DIR, manifest.id);
 
     if (existsSync(destDir)) {
       throw new Error(`Plugin '${manifest.id}' is already installed at ${destDir}. Run 'oyster uninstall ${manifest.id}' first.`);
@@ -165,7 +170,7 @@ function cmdUninstall(id) {
   if (!id || !PLUGIN_ID_PATTERN.test(id)) {
     throw new Error("uninstall expects a valid plugin id, e.g. 'oyster uninstall pomodoro'");
   }
-  const dir = join(OYSTER_HOME, "userland", id);
+  const dir = join(APPS_DIR, id);
   if (!existsSync(dir)) {
     throw new Error(`'${id}' is not installed.`);
   }
@@ -178,15 +183,14 @@ function cmdUninstall(id) {
 }
 
 function cmdList() {
-  const userlandDir = join(OYSTER_HOME, "userland");
-  if (!existsSync(userlandDir)) {
+  if (!existsSync(APPS_DIR)) {
     console.log("\n  No plugins installed.\n");
     return;
   }
   const rows = [];
-  for (const entry of readdirSync(userlandDir, { withFileTypes: true })) {
+  for (const entry of readdirSync(APPS_DIR, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const manifestPath = join(userlandDir, entry.name, "manifest.json");
+    const manifestPath = join(APPS_DIR, entry.name, "manifest.json");
     if (!existsSync(manifestPath)) continue;
     try {
       const m = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -362,8 +366,9 @@ async function main() {
   const env = getEnvVars();
   const opencodeBin = findOpenCodeBin();
 
-  // Ensure userland dir exists
-  mkdirSync(join(OYSTER_HOME, "userland"), { recursive: true });
+  // Ensure workspace root exists — the server creates the sub-folders it
+  // needs (db/, apps/, spaces/, backups/) on first boot.
+  mkdirSync(OYSTER_HOME, { recursive: true });
 
   // Skip auth check if any provider API key is in env
   const hasEnvKey = env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY || env.GOOGLE_API_KEY || env.GEMINI_API_KEY;
