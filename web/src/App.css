@@ -816,6 +816,25 @@ body {
   color: var(--text);
 }
 
+.chatbar-hero-sub {
+  margin-top: 14px;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0;
+}
+
+.chatbar-hero-prompt {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.95em;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 10px;
+  margin-left: 4px;
+}
+
 .chatbar-hero .chatbar-oyster {
   width: 40px;
   height: 40px;
