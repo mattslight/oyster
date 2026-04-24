@@ -4,9 +4,18 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **"Where are my files?" tile on the surface.** A new always-available reference tile that shows the actual paths for your install — your `~/Oyster/` root, each of your spaces, and where a specific invoice or note would live. Live for your machine, not a generic doc. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Archive shortcut on the surface.** Small archive icon in the bottom-left gets you to the archived view without having to remember `#archived` in the chat. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Right-click → Regenerate icon.** Don't love the AI icon on a tile? Right-click and regenerate it. Works on both your artifacts and the builtins that ship with Oyster. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Agent can now help with archived artifacts.** You can ask your AI to *"show me archived artifacts"* or *"restore that note I removed"* — previously it couldn't see or restore archived items. ([#207](https://github.com/mattslight/oyster/issues/207))
+
 ### Changed
 
-- **Oyster's workspace moves to `~/Oyster/` and gets a real layout.** Your files used to live in the hidden `~/.oyster/userland/` folder with databases, config, and app folders all mixed together — hard to find, hard to back up, and easy to break accidentally. The workspace now sits at `~/Oyster/` (visible in Finder / Explorer) with clear sub-folders: `db/` for databases, `apps/` for installed apps, `spaces/` for your work organised by project, `backups/` for snapshots. An invoice for a client now lives at `~/Oyster/spaces/<project>/invoices/<name>.md` — self-describing in Finder even when Oyster isn't running. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Oyster's workspace moves to `~/Oyster/` and gets a real layout.** Your files used to live in the hidden `~/.oyster/userland/` folder with databases, config, and app folders all mixed together — hard to find, hard to back up, and easy to break accidentally. The workspace now sits at `~/Oyster/` (visible in Finder / Explorer) with clear sub-folders: `db/` for databases, `apps/` for installed apps, `spaces/` for your work organised by project, `backups/` for snapshots. An invoice for a client now lives at `~/Oyster/spaces/<project>/invoices/<name>.md` — self-describing in Finder even when Oyster isn't running. A `README.md` at the root orients anyone browsing the folder without Oyster running. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Confirm and rename dialogs now match the rest of Oyster.** Uninstall, archive, and folder-rename now use in-app dialogs styled to match the surface, instead of the default browser prompts that looked out of place. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **"Import from AI" → "Import Memories".** Builtin renamed to describe what it actually does. Same tile, same behaviour. ([#207](https://github.com/mattslight/oyster/issues/207))
 
 ### Fixed
 
