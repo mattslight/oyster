@@ -106,40 +106,44 @@ const SHELL = process.env.OYSTER_SHELL || OPENCODE_BIN;
 const SHELL_ARGS = SHELL.endsWith("opencode") ? ["."] : [];
 const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
-// ── Oyster userland layout ──
-// Phase 1 of #207: introduce named directory roles that today all resolve
-// to the flat userland directory. Phase 2 will split them into the visible
-// `~/Oyster/{db,config,apps,backups,spaces}/` layout.
+// ── Oyster userland layout (#207) ──
 //
 //   OYSTER_HOME — the user's Oyster workspace root.
-//     Installed → ~/.oyster/userland (current) → ~/Oyster (phase 2)
-//     Dev       → ./userland
-//   DB_DIR      — where oyster.db and memory.db live. Today = OYSTER_HOME.
-//   CONFIG_DIR  — opencode.json + .opencode/. Today = OYSTER_HOME.
-//   APPS_DIR    — installed app bundles (builtins + community). Today = OYSTER_HOME.
-//   SPACES_DIR  — one folder per user space. Today = OYSTER_HOME (flat).
+//     Installed → ~/Oyster/            (visible; migrated from ~/.oyster/userland/)
+//     Dev       → ./userland/          (unchanged; feature-branch dev writes here)
+//   DB_DIR      — oyster.db, memory.db. At OYSTER_HOME/db/.
+//   APPS_DIR    — installed app bundles (builtins + community). At OYSTER_HOME/apps/.
+//   SPACES_DIR  — one folder per user space. At OYSTER_HOME/spaces/.
+//   CONFIG_DIR  — reserved for future Oyster-specific config.
+//   BACKUPS_DIR — snapshots. At OYSTER_HOME/backups/.
 //
-// Keeping them all equal to OYSTER_HOME means this phase is a pure refactor.
-// Tests and user files stay exactly where they are.
-const OYSTER_HOME = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), ".oyster", "userland") : join(PACKAGE_ROOT, "userland"));
-const DB_DIR = OYSTER_HOME;
-const CONFIG_DIR = OYSTER_HOME;
-const APPS_DIR = OYSTER_HOME;
-const SPACES_DIR = OYSTER_HOME;
+// opencode-ai's own config (opencode.json, .opencode/) stays at OYSTER_HOME
+// root because opencode discovers it via CWD walk-up; moving it would
+// require a spawn-flag change out of scope for this PR.
+const OYSTER_HOME = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), "Oyster") : join(PACKAGE_ROOT, "userland"));
+const DB_DIR = join(OYSTER_HOME, "db");
+const CONFIG_DIR = join(OYSTER_HOME, "config");
+const APPS_DIR = join(OYSTER_HOME, "apps");
+const SPACES_DIR = join(OYSTER_HOME, "spaces");
+const BACKUPS_DIR = join(OYSTER_HOME, "backups");
 
-// Retained for callsites that pass a "userland root" down the stack. Alias
-// to OYSTER_HOME so we can rename one name at a time across files in this
-// refactor without breaking anything.
+// Retained for callsites that still pass the userland root down the stack
+// (e.g. opencode-ai's spawn CWD, reconcileGeneratedArtifact's base path).
+// Alias to OYSTER_HOME to minimise the surface of this PR.
 const USERLAND_DIR = OYSTER_HOME;
 
 // Resolver for a space's native folder (where `create_artifact` writes).
-// All code that today computes `join(USERLAND_DIR, space_id)` should go
-// through this. Phase 2 will change the implementation to use SPACES_DIR
-// and that's the only place the new path needs to land.
+// Every callsite that used to compute `join(USERLAND_DIR, space_id)` goes
+// through this, so swapping to a first-class sources table later (#208) is
+// a one-function change.
 function getNativeSourcePath(spaceId: string): string {
   return join(SPACES_DIR, spaceId);
 }
 
+// For the watcher and scanExistingArtifacts, which walk a single directory
+// looking for app-bundle folders. In the new layout, bundles live under
+// APPS_DIR (installed) or SPACES_DIR/<space>/ (AI-generated). Both need to
+// be scanned; see the callsites below.
 const ARTIFACTS_DIR = join(OYSTER_HOME, "")  + sep;
 
 // ── MIME types ──
@@ -169,23 +173,33 @@ function syncIfNewer(src: string, dest: string) {
 }
 
 function bootstrapUserland() {
-  mkdirSync(USERLAND_DIR, { recursive: true });
-  mkdirSync(`${USERLAND_DIR}/.opencode/agents`, { recursive: true });
+  mkdirSync(OYSTER_HOME, { recursive: true });
+  mkdirSync(DB_DIR, { recursive: true });
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  mkdirSync(APPS_DIR, { recursive: true });
+  mkdirSync(SPACES_DIR, { recursive: true });
+  mkdirSync(BACKUPS_DIR, { recursive: true });
+  mkdirSync(`${OYSTER_HOME}/.opencode/agents`, { recursive: true });
 
   syncIfNewer(
     `${PROJECT_ROOT}/.opencode/agents/oyster.md`,
-    `${USERLAND_DIR}/.opencode/agents/oyster.md`,
+    `${OYSTER_HOME}/.opencode/agents/oyster.md`,
   );
   syncIfNewer(
     `${PROJECT_ROOT}/.opencode/config.toml`,
-    `${USERLAND_DIR}/.opencode/config.toml`,
+    `${OYSTER_HOME}/.opencode/config.toml`,
   );
 
-  // Seed built-in artifacts into userland on first install (copy-if-absent — no overwrite)
+  // Ensure a default "home" space folder exists so create_artifact can
+  // always resolve a landing spot, even on a fresh install with no other
+  // spaces created yet.
+  mkdirSync(join(SPACES_DIR, "home"), { recursive: true });
+
+  // Seed built-in app bundles into apps/ on first install (copy-if-absent — no overwrite)
   const builtinsDir = join(PROJECT_ROOT, "builtins");
   if (existsSync(builtinsDir)) {
     for (const entry of readdirSync(builtinsDir)) {
-      const dest = join(USERLAND_DIR, entry);
+      const dest = join(APPS_DIR, entry);
       if (!existsSync(dest)) {
         cpSync(join(builtinsDir, entry), dest, { recursive: true });
         console.log(`[bootstrap] installed built-in: ${entry}`);
@@ -195,8 +209,8 @@ function bootstrapUserland() {
 }
 
 // ── Auto-backup userland before bootstrap/upgrade and before touching the DB ──
-runStartupBackup(USERLAND_DIR);
-setImportStatePath(USERLAND_DIR);
+runStartupBackup(OYSTER_HOME);
+setImportStatePath(OYSTER_HOME);
 
 bootstrapUserland();
 
@@ -210,9 +224,12 @@ delete cleanEnv["OPENAI_API_KEY"];
 
 // ── Artifact store ──
 
-const db = initDb(USERLAND_DIR);
+const db = initDb(DB_DIR);
 const store = new SqliteArtifactStore(db);
-const artifactService = new ArtifactService(store, USERLAND_DIR);
+// artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
+// — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
+// not inside DB_DIR.
+const artifactService = new ArtifactService(store, OYSTER_HOME);
 const spaceStore = new SqliteSpaceStore(db);
 
 // Shared resolver: try raw id, then slugified id, then case-insensitive display_name.
@@ -227,7 +244,7 @@ function resolveSpaceRow(name: string) {
   );
 }
 const spaceService = new SpaceService(spaceStore, store);
-const memoryProvider = new SqliteFtsMemoryProvider(USERLAND_DIR);
+const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
 await memoryProvider.init();
 
 // ── Initialize subsystems ──
@@ -238,6 +255,20 @@ const pendingReveals = new Set<string>();
 spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 
 // OpenCode spawn is deferred until after port resolution (see below)
+// Scan every location where app bundles can live after #207:
+//   APPS_DIR               — installed builtins + community apps
+//   SPACES_DIR/<space>/    — AI-generated apps owned by a space
+//   OYSTER_HOME            — anything still at the root (legacy / newly-generated
+//                            before the agent's CWD gets re-pointed in a follow-up)
+scanExistingArtifacts(APPS_DIR, iconGenerator);
+if (existsSync(SPACES_DIR)) {
+  for (const spaceEntry of readdirSync(SPACES_DIR)) {
+    const spaceDir = join(SPACES_DIR, spaceEntry);
+    try {
+      if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, iconGenerator);
+    } catch { /* skip unreadable */ }
+  }
+}
 scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
 
 // Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path).
@@ -381,12 +412,33 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       filePath = artifactService.getDocFile(docsMatch[1]);
     }
 
-    // /artifacts/... → userland directory
+    // /artifacts/... → resolves across the layout in priority order:
+    //   OYSTER_HOME/icons/<id>/...        — dedicated icons (URL: /artifacts/icons/...)
+    //   APPS_DIR/<name>/...               — installed apps (builtins + community)
+    //   SPACES_DIR/<space>/<name>/...     — AI-generated apps under their owning space
+    //   OYSTER_HOME/<name>/...            — legacy fallback for pre-migration
     if (!filePath && targetUrl.startsWith("/artifacts/")) {
       const relativePath = targetUrl.slice("/artifacts/".length).split("?")[0];
-      const candidate = join(ARTIFACTS_DIR, relativePath);
-      if (candidate.startsWith(ARTIFACTS_DIR) && existsSync(candidate)) {
+      const candidates: string[] = [
+        join(APPS_DIR, relativePath),
+        join(OYSTER_HOME, relativePath), // icons/<id>/icon.png + legacy flat
+      ];
+      // Scan per-space app dirs for the first path segment matching <name>
+      const firstSegment = relativePath.split("/")[0];
+      if (firstSegment && firstSegment !== "icons") {
+        try {
+          for (const spaceName of readdirSync(SPACES_DIR)) {
+            const candidate = join(SPACES_DIR, spaceName, relativePath);
+            candidates.push(candidate);
+          }
+        } catch { /* SPACES_DIR might not exist on a fresh install */ }
+      }
+      for (const candidate of candidates) {
+        // Containment check — candidate must stay under OYSTER_HOME, else reject
+        // (protects against path-traversal via /artifacts/../etc).
+        if (!candidate.startsWith(OYSTER_HOME) || !existsSync(candidate)) continue;
         filePath = candidate;
+        break;
       }
     }
 

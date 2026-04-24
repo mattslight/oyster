@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Oyster's workspace moves to `~/Oyster/` and gets a real layout.** Your files used to live in the hidden `~/.oyster/userland/` folder with databases, config, and app folders all mixed together — hard to find, hard to back up, and easy to break accidentally. The workspace now sits at `~/Oyster/` (visible in Finder / Explorer) with clear sub-folders: `db/` for databases, `apps/` for installed apps, `spaces/` for your work organised by project, `backups/` for snapshots. An invoice for a client now lives at `~/Oyster/spaces/<project>/invoices/<name>.md` — self-describing in Finder even when Oyster isn't running. ([#207](https://github.com/mattslight/oyster/issues/207))
+
 ### Fixed
 
 - **Your AI can now create HTML-styled documents (invoices, receipts, letters).** Agents can save artifacts as HTML so they render on the surface the way they were designed — white paper, printable layout. Previously every agent-created notes artifact was forced into markdown and shown through the dark markdown wrapper, so pages meant for white paper looked wrong.

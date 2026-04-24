@@ -212,45 +212,34 @@ The `home` space is the default landing zone when no space is specified. Always 
 
 ## Migration
 
-### Strategy: one-shot startup migration, idempotent
+### Strategy: manual one-off reorg for the author's prod, fresh install for everyone else
+
+Early-user audit (2026-04-24): only the author's install has meaningful registered content. Bharat's and Merlin's installs are fresh / effectively empty — they reinstall on the new version with no migration. No one else is running the app yet.
+
+That removes the pressure to ship a baked-in idempotent startup migration. The reorg happens once, by hand, on the author's prod (with the snapshot already captured at `~/oyster-backups/manual/pre-207-2026-04-24/` for rollback). The server code in this PR is built for the new layout from day one.
+
+Consequence: this PR adds **no migration code to the server**. If a future user surfaces with pre-migration data, we ship a standalone migration tool then.
 
 On server startup:
 
-1. Check if `~/Oyster/` exists.
-2. If not, check if `~/.oyster/userland/` exists with data.
-3. If yes — migrate. If no — fresh install into new layout.
+Manual reorg steps for the author's prod (performed once by hand before the new version runs):
 
-Migration steps (all inside a transaction where possible):
-
-1. Create `~/Oyster/{db,config,apps,backups,spaces}/`.
-2. Move `oyster.db*` → `db/`.
-3. Move `memory.db*` → `db/`.
-4. Move `opencode.json` → `config/`.
-5. Move `.opencode/` → `config/.opencode/`.
-6. Move `.backups/` contents → `backups/` (un-hide).
-7. For each subdirectory with `manifest.json` at the old root:
-   - **Builtins** (shipped with the npm package: `connect-your-ai`, `quick-start`, `import-from-ai`, `the-worlds-your-oyster`, `zombie-horde`) → `apps/<id>/`.
-   - **User-installed community apps** (have manifest.json, not on the shipped-builtin list, no associated AI session) → `apps/<id>/`.
-   - **AI-generated apps** (today they have manifest.json too, e.g. `car-racer/`, `snake-game/`, `wordle/`, `mini-kanban-board/`) → `spaces/<space-id>/<app-id>/` based on their current `space_id` in the DB.
-   - This is the subtle bit: today's `userland/<generated-app-id>/` lives alongside builtins at the root. After migration, AI-generated apps go under their space folder; only installed/builtin apps stay in `apps/`. The distinction is provenance: `apps/` = came from Oyster or the community; `spaces/<space>/` = came from an AI session or user work.
-8. Move each space's loose files (`spaces/<space-id>/` already exists in old layout as `userland/<space-id>/`) → `spaces/<space-id>/`. Direct rename of the directory.
-9. Move root-level loose single-file artifacts (`*.md`, `*.html` at `userland/` root) → `spaces/home/` (or their registered `space_id` per DB row).
-10. Update `artifacts.storage_config.path` rows via SQL: prefix rewrite from old path → new path.
-11. Delete orphans at the old root (see below).
-12. Remove the now-empty `~/.oyster/userland/` and, if `~/.oyster/` is empty, remove it too.
-13. Write a `~/Oyster/.migration-v1.json` marker so subsequent startups skip the check cheaply.
-
-### Idempotency
-
-- If `~/Oyster/.migration-v1.json` exists, skip entirely.
-- If the migration crashes mid-way, the next startup re-runs it — each step is a no-op if already done (check-then-act).
-- The DB path rewrite is the one step with risk; run it last and include a pre-migration copy of `oyster.db` in `backups/pre-migration-YYYY-MM-DD/`.
+1. Stop Oyster if running.
+2. Create `~/Oyster/{db,config,apps,backups,spaces}/`.
+3. `mv ~/.oyster/userland/oyster.db*` → `~/Oyster/db/`.
+4. `mv ~/.oyster/userland/memory.db*` → `~/Oyster/db/`.
+5. `mv` each shipped builtin folder (`connect-your-ai`, `import-from-ai`, `quick-start`, `the-worlds-your-oyster`, `zombie-horde`) → `~/Oyster/apps/`.
+6. `mv` each AI-generated app folder (those with `manifest.json` not in the builtin list) → `~/Oyster/spaces/<owning-space>/<app-id>/` — the owning space comes from the DB row's `space_id`.
+7. `mv` each space folder (matches a row in the `spaces` table) → `~/Oyster/spaces/<space-id>/`.
+8. `mv` loose files (`*.md`, `*.html` at the old root) → `~/Oyster/spaces/<their-space-from-DB>/<filename>` (default `home` if not registered).
+9. Keep `.opencode/` and `opencode.json` at `~/Oyster/` root — opencode-ai discovers them via CWD walk-up, so they must stay accessible to its search path.
+10. Delete root-level orphans (`manifest.json`, `icon.png`, `src/`, `icons/`).
+11. Update `artifacts.storage_config.path` rows via a one-off SQL pass: for each row whose path starts with `~/.oyster/userland/`, rewrite the prefix to the corresponding new location.
+12. Verify by running the new server build and confirming artifacts still resolve on the surface.
 
 ### Dev mode
 
-In dev, `USERLAND_DIR` is `./userland` (repo-relative). The env var `OYSTER_USERLAND` overrides. Behaviour stays the same — the relocation from `.oyster/userland` → `Oyster/` only applies to the installed default. Dev workflows are unaffected.
-
-The internal layout change (the `{db,config,apps,backups,files}` split) **does** apply to dev. So `./userland/` in the repo also gets restructured — but `.gitignore` already excludes it, so no repo churn.
+In dev, `OYSTER_HOME` resolves to `./userland/` (repo-relative, `.gitignore`-excluded). The env var `OYSTER_USERLAND` overrides for testing. Dev installs that existed pre-refactor can be blown away and re-generated — nobody's running dev with real data.
 
 ## Orphan cleanup (during migration)
 
