@@ -31,7 +31,7 @@ The `runtime` field is the forward-looking lever — it lets new plugin kinds la
 | `mcp` | server-side Node module that registers tools at `/mcp/` alongside the built-in 19 | after `bundle` |
 | `panel` | React component mounted into `Desktop.tsx` shell (Obsidian's native model) | eventually |
 
-Pomodoro (`mattslight/oyster-sample-plugin`, separate repo) uses `runtime: "static"` and is the reference demonstration for Tier 1 install.
+Pomodoro (`mattslight/oyster-sample-app`, separate repo) uses `runtime: "static"` and is the reference demonstration for Tier 1 install.
 
 ## What We Learned From Obsidian
 
@@ -69,22 +69,22 @@ User creates `<vault>/.obsidian/plugins/<id>/` with `manifest.json` + `main.js` 
 **Oyster equivalent today:** drop a folder into `~/.oyster/userland/<id>/`. The existing artifact detector (`server/src/artifact-detector.ts`) picks up the manifest and registers the artifact. Works without any new code.
 
 ```bash
-git clone https://github.com/mattslight/oyster-sample-plugin ~/.oyster/userland/pomodoro
+git clone https://github.com/mattslight/oyster-sample-app ~/Oyster/apps/pomodoro
 # restart oyster
 ```
 
-**Small improvement needed:** scan a dedicated `~/.oyster/plugins/` directory so installed plugins don't mix with user-created artifacts. Tiny patch to the bootstrap loop.
+**Status post-#207:** `~/Oyster/apps/` is the dedicated install location, scanned at startup, so installed apps don't mix with user-created artifacts.
 
 ### Tier 2 — Paste a GitHub URL (BRAT-style)
 Obsidian: user installs BRAT plugin, pastes `<owner>/<repo>`, BRAT fetches the latest GitHub Release (which must have `manifest.json` + `main.js` as binary attachments), drops them into `.obsidian/plugins/<id>/`, auto-updates on new releases.
 
 **Oyster equivalent:**
 ```bash
-oyster install mattslight/oyster-sample-plugin
+oyster install mattslight/oyster-sample-app
 oyster update pomodoro
 oyster uninstall pomodoro
 ```
-Implementation: ~50 lines. `gh api` or raw HTTPS → fetch release assets → validate `manifest.json` → write to `~/.oyster/plugins/<id>/` → signal the server to re-scan. Plus a matching slash command in chat (`/install <repo>`).
+Implementation: ~50 lines. `gh api` or raw HTTPS → fetch release assets → validate `manifest.json` → write to `~/Oyster/apps/<id>/` → signal the server to re-scan. Plus a matching slash command in chat (`/install <repo>`).
 
 ### Tier 3 — Curated community directory
 Obsidian's pattern: author submits a PR to `obsidianmd/obsidian-releases` adding one entry to `community-plugins.json`. The JSON shape (shown here with an Oyster-style example, since we're documenting what Oyster's equivalent will look like):
@@ -97,7 +97,7 @@ Obsidian's in-app UI reads that JSON, fetches each plugin's manifest + release a
 **Oyster equivalent:** an `oyster-community-apps` repo with the same JSON shape, surfaced in the Oyster UI as a browsable gallery. Not needed until there are apps worth browsing.
 
 ### Launch sequencing
-- **Tier 1** → ship now. Pomodoro proves it. No code changes required beyond adding `~/.oyster/plugins/` to the scan paths.
+- **Tier 1** → shipped as of #207. `~/Oyster/apps/` is scanned on startup. Pomodoro proves it.
 - **Tier 2** → ship when there's a second third-party plugin to validate against. `oyster install` CLI + `/install` slash command.
 - **Tier 3** → ship when the community is real. Until then it's over-engineering.
 
