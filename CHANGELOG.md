@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0-beta.4] - 2026-04-25
+
 ### Changed
 
 - **Startup banner is now a coloured box** so the "Open Oyster" URL and starter prompts don't get lost in the logs.
