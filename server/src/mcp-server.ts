@@ -579,10 +579,11 @@ export function createMcpServer(deps: McpDeps): McpServer {
       if (space_id) artifacts = artifacts.filter((a) => a.spaceId === space_id);
       if (artifact_kind) artifacts = artifacts.filter((a) => a.artifactKind === artifact_kind);
       if (search) {
+        // TEMPORARY: naive substring matcher. Do not extend — see #231
+        // (artifactSearchService: FTS5 + deterministic path tags + ID-resolved
+        // SSE). Plural/singular handling, group-name matching, content body
+        // search, and semantic tags all belong in that service, not here.
         const q = search.toLowerCase();
-        // Match label OR space id/name OR source file basename — a search for
-        // "tokinvest" should find artifacts in a tokinvest space (or under a
-        // tokinvest source folder), not just ones with "tokinvest" in the label.
         const spaceById = new Map(deps.spaceService.listSpaces().map(s => [s.id, s]));
         artifacts = artifacts.filter((a) => {
           if (a.label.toLowerCase().includes(q)) return true;
@@ -854,6 +855,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   // ── filter_desktop ──
 
+  // TEMPORARY: filter_desktop currently broadcasts the *search query* and the
+  // web client reapplies a parallel substring matcher (web/src/App.tsx
+  // applyAgentFilter). Once #231 lands, this tool calls artifactSearchService,
+  // resolves to a list of matching artifact IDs, and broadcasts those IDs in
+  // the SSE payload — the web becomes dumb (filter by id-set, no matcher).
+  // Do not extend the current matching surface here; that work belongs in #231.
   server.tool(
     "filter_desktop",
     `Change what the user sees on the desktop surface. Use this when the user says "show me X" / "only X" / "filter to X" — the request is a visual action, not a question. For "how many X do I have?" or "what artifacts exist?" use list_artifacts instead.

@@ -116,9 +116,14 @@ export default function App() {
   const [connected, setConnected] = useState(true);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Apply the agent-driven desktop filter on top of the space-scoped list.
-  // Intersection semantics — kind + search both narrow further. Search matches
-  // label, space id/name, or sourceLabel (basename of linked source folder).
+  // TEMPORARY: this matcher mirrors the server-side substring filter in
+  // mcp-server.ts:list_artifacts so the desktop can react to the SSE event
+  // payload's search term. It is deliberately minimal and will be DELETED
+  // once #231 (artifactSearchService) lands — at that point the
+  // desktop_filter_changed event carries pre-resolved artifact IDs and the
+  // web simply applies `artifacts.filter(a => matchedIds.has(a.id))`.
+  // Do not extend this with plural-stripping, content matching, tag matching,
+  // or anything else — that all belongs server-side in #231.
   function applyAgentFilter(list: Artifact[]): Artifact[] {
     if (!agentFilter) return list;
     const { kind, search } = agentFilter;
