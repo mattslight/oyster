@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0-beta.5] - 2026-04-25
+
 ### Changed
 
 - **Linked folders are now first-class.** Detaching a folder from a space cleanly removes its tiles (no more orphans), and reattaching the same folder restores them. Sets up cleaner provenance and detach UI later.
