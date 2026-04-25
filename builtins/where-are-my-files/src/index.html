@@ -114,7 +114,6 @@
         const sep = info.platform === "win32" ? "\\" : "/";
 
         document.getElementById("oyster-home").textContent = info.oysterHome;
-        document.getElementById("finder-word").textContent = info.platform === "win32" ? "Explorer" : "Finder";
 
         const setPathCell = (id, p) => {
           const cell = document.getElementById(id);

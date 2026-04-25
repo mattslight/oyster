@@ -256,36 +256,22 @@ function bootstrapUserland() {
   // spaces created yet.
   mkdirSync(join(SPACES_DIR, "home"), { recursive: true });
 
-  // Seed built-in app bundles into apps/. Re-syncs when the source manifest
-  // content has changed so renames / copy edits in `builtins/<name>/` propagate
-  // on the next server start. Compares the manifest by content (not mtime) —
-  // mtime would be unreliable across npm install / git checkout / cpSync,
-  // which all rewrite timestamps. cpSync(recursive) overwrites files present
-  // in source but doesn't delete extras in dest — generated icon.png and other
-  // server-side artifacts survive. Missing dest manifest counts as stale so a
-  // partially-deleted builtin self-heals.
+  // Seed built-in app bundles into apps/. Always re-syncs from
+  // `builtins/<name>/` because builtins are read-only by design — keeping
+  // them in lockstep with the source is more important than the cost of a
+  // few file copies on startup. A previous mtime / manifest-content check
+  // missed asset-only changes (e.g. an index.html edit with no manifest
+  // change) and shipped stale builtins. cpSync(recursive) overwrites files
+  // present in source but doesn't delete extras in dest — generated icon.png
+  // and other server-side artifacts survive.
   const builtinsDir = join(PROJECT_ROOT, "builtins");
   if (existsSync(builtinsDir)) {
     for (const entry of readdirSync(builtinsDir)) {
       const src = join(builtinsDir, entry);
       const dest = join(APPS_DIR, entry);
-      const srcManifest = join(src, "manifest.json");
-      const destManifest = join(dest, "manifest.json");
       const fresh = !existsSync(dest);
-      let stale = false;
-      if (!fresh && existsSync(srcManifest)) {
-        if (!existsSync(destManifest)) {
-          stale = true;
-        } else {
-          try {
-            stale = readFileSync(srcManifest, "utf8") !== readFileSync(destManifest, "utf8");
-          } catch { /* unreadable — leave alone, next start will retry */ }
-        }
-      }
-      if (fresh || stale) {
-        cpSync(src, dest, { recursive: true });
-        console.log(`[bootstrap] ${fresh ? "installed" : "updated"} built-in: ${entry}`);
-      }
+      cpSync(src, dest, { recursive: true });
+      if (fresh) console.log(`[bootstrap] installed built-in: ${entry}`);
     }
   }
 }
