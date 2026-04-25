@@ -92,49 +92,11 @@ export function initDb(userlandDir: string): Database.Database {
       ON sources(path) WHERE removed_at IS NULL;
   `);
 
-  // ── #208 one-shot upgrade backfills ──
-  // Defensive insurance for the upgrade-from-pre-#208 path. No-op on fresh
-  // installs (empty space_paths) and on already-migrated DBs (matching rows
-  // exist). Both queries are idempotent on every boot.
-  //
-  // DEPRECATION: drop this entire block (and the legacy `space_paths` table
-  // creation/migration above) in 0.5.x once we're confident no one is still
-  // upgrading from 0.4.0-beta.4 or earlier.
-
-  // 1. Copy any `space_paths` rows missing a corresponding active source.
-  db.exec(`
-    INSERT INTO sources (id, space_id, type, path, label, added_at)
-    SELECT lower(hex(randomblob(16))), space_id, 'local_folder', path, label, added_at
-    FROM space_paths
-    WHERE NOT EXISTS (
-      SELECT 1 FROM sources s
-      WHERE s.space_id = space_paths.space_id
-        AND s.path = space_paths.path
-        AND s.removed_at IS NULL
-    )
-  `);
-
-  // 2. Attribute legacy discovered artifacts when the mapping is unambiguous
-  // (space has exactly one active source). Without this, the first detach
-  // after upgrade would skip pre-migration tiles and orphan them — the
-  // original bug we're fixing. Multi-source spaces stay NULL until the next
-  // scan resolves them via upsertCandidate.
-  db.exec(`
-    UPDATE artifacts
-    SET source_id = (
-      SELECT s.id FROM sources s
-      WHERE s.space_id = artifacts.space_id
-        AND s.removed_at IS NULL
-      LIMIT 1
-    )
-    WHERE source_origin = 'discovered'
-      AND source_id IS NULL
-      AND (
-        SELECT COUNT(*) FROM sources s
-        WHERE s.space_id = artifacts.space_id
-          AND s.removed_at IS NULL
-      ) = 1
-  `);
+  // #208 ships as a manual one-shot migration for the maintainer's DB. No
+  // other users currently have pre-#208 data (confirmed). Fresh installs
+  // never populate `space_paths`. So no embedded upgrade backfill is needed —
+  // if a user with old data ever surfaces, we'll do their migration by hand
+  // (commit 4be6760 has the SQL).
 
   // Retire the legacy spaces.repo_path column. Fresh installs never had it
   // (removed from the SCHEMA above); existing installs get data migrated
