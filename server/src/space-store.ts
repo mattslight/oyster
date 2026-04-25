@@ -124,7 +124,14 @@ export class SqliteSpaceStore implements SpaceStore {
   }
 
   transaction<T>(fn: () => T): T {
-    return this.db.transaction(fn)();
+    const result = this.db.transaction(fn)();
+    // Guard against async fns: better-sqlite3's transaction is synchronous,
+    // so an async closure would resolve AFTER commit — rejections inside the
+    // Promise would never roll back the transaction. Better to fail loudly.
+    if (result instanceof Promise) {
+      throw new Error("spaceStore.transaction(fn): fn must be synchronous (got a Promise)");
+    }
+    return result;
   }
 
   private static readonly UPDATABLE_COLUMNS = new Set([

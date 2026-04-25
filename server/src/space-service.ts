@@ -370,9 +370,9 @@ export class SpaceService {
       //   (a) soft-deleted   → resurface AND (re-)claim source_id. The artifact
       //                        had previously been linked to *this* source and
       //                        was soft-deleted by detach; reattach legitimately
-      //                        owns it again. Safe even if multiple sources had
-      //                        share-the-basename collisions, because we filter
-      //                        on (space_id, source_ref) which any colliding
+      //                        owns it again. Safe even when multiple sources
+      //                        have basename collisions, because we filter on
+      //                        (space_id, source_ref) which any colliding
       //                        source would also match — the most-recent active
       //                        source wins, matching today's flat ordering.
       //   (b) live but NULL  → backfill source_id (post-migration legacy row).
