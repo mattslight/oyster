@@ -4,6 +4,11 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **"Show me my X" now changes what you see, not just what's said.** Asking the assistant to show or filter to a subset of artifacts (e.g. *"show me tokinvest invoices"*) narrows the desktop in place — same surface, fewer tiles — instead of replying with text. A small ✦ pill at the top of the desktop names the active filter; ✕ clears it. Built on a new `filter_desktop` MCP tool any connected agent can drive.
+- **Search now matches space and source folder, not just label.** A query for *"tokinvest"* finds tiles in the tokinvest space (or under a tokinvest source folder), not only tiles whose name contains the word.
+
 ## [0.4.0-beta.7] - 2026-04-25
 
 ### Changed

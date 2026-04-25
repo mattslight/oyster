@@ -56,6 +56,9 @@ export default function App() {
 
   const [activeSpace, setActiveSpace] = useState<string>(() => getUrlState().space);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
+  // Agent-driven desktop filter, set by the `filter_desktop` MCP tool. Layered
+  // on top of the user's space-pill / kind-pill state — see line 365.
+  const [agentFilter, setAgentFilter] = useState<{ kind: ArtifactKind | null; search: string | null } | null>(null);
 
   // Global keyboard shortcuts
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +115,28 @@ export default function App() {
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
   const [connected, setConnected] = useState(true);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Apply the agent-driven desktop filter on top of the space-scoped list.
+  // Intersection semantics — kind + search both narrow further. Search matches
+  // label, space id/name, or sourceLabel (basename of linked source folder).
+  function applyAgentFilter(list: Artifact[]): Artifact[] {
+    if (!agentFilter) return list;
+    const { kind, search } = agentFilter;
+    let next = list;
+    if (kind) next = next.filter((a) => a.artifactKind === kind);
+    if (search) {
+      const q = search.toLowerCase();
+      const space = spaces.find((s) => s.id === activeSpace);
+      next = next.filter((a) => {
+        if (a.label.toLowerCase().includes(q)) return true;
+        if (a.spaceId.toLowerCase().includes(q)) return true;
+        if (space && space.displayName.toLowerCase().includes(q)) return true;
+        if (a.sourceLabel && a.sourceLabel.toLowerCase().includes(q)) return true;
+        return false;
+      });
+    }
+    return next;
+  }
 
   // Active-space-aware artifact loader. Mirrors current activeSpace via a ref
   // so callers don't have to thread it through every closure (polling,
@@ -196,6 +221,15 @@ export default function App() {
       setActiveSpace(spaceId);
       window.history.pushState(null, "", `/s/${spaceId}`);
       dispatch({ type: "CLOSE_ALL_VIEWERS" });
+    }
+    if (event.command === "desktop_filter_changed") {
+      const { spaceId, kind, search, cleared } = event.payload as { spaceId: string | null; kind: ArtifactKind | null; search: string | null; cleared: boolean };
+      if (cleared) { setAgentFilter(null); return; }
+      if (spaceId) {
+        setActiveSpace(spaceId);
+        window.history.pushState(null, "", `/s/${spaceId}`);
+      }
+      setAgentFilter(kind || search ? { kind, search } : null);
     }
   }), []);
 
@@ -362,7 +396,9 @@ export default function App() {
         space={activeSpace}
         spaces={spaces.map(s => s.id)}
         isHero={isHero}
-        artifacts={(activeSpace === "__all__" || activeSpace === "__archived__") ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
+        artifacts={applyAgentFilter((activeSpace === "__all__" || activeSpace === "__archived__") ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace))}
+        agentFilter={agentFilter}
+        onClearAgentFilter={() => setAgentFilter(null)}
         isArchivedView={isArchivedView}
         onArtifactClick={handleArtifactClick}
         onArtifactStop={handleArtifactStop}

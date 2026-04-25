@@ -32,9 +32,12 @@ interface Props {
   revealId?: string | null;
   /** When true, render the archived-items view: context menu shows Restore. */
   isArchivedView?: boolean;
+  /** Agent-driven filter set via filter_desktop MCP tool. App.tsx applies the filter to `artifacts` before passing them in; this only renders the dismissable notice. */
+  agentFilter?: { kind: string | null; search: string | null } | null;
+  onClearAgentFilter?: () => void;
 }
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onImportFromAI, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView, agentFilter, onClearAgentFilter }: Props) {
   const isAllSpace = space === "__all__";
 
   // ── Folder context menu ──
@@ -339,6 +342,17 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
 
       <div className={`desktop-scroll${isHero ? " desktop-scroll--hero" : ""}`}>
         <div className="filter-bar">
+          {agentFilter && (
+            <div className="filter-notice filter-notice--agent" title="Filter set by AI assistant. Click ✕ to clear.">
+              <span className="filter-notice-kind">
+                {[
+                  agentFilter.kind ? kindLabel(agentFilter.kind) : null,
+                  agentFilter.search ? `"${agentFilter.search}"` : null,
+                ].filter(Boolean).join(" · ")}
+              </span>
+              <button className="filter-notice-clear" onClick={() => onClearAgentFilter?.()}>✕</button>
+            </div>
+          )}
           {activeKind && (
             <div className="filter-notice">
               <div className="filter-notice-kind-wrap">

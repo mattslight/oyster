@@ -380,6 +380,19 @@ body {
   white-space: nowrap;
 }
 
+/* Agent-driven filter — distinct from the user-clicked kind filter so it's
+   obvious the AI did this and one ✕ click clears it. */
+.filter-notice--agent {
+  background: rgba(124, 107, 255, 0.32);
+  box-shadow: 0 0 0 1px rgba(124, 107, 255, 0.45) inset;
+}
+.filter-notice--agent::before {
+  content: "✦";
+  color: var(--accent);
+  font-size: 0.7rem;
+  margin-right: 2px;
+}
+
 .filter-notice-kind-wrap {
   position: relative;
 }

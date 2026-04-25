@@ -571,7 +571,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         .enum(ARTIFACT_KINDS)
         .optional()
         .describe("Filter by artifact kind"),
-      search: z.string().optional().describe("Search term — filters artifacts whose label contains this text (case-insensitive)"),
+      search: z.string().optional().describe("Search term — case-insensitive match against artifact label, the artifact's space id/name, or its source file basename"),
       limit: z.number().int().min(1).max(100).optional().describe("Max results to return (default 20)"),
     },
     async ({ space_id, artifact_kind, search, limit }) => {
@@ -580,7 +580,18 @@ export function createMcpServer(deps: McpDeps): McpServer {
       if (artifact_kind) artifacts = artifacts.filter((a) => a.artifactKind === artifact_kind);
       if (search) {
         const q = search.toLowerCase();
-        artifacts = artifacts.filter((a) => a.label.toLowerCase().includes(q));
+        // Match label OR space id/name OR source file basename — a search for
+        // "tokinvest" should find artifacts in a tokinvest space (or under a
+        // tokinvest source folder), not just ones with "tokinvest" in the label.
+        const spaceById = new Map(deps.spaceService.listSpaces().map(s => [s.id, s]));
+        artifacts = artifacts.filter((a) => {
+          if (a.label.toLowerCase().includes(q)) return true;
+          const space = spaceById.get(a.spaceId);
+          if (space && (space.id.toLowerCase().includes(q) || space.displayName.toLowerCase().includes(q))) return true;
+          const src = deps.service.getDocFile(a.id);
+          if (src && basename(src).toLowerCase().includes(q)) return true;
+          return false;
+        });
       }
       artifacts = artifacts.slice(0, limit ?? 20);
 
@@ -838,6 +849,60 @@ export function createMcpServer(deps: McpDeps): McpServer {
         payload: { spaceId: space.id },
       });
       return { content: [{ type: "text" as const, text: `Switched to "${space.displayName}"` }] };
+    },
+  );
+
+  // ── filter_desktop ──
+
+  server.tool(
+    "filter_desktop",
+    'Change what the user sees on the desktop surface. Use this when the user says "show me X" / "only X" / "filter to X" — the request is a visual action, not a question. For "how many X do I have?" or "what artifacts exist?" use list_artifacts instead. Optionally switches space and applies a search/kind filter; pass clear=true to remove any active filter.',
+    {
+      space: z.string().optional().describe("Space ID to switch to before filtering"),
+      kind: z.enum(ARTIFACT_KINDS).optional().describe("Restrict the surface to one artifact kind"),
+      search: z.string().optional().describe("Free-text term — matches artifact label, space name, or source folder name (case-insensitive)"),
+      clear: z.boolean().optional().describe("Set true to clear the active filter — overrides other args"),
+    },
+    async ({ space, kind, search, clear }) => {
+      if (clear) {
+        deps.broadcastUiEvent({
+          version: 1,
+          command: "desktop_filter_changed",
+          payload: { spaceId: null, kind: null, search: null, cleared: true },
+        });
+        return { content: [{ type: "text" as const, text: "Filter cleared." }] };
+      }
+
+      let resolvedSpaceId: string | null = null;
+      if (space) {
+        const spaces = deps.spaceService.listSpaces();
+        const match = spaces.find(s => s.id === space);
+        if (!match) {
+          return { content: [{ type: "text" as const, text: `Space "${space}" not found. Available: ${spaces.map(s => s.id).join(", ")}` }], isError: true };
+        }
+        resolvedSpaceId = match.id;
+      }
+
+      if (!resolvedSpaceId && !kind && !search) {
+        return { content: [{ type: "text" as const, text: "filter_desktop needs at least one of space, kind, search, or clear=true." }], isError: true };
+      }
+
+      deps.broadcastUiEvent({
+        version: 1,
+        command: "desktop_filter_changed",
+        payload: {
+          spaceId: resolvedSpaceId,
+          kind: kind ?? null,
+          search: search ?? null,
+          cleared: false,
+        },
+      });
+
+      const parts: string[] = [];
+      if (resolvedSpaceId) parts.push(`space=${resolvedSpaceId}`);
+      if (kind) parts.push(`kind=${kind}`);
+      if (search) parts.push(`search="${search}"`);
+      return { content: [{ type: "text" as const, text: `Desktop filter applied (${parts.join(", ")}).` }] };
     },
   );
 
