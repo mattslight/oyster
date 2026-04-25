@@ -47,11 +47,6 @@ export function initDb(userlandDir: string): Database.Database {
     "ALTER TABLE artifacts ADD COLUMN removed_at TEXT",
     "ALTER TABLE artifacts ADD COLUMN source_origin TEXT NOT NULL DEFAULT 'manual'",
     "ALTER TABLE artifacts ADD COLUMN source_ref TEXT",
-    // #208: link discovered artifacts back to the source that produced them.
-    // SET NULL covers the rare case where a space is hard-deleted (cascade
-    // hard-deletes its sources via sources.space_id) — artifacts left behind
-    // become unattributed orphans rather than dangling FKs.
-    "ALTER TABLE artifacts ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL",
     "ALTER TABLE spaces ADD COLUMN parent_id TEXT REFERENCES spaces(id)",
     "ALTER TABLE spaces ADD COLUMN summary_title TEXT",
     "ALTER TABLE spaces ADD COLUMN summary_content TEXT",
@@ -91,6 +86,16 @@ export function initDb(userlandDir: string): Database.Database {
     CREATE UNIQUE INDEX IF NOT EXISTS sources_path_active
       ON sources(path) WHERE removed_at IS NULL;
   `);
+
+  // Add the artifacts.source_id FK *after* the sources table exists. SQLite
+  // tolerates forward FK references at ALTER time (the FK only validates at
+  // write time), but explicit ordering is less surprising.
+  // ON DELETE SET NULL covers the rare case where a space is hard-deleted —
+  // cascade hard-deletes its sources via sources.space_id, and artifacts
+  // left behind become unattributed orphans rather than dangling FKs.
+  try {
+    db.exec("ALTER TABLE artifacts ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
+  } catch { /* already exists */ }
 
   // #208 ships as a manual one-shot migration for the maintainer's DB. No
   // other users currently have pre-#208 data (confirmed). Fresh installs

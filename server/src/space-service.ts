@@ -106,8 +106,17 @@ export class SpaceService {
     // resurface on the next scan via upsertCandidate.
     const removed = this.spaceStore.getSoftDeletedSourceByPathForSpace(spaceId, resolved);
     if (removed) {
-      this.spaceStore.restoreSource(removed.id);
-      return { ...removed, removed_at: null };
+      try {
+        this.spaceStore.restoreSource(removed.id);
+        return { ...removed, removed_at: null };
+      } catch (err) {
+        // Race: between our check and the restore, another caller inserted a
+        // fresh active source for the same path. Re-evaluate.
+        if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
+          return this.resolveSourceConflict(spaceId, resolved, err);
+        }
+        throw err;
+      }
     }
 
     const id = crypto.randomUUID();
@@ -115,19 +124,26 @@ export class SpaceService {
       this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
     } catch (err) {
       // Race: a concurrent caller inserted the same path between our check and
-      // our insert. Re-evaluate against the now-committed row and surface the
-      // same friendly error as the up-front conflict path.
+      // our insert. Re-evaluate.
       if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
-        const raced = this.spaceStore.getActiveSourceByPath(resolved);
-        if (raced) {
-          if (raced.space_id === spaceId) return raced;
-          const ownerName = this.spaceStore.getById(raced.space_id)?.display_name ?? raced.space_id;
-          throw new Error(`Path is already attached to space "${ownerName}"`);
-        }
+        return this.resolveSourceConflict(spaceId, resolved, err);
       }
       throw err;
     }
     return this.spaceStore.getSourceById(id)!;
+  }
+
+  // Both addSource paths can race against the partial unique index on
+  // sources(path) WHERE removed_at IS NULL. Surface the same friendly error
+  // (or no-op return) as the up-front check would have produced.
+  private resolveSourceConflict(spaceId: string, resolved: string, originalErr: unknown): Source {
+    const raced = this.spaceStore.getActiveSourceByPath(resolved);
+    if (raced) {
+      if (raced.space_id === spaceId) return raced;
+      const ownerName = this.spaceStore.getById(raced.space_id)?.display_name ?? raced.space_id;
+      throw new Error(`Path is already attached to space "${ownerName}"`);
+    }
+    throw originalErr;
   }
 
   // Detach an external folder from a space. Soft-deletes both the source row
@@ -232,8 +248,12 @@ export class SpaceService {
         const slug = folderSlug(folderPath);
         const candidates = this.walk(folderPath);
         for (const c of candidates) {
-          // Namespace sourceRef with folder name to avoid collisions across multiple paths.
-          // (Vestigial since we now have source_id, but kept so existing rows still match.)
+          // Namespace sourceRef with the folder's basename — reduces (but does
+          // not eliminate) collisions when a space has multiple paths. Two
+          // paths sharing a basename (e.g. ~/a/foo and ~/b/foo) still collide.
+          // Truly correct dedup would key on source_id; we keep the slug
+          // prefix only so existing pre-#208 rows still match. See follow-up
+          // in PR #219 description.
           c.sourceRef = `${slug}/${c.sourceRef}`;
           this.upsertCandidate(spaceId, source.id, c, result);
         }
