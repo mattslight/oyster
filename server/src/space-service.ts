@@ -111,7 +111,22 @@ export class SpaceService {
     }
 
     const id = crypto.randomUUID();
-    this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
+    try {
+      this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
+    } catch (err) {
+      // Race: a concurrent caller inserted the same path between our check and
+      // our insert. Re-evaluate against the now-committed row and surface the
+      // same friendly error as the up-front conflict path.
+      if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
+        const raced = this.spaceStore.getActiveSourceByPath(resolved);
+        if (raced) {
+          if (raced.space_id === spaceId) return raced;
+          const ownerName = this.spaceStore.getById(raced.space_id)?.display_name ?? raced.space_id;
+          throw new Error(`Path is already attached to space "${ownerName}"`);
+        }
+      }
+      throw err;
+    }
     return this.spaceStore.getSourceById(id)!;
   }
 
