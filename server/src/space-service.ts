@@ -2,10 +2,23 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
 import { homedir } from "node:os";
 import crypto from "node:crypto";
-import type { SpaceStore, SpaceRow } from "./space-store.js";
+import type { SpaceStore, SpaceRow, Source } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
+import type { ArtifactService } from "./artifact-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
+
+// Last path component, normalised. Same logic used at scan time and (if ever
+// needed again) for slug-based migration backfill — single source of truth.
+export function folderSlug(folderPath: string): string {
+  return resolve(folderPath).split(sep).pop() ?? folderPath;
+}
+
+function expandHome(rawPath: string): string {
+  return rawPath.startsWith("~/")
+    ? resolve(join(homedir(), rawPath.slice(2)))
+    : resolve(rawPath);
+}
 
 const SPACE_PALETTE = [
   "#6057c4", "#3d8aaa", "#3a8f64", "#b06840",
@@ -49,6 +62,7 @@ export class SpaceService {
   constructor(
     private spaceStore: SpaceStore,
     private artifactStore: ArtifactStore,
+    private artifactService: ArtifactService,
   ) {}
 
   createSpace(params: { name: string }): Space {
@@ -69,33 +83,65 @@ export class SpaceService {
     return rowToSpace(this.spaceStore.getById(id)!);
   }
 
-  addPath(spaceId: string, rawPath: string): string {
+  // Attach an external folder to a space. Returns the resulting Source — newly
+  // inserted, restored from a soft-delete, or already-active no-op.
+  addSource(spaceId: string, rawPath: string): Source {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
-    const resolved = rawPath.startsWith("~/")
-      ? resolve(join(homedir(), rawPath.slice(2)))
-      : resolve(rawPath);
-
+    const resolved = expandHome(rawPath);
     if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
     if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
 
-    // Check if this path is already attached to another space
-    const existing = this.spaceStore.getSpaceByPath(resolved);
-    if (existing && existing.id !== spaceId) {
-      throw new Error(`Path is already attached to space "${existing.display_name}"`);
+    // Cross-space conflict / same-space no-op check.
+    const active = this.spaceStore.getActiveSourceByPath(resolved);
+    if (active) {
+      if (active.space_id === spaceId) return active;
+      const ownerName = this.spaceStore.getById(active.space_id)?.display_name ?? active.space_id;
+      throw new Error(`Path is already attached to space "${ownerName}"`);
     }
 
-    this.spaceStore.addPath(spaceId, resolved);
-    return resolved;
+    // Reattach-restore: a soft-deleted source for the same (space, path) wins
+    // over inserting a fresh row. Same id survives — its artifacts will
+    // resurface on the next scan via upsertCandidate.
+    const removed = this.spaceStore.getSoftDeletedSourceByPathForSpace(spaceId, resolved);
+    if (removed) {
+      this.spaceStore.restoreSource(removed.id);
+      return { ...removed, removed_at: null };
+    }
+
+    const id = crypto.randomUUID();
+    this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
+    return this.spaceStore.getSourceById(id)!;
   }
 
-  removePath(spaceId: string, path: string): void {
-    this.spaceStore.removePath(spaceId, path);
+  // Detach an external folder from a space. Soft-deletes both the source row
+  // AND every artifact that came from it. Reversible via addSource(...) on the
+  // same path — restoreSource keeps the same id and upsertCandidate resurfaces
+  // soft-deleted artifacts on the next scan.
+  removeSource(sourceId: string): void {
+    const source = this.spaceStore.getSourceById(sourceId);
+    if (!source) throw new Error(`Source "${sourceId}" not found`);
+    if (source.removed_at) return; // already detached, no-op
+    // Race guard: refuse to detach mid-scan. Otherwise the in-flight scan can
+    // resurface artifacts we just soft-deleted (upsertCandidate's resurface
+    // branch flips removed_at back to NULL). Caller can retry once the scan
+    // completes.
+    if (this.scanning.has(source.space_id)) {
+      throw new Error(`Cannot detach while space "${source.space_id}" is scanning — try again in a moment.`);
+    }
+    // Cascade artifacts FIRST, then the source row. If anything throws, the
+    // source stays active and the user can retry.
+    this.artifactService.removeBySource(sourceId);
+    this.spaceStore.softDeleteSource(sourceId);
   }
 
-  getPaths(spaceId: string): string[] {
-    return this.spaceStore.getPaths(spaceId).map(p => p.path);
+  getSources(spaceId: string): Source[] {
+    return this.spaceStore.getSources(spaceId);
+  }
+
+  getActiveSourceByPath(path: string): Source | undefined {
+    return this.spaceStore.getActiveSourceByPath(expandHome(path));
   }
 
   listSpaces(): Space[] { return this.spaceStore.getAll().map(rowToSpace); }
@@ -152,8 +198,8 @@ export class SpaceService {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
-    const paths = this.spaceStore.getPaths(spaceId).map(p => p.path);
-    if (paths.length === 0) throw new Error(`Space "${spaceId}" has no folders`);
+    const sources = this.spaceStore.getSources(spaceId).filter(s => s.type === "local_folder");
+    if (sources.length === 0) throw new Error(`Space "${spaceId}" has no folders`);
 
     if (this.scanning.has(spaceId)) throw new Error(`Scan already in progress for space "${spaceId}"`);
 
@@ -162,17 +208,19 @@ export class SpaceService {
 
     const result: ScanResult = { discovered: 0, skipped: 0, resurfaced: 0, errors: [], artifacts: [] };
     try {
-      for (const folderPath of paths) {
+      for (const source of sources) {
+        const folderPath = source.path;
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           result.errors.push(`Skipped missing folder: ${folderPath}`);
           continue;
         }
-        const folderSlug = folderPath.split(sep).pop() ?? folderPath;
+        const slug = folderSlug(folderPath);
         const candidates = this.walk(folderPath);
         for (const c of candidates) {
-          // Namespace sourceRef with folder name to avoid collisions across multiple paths
-          c.sourceRef = `${folderSlug}/${c.sourceRef}`;
-          this.upsertCandidate(spaceId, c, result);
+          // Namespace sourceRef with folder name to avoid collisions across multiple paths.
+          // (Vestigial since we now have source_id, but kept so existing rows still match.)
+          c.sourceRef = `${slug}/${c.sourceRef}`;
+          this.upsertCandidate(spaceId, source.id, c, result);
         }
       }
       this.spaceStore.update(spaceId, {
@@ -267,6 +315,7 @@ export class SpaceService {
 
   private upsertCandidate(
     spaceId: string,
+    sourceId: string,
     candidate: { absPath: string; sourceRef: string; kind: "app" | "notes" | "diagram" },
     result: ScanResult,
   ): void {
@@ -274,11 +323,20 @@ export class SpaceService {
     const existing = this.artifactStore.getBySpaceAndSourceRef(spaceId, sourceRef);
 
     if (existing) {
+      // Two paths to handle explicitly:
+      //   (a) soft-deleted   → resurface AND set source_id (covers reattach,
+      //                        and back-fills source_id if it was NULL).
+      //   (b) live but NULL  → set source_id only (post-migration backfill on
+      //                        first scan after #208 lands).
+      // Both are idempotent if source_id already matches.
       if (existing.removed_at) {
-        this.artifactStore.resurface(existing.id);
+        this.artifactStore.update(existing.id, { removed_at: null, source_id: sourceId });
         result.resurfaced++;
         result.artifacts.push({ id: existing.id, label: existing.label, kind: existing.artifact_kind, sourceRef });
       } else {
+        if (existing.source_id !== sourceId) {
+          this.artifactStore.update(existing.id, { source_id: sourceId });
+        }
         result.skipped++;
       }
       return;
@@ -327,6 +385,7 @@ export class SpaceService {
       storage_kind: "filesystem", storage_config: JSON.stringify(storageConfig),
       runtime_kind: runtimeKind, runtime_config: JSON.stringify(runtimeConfig),
       group_name, source_origin: "discovered", source_ref: sourceRef,
+      source_id: sourceId,
     });
     result.discovered++;
     result.artifacts.push({ id, label, kind, sourceRef });
