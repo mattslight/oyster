@@ -495,19 +495,20 @@ export class ArtifactService {
   // ── Private ──
 
   // Pre-resolve a sources Map<id, basename-label> once per batch caller so
-  // listing many linked-folder tiles doesn't N+1 the sources table. Stores the
-  // basename only — absolute paths never leave the server via /api/artifacts.
-  // Single-row callers can pass undefined and pay the per-row lookup.
+  // listing many linked-folder tiles doesn't N+1 the sources table. One SQL
+  // roundtrip via WHERE id IN (...). Stores the basename only — absolute
+  // paths never leave the server via /api/artifacts. Single-row callers can
+  // pass undefined and pay the per-row lookup.
   private buildSourceLabelMap(rows: ArtifactRow[]): Map<string, string> {
     const map = new Map<string, string>();
     if (!this.spaceStore) return map;
-    const seen = new Set<string>();
+    const ids = new Set<string>();
     for (const row of rows) {
-      if (row.source_id && !seen.has(row.source_id)) {
-        seen.add(row.source_id);
-        const path = this.spaceStore.getSourceById(row.source_id)?.path;
-        if (path) map.set(row.source_id, basename(path));
-      }
+      if (row.source_id) ids.add(row.source_id);
+    }
+    if (ids.size === 0) return map;
+    for (const source of this.spaceStore.getSourcesByIds([...ids])) {
+      map.set(source.id, basename(source.path));
     }
     return map;
   }

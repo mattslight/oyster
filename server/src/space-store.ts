@@ -40,6 +40,8 @@ export interface SpaceStore {
   restoreSource(sourceId: string): void;
   getSources(spaceId: string, opts?: { includeRemoved?: boolean }): Source[];
   getSourceById(sourceId: string): Source | undefined;
+  /** Batched lookup for callers that already know the set of ids they need (e.g. resolving sources for a page of artifacts). One SQL roundtrip via WHERE id IN (...). */
+  getSourcesByIds(sourceIds: string[]): Source[];
   getActiveSourceByPath(path: string): Source | undefined;
   getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined;
   // Run a closure inside a SAVEPOINT-backed transaction. better-sqlite3
@@ -118,6 +120,13 @@ export class SqliteSpaceStore implements SpaceStore {
     return stmt.all(spaceId) as Source[];
   }
   getSourceById(sourceId: string): Source | undefined { return this.stmts.getSourceById.get(sourceId) as Source | undefined; }
+  getSourcesByIds(sourceIds: string[]): Source[] {
+    if (sourceIds.length === 0) return [];
+    // Dynamic placeholder list — better-sqlite3 has no native array binding,
+    // and we'd rather one prepared statement per call than N getById hits.
+    const placeholders = sourceIds.map(() => "?").join(",");
+    return this.db.prepare(`SELECT * FROM sources WHERE id IN (${placeholders})`).all(...sourceIds) as Source[];
+  }
   getActiveSourceByPath(path: string): Source | undefined { return this.stmts.getActiveSourceByPath.get(path) as Source | undefined; }
   getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined {
     return this.stmts.getSoftDeletedSourceByPathForSpace.get(spaceId, path) as Source | undefined;
