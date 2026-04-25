@@ -237,28 +237,30 @@
   <div class="page">
     <div class="page-header">
       <h1>Where do my files live?</h1>
-      <p>Two homes for your files. Oyster manages one. You manage the other.</p>
+      <p>Two homes for your files.</p>
     </div>
 
     <div id="error-slot"></div>
 
-    <div class="section-label">Your Oyster workspace</div>
+    <div class="section-label">Your Oyster home</div>
     <div class="card">
-      <div class="card-title">Oyster's territory</div>
-      <p>Everything inside this folder is managed by Oyster — kept in sync with the surface, backed up, and editable through chat. Tiles created in the chat bar, AI-generated apps, notes, invoices: all live here. Delete a tile from the surface and the file is gone too.</p>
       <div class="primary" id="oyster-home"><span class="loading">loading…</span></div>
+      <p>Everything you make in Oyster lives here. Delete a tile from the surface, the file's gone too.</p>
+    </div>
+
+    <div class="section-label">What's inside</div>
+    <div class="card">
+      <div class="shortcuts">
+        <div class="shortcut"><span class="shortcut-key">spaces/</span><span class="shortcut-desc">your work, one folder per space</span></div>
+        <div class="shortcut"><span class="shortcut-key">apps/</span><span class="shortcut-desc">apps you've installed</span></div>
+        <div class="shortcut"><span class="shortcut-key">db/</span><span class="shortcut-desc">Oyster's database</span></div>
+        <div class="shortcut"><span class="shortcut-key">backups/</span><span class="shortcut-desc">automatic daily snapshots</span></div>
+      </div>
     </div>
 
     <div class="section-label">Linked folders</div>
     <div class="card">
-      <div class="card-title">
-        <span class="chip" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-        </span>
-        <span>Your territory</span>
-      </div>
-      <p>Folders elsewhere on disk — e.g. <code>~/Dev/my-project/</code> — that you've attached to a space. Oyster shows tiles as a window into your folder. Files stay where they are, edits write back in place, and detaching a tile leaves the file untouched on disk. Backups, version control, sync — your responsibility.</p>
-      <p>Tiles from linked folders carry a small chain-link marker:</p>
+      <p>Tiles from folders you've attached from elsewhere on disk show a small chain-link chip. The file stays where you keep it — Oyster's just a window in.</p>
       <div class="marker-preview">
         <div class="marker-tile">
           <div class="marker-thumb">
@@ -270,18 +272,8 @@
           <div class="marker-label">README</div>
         </div>
         <div class="marker-caption">
-          The bottom-left chip on the icon means this tile lives in a folder you own — not in the Oyster workspace. Hover the marker for the source folder name.
+          Detaching one of these from the surface leaves the file untouched on disk. Backups and version control are yours to handle.
         </div>
-      </div>
-    </div>
-
-    <div class="section-label">What's inside ~/Oyster</div>
-    <div class="card">
-      <div class="shortcuts">
-        <div class="shortcut"><span class="shortcut-key">spaces/</span><span class="shortcut-desc" id="spaces-path"><span class="loading">loading…</span></span></div>
-        <div class="shortcut"><span class="shortcut-key">apps/</span><span class="shortcut-desc" id="apps-path"></span></div>
-        <div class="shortcut"><span class="shortcut-key">db/</span><span class="shortcut-desc" id="db-path"></span></div>
-        <div class="shortcut"><span class="shortcut-key">backups/</span><span class="shortcut-desc" id="backups-path"></span></div>
       </div>
     </div>
 
@@ -292,19 +284,8 @@
       </div>
     </div>
 
-    <div class="section-label">Finding a specific file</div>
-    <div class="card">
-      <div class="shortcuts">
-        <div class="shortcut"><span class="shortcut-key">A tokinvest invoice</span><span class="shortcut-desc"><code id="ex-invoice"></code></span></div>
-        <div class="shortcut"><span class="shortcut-key">A note in home</span><span class="shortcut-desc"><code id="ex-note"></code></span></div>
-        <div class="shortcut"><span class="shortcut-key">An AI-generated app</span><span class="shortcut-desc"><code id="ex-app"></code></span></div>
-        <div class="shortcut"><span class="shortcut-key">An installed app</span><span class="shortcut-desc"><code id="ex-installed"></code></span></div>
-      </div>
-    </div>
-
-    <div class="section-label">Moving things</div>
-    <div class="card">
-      <p>Use Oyster — the agent or the UI — for moves and renames so the filesystem and the database stay in sync. Finder-only moves aren't reconciled yet.</p>
+    <div class="card" style="margin-top: 24px; background: rgba(0,0,0,0.18); border-color: rgba(255,255,255,0.04);">
+      <p>Move or rename through Oyster — Finder-only changes aren't reconciled with the database yet.</p>
     </div>
   </div>
 
@@ -317,14 +298,6 @@
         const el = document.getElementById(id);
         if (el) el.textContent = text;
       };
-      const setCode = (cellId, p) => {
-        const cell = document.getElementById(cellId);
-        if (!cell) return;
-        cell.replaceChildren();
-        const code = document.createElement("code");
-        code.textContent = p;
-        cell.appendChild(code);
-      };
 
       try {
         const res = await fetch("/api/workspace");
@@ -333,10 +306,6 @@
         const sep = info.platform === "win32" ? "\\" : "/";
 
         setText("oyster-home", info.oysterHome);
-        setCode("spaces-path", info.paths.spaces);
-        setCode("apps-path", info.paths.apps);
-        setCode("db-path", info.paths.db);
-        setCode("backups-path", info.paths.backups);
 
         const sl = document.getElementById("spaces-list");
         sl.replaceChildren();
@@ -361,27 +330,17 @@
           row.className = "shortcut";
           const desc = document.createElement("span");
           desc.className = "shortcut-desc";
-          desc.textContent = "No spaces yet. Ask your AI to set up Oyster, or create one via the chat bar.";
+          desc.textContent = "No spaces yet. Ask your AI to set one up.";
           row.appendChild(desc);
           sl.appendChild(row);
         }
-
-        // Examples — use real space names where available so they're concrete
-        const tokinvest = info.spaces.find(s => s === "tokinvest") || "<space>";
-        const home = info.spaces.find(s => s === "home") || info.spaces[0] || "home";
-        setText("ex-invoice", info.paths.spaces + sep + tokinvest + sep + "invoices" + sep + "<name>.md");
-        setText("ex-note", info.paths.spaces + sep + home + sep + "<name>.md");
-        setText("ex-app", info.paths.spaces + sep + "<space>" + sep + "<app-name>" + sep);
-        setText("ex-installed", info.paths.apps + sep + "<app-name>" + sep);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const banner = document.createElement("div");
         banner.className = "error-banner";
         banner.textContent = "Couldn't reach /api/workspace: " + message;
         document.getElementById("error-slot").appendChild(banner);
-        // Clear placeholders so the page isn't stuck on "loading…"
         setText("oyster-home", "—");
-        for (const id of ["spaces-path", "apps-path", "db-path", "backups-path"]) setText(id, "—");
         const sl = document.getElementById("spaces-list");
         sl.replaceChildren();
         const row = document.createElement("div");
@@ -391,7 +350,6 @@
         desc.textContent = "Couldn't load paths — see error above.";
         row.appendChild(desc);
         sl.appendChild(row);
-        for (const id of ["ex-invoice", "ex-note", "ex-app", "ex-installed"]) setText(id, "—");
       }
     })();
   </script>
