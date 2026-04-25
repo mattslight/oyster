@@ -42,6 +42,10 @@ export interface SpaceStore {
   getSourceById(sourceId: string): Source | undefined;
   getActiveSourceByPath(path: string): Source | undefined;
   getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined;
+  // Run a closure inside a SAVEPOINT-backed transaction. better-sqlite3
+  // rolls back the SQL writes if the closure throws. (JS state mutations
+  // inside the closure don't roll back — that's the caller's problem.)
+  transaction<T>(fn: () => T): T;
 }
 
 export class SqliteSpaceStore implements SpaceStore {
@@ -117,6 +121,10 @@ export class SqliteSpaceStore implements SpaceStore {
   getActiveSourceByPath(path: string): Source | undefined { return this.stmts.getActiveSourceByPath.get(path) as Source | undefined; }
   getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined {
     return this.stmts.getSoftDeletedSourceByPathForSpace.get(spaceId, path) as Source | undefined;
+  }
+
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
   }
 
   private static readonly UPDATABLE_COLUMNS = new Set([

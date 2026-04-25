@@ -8,10 +8,13 @@ import type { ArtifactService } from "./artifact-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
 
-// Last path component, normalised. Same logic used at scan time and (if ever
-// needed again) for slug-based migration backfill — single source of truth.
+// Last non-empty path component, normalised. Same logic used at scan time and
+// (if ever needed again) for slug-based migration backfill — single source of
+// truth. Filters empty segments so root-ish paths like "/" or "C:\\" still
+// produce a non-empty slug.
 export function folderSlug(folderPath: string): string {
-  return resolve(folderPath).split(sep).pop() ?? folderPath;
+  const parts = resolve(folderPath).split(sep).filter(Boolean);
+  return parts.pop() ?? folderPath;
 }
 
 function expandHome(rawPath: string): string {
@@ -161,10 +164,16 @@ export class SpaceService {
     if (this.scanning.has(source.space_id)) {
       throw new Error(`Cannot detach while space "${source.space_id}" is scanning — try again in a moment.`);
     }
-    // Cascade artifacts FIRST, then the source row. If anything throws, the
-    // source stays active and the user can retry.
-    this.artifactService.removeBySource(sourceId);
-    this.spaceStore.softDeleteSource(sourceId);
+    // Atomic cascade: artifact bulk soft-delete + source soft-delete inside a
+    // single transaction. If either fails the SQL rolls back together, so we
+    // never leave a partial state (tiles gone but source still attached, or
+    // vice versa). The cache invalidation in artifactService.removeBySource
+    // is a JS state change, not SQL — it doesn't roll back, but an over-eager
+    // cache invalidation just causes a re-read on next access (harmless).
+    this.spaceStore.transaction(() => {
+      this.artifactService.removeBySource(sourceId);
+      this.spaceStore.softDeleteSource(sourceId);
+    });
   }
 
   getSources(spaceId: string): Source[] {
@@ -252,8 +261,7 @@ export class SpaceService {
           // not eliminate) collisions when a space has multiple paths. Two
           // paths sharing a basename (e.g. ~/a/foo and ~/b/foo) still collide.
           // Truly correct dedup would key on source_id; we keep the slug
-          // prefix only so existing pre-#208 rows still match. See follow-up
-          // in PR #219 description.
+          // prefix only so existing pre-#208 rows still match.
           c.sourceRef = `${slug}/${c.sourceRef}`;
           this.upsertCandidate(spaceId, source.id, c, result);
         }
@@ -359,17 +367,25 @@ export class SpaceService {
 
     if (existing) {
       // Two paths to handle explicitly:
-      //   (a) soft-deleted   → resurface AND set source_id (covers reattach,
-      //                        and back-fills source_id if it was NULL).
-      //   (b) live but NULL  → set source_id only (post-migration backfill on
-      //                        first scan after #208 lands).
-      // Both are idempotent if source_id already matches.
+      //   (a) soft-deleted   → resurface AND (re-)claim source_id. The artifact
+      //                        had previously been linked to *this* source and
+      //                        was soft-deleted by detach; reattach legitimately
+      //                        owns it again. Safe even if multiple sources had
+      //                        share-the-basename collisions, because we filter
+      //                        on (space_id, source_ref) which any colliding
+      //                        source would also match — the most-recent active
+      //                        source wins, matching today's flat ordering.
+      //   (b) live but NULL  → backfill source_id (post-migration legacy row).
+      //   (c) live with non-null source_id → leave source_id alone, even if it
+      //                        differs. Otherwise basename collisions between
+      //                        two attached folders would silently steal each
+      //                        other's tiles, breaking detach later.
       if (existing.removed_at) {
         this.artifactStore.update(existing.id, { removed_at: null, source_id: sourceId });
         result.resurfaced++;
         result.artifacts.push({ id: existing.id, label: existing.label, kind: existing.artifact_kind, sourceRef });
       } else {
-        if (existing.source_id !== sourceId) {
+        if (existing.source_id === null) {
           this.artifactStore.update(existing.id, { source_id: sourceId });
         }
         result.skipped++;
