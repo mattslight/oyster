@@ -433,18 +433,17 @@ export function createMcpServer(deps: McpDeps): McpServer {
         const pathReports: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }> = [];
         for (const p of resolvedPaths) {
           try {
-            deps.spaceService.addPath(space.id, p);
-            // `attached` covers both \"newly added\" and \"already attached to
-            // THIS space\" — spaceStore.addPath is INSERT OR IGNORE so a
-            // duplicate silently no-ops.
+            deps.spaceService.addSource(space.id, p);
+            // `attached` covers newly added sources, restored-from-soft-delete
+            // sources, AND already-active sources for the same space (addSource
+            // is idempotent in those cases).
             pathReports.push({ path: p, status: "attached" });
           } catch (err) {
             const msg = (err as Error).message;
-            // `addPath` only throws for paths that don't exist on disk OR
-            // paths already claimed by a DIFFERENT space (addPath's
-            // conflict guard). The latter means THIS space still has
-            // no folders for that path, so we must not count it as
-            // attached for the scan-guard below.
+            // `addSource` only throws for paths that don't exist on disk OR
+            // paths already claimed by a DIFFERENT space (the conflict guard).
+            // The latter means THIS space still has no folders for that path,
+            // so we must not count it as attached for the scan-guard below.
             const ownedElsewhere = /already attached/i.test(msg);
             pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
           }
@@ -505,6 +504,34 @@ export function createMcpServer(deps: McpDeps): McpServer {
         const result = await deps.spaceService.scanSpace(space_id);
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
+
+  // ── detach_source ──
+
+  server.tool(
+    "detach_source",
+    "Detach a previously-linked folder from a space. Soft-deletes the link AND any tiles that came from that folder. The folder itself is untouched on disk. Reversible — re-attaching the same path restores the link and resurfaces the tiles.",
+    {
+      space_id: z.string().describe("ID of the space the folder is attached to"),
+      path: z.string().describe("Absolute path of the linked folder to detach (~/ supported)"),
+    },
+    async ({ space_id, path: rawPath }) => {
+      try {
+        const source = deps.spaceService.getActiveSourceByPath(rawPath);
+        if (!source || source.space_id !== space_id) {
+          return {
+            content: [{ type: "text" as const, text: `No folder at "${rawPath}" is currently attached to space "${space_id}".` }],
+            isError: true,
+          };
+        }
+        deps.spaceService.removeSource(source.id);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ detached: source.path, source_id: source.id, space_id: source.space_id }, null, 2) }],
         };
       } catch (err) {
         return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };

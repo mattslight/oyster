@@ -2,10 +2,26 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
 import { homedir } from "node:os";
 import crypto from "node:crypto";
-import type { SpaceStore, SpaceRow } from "./space-store.js";
+import type { SpaceStore, SpaceRow, Source } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
+import type { ArtifactService } from "./artifact-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
+
+// Last non-empty path component, normalised. Same logic used at scan time and
+// (if ever needed again) for slug-based migration backfill — single source of
+// truth. Filters empty segments so root-ish paths like "/" or "C:\\" still
+// produce a non-empty slug.
+export function folderSlug(folderPath: string): string {
+  const parts = resolve(folderPath).split(sep).filter(Boolean);
+  return parts.pop() ?? folderPath;
+}
+
+function expandHome(rawPath: string): string {
+  return rawPath.startsWith("~/")
+    ? resolve(join(homedir(), rawPath.slice(2)))
+    : resolve(rawPath);
+}
 
 const SPACE_PALETTE = [
   "#6057c4", "#3d8aaa", "#3a8f64", "#b06840",
@@ -49,6 +65,7 @@ export class SpaceService {
   constructor(
     private spaceStore: SpaceStore,
     private artifactStore: ArtifactStore,
+    private artifactService: ArtifactService,
   ) {}
 
   createSpace(params: { name: string }): Space {
@@ -69,33 +86,102 @@ export class SpaceService {
     return rowToSpace(this.spaceStore.getById(id)!);
   }
 
-  addPath(spaceId: string, rawPath: string): string {
+  // Attach an external folder to a space. Returns the resulting Source — newly
+  // inserted, restored from a soft-delete, or already-active no-op.
+  addSource(spaceId: string, rawPath: string): Source {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
-    const resolved = rawPath.startsWith("~/")
-      ? resolve(join(homedir(), rawPath.slice(2)))
-      : resolve(rawPath);
-
+    const resolved = expandHome(rawPath);
     if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
     if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
 
-    // Check if this path is already attached to another space
-    const existing = this.spaceStore.getSpaceByPath(resolved);
-    if (existing && existing.id !== spaceId) {
-      throw new Error(`Path is already attached to space "${existing.display_name}"`);
+    // Cross-space conflict / same-space no-op check.
+    const active = this.spaceStore.getActiveSourceByPath(resolved);
+    if (active) {
+      if (active.space_id === spaceId) return active;
+      const ownerName = this.spaceStore.getById(active.space_id)?.display_name ?? active.space_id;
+      throw new Error(`Path is already attached to space "${ownerName}"`);
     }
 
-    this.spaceStore.addPath(spaceId, resolved);
-    return resolved;
+    // Reattach-restore: a soft-deleted source for the same (space, path) wins
+    // over inserting a fresh row. Same id survives — its artifacts will
+    // resurface on the next scan via upsertCandidate.
+    const removed = this.spaceStore.getSoftDeletedSourceByPathForSpace(spaceId, resolved);
+    if (removed) {
+      try {
+        this.spaceStore.restoreSource(removed.id);
+        return { ...removed, removed_at: null };
+      } catch (err) {
+        // Race: between our check and the restore, another caller inserted a
+        // fresh active source for the same path. Re-evaluate.
+        if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
+          return this.resolveSourceConflict(spaceId, resolved, err);
+        }
+        throw err;
+      }
+    }
+
+    const id = crypto.randomUUID();
+    try {
+      this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
+    } catch (err) {
+      // Race: a concurrent caller inserted the same path between our check and
+      // our insert. Re-evaluate.
+      if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
+        return this.resolveSourceConflict(spaceId, resolved, err);
+      }
+      throw err;
+    }
+    return this.spaceStore.getSourceById(id)!;
   }
 
-  removePath(spaceId: string, path: string): void {
-    this.spaceStore.removePath(spaceId, path);
+  // Both addSource paths can race against the partial unique index on
+  // sources(path) WHERE removed_at IS NULL. Surface the same friendly error
+  // (or no-op return) as the up-front check would have produced.
+  private resolveSourceConflict(spaceId: string, resolved: string, originalErr: unknown): Source {
+    const raced = this.spaceStore.getActiveSourceByPath(resolved);
+    if (raced) {
+      if (raced.space_id === spaceId) return raced;
+      const ownerName = this.spaceStore.getById(raced.space_id)?.display_name ?? raced.space_id;
+      throw new Error(`Path is already attached to space "${ownerName}"`);
+    }
+    throw originalErr;
   }
 
-  getPaths(spaceId: string): string[] {
-    return this.spaceStore.getPaths(spaceId).map(p => p.path);
+  // Detach an external folder from a space. Soft-deletes both the source row
+  // AND every artifact that came from it. Reversible via addSource(...) on the
+  // same path — restoreSource keeps the same id and upsertCandidate resurfaces
+  // soft-deleted artifacts on the next scan.
+  removeSource(sourceId: string): void {
+    const source = this.spaceStore.getSourceById(sourceId);
+    if (!source) throw new Error(`Source "${sourceId}" not found`);
+    if (source.removed_at) return; // already detached, no-op
+    // Race guard: refuse to detach mid-scan. Otherwise the in-flight scan can
+    // resurface artifacts we just soft-deleted (upsertCandidate's resurface
+    // branch flips removed_at back to NULL). Caller can retry once the scan
+    // completes.
+    if (this.scanning.has(source.space_id)) {
+      throw new Error(`Cannot detach while space "${source.space_id}" is scanning — try again in a moment.`);
+    }
+    // Atomic cascade: artifact bulk soft-delete + source soft-delete inside a
+    // single transaction. If either fails the SQL rolls back together, so we
+    // never leave a partial state (tiles gone but source still attached, or
+    // vice versa). The cache invalidation in artifactService.removeBySource
+    // is a JS state change, not SQL — it doesn't roll back, but an over-eager
+    // cache invalidation just causes a re-read on next access (harmless).
+    this.spaceStore.transaction(() => {
+      this.artifactService.removeBySource(sourceId);
+      this.spaceStore.softDeleteSource(sourceId);
+    });
+  }
+
+  getSources(spaceId: string): Source[] {
+    return this.spaceStore.getSources(spaceId);
+  }
+
+  getActiveSourceByPath(path: string): Source | undefined {
+    return this.spaceStore.getActiveSourceByPath(expandHome(path));
   }
 
   listSpaces(): Space[] { return this.spaceStore.getAll().map(rowToSpace); }
@@ -152,8 +238,8 @@ export class SpaceService {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
-    const paths = this.spaceStore.getPaths(spaceId).map(p => p.path);
-    if (paths.length === 0) throw new Error(`Space "${spaceId}" has no folders`);
+    const sources = this.spaceStore.getSources(spaceId).filter(s => s.type === "local_folder");
+    if (sources.length === 0) throw new Error(`Space "${spaceId}" has no folders`);
 
     if (this.scanning.has(spaceId)) throw new Error(`Scan already in progress for space "${spaceId}"`);
 
@@ -162,17 +248,22 @@ export class SpaceService {
 
     const result: ScanResult = { discovered: 0, skipped: 0, resurfaced: 0, errors: [], artifacts: [] };
     try {
-      for (const folderPath of paths) {
+      for (const source of sources) {
+        const folderPath = source.path;
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           result.errors.push(`Skipped missing folder: ${folderPath}`);
           continue;
         }
-        const folderSlug = folderPath.split(sep).pop() ?? folderPath;
+        const slug = folderSlug(folderPath);
         const candidates = this.walk(folderPath);
         for (const c of candidates) {
-          // Namespace sourceRef with folder name to avoid collisions across multiple paths
-          c.sourceRef = `${folderSlug}/${c.sourceRef}`;
-          this.upsertCandidate(spaceId, c, result);
+          // Namespace sourceRef with the folder's basename — reduces (but does
+          // not eliminate) collisions when a space has multiple paths. Two
+          // paths sharing a basename (e.g. ~/a/foo and ~/b/foo) still collide.
+          // Truly correct dedup would key on source_id; we keep the slug
+          // prefix only so existing pre-#208 rows still match.
+          c.sourceRef = `${slug}/${c.sourceRef}`;
+          this.upsertCandidate(spaceId, source.id, c, result);
         }
       }
       this.spaceStore.update(spaceId, {
@@ -267,6 +358,7 @@ export class SpaceService {
 
   private upsertCandidate(
     spaceId: string,
+    sourceId: string,
     candidate: { absPath: string; sourceRef: string; kind: "app" | "notes" | "diagram" },
     result: ScanResult,
   ): void {
@@ -274,11 +366,28 @@ export class SpaceService {
     const existing = this.artifactStore.getBySpaceAndSourceRef(spaceId, sourceRef);
 
     if (existing) {
+      // Two paths to handle explicitly:
+      //   (a) soft-deleted   → resurface AND (re-)claim source_id. The artifact
+      //                        had previously been linked to *this* source and
+      //                        was soft-deleted by detach; reattach legitimately
+      //                        owns it again. Safe even when multiple sources
+      //                        have basename collisions, because we filter on
+      //                        (space_id, source_ref) which any colliding
+      //                        source would also match — the most-recent active
+      //                        source wins, matching today's flat ordering.
+      //   (b) live but NULL  → backfill source_id (post-migration legacy row).
+      //   (c) live with non-null source_id → leave source_id alone, even if it
+      //                        differs. Otherwise basename collisions between
+      //                        two attached folders would silently steal each
+      //                        other's tiles, breaking detach later.
       if (existing.removed_at) {
-        this.artifactStore.resurface(existing.id);
+        this.artifactStore.update(existing.id, { removed_at: null, source_id: sourceId });
         result.resurfaced++;
         result.artifacts.push({ id: existing.id, label: existing.label, kind: existing.artifact_kind, sourceRef });
       } else {
+        if (existing.source_id === null) {
+          this.artifactStore.update(existing.id, { source_id: sourceId });
+        }
         result.skipped++;
       }
       return;
@@ -327,6 +436,7 @@ export class SpaceService {
       storage_kind: "filesystem", storage_config: JSON.stringify(storageConfig),
       runtime_kind: runtimeKind, runtime_config: JSON.stringify(runtimeConfig),
       group_name, source_origin: "discovered", source_ref: sourceRef,
+      source_id: sourceId,
     });
     result.discovered++;
     result.artifacts.push({ id, label, kind, sourceRef });

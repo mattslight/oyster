@@ -37,6 +37,9 @@ export function initDb(userlandDir: string): Database.Database {
   const dbPath = join(userlandDir, "oyster.db");
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
+  // FK enforcement is required for sources.space_id ON DELETE CASCADE and
+  // artifacts.source_id ON DELETE SET NULL to actually fire.
+  db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
 
   for (const sql of [
@@ -51,7 +54,10 @@ export function initDb(userlandDir: string): Database.Database {
     try { db.exec(sql); } catch { /* already exists */ }
   }
 
-  // space_paths — a space can have multiple folders
+  // space_paths — legacy join table. Replaced by `sources` below (#208).
+  // Kept for now so the existing migration block (lines below) can read
+  // legacy spaces.repo_path data into it. Stops being written by the new
+  // code path; can be dropped in a follow-up.
   db.exec(`
     CREATE TABLE IF NOT EXISTS space_paths (
       space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
@@ -61,6 +67,41 @@ export function initDb(userlandDir: string): Database.Database {
       PRIMARY KEY (space_id, path)
     )
   `);
+
+  // sources — typed rows for external folders (and future cloud sources)
+  // attached to a space. `removed_at` enables soft-delete cascade: detach
+  // soft-deletes the source AND artifacts where source_id = ?, leaving the
+  // FK chain intact and making reattach a simple "restore in place".
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sources (
+      id          TEXT PRIMARY KEY,
+      space_id    TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+      type        TEXT NOT NULL CHECK(type IN ('local_folder')),
+      path        TEXT NOT NULL,
+      label       TEXT,
+      added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      removed_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS sources_space_id ON sources(space_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS sources_path_active
+      ON sources(path) WHERE removed_at IS NULL;
+  `);
+
+  // Add the artifacts.source_id FK *after* the sources table exists. SQLite
+  // tolerates forward FK references at ALTER time (the FK only validates at
+  // write time), but explicit ordering is less surprising.
+  // ON DELETE SET NULL covers the rare case where a space is hard-deleted —
+  // cascade hard-deletes its sources via sources.space_id, and artifacts
+  // left behind become unattributed orphans rather than dangling FKs.
+  try {
+    db.exec("ALTER TABLE artifacts ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
+  } catch { /* already exists */ }
+
+  // #208 ships as a manual one-shot migration for the maintainer's DB. No
+  // other users currently have pre-#208 data (confirmed). Fresh installs
+  // never populate `space_paths`. So no embedded upgrade backfill is needed —
+  // if a user with old data ever surfaces, we'll do their migration by hand
+  // (commit 4be6760 has the SQL).
 
   // Retire the legacy spaces.repo_path column. Fresh installs never had it
   // (removed from the SCHEMA above); existing installs get data migrated

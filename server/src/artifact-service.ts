@@ -480,6 +480,15 @@ export class ArtifactService {
     return rows.length;
   }
 
+  // Bulk soft-delete every live artifact attached to a source — the detach
+  // cascade fired by space-service.removeSource(). Mirrors archiveGroup:
+  // single SQL UPDATE for the rows, one cache invalidation at the end.
+  removeBySource(sourceId: string): number {
+    const changed = this.store.removeBySourceId(sourceId);
+    if (changed > 0) this.invalidateArchivedPaths();
+    return changed;
+  }
+
   // ── Private ──
 
   private async rowToArtifact(row: ArtifactRow): Promise<Artifact> {

@@ -17,11 +17,14 @@ export interface SpaceRow {
   updated_at: string;
 }
 
-export interface SpacePath {
+export interface Source {
+  id: string;
   space_id: string;
+  type: "local_folder";
   path: string;
   label: string | null;
   added_at: string;
+  removed_at: string | null;
 }
 
 export interface SpaceStore {
@@ -31,10 +34,18 @@ export interface SpaceStore {
   insert(row: Omit<SpaceRow, "created_at" | "updated_at">): void;
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void;
   delete(id: string): void;
-  getPaths(spaceId: string): SpacePath[];
-  addPath(spaceId: string, path: string, label?: string): void;
-  removePath(spaceId: string, path: string): void;
-  getSpaceByPath(path: string): SpaceRow | undefined;
+  // sources
+  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null }): void;
+  softDeleteSource(sourceId: string): void;
+  restoreSource(sourceId: string): void;
+  getSources(spaceId: string, opts?: { includeRemoved?: boolean }): Source[];
+  getSourceById(sourceId: string): Source | undefined;
+  getActiveSourceByPath(path: string): Source | undefined;
+  getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined;
+  // Run a closure inside a SAVEPOINT-backed transaction. better-sqlite3
+  // rolls back the SQL writes if the closure throws. (JS state mutations
+  // inside the closure don't roll back — that's the caller's problem.)
+  transaction<T>(fn: () => T): T;
 }
 
 export class SqliteSpaceStore implements SpaceStore {
@@ -43,10 +54,14 @@ export class SqliteSpaceStore implements SpaceStore {
     getById: Database.Statement;
     getByDisplayName: Database.Statement;
     insert: Database.Statement;
-    getPaths: Database.Statement;
-    addPath: Database.Statement;
-    removePath: Database.Statement;
-    getSpaceByPath: Database.Statement;
+    addSource: Database.Statement;
+    softDeleteSource: Database.Statement;
+    restoreSource: Database.Statement;
+    getSourcesActive: Database.Statement;
+    getSourcesAll: Database.Statement;
+    getSourceById: Database.Statement;
+    getActiveSourceByPath: Database.Statement;
+    getSoftDeletedSourceByPathForSpace: Database.Statement;
   };
 
   constructor(private db: Database.Database) {
@@ -66,10 +81,19 @@ export class SqliteSpaceStore implements SpaceStore {
           @ai_job_status, @ai_job_error, @summary_title, @summary_content
         )
       `),
-      getPaths: db.prepare("SELECT * FROM space_paths WHERE space_id = ? ORDER BY added_at"),
-      addPath: db.prepare("INSERT OR IGNORE INTO space_paths (space_id, path, label) VALUES (?, ?, ?)"),
-      removePath: db.prepare("DELETE FROM space_paths WHERE space_id = ? AND path = ?"),
-      getSpaceByPath: db.prepare("SELECT s.* FROM spaces s JOIN space_paths sp ON s.id = sp.space_id WHERE sp.path = ?"),
+      addSource: db.prepare(`
+        INSERT INTO sources (id, space_id, type, path, label)
+        VALUES (?, ?, ?, ?, ?)
+      `),
+      softDeleteSource: db.prepare("UPDATE sources SET removed_at = datetime('now') WHERE id = ? AND removed_at IS NULL"),
+      restoreSource: db.prepare("UPDATE sources SET removed_at = NULL WHERE id = ?"),
+      getSourcesActive: db.prepare("SELECT * FROM sources WHERE space_id = ? AND removed_at IS NULL ORDER BY added_at"),
+      getSourcesAll: db.prepare("SELECT * FROM sources WHERE space_id = ? ORDER BY added_at"),
+      getSourceById: db.prepare("SELECT * FROM sources WHERE id = ?"),
+      getActiveSourceByPath: db.prepare("SELECT * FROM sources WHERE path = ? AND removed_at IS NULL"),
+      getSoftDeletedSourceByPathForSpace: db.prepare(
+        "SELECT * FROM sources WHERE space_id = ? AND path = ? AND removed_at IS NOT NULL ORDER BY added_at DESC LIMIT 1"
+      ),
     };
   }
 
@@ -78,13 +102,37 @@ export class SqliteSpaceStore implements SpaceStore {
   getByDisplayName(name: string): SpaceRow | undefined { return this.stmts.getByDisplayName.get(name) as SpaceRow | undefined; }
   insert(row: Omit<SpaceRow, "created_at" | "updated_at">): void { this.stmts.insert.run(row); }
   delete(id: string): void {
+    // Cascade: sources.space_id ON DELETE CASCADE → sources rows hard-deleted,
+    // which fires artifacts.source_id ON DELETE SET NULL on their artifacts.
     this.db.prepare("DELETE FROM space_paths WHERE space_id = ?").run(id);
     this.db.prepare("DELETE FROM spaces WHERE id = ?").run(id);
   }
-  getPaths(spaceId: string): SpacePath[] { return this.stmts.getPaths.all(spaceId) as SpacePath[]; }
-  addPath(spaceId: string, path: string, label?: string): void { this.stmts.addPath.run(spaceId, path, label ?? null); }
-  removePath(spaceId: string, path: string): void { this.stmts.removePath.run(spaceId, path); }
-  getSpaceByPath(path: string): SpaceRow | undefined { return this.stmts.getSpaceByPath.get(path) as SpaceRow | undefined; }
+
+  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null }): void {
+    this.stmts.addSource.run(args.id, args.space_id, args.type, args.path, args.label ?? null);
+  }
+  softDeleteSource(sourceId: string): void { this.stmts.softDeleteSource.run(sourceId); }
+  restoreSource(sourceId: string): void { this.stmts.restoreSource.run(sourceId); }
+  getSources(spaceId: string, opts?: { includeRemoved?: boolean }): Source[] {
+    const stmt = opts?.includeRemoved ? this.stmts.getSourcesAll : this.stmts.getSourcesActive;
+    return stmt.all(spaceId) as Source[];
+  }
+  getSourceById(sourceId: string): Source | undefined { return this.stmts.getSourceById.get(sourceId) as Source | undefined; }
+  getActiveSourceByPath(path: string): Source | undefined { return this.stmts.getActiveSourceByPath.get(path) as Source | undefined; }
+  getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined {
+    return this.stmts.getSoftDeletedSourceByPathForSpace.get(spaceId, path) as Source | undefined;
+  }
+
+  transaction<T>(fn: () => T): T {
+    const result = this.db.transaction(fn)();
+    // Guard against async fns: better-sqlite3's transaction is synchronous,
+    // so an async closure would resolve AFTER commit — rejections inside the
+    // Promise would never roll back the transaction. Better to fail loudly.
+    if (result instanceof Promise) {
+      throw new Error("spaceStore.transaction(fn): fn must be synchronous (got a Promise)");
+    }
+    return result;
+  }
 
   private static readonly UPDATABLE_COLUMNS = new Set([
     "display_name", "color", "parent_id", "scan_status",
