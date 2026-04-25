@@ -856,12 +856,20 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   server.tool(
     "filter_desktop",
-    'Change what the user sees on the desktop surface. Use this when the user says "show me X" / "only X" / "filter to X" — the request is a visual action, not a question. For "how many X do I have?" or "what artifacts exist?" use list_artifacts instead. Optionally switches space and applies a search/kind filter; pass clear=true to remove any active filter.',
+    `Change what the user sees on the desktop surface. Use this when the user says "show me X" / "only X" / "filter to X" — the request is a visual action, not a question. For "how many X do I have?" or "what artifacts exist?" use list_artifacts instead.
+
+CHOOSING ARGUMENTS:
+- kind is ONLY for the seven enum values (${ARTIFACT_KINDS.join(", ")}). The user must literally have said one of those words. Don't infer kind from a category that's close to one (e.g. "games" → search, not kind=app; "documents" → search, not kind=notes).
+- search is the default for any noun that doesn't exactly match a kind ("invoices", "games", "tokinvest", "Q3"). It matches the artifact label, space name, or source folder name.
+- space is the user's named workspace (e.g. "tokinvest"). With a search term but no explicit space, the surface broadens to all spaces ("__all__") automatically.
+- clear=true removes any active filter.`,
     {
-      space: z.string().optional().describe("Space ID to switch to before filtering"),
-      kind: z.enum(ARTIFACT_KINDS).optional().describe("Restrict the surface to one artifact kind"),
-      search: z.string().optional().describe("Free-text term — matches artifact label, space name, or source folder name (case-insensitive)"),
-      clear: z.boolean().optional().describe("Set true to clear the active filter — overrides other args"),
+      // .nullish() so agents that send `null` for unprovided optional fields
+      // (instead of omitting them) don't trip Zod validation.
+      space: z.string().nullish().describe('Space ID to switch to before filtering. Use "__all__" to search across every space; omit to default to __all__ when a search is provided.'),
+      kind: z.enum(ARTIFACT_KINDS).nullish().describe(`Restrict the surface to one artifact kind. ONLY use this when the user's word is literally one of: ${ARTIFACT_KINDS.join(", ")}. For anything else ("games", "invoices", project names, etc.) use search.`),
+      search: z.string().nullish().describe("Free-text term — matches artifact label, space name, or source folder name (case-insensitive). Use this for any term that isn't one of the kind enum values."),
+      clear: z.boolean().nullish().describe("Set true to clear the active filter — overrides other args"),
     },
     async ({ space, kind, search, clear }) => {
       if (clear) {
@@ -874,17 +882,26 @@ export function createMcpServer(deps: McpDeps): McpServer {
       }
 
       let resolvedSpaceId: string | null = null;
-      if (space) {
+      if (space && space !== "__all__" && space !== "__archived__") {
         const spaces = deps.spaceService.listSpaces();
         const match = spaces.find(s => s.id === space);
         if (!match) {
           return { content: [{ type: "text" as const, text: `Space "${space}" not found. Available: ${spaces.map(s => s.id).join(", ")}` }], isError: true };
         }
         resolvedSpaceId = match.id;
+      } else if (space === "__all__" || space === "__archived__") {
+        resolvedSpaceId = space;
       }
 
       if (!resolvedSpaceId && !kind && !search) {
         return { content: [{ type: "text" as const, text: "filter_desktop needs at least one of space, kind, search, or clear=true." }], isError: true };
+      }
+
+      // A search with no explicit space implies "find this anywhere" — broaden
+      // to __all__ so the user actually sees results, instead of silently
+      // applying the filter to whichever space they happen to be in.
+      if (!resolvedSpaceId && search) {
+        resolvedSpaceId = "__all__";
       }
 
       deps.broadcastUiEvent({
