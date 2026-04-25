@@ -111,8 +111,8 @@ export class ArtifactService {
       rows.push(row);
     }
 
-    const sourcePaths = this.buildSourcePathMap(rows);
-    const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row, sourcePaths)));
+    const sourceLabels = this.buildSourceLabelMap(rows);
+    const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row, sourceLabels)));
 
     // Map of filePath → persisted artifact index — used to suppress and merge gen: twins
     const dbPathToIdx = new Map<string, number>();
@@ -448,8 +448,8 @@ export class ArtifactService {
 
   async getArchivedArtifacts(): Promise<Artifact[]> {
     const rows = this.store.getAllArchived();
-    const sourcePaths = this.buildSourcePathMap(rows);
-    return Promise.all(rows.map((row) => this.rowToArtifact(row, sourcePaths)));
+    const sourceLabels = this.buildSourceLabelMap(rows);
+    return Promise.all(rows.map((row) => this.rowToArtifact(row, sourceLabels)));
   }
 
   restoreArtifact(id: string): void {
@@ -494,10 +494,11 @@ export class ArtifactService {
 
   // ── Private ──
 
-  // Pre-resolve a sources Map<id, path> once per batch caller so listing many
-  // linked-folder tiles doesn't N+1 the sources table. Single-row callers can
-  // pass null and pay the per-row lookup.
-  private buildSourcePathMap(rows: ArtifactRow[]): Map<string, string> {
+  // Pre-resolve a sources Map<id, basename-label> once per batch caller so
+  // listing many linked-folder tiles doesn't N+1 the sources table. Stores the
+  // basename only — absolute paths never leave the server via /api/artifacts.
+  // Single-row callers can pass undefined and pay the per-row lookup.
+  private buildSourceLabelMap(rows: ArtifactRow[]): Map<string, string> {
     const map = new Map<string, string>();
     if (!this.spaceStore) return map;
     const seen = new Set<string>();
@@ -505,23 +506,24 @@ export class ArtifactService {
       if (row.source_id && !seen.has(row.source_id)) {
         seen.add(row.source_id);
         const path = this.spaceStore.getSourceById(row.source_id)?.path;
-        if (path) map.set(row.source_id, path);
+        if (path) map.set(row.source_id, basename(path));
       }
     }
     return map;
   }
 
-  private async rowToArtifact(row: ArtifactRow, sourcePaths?: Map<string, string>): Promise<Artifact> {
+  private async rowToArtifact(row: ArtifactRow, sourceLabels?: Map<string, string>): Promise<Artifact> {
     const runtimeConfig = parseJson(row.runtime_config);
-    // Resolve the linked source path so the UI can render the "↗" provenance
-    // glyph without a second fetch. Prefer the pre-built map (batch callers);
-    // fall back to a per-row lookup for single-row callers.
-    let sourcePath: string | null = null;
+    // Resolve a display label for the linked source so the UI can render the
+    // "↗" provenance glyph without a second fetch. Basename only — full path
+    // is server-private (drilldown belongs to a separately-gated endpoint).
+    let sourceLabel: string | null = null;
     if (row.source_id) {
-      if (sourcePaths) {
-        sourcePath = sourcePaths.get(row.source_id) ?? null;
+      if (sourceLabels) {
+        sourceLabel = sourceLabels.get(row.source_id) ?? null;
       } else if (this.spaceStore) {
-        sourcePath = this.spaceStore.getSourceById(row.source_id)?.path ?? null;
+        const path = this.spaceStore.getSourceById(row.source_id)?.path;
+        sourceLabel = path ? basename(path) : null;
       }
     }
 
@@ -550,7 +552,7 @@ export class ArtifactService {
         url: `http://localhost:${port}`,
         createdAt: row.created_at,
         groupName: row.group_name || undefined,
-        sourcePath,
+        sourceLabel,
         ...this.resolveIcon(row),
       };
     }
@@ -574,7 +576,7 @@ export class ArtifactService {
       url,
       createdAt: row.created_at,
       groupName: row.group_name || undefined,
-      sourcePath,
+      sourceLabel,
       ...this.resolveIcon(row),
     };
   }
