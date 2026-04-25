@@ -1,6 +1,6 @@
 {
   "id": "where-are-my-files",
-  "name": "Where are my files?",
+  "name": "Where do my files live?",
   "type": "notes",
   "runtime": "static",
   "entrypoint": "src/index.html",

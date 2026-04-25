@@ -146,6 +146,10 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
           </>
         )}
 
+        {artifact.sourcePath && (
+          <span className="source-glyph" title={artifact.sourcePath} aria-label={`linked from ${artifact.sourcePath}`}>↗</span>
+        )}
+
         {isManagedApp && (
           <span
             className={`status-dot ${artifact.status === "online" ? "online" : artifact.status === "starting" ? "starting" : "offline"}`}

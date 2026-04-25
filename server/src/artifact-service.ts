@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync, unlinkSync, statSync } from "node
 import { resolve, basename, dirname, join, sep } from "node:path";
 import crypto from "node:crypto";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
+import type { SpaceStore } from "./space-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
 import { slugify, inferKindFromPath, toArtifactKind } from "./utils.js";
@@ -80,7 +81,7 @@ export class ArtifactService {
   private archivedPathsCache: Set<string> | null = null;
   private invalidateArchivedPaths(): void { this.archivedPathsCache = null; }
 
-  constructor(private store: ArtifactStore, private userlandDir?: string) {}
+  constructor(private store: ArtifactStore, private userlandDir?: string, private spaceStore?: SpaceStore) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const allRows = this.store.getAll();
@@ -493,6 +494,11 @@ export class ArtifactService {
 
   private async rowToArtifact(row: ArtifactRow): Promise<Artifact> {
     const runtimeConfig = parseJson(row.runtime_config);
+    // Resolve the linked source path when this artifact is attached to one,
+    // so the UI can render the "↗" provenance glyph without a second fetch.
+    const sourcePath = row.source_id && this.spaceStore
+      ? (this.spaceStore.getSourceById(row.source_id)?.path ?? null)
+      : null;
 
     if (row.runtime_kind === "local_process") {
       const port = (runtimeConfig.port as number) || 0;
@@ -519,6 +525,7 @@ export class ArtifactService {
         url: `http://localhost:${port}`,
         createdAt: row.created_at,
         groupName: row.group_name || undefined,
+        sourcePath,
         ...this.resolveIcon(row),
       };
     }
@@ -542,6 +549,7 @@ export class ArtifactService {
       url,
       createdAt: row.created_at,
       groupName: row.group_name || undefined,
+      sourcePath,
       ...this.resolveIcon(row),
     };
   }

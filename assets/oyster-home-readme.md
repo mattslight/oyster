@@ -48,5 +48,5 @@ Use Oyster (the agent or the UI) for moves and renames — the database stays in
 
 ## Learn more
 
-- Open Oyster and look for the **"Where are my files?"** tile for live paths tailored to your install.
+- Open Oyster and look for the **"Where do my files live?"** tile for live paths tailored to your install.
 - Source & issues: [github.com/mattslight/oyster](https://github.com/mattslight/oyster)

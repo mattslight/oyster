@@ -37,6 +37,8 @@ export interface Artifact {
   plugin?: boolean;
   /** For plugin artifacts: the folder-name id under ~/.oyster/userland/ (e.g. "pomodoro"). Used by Uninstall since `id` is a UUID that doesn't map to a directory. */
   pluginId?: string;
+  /** Absolute path of the linked source folder this artifact came from. Set when `artifacts.source_id` is non-null. Drives the "↗" provenance glyph. */
+  sourcePath?: string | null;
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";
