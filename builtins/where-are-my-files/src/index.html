@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Where are my files?</title>
+  <title>Where do my files live?</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -73,8 +73,8 @@
 <body>
   <div class="glow"></div>
   <div class="wrap">
-    <h1>Where are my files?</h1>
-    <p class="lead">Your Oyster workspace lives here. Open it in <span id="finder-word">Finder</span> any time — your content is self-describing on disk, no Oyster needed to read it.</p>
+    <h1>Where do my files live?</h1>
+    <p class="lead">Two homes for your files. <strong>Your Oyster workspace</strong> — Oyster manages, syncs, backs up, and any tile you delete from the surface deletes the file. <strong>Linked folders</strong> elsewhere on disk (e.g. <code>~/Dev/my-project/</code>) — Oyster shows tiles as a window into your folder; the files stay yours, edits write back in place, and detaching a tile leaves the file on disk untouched. Tiles from linked folders carry a small chain-link marker.</p>
 
     <div class="primary" id="oyster-home"><span class="loading">loading…</span></div>
 
@@ -98,8 +98,7 @@
     </table>
 
     <p class="note">
-      <strong>Moving things:</strong> use Oyster (the agent or the UI) for moves and renames so the filesystem and the database stay in sync. Finder-only moves aren't reconciled yet.<br><br>
-      <strong>External repos:</strong> Oyster can also surface artifacts from repos elsewhere on disk (e.g. <code>~/Dev/my-project/</code>). Those files stay where they are — Oyster keeps a pointer, not a copy.
+      <strong>Moving things:</strong> use Oyster (the agent or the UI) for moves and renames so the filesystem and the database stay in sync. Finder-only moves aren't reconciled yet.
     </p>
   </div>
 
@@ -115,7 +114,6 @@
         const sep = info.platform === "win32" ? "\\" : "/";
 
         document.getElementById("oyster-home").textContent = info.oysterHome;
-        document.getElementById("finder-word").textContent = info.platform === "win32" ? "Explorer" : "Finder";
 
         const setPathCell = (id, p) => {
           const cell = document.getElementById(id);

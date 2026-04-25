@@ -600,6 +600,30 @@ body {
   -webkit-user-select: text;
 }
 
+/* ── Source glyph (linked-folder provenance) ──
+   Sits in the bottom-left of .icon-thumb so it never collides with the
+   bottom-right .status-dot used by managed apps. Dark pill keeps it legible
+   over any thumb gradient or AI-generated icon. */
+.source-glyph {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  cursor: help;
+}
+.source-glyph svg {
+  width: 11px;
+  height: 11px;
+}
+
 /* ── Status dot (app artifacts) ── */
 .status-dot {
   width: 10px;

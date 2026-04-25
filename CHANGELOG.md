@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Linked tiles now carry a small chain-link marker** (bottom-left of the icon) so you can tell at a glance which tiles are windows into folders elsewhere on disk vs. native to your Oyster workspace. Hover the marker for the source folder name. The "Where are my files?" tile is now **"Where do my files live?"** and explains the two homes — Oyster-managed workspace, and linked folders you own. ([#220](https://github.com/mattslight/oyster/issues/220))
+
 ## [0.4.0-beta.5] - 2026-04-25
 
 ### Changed

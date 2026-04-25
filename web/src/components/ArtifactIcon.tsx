@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link2 } from "lucide-react";
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -144,6 +145,12 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
             </svg>
             <span className="file-ext">{config.ext}</span>
           </>
+        )}
+
+        {artifact.sourceLabel && (
+          <span className="source-glyph" title={`Linked source: ${artifact.sourceLabel}`} aria-hidden="true">
+            <Link2 size={11} strokeWidth={2.5} />
+          </span>
         )}
 
         {isManagedApp && (

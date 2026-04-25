@@ -243,7 +243,7 @@ function bootstrapUserland() {
   // Drop a static README at the Oyster root so users browsing in
   // Finder / Explorer can orient themselves without starting the app.
   // This is deliberately static and broad (getting-started, shortcut
-  // commands, layout hints). The in-app "Where are my files?" builtin
+  // commands, layout hints). The in-app "Where do my files live?" builtin
   // shows the *live* per-install paths — different audience, different
   // content.
   const readmeSrc = join(PROJECT_ROOT, "assets", "oyster-home-readme.md");
@@ -256,15 +256,22 @@ function bootstrapUserland() {
   // spaces created yet.
   mkdirSync(join(SPACES_DIR, "home"), { recursive: true });
 
-  // Seed built-in app bundles into apps/ on first install (copy-if-absent — no overwrite)
+  // Seed built-in app bundles into apps/. Always re-syncs from
+  // `builtins/<name>/` because builtins are read-only by design — keeping
+  // them in lockstep with the source is more important than the cost of a
+  // few file copies on startup. A previous mtime / manifest-content check
+  // missed asset-only changes (e.g. an index.html edit with no manifest
+  // change) and shipped stale builtins. cpSync(recursive) overwrites files
+  // present in source but doesn't delete extras in dest — generated icon.png
+  // and other server-side artifacts survive.
   const builtinsDir = join(PROJECT_ROOT, "builtins");
   if (existsSync(builtinsDir)) {
     for (const entry of readdirSync(builtinsDir)) {
+      const src = join(builtinsDir, entry);
       const dest = join(APPS_DIR, entry);
-      if (!existsSync(dest)) {
-        cpSync(join(builtinsDir, entry), dest, { recursive: true });
-        console.log(`[bootstrap] installed built-in: ${entry}`);
-      }
+      const fresh = !existsSync(dest);
+      cpSync(src, dest, { recursive: true });
+      if (fresh) console.log(`[bootstrap] installed built-in: ${entry}`);
     }
   }
 }
@@ -287,11 +294,12 @@ delete cleanEnv["OPENAI_API_KEY"];
 
 const db = initDb(DB_DIR);
 const store = new SqliteArtifactStore(db);
+const spaceStore = new SqliteSpaceStore(db);
 // artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
-// not inside DB_DIR.
-const artifactService = new ArtifactService(store, OYSTER_HOME);
-const spaceStore = new SqliteSpaceStore(db);
+// not inside DB_DIR. spaceStore is passed in so rowToArtifact can resolve the
+// linked-source path for tiles whose `source_id` is non-null.
+const artifactService = new ArtifactService(store, OYSTER_HOME, spaceStore);
 
 // Shared resolver: try raw id, then slugified id, then case-insensitive display_name.
 // Used by import preview + execute so an agent-emitted space name (possibly
@@ -495,7 +503,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // artifact metadata that a malicious cross-origin site could otherwise
   // enumerate against a running local Oyster.
   // /api/workspace → the resolved Oyster workspace layout, used by the
-  // "Where are my files?" builtin so it shows this user's actual paths
+  // "Where do my files live?" builtin so it shows this user's actual paths
   // (respects OYSTER_USERLAND + dev vs installed). Local-origin gated for
   // the same reason as /api/artifacts — paths are user-private.
   if (url === "/api/workspace") {
