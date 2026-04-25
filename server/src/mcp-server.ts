@@ -571,7 +571,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         .enum(ARTIFACT_KINDS)
         .optional()
         .describe("Filter by artifact kind"),
-      search: z.string().optional().describe("Search term — case-insensitive match against artifact label, the artifact's space id/name, or its source file basename"),
+      search: z.string().optional().describe("Search term — case-insensitive substring match against the artifact label, the artifact's space id or display name, or the source file's basename"),
       limit: z.number().int().min(1).max(100).optional().describe("Max results to return (default 20)"),
     },
     async ({ space_id, artifact_kind, search, limit }) => {

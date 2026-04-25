@@ -131,10 +131,14 @@ export default function App() {
     if (kind) next = next.filter((a) => a.artifactKind === kind);
     if (search) {
       const q = search.toLowerCase();
-      const space = spaces.find((s) => s.id === activeSpace);
+      // Look up each artifact's *own* space — looking up the active view's
+      // space would mean __all__ never matches space displayNames and named
+      // views match every artifact when the query happens to match the view.
+      const spaceById = new Map(spaces.map((s) => [s.id, s]));
       next = next.filter((a) => {
         if (a.label.toLowerCase().includes(q)) return true;
         if (a.spaceId.toLowerCase().includes(q)) return true;
+        const space = spaceById.get(a.spaceId);
         if (space && space.displayName.toLowerCase().includes(q)) return true;
         if (a.sourceLabel && a.sourceLabel.toLowerCase().includes(q)) return true;
         return false;

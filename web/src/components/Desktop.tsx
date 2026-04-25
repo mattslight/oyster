@@ -350,7 +350,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                   agentFilter.search ? `"${agentFilter.search}"` : null,
                 ].filter(Boolean).join(" · ")}
               </span>
-              <button className="filter-notice-clear" onClick={() => onClearAgentFilter?.()}>✕</button>
+              <button type="button" aria-label="Clear AI filter" className="filter-notice-clear" onClick={() => onClearAgentFilter?.()}>✕</button>
             </div>
           )}
           {activeKind && (
@@ -384,7 +384,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                   <span className="filter-notice-kind">{kindLabel(activeKind)}</span>
                 )}
               </div>
-              <button className="filter-notice-clear" onClick={() => { selectKind(null); setKindDropdownOpen(false); }}>✕</button>
+              <button type="button" aria-label="Clear kind filter" className="filter-notice-clear" onClick={() => { selectKind(null); setKindDropdownOpen(false); }}>✕</button>
             </div>
           )}
           <div className="view-toggle-float">
