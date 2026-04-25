@@ -111,7 +111,8 @@ export class ArtifactService {
       rows.push(row);
     }
 
-    const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row)));
+    const sourcePaths = this.buildSourcePathMap(rows);
+    const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row, sourcePaths)));
 
     // Map of filePath → persisted artifact index — used to suppress and merge gen: twins
     const dbPathToIdx = new Map<string, number>();
@@ -447,7 +448,8 @@ export class ArtifactService {
 
   async getArchivedArtifacts(): Promise<Artifact[]> {
     const rows = this.store.getAllArchived();
-    return Promise.all(rows.map((row) => this.rowToArtifact(row)));
+    const sourcePaths = this.buildSourcePathMap(rows);
+    return Promise.all(rows.map((row) => this.rowToArtifact(row, sourcePaths)));
   }
 
   restoreArtifact(id: string): void {
@@ -492,13 +494,36 @@ export class ArtifactService {
 
   // ── Private ──
 
-  private async rowToArtifact(row: ArtifactRow): Promise<Artifact> {
+  // Pre-resolve a sources Map<id, path> once per batch caller so listing many
+  // linked-folder tiles doesn't N+1 the sources table. Single-row callers can
+  // pass null and pay the per-row lookup.
+  private buildSourcePathMap(rows: ArtifactRow[]): Map<string, string> {
+    const map = new Map<string, string>();
+    if (!this.spaceStore) return map;
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (row.source_id && !seen.has(row.source_id)) {
+        seen.add(row.source_id);
+        const path = this.spaceStore.getSourceById(row.source_id)?.path;
+        if (path) map.set(row.source_id, path);
+      }
+    }
+    return map;
+  }
+
+  private async rowToArtifact(row: ArtifactRow, sourcePaths?: Map<string, string>): Promise<Artifact> {
     const runtimeConfig = parseJson(row.runtime_config);
-    // Resolve the linked source path when this artifact is attached to one,
-    // so the UI can render the "↗" provenance glyph without a second fetch.
-    const sourcePath = row.source_id && this.spaceStore
-      ? (this.spaceStore.getSourceById(row.source_id)?.path ?? null)
-      : null;
+    // Resolve the linked source path so the UI can render the "↗" provenance
+    // glyph without a second fetch. Prefer the pre-built map (batch callers);
+    // fall back to a per-row lookup for single-row callers.
+    let sourcePath: string | null = null;
+    if (row.source_id) {
+      if (sourcePaths) {
+        sourcePath = sourcePaths.get(row.source_id) ?? null;
+      } else if (this.spaceStore) {
+        sourcePath = this.spaceStore.getSourceById(row.source_id)?.path ?? null;
+      }
+    }
 
     if (row.runtime_kind === "local_process") {
       const port = (runtimeConfig.port as number) || 0;

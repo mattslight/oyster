@@ -256,11 +256,14 @@ function bootstrapUserland() {
   // spaces created yet.
   mkdirSync(join(SPACES_DIR, "home"), { recursive: true });
 
-  // Seed built-in app bundles into apps/. Re-syncs when the source manifest is
-  // newer than the installed one so renames / copy edits in `builtins/<name>/`
-  // propagate on the next server start. cpSync(recursive) overwrites files
-  // present in source but doesn't delete extras in dest — generated icon.png
-  // and other server-side artifacts survive.
+  // Seed built-in app bundles into apps/. Re-syncs when the source manifest
+  // content has changed so renames / copy edits in `builtins/<name>/` propagate
+  // on the next server start. Compares the manifest by content (not mtime) —
+  // mtime would be unreliable across npm install / git checkout / cpSync,
+  // which all rewrite timestamps. cpSync(recursive) overwrites files present
+  // in source but doesn't delete extras in dest — generated icon.png and other
+  // server-side artifacts survive. Missing dest manifest counts as stale so a
+  // partially-deleted builtin self-heals.
   const builtinsDir = join(PROJECT_ROOT, "builtins");
   if (existsSync(builtinsDir)) {
     for (const entry of readdirSync(builtinsDir)) {
@@ -269,8 +272,16 @@ function bootstrapUserland() {
       const srcManifest = join(src, "manifest.json");
       const destManifest = join(dest, "manifest.json");
       const fresh = !existsSync(dest);
-      const stale = !fresh && existsSync(srcManifest) && existsSync(destManifest)
-        && statSync(srcManifest).mtimeMs > statSync(destManifest).mtimeMs;
+      let stale = false;
+      if (!fresh && existsSync(srcManifest)) {
+        if (!existsSync(destManifest)) {
+          stale = true;
+        } else {
+          try {
+            stale = readFileSync(srcManifest, "utf8") !== readFileSync(destManifest, "utf8");
+          } catch { /* unreadable — leave alone, next start will retry */ }
+        }
+      }
       if (fresh || stale) {
         cpSync(src, dest, { recursive: true });
         console.log(`[bootstrap] ${fresh ? "installed" : "updated"} built-in: ${entry}`);

@@ -147,7 +147,7 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
         )}
 
         {artifact.sourcePath && (
-          <span className="source-glyph" title={artifact.sourcePath} aria-label={`linked from ${artifact.sourcePath}`}>↗</span>
+          <span className="source-glyph" title={artifact.sourcePath} aria-hidden="true">↗</span>
         )}
 
         {isManagedApp && (
