@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **"Where do my files live?" tile is more useful at a glance.** Adopts the Quick Start visual language, leads with the resolved path of your Oyster home, and shows a small preview of the chain-link marker so you can see what a linked tile looks like — not just be told. ([#222](https://github.com/mattslight/oyster/pull/222))
+
 ## [0.4.0-beta.6] - 2026-04-25
 
 ### Changed
@@ -365,7 +369,12 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.1...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.6...HEAD
+[0.4.0-beta.6]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.5...v0.4.0-beta.6
+[0.4.0-beta.5]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.4...v0.4.0-beta.5
+[0.4.0-beta.4]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.3...v0.4.0-beta.4
+[0.4.0-beta.3]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.2...v0.4.0-beta.3
+[0.4.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.1...v0.4.0-beta.2
 [0.4.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.0...v0.4.0-beta.1
 [0.4.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.3.8...v0.4.0-beta.0
 [0.3.5]: https://github.com/mattslight/oyster/compare/v0.3.4...v0.3.5
