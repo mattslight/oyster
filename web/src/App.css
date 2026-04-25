@@ -613,15 +613,15 @@ body {
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: auto;
   cursor: help;
+}
+.source-glyph svg {
+  width: 11px;
+  height: 11px;
 }
 
 /* ── Status dot (app artifacts) ── */
