@@ -9,12 +9,12 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@fal-ai/client": "^1.9.5",
+    "@fal-ai/client": "^1.10.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
     "marked": "^17.0.4",
     "@lydell/node-pty": "^1.2.0-beta.12",
-    "opencode-ai": "^1.4.12",
+    "opencode-ai": "^1.14.25",
     "ws": "^8.20.0"
   },
   "devDependencies": {
