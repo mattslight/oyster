@@ -390,8 +390,16 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   return (
     <div ref={wrapperRef} className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
       {/* Hero tagline — one block, three states */}
-      {isHero && (
-        <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}`}>
+      {/* Hidden when the input is focused OR once any chat message exists,
+          so it doesn't reappear behind streamed output if the user clicks
+          out of the input. */}
+      {isHero && (() => {
+        const taglineHidden = focused || messages.length > 0;
+        return (
+        <div
+          className={`chatbar-hero-tagline${taglineHidden ? " tagline-hidden" : ""}`}
+          aria-hidden={taglineHidden || undefined}
+        >
           {isFirstRun ? (
             <>
               <span className="tagline-bright">Welcome to your surface.</span>
@@ -402,6 +410,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                   className="chatbar-hero-prompt"
                   onClick={() => handleSend("Set up Oyster")}
                   disabled={!sessionId || streaming}
+                  tabIndex={taglineHidden ? -1 : 0}
                   title="Click to send, or type it yourself"
                 >
                   Set up Oyster
@@ -420,7 +429,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             </>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Messages panel — expands upward */}
       {messages.length > 0 && (
