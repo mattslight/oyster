@@ -191,12 +191,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         ...userSpaces.map((s, i) => ({ ...s, hint: `#${i + 1}` })),
         { id: "__archived__", displayName: "Archived", hint: "#archived" },
       ];
-      const labelFor = (id: string) =>
-        id === "__all__" ? "all" : id === "__archived__" ? "archived" : id;
       return ordered
         .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || (q.startsWith("arch") && s.id === "__archived__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
-        .map(s => ({ key: s.id, label: `#${labelFor(s.id)}`, desc: s.hint, type: "space" as const }));
+        .map(s => ({ key: s.id, label: s.displayName, desc: s.hint, type: "space" as const }));
     }
 
     if (!input.startsWith("/")) return [];
@@ -208,7 +206,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       return spaces
         .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
-        .map(s => ({ key: s.id, label: s.id, desc: s.displayName, type: "space" as const }));
+        .map(s => ({ key: s.id, label: s.displayName, desc: s.id, type: "space" as const }));
     }
 
     // /o prefix — artifact opener with token scoring
