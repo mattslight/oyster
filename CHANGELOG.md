@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **First-run hero tagline no longer overlays the chat output.** Clicking the *Set up Oyster* prompt-pill (instead of typing into the input) used to send the message without focusing the chat, so the *"Welcome to your surface."* tagline stayed on screen and floated over the streaming reply. The tagline now hides as soon as any chat message exists.
+
 ## [0.4.0-beta.7] - 2026-04-25
 
 ### Changed

@@ -390,8 +390,11 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   return (
     <div ref={wrapperRef} className={`chatbar-wrapper ${isHero ? "chatbar-hero" : ""}`}>
       {/* Hero tagline — one block, three states */}
+      {/* Hidden when the input is focused OR once any chat message exists,
+          so it doesn't reappear behind streamed output if the user clicks
+          out of the input. */}
       {isHero && (
-        <div className={`chatbar-hero-tagline${focused ? " tagline-hidden" : ""}`}>
+        <div className={`chatbar-hero-tagline${focused || messages.length > 0 ? " tagline-hidden" : ""}`}>
           {isFirstRun ? (
             <>
               <span className="tagline-bright">Welcome to your surface.</span>
