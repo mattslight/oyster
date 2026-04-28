@@ -395,6 +395,16 @@ body {
   text-shadow: 0 1px 6px rgba(0,0,0,0.7);
 }
 
+/* Optional relative-time line under the label, used by Home (showMeta). */
+.icon-label-meta {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.02em;
+  color: rgba(232, 233, 240, 0.3);
+  text-align: center;
+  margin-top: 6px;
+}
+
 /* Inline rename input — visually matches .icon-label but editable */
 .icon-label-input {
   font: inherit;

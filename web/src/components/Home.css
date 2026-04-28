@@ -84,7 +84,10 @@
 }
 
 /* Soft fade behind the chat bar so content dissolves into the bg rather
-   than colliding with the pills. Sits above .home-scroll, below ChatBar. */
+   than colliding with the pills. Matches docs/mockups/brain-prototype.html
+   exactly — bottom 30% solid (chat bar zone), then taper. Earlier pass
+   tapered too aggressively and washed the artefacts grid in a dark
+   rectangle. Sits above .home-scroll, below ChatBar. */
 .home::before {
   content: "";
   position: fixed;
@@ -96,8 +99,10 @@
   z-index: 3;
   background: linear-gradient(
     to top,
-    rgba(30, 31, 54, 0.95) 0%,
-    rgba(30, 31, 54, 0.85) 30%,
+    rgba(30, 31, 54, 1) 0%,
+    rgba(30, 31, 54, 1) 30%,
+    rgba(30, 31, 54, 0.85) 55%,
+    rgba(30, 31, 54, 0.4) 80%,
     rgba(30, 31, 54, 0) 100%
   );
 }
@@ -159,6 +164,12 @@
   flex: 1;
   height: 1px;
   background: var(--home-border);
+}
+
+.home-artefacts-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--home-text-muted);
 }
 
 /* ── Stat / filter chips (the same buttons act as both) ── */
@@ -525,6 +536,48 @@
 .home-row-agent.oc    .home-agent-pip { background: #b3a8ff; }
 
 .home-row-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+/* ── Artefacts table row (renders inside .home-table when toggled) ── */
+.home-artefact-row {
+  display: grid;
+  grid-template-columns: 1fr 130px 100px 110px;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--home-border);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.home-artefact-row:hover { background: rgba(124, 107, 255, 0.05); }
+.home-artefact-row:last-child { border-bottom: none; }
+
+.home-artefact-row-title {
+  font-size: 13px;
+  color: var(--home-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-artefact-row-space {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--home-accent-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-artefact-row-kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: lowercase;
+}
+.home-artefact-row-time {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);

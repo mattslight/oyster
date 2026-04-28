@@ -23,13 +23,15 @@ interface Props {
   onArtifactRemove?: (id: string) => void;
   revealId?: string | null;
   isArchivedView?: boolean;
+  /** Render relative-time meta line under each artifact label. Used by Home. */
+  showMeta?: boolean;
 }
 
 type DisplayItem =
   | { type: "group"; key: string; name: string; artifacts: Artifact[] }
   | { type: "artifact"; key: string; artifact: Artifact };
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView, showMeta }: Props) {
   const isAllSpace = space === "__all__";
   // Meta-spaces (__all__, __archived__) span multiple real spaces, so groupName
   // is no longer unique — `notes` from space A would merge with `notes` from
@@ -218,6 +220,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 isRenaming={renamingId === item.artifact.id}
                 onRenameCommit={(label) => commitArtifactRename(item.artifact, label)}
                 onRenameCancel={() => setRenamingId(null)}
+                showMeta={showMeta}
               />
             )
           ))}

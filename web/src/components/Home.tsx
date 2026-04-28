@@ -48,6 +48,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   const { sessions, error } = useSessions();
   const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [sessionsView, setSessionsView] = useState<ViewMode>("icons");
+  const [artefactsView, setArtefactsView] = useState<ViewMode>("icons");
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -200,11 +201,47 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         <section className="home-section">
           <div className="home-section-head">
             <span className="home-section-label">Artefacts</span>
+            <span className="home-artefacts-count">{desktopProps.artifacts.length}</span>
             <span className="home-section-rule" />
+            <div className="home-view-toggle">
+              <button
+                className={`view-btn${artefactsView === "icons" ? " active" : ""}`}
+                onClick={() => setArtefactsView("icons")}
+                title="Icon view"
+                aria-label="Icon view"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </button>
+              <button
+                className={`view-btn${artefactsView === "table" ? " active" : ""}`}
+                onClick={() => setArtefactsView("table")}
+                title="Table view"
+                aria-label="Table view"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </button>
+            </div>
           </div>
-          <div className="home-artefacts">
-            <Desktop {...desktopProps} isHero={false} />
-          </div>
+          {artefactsView === "icons" ? (
+            <div className="home-artefacts">
+              <Desktop {...desktopProps} isHero={false} showMeta />
+            </div>
+          ) : (
+            <ArtefactTable
+              artifacts={desktopProps.artifacts}
+              spaces={spaces}
+              onArtifactClick={desktopProps.onArtifactClick}
+            />
+          )}
         </section>
       </div>
     </div>
@@ -276,6 +313,40 @@ function SessionRow({ session, spaces }: SessionRowProps) {
         {session.agent}
       </span>
       <span className="home-row-time">{time}</span>
+    </div>
+  );
+}
+
+interface ArtefactTableProps {
+  artifacts: Parameters<typeof Desktop>[0]["artifacts"];
+  spaces: Space[];
+  onArtifactClick: Parameters<typeof Desktop>[0]["onArtifactClick"];
+}
+
+function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProps) {
+  if (artifacts.length === 0) {
+    return <div className="home-empty">No artefacts here yet.</div>;
+  }
+  const sorted = [...artifacts].sort((a, b) => {
+    const ta = Date.parse(a.createdAt);
+    const tb = Date.parse(b.createdAt);
+    return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+  });
+  return (
+    <div className="home-table-wrap">
+      <div className="home-table">
+        {sorted.map((art) => {
+          const space = spaces.find((s) => s.id === art.spaceId);
+          return (
+            <div key={art.id} className="home-artefact-row" onClick={() => onArtifactClick(art)}>
+              <span className="home-artefact-row-title">{art.label}</span>
+              <span className="home-artefact-row-space">{space?.displayName ?? art.spaceId}</span>
+              <span className="home-artefact-row-kind">{art.artifactKind}</span>
+              <span className="home-artefact-row-time">{formatRelative(art.createdAt) ?? "—"}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

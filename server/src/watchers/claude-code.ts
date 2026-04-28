@@ -66,9 +66,21 @@ interface FileTracker {
   cwd: string | null;
   startedAt: string | null;
   model: string | null;
-  title: string | null;
+  // Title sources, in descending priority: customTitle > agentName >
+  // userMessage > slug. claude-code now persists a named title via
+  // {type:"custom-title"} / {type:"agent-name"} events; fall back to the
+  // first real user prompt only if neither is present, and to the cute
+  // slug ("encapsulated-nibbling-scroll" etc.) as a last resort.
+  customTitle: string | null;
+  agentName: string | null;
+  userMessageTitle: string | null;
+  slug: string | null;
   // Carry-over for partial trailing lines between change events.
   partial: string;
+}
+
+function effectiveTitle(t: Pick<FileTracker, "customTitle" | "agentName" | "userMessageTitle" | "slug">): string | null {
+  return t.customTitle ?? t.agentName ?? t.userMessageTitle ?? t.slug ?? null;
 }
 
 export class ClaudeCodeWatcher {
@@ -204,7 +216,7 @@ export class ClaudeCodeWatcher {
       id: meta.sessionId,
       space_id: this.resolveSpaceId(meta.cwd),
       agent: "claude-code",
-      title: meta.title,
+      title: effectiveTitle(meta),
       state,
       started_at: startedAt,
       model: meta.model,
@@ -219,14 +231,19 @@ export class ClaudeCodeWatcher {
       cwd: meta.cwd,
       startedAt: meta.startedAt,
       model: meta.model,
-      title: meta.title,
+      customTitle: meta.customTitle,
+      agentName: meta.agentName,
+      userMessageTitle: meta.userMessageTitle,
+      slug: meta.slug,
       partial: "",
     });
   }
 
-  // Read just enough of a file to populate the session row. We scan up to
-  // ~32KB looking for the first user message (title) and first assistant
-  // message (model). Anything past that is irrelevant to the session row.
+  // Read enough of a file to populate the session row. We scan up to ~64KB
+  // looking for cwd / first timestamp / model / titles / slug. claude-code's
+  // {type:"custom-title"} and {type:"agent-name"} events repeat throughout
+  // the file but the first occurrence usually lands within the opening few
+  // KB, alongside the permission-mode and agent-name openers.
   private async readSessionMetadata(
     filePath: string,
   ): Promise<{
@@ -234,14 +251,17 @@ export class ClaudeCodeWatcher {
     cwd: string | null;
     startedAt: string | null;
     model: string | null;
-    title: string | null;
+    customTitle: string | null;
+    agentName: string | null;
+    userMessageTitle: string | null;
+    slug: string | null;
   } | null> {
     let buf: Buffer;
     try {
       const fh = await fs.open(filePath, "r");
       try {
         const stat = await fh.stat();
-        const len = Math.min(stat.size, 32_768);
+        const len = Math.min(stat.size, 65_536);
         buf = Buffer.alloc(len);
         await fh.read(buf, 0, len, 0);
       } finally {
@@ -257,7 +277,10 @@ export class ClaudeCodeWatcher {
     let cwd: string | null = null;
     let startedAt: string | null = null;
     let model: string | null = null;
-    let title: string | null = null;
+    let customTitle: string | null = null;
+    let agentName: string | null = null;
+    let userMessageTitle: string | null = null;
+    let slug: string | null = null;
 
     for (const line of buf.toString("utf8").split("\n")) {
       if (!line) continue;
@@ -269,14 +292,22 @@ export class ClaudeCodeWatcher {
       if (model === null && ev.type === "assistant" && ev.message?.model) {
         model = String(ev.message.model);
       }
-      if (title === null) {
-        const candidate = userMessageTitleCandidate(ev);
-        if (candidate) title = candidate.slice(0, TITLE_MAX);
+      if (slug === null && typeof ev.slug === "string") slug = ev.slug;
+      if (customTitle === null && ev.type === "custom-title" && typeof ev.customTitle === "string") {
+        customTitle = ev.customTitle.trim().slice(0, TITLE_MAX) || null;
       }
-      if (cwd && startedAt && model && title) break;
+      if (agentName === null && ev.type === "agent-name" && typeof ev.agentName === "string") {
+        agentName = ev.agentName.trim().slice(0, TITLE_MAX) || null;
+      }
+      if (userMessageTitle === null) {
+        const candidate = userMessageTitleCandidate(ev);
+        if (candidate) userMessageTitle = candidate.slice(0, TITLE_MAX);
+      }
+      // Customs override everything below them; once we have one we can stop.
+      if (cwd && startedAt && model && customTitle) break;
     }
 
-    return { sessionId: sessionIdFromName, cwd, startedAt, model, title };
+    return { sessionId: sessionIdFromName, cwd, startedAt, model, customTitle, agentName, userMessageTitle, slug };
   }
 
   // ── Live updates ────────────────────────────────────────────────────────
@@ -293,7 +324,10 @@ export class ClaudeCodeWatcher {
       cwd: null,
       startedAt: null,
       model: null,
-      title: null,
+      customTitle: null,
+      agentName: null,
+      userMessageTitle: null,
+      slug: null,
       partial: "",
     });
     await this.consumeAppended(filePath);
@@ -356,19 +390,32 @@ export class ClaudeCodeWatcher {
 
       if (tracker.sessionId) {
         // Metadata refresh — every event can contribute. cwd/startedAt/model
-        // are usually set on the first event, but title often isn't (the
-        // first user-typed event may be a slash-command caveat we skip).
+        // are usually set on the first event, but the named title arrives
+        // on a `custom-title` event that may be later in the file. We track
+        // four title sources and keep upgrading whenever a higher-priority
+        // one shows up (custom > agent-name > user message > slug).
         if (!tracker.cwd && typeof ev.cwd === "string") tracker.cwd = ev.cwd;
         if (!tracker.startedAt && typeof ev.timestamp === "string") {
           tracker.startedAt = ev.timestamp;
         }
-        if (!tracker.title) {
-          const candidate = userMessageTitleCandidate(ev);
-          if (candidate) {
-            tracker.title = candidate.slice(0, TITLE_MAX);
-            if (sessionEnsured) titleChanged = true;
-          }
+        if (!tracker.slug && typeof ev.slug === "string") tracker.slug = ev.slug;
+
+        const before = effectiveTitle(tracker);
+        if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
+          const t = ev.customTitle.trim().slice(0, TITLE_MAX) || null;
+          if (t && t !== tracker.customTitle) tracker.customTitle = t;
         }
+        if (ev.type === "agent-name" && typeof ev.agentName === "string") {
+          const t = ev.agentName.trim().slice(0, TITLE_MAX) || null;
+          if (t && t !== tracker.agentName) tracker.agentName = t;
+        }
+        if (!tracker.userMessageTitle) {
+          const candidate = userMessageTitleCandidate(ev);
+          if (candidate) tracker.userMessageTitle = candidate.slice(0, TITLE_MAX);
+        }
+        const after = effectiveTitle(tracker);
+        if (after !== before && sessionEnsured) titleChanged = true;
+
         if (!tracker.model && ev.type === "assistant" && ev.message?.model) {
           tracker.model = String(ev.message.model);
         }
@@ -381,7 +428,7 @@ export class ClaudeCodeWatcher {
           id: tracker.sessionId,
           space_id: this.resolveSpaceId(tracker.cwd),
           agent: "claude-code",
-          title: tracker.title,
+          title: effectiveTitle(tracker),
           state: "running",
           started_at: tracker.startedAt ?? undefined,
           model: tracker.model,
@@ -439,7 +486,7 @@ export class ClaudeCodeWatcher {
         this.deps.sessionStore.updateSession(tracker.sessionId, {
           state: "running",
           last_event_at: ts,
-          title: tracker.title,
+          title: effectiveTitle(tracker),
         });
       } else {
         this.deps.sessionStore.updateSessionState(tracker.sessionId, "running", ts);

@@ -61,9 +61,29 @@ interface Props {
   isRenaming?: boolean;
   onRenameCommit?: (label: string) => void;
   onRenameCancel?: () => void;
+  /** Show a relative-time line under the label (Home / brain-prototype layout). */
+  showMeta?: boolean;
 }
 
-export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, reveal, isRenaming, onRenameCommit, onRenameCancel }: Props) {
+function formatArtifactRelative(iso?: string): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const ms = Date.now() - t;
+  if (ms < 0) return "just now";
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d} day${d === 1 ? "" : "s"} ago`;
+  if (d < 14) return "a week ago";
+  if (d < 30) return `${Math.floor(d / 7)} weeks ago`;
+  return new Date(t).toLocaleDateString();
+}
+
+export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, reveal, isRenaming, onRenameCommit, onRenameCancel, showMeta }: Props) {
   const config = typeConfig[artifact.artifactKind] || typeConfig.app;
   // Only show status indicators for managed apps (local_process runtime)
   const isManagedApp = artifact.runtimeKind === "local_process";
@@ -198,6 +218,10 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
       ) : (
         <span className="icon-label">{artifact.label}</span>
       )}
+      {showMeta && !isRenaming && (() => {
+        const rel = formatArtifactRelative(artifact.createdAt);
+        return rel ? <span className="icon-label-meta">{rel}</span> : null;
+      })()}
     </button>
   );
 }
