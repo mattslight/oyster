@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.5.0-beta.0] - 2026-04-28
+
 ### Added
 
 - **Oyster sees your claude-code sessions.** When you run `claude` in any folder mapped to a space, Oyster now picks the session up automatically — no setup, no MCP wiring. The session shows as *running* / *disconnected* on the home feed, with title pulled from your first prompt and tracked file reads/edits attributed back to their tiles. Sessions started in unregistered folders land as orphans rather than being dropped. ([#251](https://github.com/mattslight/oyster/issues/251))
