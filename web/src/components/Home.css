@@ -5,14 +5,23 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  --home-border: rgba(255, 255, 255, 0.08);
+  /* Match brain-prototype.html exactly so the table container reads as a
+     crisp dark surface against the orb glow, not a whitish wash. */
+  --home-border: rgba(255, 255, 255, 0.06);
   --home-border-accent: rgba(124, 107, 255, 0.3);
-  --home-surface: rgba(255, 255, 255, 0.03);
-  --home-text-muted: rgba(232, 233, 240, 0.45);
+  --home-surface: rgba(12, 13, 28, 0.6);
+  --home-text-muted: rgba(232, 233, 240, 0.3);
   --home-green: #4ade80;
   --home-amber: #fbbf24;
   --home-red: #f87171;
-  --home-accent-bright: #b8aaff;
+  --home-accent-bright: #a597ff;
+  --home-text: #f0f0f5;
+}
+
+.home,
+.home .home-tile-label,
+.home .home-row-title {
+  color: var(--home-text);
 }
 
 .home-glow,
@@ -62,13 +71,35 @@
   inset: 0;
   overflow-y: auto;
   z-index: 2;
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 260px), transparent calc(100% - 150px));
-  mask-image: linear-gradient(to bottom, black calc(100% - 260px), transparent calc(100% - 150px));
+  /* Reserve space at the bottom so the chat bar doesn't overlap content.
+     Prototype uses a fixed fade overlay (see .home-chatbar-fade below)
+     instead of a mask on the scroll container — putting the mask here was
+     fading out lower table rows by ~30%. Just push content above the bar. */
+  padding-bottom: 240px;
 }
 
 .home-scroll--hero {
   -webkit-mask-image: linear-gradient(to bottom, black 18%, transparent 38%);
   mask-image: linear-gradient(to bottom, black 18%, transparent 38%);
+}
+
+/* Soft fade behind the chat bar so content dissolves into the bg rather
+   than colliding with the pills. Sits above .home-scroll, below ChatBar. */
+.home::before {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 320px;
+  pointer-events: none;
+  z-index: 3;
+  background: linear-gradient(
+    to top,
+    rgba(30, 31, 54, 0.95) 0%,
+    rgba(30, 31, 54, 0.85) 30%,
+    rgba(30, 31, 54, 0) 100%
+  );
 }
 
 .home-header {
