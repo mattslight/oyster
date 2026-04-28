@@ -135,8 +135,10 @@ export function initDb(userlandDir: string): Database.Database {
   //   than cascading. Mirrors the artifacts.source_id pattern above.
   // - session_events / session_artifacts cascade on session deletion so we
   //   don't leak transcript rows when a session is reaped.
-  // - session_artifacts uses a composite PK including when_at so a session can
-  //   read then later modify the same artefact without colliding.
+  // - session_artifacts uses a surrogate INTEGER id (not a composite key on
+  //   when_at) because datetime('now') is only second-precise — two same-role
+  //   touches in the same second would have collided. Lookups go through the
+  //   two indexes below.
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id            TEXT PRIMARY KEY,
@@ -165,12 +167,14 @@ export function initDb(userlandDir: string): Database.Database {
       ON session_events(session_id, ts);
 
     CREATE TABLE IF NOT EXISTS session_artifacts (
+      id          INTEGER PRIMARY KEY,
       session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
       artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
       role        TEXT NOT NULL CHECK (role IN ('create','modify','read')),
-      when_at     TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (session_id, artifact_id, role, when_at)
+      when_at     TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE INDEX IF NOT EXISTS session_artifacts_session
+      ON session_artifacts(session_id, when_at);
     CREATE INDEX IF NOT EXISTS session_artifacts_artifact
       ON session_artifacts(artifact_id);
   `);
