@@ -262,9 +262,14 @@ export default function App() {
     }
   }, [activeSpace, handleSpaceChange]);
 
-  const isHero = activeSpace === "home";
+  // Hero mode = chat bar centred + large. Reserved for the truly empty Home
+  // (no spaces, no work yet). The moment a user has real spaces, the chat
+  // bar drops to its compact bottom position even on the Home pill —
+  // otherwise the spaces / sessions / artefacts feed reads as decoration
+  // beneath an oversized prompt.
   const isFirstRun = FORCE_ONBOARDING ||
     spaces.filter(s => s.id !== "home" && s.id !== "__all__").length === 0;
+  const isHero = activeSpace === "home" && isFirstRun;
 
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
