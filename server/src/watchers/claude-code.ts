@@ -89,7 +89,7 @@ export class ClaudeCodeWatcher {
 
     await this.bootScan();
 
-    this.watcher = chokidar.watch(this.root, {
+    const watcher = chokidar.watch(this.root, {
       persistent: true,
       ignoreInitial: true, // bootScan handled existing files
       depth: 2, // projects/<encoded-cwd>/<file>.jsonl
@@ -103,10 +103,18 @@ export class ClaudeCodeWatcher {
         return base.includes(".") && !base.endsWith(".jsonl");
       },
     });
+    this.watcher = watcher;
 
-    this.watcher.on("add", (path) => this.onFileAppeared(path).catch(this.logError));
-    this.watcher.on("change", (path) => this.onFileChanged(path).catch(this.logError));
-    this.watcher.on("error", (err) => this.logError(err));
+    watcher.on("add", (path) => this.onFileAppeared(path).catch(this.logError));
+    watcher.on("change", (path) => this.onFileChanged(path).catch(this.logError));
+    watcher.on("error", (err) => this.logError(err));
+
+    // Don't return until chokidar has finished its initial scan. Otherwise
+    // a caller that creates a session file immediately after start() can
+    // race the watcher's setup and miss the resulting `add` event.
+    await new Promise<void>((resolve) => {
+      watcher.once("ready", () => resolve());
+    });
 
     this.heartbeat = setInterval(() => this.heartbeatSweep(), HEARTBEAT_INTERVAL_MS);
   }
@@ -178,13 +186,20 @@ export class ClaudeCodeWatcher {
     const ageMs = this.now().getTime() - stat.mtime.getTime();
     const state: SessionState = ageMs > DISCONNECT_THRESHOLD_MS ? "disconnected" : "running";
 
+    // Always pass ISO-8601 timestamps. If the JSONL didn't have a usable
+    // event timestamp in the first 32KB, fall back to the file's birth time
+    // (or mtime as a last resort) — both are better proxies for "session
+    // started" than the boot-scan moment, and they keep the column shape
+    // consistent (`YYYY-MM-DDTHH:MM:SS.mmmZ`).
+    const startedAt = meta.startedAt ?? (stat.birthtime ?? stat.mtime).toISOString();
+
     this.deps.sessionStore.upsertSession({
       id: meta.sessionId,
       space_id: this.resolveSpaceId(meta.cwd),
       agent: "claude-code",
       title: meta.title,
       state,
-      started_at: meta.startedAt ?? undefined,
+      started_at: startedAt,
       model: meta.model,
       last_event_at: stat.mtime.toISOString(),
     });
@@ -247,8 +262,9 @@ export class ClaudeCodeWatcher {
       if (model === null && ev.type === "assistant" && ev.message?.model) {
         model = String(ev.message.model);
       }
-      if (title === null && ev.type === "user" && typeof ev.message?.content === "string") {
-        title = ev.message.content.trim().slice(0, TITLE_MAX) || null;
+      if (title === null) {
+        const candidate = userMessageTitleCandidate(ev);
+        if (candidate) title = candidate.slice(0, TITLE_MAX);
       }
       if (cwd && startedAt && model && title) break;
     }
@@ -324,25 +340,36 @@ export class ClaudeCodeWatcher {
     const events: InsertSessionEvent[] = [];
     let latestTimestamp: string | null = null;
     let sessionEnsured = false;
+    let titleChanged = false;
 
     for (const line of lines) {
       if (!line) continue;
       const ev = safeParse(line);
       if (!ev) continue;
 
-      // First event from a brand-new file: derive session metadata and
-      // upsert the row before any events are inserted (FK constraint).
-      if (!sessionEnsured && tracker.sessionId) {
+      if (tracker.sessionId) {
+        // Metadata refresh — every event can contribute. cwd/startedAt/model
+        // are usually set on the first event, but title often isn't (the
+        // first user-typed event may be a slash-command caveat we skip).
         if (!tracker.cwd && typeof ev.cwd === "string") tracker.cwd = ev.cwd;
         if (!tracker.startedAt && typeof ev.timestamp === "string") {
           tracker.startedAt = ev.timestamp;
         }
-        if (!tracker.title && ev.type === "user" && typeof ev.message?.content === "string") {
-          tracker.title = ev.message.content.trim().slice(0, TITLE_MAX) || null;
+        if (!tracker.title) {
+          const candidate = userMessageTitleCandidate(ev);
+          if (candidate) {
+            tracker.title = candidate.slice(0, TITLE_MAX);
+            if (sessionEnsured) titleChanged = true;
+          }
         }
         if (!tracker.model && ev.type === "assistant" && ev.message?.model) {
           tracker.model = String(ev.message.model);
         }
+      }
+
+      // First event from a brand-new file: upsert the row before any events
+      // are inserted (FK constraint).
+      if (!sessionEnsured && tracker.sessionId) {
         this.deps.sessionStore.upsertSession({
           id: tracker.sessionId,
           space_id: this.resolveSpaceId(tracker.cwd),
@@ -397,9 +424,19 @@ export class ClaudeCodeWatcher {
     if (tracker.sessionId) {
       // Bump the session's last_event_at + state to running. If the session
       // was previously 'disconnected' (heartbeat fired during a quiet turn),
-      // this brings it back to 'running'.
+      // this brings it back to 'running'. If a title we couldn't derive on
+      // the first pass (e.g. opening event was a caveat) is now available,
+      // patch it through here in the same write.
       const ts = latestTimestamp ?? this.now().toISOString();
-      this.deps.sessionStore.updateSessionState(tracker.sessionId, "running", ts);
+      if (titleChanged) {
+        this.deps.sessionStore.updateSession(tracker.sessionId, {
+          state: "running",
+          last_event_at: ts,
+          title: tracker.title,
+        });
+      } else {
+        this.deps.sessionStore.updateSessionState(tracker.sessionId, "running", ts);
+      }
       this.deps.emitSessionChanged?.(tracker.sessionId);
     }
   }
@@ -443,6 +480,28 @@ export class ClaudeCodeWatcher {
 }
 
 // ── Pure helpers (exported for tests) ─────────────────────────────────────
+
+// Pull a usable title out of a `type:"user"` event's content, or return null.
+// claude-code wraps slash-command machinery (/compact, /clear, etc.) in
+// pseudo-user messages prefixed with <local-command-caveat>, <command-name>,
+// or <command-message>. Those are noise — keep scanning until we find a
+// real prompt the user actually typed.
+export function userMessageTitleCandidate(ev: Record<string, any>): string | null {
+  if (ev?.type !== "user") return null;
+  const content = ev.message?.content;
+  if (typeof content !== "string") return null;
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.startsWith("<local-command-caveat>") ||
+    trimmed.startsWith("<command-name>") ||
+    trimmed.startsWith("<command-message>") ||
+    trimmed.startsWith("<command-stdout>")
+  ) {
+    return null;
+  }
+  return trimmed;
+}
 
 export function filenameToSessionId(filePath: string): string {
   // Filename is `<uuid>.jsonl`. The UUID is the session id.

@@ -194,6 +194,48 @@ async function run() {
   assert.equal(orphan.space_id, null, "orphan session should have null space_id");
   console.log("[smoke] phase 4 ok — orphan session has null space_id");
 
+  // ── Phase 5: caveat-prefixed user message is skipped for title ──
+  const caveatProjectDir = join(projectsRoot, "-Users-Test-caveat");
+  mkdirSync(caveatProjectDir, { recursive: true });
+  const caveatId = "00000000-aaaa-bbbb-cccc-333333333333";
+  const caveatPath = join(caveatProjectDir, `${caveatId}.jsonl`);
+  writeFileSync(caveatPath, [
+    JSON.stringify({
+      type: "user",
+      sessionId: caveatId,
+      cwd: fakeCwd,
+      timestamp: "2026-04-28T12:02:00.000Z",
+      message: { role: "user", content: "<local-command-caveat>Caveat text</local-command-caveat>" },
+    }),
+    JSON.stringify({
+      type: "user",
+      sessionId: caveatId,
+      cwd: fakeCwd,
+      timestamp: "2026-04-28T12:02:01.000Z",
+      message: { role: "user", content: "the real prompt" },
+    }),
+  ].join("\n") + "\n");
+  await sleep(800);
+
+  const caveatSession = sessionStore.getById(caveatId);
+  assert(caveatSession, "caveat session should be inserted");
+  assert.equal(caveatSession.title, "the real prompt", "caveat title should be skipped");
+  console.log("[smoke] phase 5 ok — local-command-caveat user message skipped for title");
+
+  // ── Phase 6: ISO-8601 timestamps everywhere — no naive YYYY-MM-DD HH:MM:SS ──
+  const allSessions = sessionStore.getAll();
+  for (const s of allSessions) {
+    assert(
+      /T.*Z$/.test(s.started_at),
+      `started_at must be ISO-8601 with Z, got: ${s.started_at} (id=${s.id})`,
+    );
+    assert(
+      /T.*Z$/.test(s.last_event_at),
+      `last_event_at must be ISO-8601 with Z, got: ${s.last_event_at} (id=${s.id})`,
+    );
+  }
+  console.log("[smoke] phase 6 ok — all timestamps are ISO-8601");
+
   // ── Cleanup ──
   await watcher.stop();
   db.close();
