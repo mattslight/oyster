@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { Session, SessionState } from "../data/sessions-api";
-import type { Artifact, Space } from "../../../shared/types";
+import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
+import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
 import { Desktop } from "./Desktop";
 import "./Home.css";
@@ -8,30 +8,46 @@ import "./Home.css";
 interface Props {
   activeSpace: string;
   spaces: Space[];
-  // Forwarded to Desktop for the artefacts section. App.tsx handles the
-  // already-scoped filtering and event wiring; we just pass it through.
   desktopProps: Omit<Parameters<typeof Desktop>[0], "isHero">;
   isHero?: boolean;
   onSpaceChange: (space: string) => void;
 }
 
-const STATE_FILTERS: Array<{ key: SessionState | "all"; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "running", label: "Running" },
-  { key: "awaiting", label: "Awaiting" },
-  { key: "disconnected", label: "Disconnected" },
-  { key: "done", label: "Done" },
-];
+type ViewMode = "icons" | "table";
+type StateFilter = SessionState | "all";
 
-const AGENT_LABEL: Record<Session["agent"], string> = {
+const FILTER_ORDER: StateFilter[] = ["running", "awaiting", "disconnected", "done", "all"];
+
+const FILTER_LABELS: Record<StateFilter, string> = {
+  running: "running",
+  awaiting: "awaiting you",
+  disconnected: "disconnected",
+  done: "done",
+  all: "all",
+};
+
+const AGENT_LETTERS: Record<SessionAgent, string> = {
   "claude-code": "CC",
   opencode: "OC",
   codex: "CX",
 };
 
+const AGENT_CLASS: Record<SessionAgent, string> = {
+  "claude-code": "agent-cc",
+  opencode: "agent-oc",
+  codex: "agent-codex",
+};
+
+const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
+  "claude-code": "cc",
+  opencode: "oc",
+  codex: "codex",
+};
+
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error } = useSessions();
-  const [stateFilter, setStateFilter] = useState<SessionState | "all">("all");
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
+  const [sessionsView, setSessionsView] = useState<ViewMode>("icons");
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -39,26 +55,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   const isMetaView = isHomeView || isAllView || isArchivedView;
   const scopedSpace = !isMetaView ? activeSpace : null;
 
-  // Sessions filtered by the active space pill + state chip.
-  const visibleSessions = useMemo(() => {
-    let rows = sessions;
-    if (scopedSpace) {
-      rows = rows.filter((s) => s.spaceId === scopedSpace);
-    }
-    if (stateFilter !== "all") {
-      rows = rows.filter((s) => s.state === stateFilter);
-    }
-    return rows;
-  }, [sessions, scopedSpace, stateFilter]);
+  const scopedSessions = useMemo(
+    () => (scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions),
+    [sessions, scopedSpace],
+  );
 
   const stateCounts = useMemo(() => {
-    const scoped = scopedSpace
-      ? sessions.filter((s) => s.spaceId === scopedSpace)
-      : sessions;
-    const counts = { running: 0, awaiting: 0, disconnected: 0, done: 0 };
-    for (const s of scoped) counts[s.state]++;
+    const counts: Record<StateFilter, number> = { running: 0, awaiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
+    for (const s of scopedSessions) counts[s.state]++;
     return counts;
-  }, [sessions, scopedSpace]);
+  }, [scopedSessions]);
+
+  const visibleSessions = useMemo(
+    () => (stateFilter === "all" ? scopedSessions : scopedSessions.filter((s) => s.state === stateFilter)),
+    [scopedSessions, stateFilter],
+  );
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
   const eyebrow = isHomeView ? "Home"
@@ -80,65 +91,108 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         </header>
 
         {isHomeView && spaces.length > 0 && (
-          <section className="home-section home-spaces">
+          <div className="home-spaces-section">
             <div className="home-spaces-grid">
               {spaces.map((space) => {
                 const spaceSessions = sessions.filter((s) => s.spaceId === space.id);
                 const running = spaceSessions.filter((s) => s.state === "running").length;
                 const awaiting = spaceSessions.filter((s) => s.state === "awaiting").length;
                 const disconnected = spaceSessions.filter((s) => s.state === "disconnected").length;
+                const done = spaceSessions.filter((s) => s.state === "done").length;
                 return (
                   <button
                     key={space.id}
                     className="home-space-card"
-                    style={space.color ? { borderColor: space.color } : undefined}
                     onClick={() => onSpaceChange(space.id)}
                   >
-                    <div className="home-space-name">{space.displayName}</div>
-                    <div className="home-space-meta">
-                      {running > 0 && <span className="dot dot-running" title="running" />}
-                      {awaiting > 0 && <span className="dot dot-awaiting" title="awaiting" />}
-                      {disconnected > 0 && <span className="dot dot-disconnected" title="disconnected" />}
-                      <span className="home-space-count">
-                        {spaceSessions.length} session{spaceSessions.length === 1 ? "" : "s"}
-                      </span>
+                    <div className="home-space-card-name">{space.displayName}</div>
+                    <div className="home-space-card-counts">
+                      {running > 0 && <span className="signal"><span className="pip pip-green" />{running} running</span>}
+                      {awaiting > 0 && <span className="signal"><span className="pip pip-amber" />{awaiting} awaiting</span>}
+                      {disconnected > 0 && <span className="signal"><span className="pip pip-red" />{disconnected} disconnected</span>}
+                      {done > 0 && <span className="signal"><span className="pip pip-dim" />{done} done</span>}
+                      {spaceSessions.length === 0 && <span className="signal signal-muted">no sessions yet</span>}
                     </div>
                   </button>
                 );
               })}
             </div>
-          </section>
+          </div>
         )}
 
         <section className="home-section">
           <div className="home-section-head">
             <span className="home-section-label">Sessions</span>
             <span className="home-section-stats">
-              {stateCounts.running > 0 && <span><span className="dot dot-running" /> {stateCounts.running} running</span>}
-              {stateCounts.awaiting > 0 && <span><span className="dot dot-awaiting" /> {stateCounts.awaiting} awaiting</span>}
-              {stateCounts.disconnected > 0 && <span><span className="dot dot-disconnected" /> {stateCounts.disconnected} disconnected</span>}
-              {stateCounts.done > 0 && <span><span className="dot dot-done" /> {stateCounts.done} done</span>}
+              {FILTER_ORDER.map((f) => {
+                const count = stateCounts[f];
+                if (count === 0 && f !== "all") return null;
+                return (
+                  <button
+                    key={f}
+                    className={`stat-btn${stateFilter === f ? " active" : ""}`}
+                    onClick={() => setStateFilter(f)}
+                  >
+                    {f !== "all" && <span className={`pip pip-${stateColor(f)}`} />}
+                    {count} {FILTER_LABELS[f]}
+                  </button>
+                );
+              })}
             </span>
             <span className="home-section-rule" />
-            <div className="home-chips">
-              {STATE_FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  className={`home-chip${stateFilter === f.key ? " home-chip-active" : ""}`}
-                  onClick={() => setStateFilter(f.key)}
-                >
-                  {f.label}
-                </button>
-              ))}
+            <div className="home-view-toggle">
+              <button
+                className={`view-btn${sessionsView === "icons" ? " active" : ""}`}
+                onClick={() => setSessionsView("icons")}
+                title="Icon view"
+                aria-label="Icon view"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </button>
+              <button
+                className={`view-btn${sessionsView === "table" ? " active" : ""}`}
+                onClick={() => setSessionsView("table")}
+                title="Table view"
+                aria-label="Table view"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </button>
             </div>
           </div>
+
           {visibleSessions.length === 0 ? (
             <div className="home-empty">No sessions match this filter.</div>
-          ) : (
-            <div className="home-sessions-grid">
+          ) : sessionsView === "icons" ? (
+            <div className="home-surface">
               {visibleSessions.map((session) => (
-                <SessionTile key={session.id} session={session} spaces={spaces} />
+                <SessionTile
+                  key={session.id}
+                  session={session}
+                  spaces={spaces}
+                  showSpaceChip={isMetaView}
+                />
               ))}
+            </div>
+          ) : (
+            <div className="home-table-wrap">
+              <div className="home-table">
+                {visibleSessions.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    spaces={spaces}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </section>
@@ -157,33 +211,75 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   );
 }
 
+function stateColor(state: SessionState): "green" | "amber" | "red" | "dim" {
+  switch (state) {
+    case "running": return "green";
+    case "awaiting": return "amber";
+    case "disconnected": return "red";
+    case "done": return "dim";
+  }
+}
+
+function spaceLabelFor(spaceId: string | null, spaces: Space[]): string | null {
+  if (!spaceId) return null;
+  return spaces.find((s) => s.id === spaceId)?.displayName ?? spaceId;
+}
+
+function metaForSession(session: Session): string {
+  if (session.state === "awaiting") return `${session.agent} · awaiting`;
+  if (session.state === "disconnected") return `${session.agent} · disconnected`;
+  return `${session.agent} · ${formatRelative(session.lastEventAt) ?? "—"}`;
+}
+
 interface SessionTileProps {
   session: Session;
   spaces: Space[];
+  showSpaceChip: boolean;
 }
 
-function SessionTile({ session, spaces }: SessionTileProps) {
-  const space = session.spaceId ? spaces.find((s) => s.id === session.spaceId) : null;
-  const agentTag = AGENT_LABEL[session.agent] ?? session.agent.slice(0, 2).toUpperCase();
-  const subtitle = formatRelative(session.lastEventAt) ?? "—";
+function SessionTile({ session, spaces, showSpaceChip }: SessionTileProps) {
+  const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const title = session.title ?? "(no title yet)";
   return (
-    <div className={`home-session-tile state-${session.state}`}>
-      <div className="home-session-thumb">
-        <span className="home-session-agent">{agentTag}</span>
-        <span className={`home-session-dot dot-${session.state}`} />
+    <div className="home-tile">
+      <div className={`home-thumb ${AGENT_CLASS[session.agent]}`}>
+        {showSpaceChip && spaceLabel && (
+          <span className="home-space-chip">{spaceLabel}</span>
+        )}
+        <span className="home-agent-mark">{AGENT_LETTERS[session.agent]}</span>
+        <span className={`home-status ${session.state}`} />
       </div>
-      <div className="home-session-title" title={title}>{title}</div>
-      <div className="home-session-meta">
-        {space ? <span className="home-session-space">{space.displayName}</span> : null}
-        <span className="home-session-when">{subtitle}</span>
-      </div>
+      <div className="home-tile-label" title={title}>{title}</div>
+      <div className="home-tile-meta">{metaForSession(session)}</div>
     </div>
   );
 }
 
-// Compact relative-time formatter matching the brain-prototype mockup.
-// Falls back to absolute date if input is older than ~30 days.
+interface SessionRowProps {
+  session: Session;
+  spaces: Space[];
+}
+
+function SessionRow({ session, spaces }: SessionRowProps) {
+  const spaceLabel = spaceLabelFor(session.spaceId, spaces);
+  const time = session.state === "awaiting" ? "awaiting"
+    : session.state === "disconnected" ? "disconnected"
+    : formatRelative(session.lastEventAt) ?? "—";
+  const title = session.title ?? "(no title yet)";
+  return (
+    <div className="home-row">
+      <span className={`home-row-status ${session.state}`} />
+      <span className="home-row-space">{spaceLabel ?? "—"}</span>
+      <span className="home-row-title" title={title}>{title}</span>
+      <span className={`home-row-agent ${AGENT_PIP_CLASS[session.agent]}`}>
+        <span className="home-agent-pip" />
+        {session.agent}
+      </span>
+      <span className="home-row-time">{time}</span>
+    </div>
+  );
+}
+
 function formatRelative(iso: string): string | null {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
@@ -192,10 +288,10 @@ function formatRelative(iso: string): string | null {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
+  if (d < 30) return `${d}d`;
   return new Date(t).toLocaleDateString();
 }
