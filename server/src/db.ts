@@ -125,6 +125,56 @@ export function initDb(userlandDir: string): Database.Database {
     `);
   } catch { /* already exists */ }
 
+  // Sessions arc (0.5.0). Three tables that capture agent activity (claude-code,
+  // opencode, codex) read from external session logs. See
+  // docs/plans/sessions-arc.md for the design.
+  //
+  // - sessions.space_id is nullable + ON DELETE SET NULL: sessions whose CWD
+  //   doesn't match a registered space's source path land as orphans (no space
+  //   badge on Home), and deleting a space leaves its sessions intact rather
+  //   than cascading. Mirrors the artifacts.source_id pattern above.
+  // - session_events / session_artifacts cascade on session deletion so we
+  //   don't leak transcript rows when a session is reaped.
+  // - session_artifacts uses a composite PK including when_at so a session can
+  //   read then later modify the same artefact without colliding.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id            TEXT PRIMARY KEY,
+      space_id      TEXT REFERENCES spaces(id) ON DELETE SET NULL,
+      agent         TEXT NOT NULL CHECK (agent IN ('claude-code','opencode','codex')),
+      title         TEXT,
+      state         TEXT NOT NULL CHECK (state IN ('running','awaiting','disconnected','done')),
+      started_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      ended_at      TEXT,
+      model         TEXT,
+      last_event_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS sessions_space_id ON sessions(space_id);
+    CREATE INDEX IF NOT EXISTS sessions_state_last_event
+      ON sessions(state, last_event_at);
+
+    CREATE TABLE IF NOT EXISTS session_events (
+      id         INTEGER PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      role       TEXT NOT NULL CHECK (role IN ('user','assistant','tool','tool_result','system')),
+      text       TEXT NOT NULL,
+      ts         TEXT NOT NULL DEFAULT (datetime('now')),
+      raw        TEXT
+    );
+    CREATE INDEX IF NOT EXISTS session_events_session_ts
+      ON session_events(session_id, ts);
+
+    CREATE TABLE IF NOT EXISTS session_artifacts (
+      session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+      role        TEXT NOT NULL CHECK (role IN ('create','modify','read')),
+      when_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (session_id, artifact_id, role, when_at)
+    );
+    CREATE INDEX IF NOT EXISTS session_artifacts_artifact
+      ON session_artifacts(artifact_id);
+  `);
+
   // One-time seed: populate spaces from artifact space_ids only if the table is empty.
   // Using INSERT OR IGNORE on an existing table would resurrect deleted spaces on restart.
   const spaceCount = (db.prepare("SELECT COUNT(*) as n FROM spaces").get() as { n: number }).n;
