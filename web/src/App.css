@@ -254,12 +254,7 @@ body {
   pointer-events: none;
   z-index: 0;
   background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
-  animation: desktop-orb-drift 28s ease-in-out infinite;
-}
-
-@keyframes desktop-orb-drift {
-  0%, 100% { transform: translate(20vw, -10vh); }
-  50%       { transform: translate(60vw, 20vh); }
+  transform: translate(20vw, -10vh);
 }
 
 .desktop-grain {

@@ -47,12 +47,10 @@
   filter: blur(80px);
   opacity: 0.13;
   background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
-  animation: home-orb-drift 28s ease-in-out infinite;
-}
-
-@keyframes home-orb-drift {
-  0%, 100% { transform: translate(20vw, -10vh); }
-  50%       { transform: translate(60vw, 20vh); }
+  /* Static — sits where it lands. The earlier 28s drift was noticeable
+     enough to read as motion. If we ever want it to move, the bar is
+     "moon across the sky" slow (multi-minute cycle) so it never registers. */
+  transform: translate(20vw, -10vh);
 }
 
 .home-grain {
