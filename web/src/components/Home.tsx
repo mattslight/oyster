@@ -75,28 +75,40 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     [scopedSessions, stateFilter],
   );
 
+  // Per-space session counts + last activity in a single pass instead of N×4
+  // filter calls per re-render. The Home component re-renders on every
+  // session_changed SSE, so the inner loop matters once you have many spaces
+  // and sessions.
+  const { sessionCountsBySpace, lastActivityBySpace } = useMemo(() => {
+    const counts: Record<string, { total: number; running: number; awaiting: number; disconnected: number; done: number }> = {};
+    const lastActivity: Record<string, number> = {};
+    for (const s of sessions) {
+      if (!s.spaceId) continue;
+      const c = counts[s.spaceId] ?? { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
+      c.total++;
+      c[s.state]++;
+      counts[s.spaceId] = c;
+      const t = parseTimestamp(s.lastEventAt);
+      if (Number.isFinite(t) && t > (lastActivity[s.spaceId] ?? 0)) {
+        lastActivity[s.spaceId] = t;
+      }
+    }
+    return { sessionCountsBySpace: counts, lastActivityBySpace: lastActivity };
+  }, [sessions]);
+
   // Drop meta-spaces from the Spaces summary cards: the chat bar already
   // renders Home as its own pill, so a `home` row in the spaces table would
   // surface a redundant card. __all__ and __archived__ are similar.
-  const realSpaces = useMemo(
-    () => spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__"),
-    [spaces],
-  );
-
-  // Per-space session counts in a single pass instead of N×4 filter calls per
-  // re-render. The Home component re-renders on every session_changed SSE,
-  // so the inner loop matters once you have many spaces and sessions.
-  const sessionCountsBySpace = useMemo(() => {
-    const acc: Record<string, { total: number; running: number; awaiting: number; disconnected: number; done: number }> = {};
-    for (const s of sessions) {
-      if (!s.spaceId) continue;
-      const c = acc[s.spaceId] ?? { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
-      c.total++;
-      c[s.state]++;
-      acc[s.spaceId] = c;
-    }
-    return acc;
-  }, [sessions]);
+  // Sort by most recent session activity desc; spaces with no sessions fall
+  // to the bottom in their original order.
+  const realSpaces = useMemo(() => {
+    const filtered = spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__");
+    return [...filtered].sort((a, b) => {
+      const aT = lastActivityBySpace[a.id] ?? 0;
+      const bT = lastActivityBySpace[b.id] ?? 0;
+      return bT - aT;
+    });
+  }, [spaces, lastActivityBySpace]);
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
   const eyebrow = isHomeView ? "Home"
