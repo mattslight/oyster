@@ -47,10 +47,16 @@
   filter: blur(80px);
   opacity: 0.13;
   background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
-  /* Static — sits where it lands. The earlier 28s drift was noticeable
-     enough to read as motion. If we ever want it to move, the bar is
-     "moon across the sky" slow (multi-minute cycle) so it never registers. */
-  transform: translate(20vw, -10vh);
+  /* Moon-across-the-sky drift — 20-minute cycle over a small arc so the
+     motion is felt as ambience rather than seen. The earlier 28s/40vw
+     drift read as overt motion. */
+  animation: home-orb-drift 1200s linear infinite;
+}
+
+@keyframes home-orb-drift {
+  0%   { transform: translate(15vw, -12vh); }
+  50%  { transform: translate(35vw, -4vh); }
+  100% { transform: translate(15vw, -12vh); }
 }
 
 .home-grain {
@@ -612,6 +618,10 @@
   position: relative;
   inset: auto;
   height: auto;
+  /* Desktop owns its own dark gradient bg (.desktop in App.css) — neutralise
+     it here so the artefacts grid lays inline in Home without showing as a
+     boxed-off region against the orb glow. */
+  background: transparent;
 }
 
 .home-artefacts .desktop-glow,
