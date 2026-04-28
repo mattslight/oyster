@@ -379,18 +379,6 @@ export default function App() {
         }
         onArtifactUpdate={(id, fields) => setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, ...fields } : a)))}
         onArtifactRemove={(id) => setArtifacts((prev) => prev.filter((a) => a.id !== id))}
-        onImportFromAI={(spaceId) => {
-          const importArtifact = artifacts.find((a) => a.id.endsWith("import-from-ai"));
-          if (!importArtifact) return;
-          if (spaceId) {
-            const sp = spaces.find((s) => s.id === spaceId);
-            const params = `?spaceId=${encodeURIComponent(spaceId)}&spaceName=${encodeURIComponent(sp?.displayName ?? spaceId)}`;
-            const scoped = { ...importArtifact, url: importArtifact.url + params };
-            handleArtifactClick(scoped);
-          } else {
-            handleArtifactClick(importArtifact);
-          }
-        }}
         revealId={revealId}
       />
 
