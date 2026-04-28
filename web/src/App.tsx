@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Desktop } from "./components/Desktop";
+import { Home } from "./components/Home";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
 import { ViewerWindow } from "./components/ViewerWindow";
@@ -358,28 +359,36 @@ export default function App() {
           <span>{aiError}</span>
         </div>
       )}
-      <Desktop
-        space={activeSpace}
-        spaces={spaces.map(s => s.id)}
+      <Home
+        activeSpace={activeSpace}
+        spaces={spaces}
         isHero={isHero}
-        artifacts={(activeSpace === "__all__" || activeSpace === "__archived__") ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
-        isArchivedView={isArchivedView}
-        onArtifactClick={handleArtifactClick}
-        onArtifactStop={handleArtifactStop}
-        onGroupClick={(name) => {
-          setOpenGroup(name);
-          window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
-        }}
         onSpaceChange={handleSpaceChange}
-        onConvertToSpace={handleConvertToSpace}
-        onRefresh={() =>
-          loadArtifacts()
-            .then((nextArtifacts) => { setArtifacts(nextArtifacts); setConnected(true); })
-            .catch(() => setConnected(false))
-        }
-        onArtifactUpdate={(id, fields) => setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, ...fields } : a)))}
-        onArtifactRemove={(id) => setArtifacts((prev) => prev.filter((a) => a.id !== id))}
-        revealId={revealId}
+        desktopProps={{
+          space: activeSpace,
+          spaces: spaces.map((s) => s.id),
+          artifacts: (activeSpace === "__all__" || activeSpace === "__archived__")
+            ? artifacts
+            : artifacts.filter((a) => a.spaceId === activeSpace),
+          isArchivedView,
+          onArtifactClick: handleArtifactClick,
+          onArtifactStop: handleArtifactStop,
+          onGroupClick: (name) => {
+            setOpenGroup(name);
+            window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
+          },
+          onSpaceChange: handleSpaceChange,
+          onConvertToSpace: handleConvertToSpace,
+          onRefresh: () =>
+            loadArtifacts()
+              .then((nextArtifacts) => { setArtifacts(nextArtifacts); setConnected(true); })
+              .catch(() => setConnected(false)),
+          onArtifactUpdate: (id, fields) =>
+            setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, ...fields } : a))),
+          onArtifactRemove: (id) =>
+            setArtifacts((prev) => prev.filter((a) => a.id !== id)),
+          revealId,
+        }}
       />
 
       <div className="windows-layer">
