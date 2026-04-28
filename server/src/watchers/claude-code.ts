@@ -239,11 +239,17 @@ export class ClaudeCodeWatcher {
     });
   }
 
-  // Read enough of a file to populate the session row. We scan up to ~64KB
-  // looking for cwd / first timestamp / model / titles / slug. claude-code's
-  // {type:"custom-title"} and {type:"agent-name"} events repeat throughout
-  // the file but the first occurrence usually lands within the opening few
-  // KB, alongside the permission-mode and agent-name openers.
+  // Read enough of a file to populate the session row. JSONLs grow to
+  // multiple MB, and claude-code emits {type:"custom-title"} repeatedly:
+  // the first occurrence is usually an auto-generated slug, and the
+  // user-set title appears LATER in the file. So we scan two windows:
+  //
+  //   head (~64KB)  — cwd, startedAt, model, slug, first userMessageTitle
+  //   tail (~128KB) — the LATEST customTitle / agentName the file holds
+  //
+  // For small files (<head+tail) the windows overlap and we just scan
+  // everything once. The tail scan is bounded; even a 50 MB file pays
+  // a flat 128KB read on boot.
   private async readSessionMetadata(
     filePath: string,
   ): Promise<{
@@ -256,14 +262,27 @@ export class ClaudeCodeWatcher {
     userMessageTitle: string | null;
     slug: string | null;
   } | null> {
-    let buf: Buffer;
+    const HEAD_BYTES = 65_536;
+    const TAIL_BYTES = 131_072;
+
+    let head: Buffer;
+    let tail: Buffer | null;
     try {
       const fh = await fs.open(filePath, "r");
       try {
         const stat = await fh.stat();
-        const len = Math.min(stat.size, 65_536);
-        buf = Buffer.alloc(len);
-        await fh.read(buf, 0, len, 0);
+        const headLen = Math.min(stat.size, HEAD_BYTES);
+        head = Buffer.alloc(headLen);
+        await fh.read(head, 0, headLen, 0);
+
+        if (stat.size > HEAD_BYTES) {
+          const tailLen = Math.min(stat.size - HEAD_BYTES, TAIL_BYTES);
+          const tailStart = stat.size - tailLen;
+          tail = Buffer.alloc(tailLen);
+          await fh.read(tail, 0, tailLen, tailStart);
+        } else {
+          tail = null;
+        }
       } finally {
         await fh.close();
       }
@@ -282,7 +301,8 @@ export class ClaudeCodeWatcher {
     let userMessageTitle: string | null = null;
     let slug: string | null = null;
 
-    for (const line of buf.toString("utf8").split("\n")) {
+    // Pass 1 — head: early metadata + first-user-message title.
+    for (const line of head.toString("utf8").split("\n")) {
       if (!line) continue;
       const ev = safeParse(line);
       if (!ev) continue;
@@ -293,18 +313,38 @@ export class ClaudeCodeWatcher {
         model = String(ev.message.model);
       }
       if (slug === null && typeof ev.slug === "string") slug = ev.slug;
-      if (customTitle === null && ev.type === "custom-title" && typeof ev.customTitle === "string") {
-        customTitle = ev.customTitle.trim().slice(0, TITLE_MAX) || null;
+      if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
+        customTitle = ev.customTitle.trim().slice(0, TITLE_MAX) || customTitle;
       }
-      if (agentName === null && ev.type === "agent-name" && typeof ev.agentName === "string") {
-        agentName = ev.agentName.trim().slice(0, TITLE_MAX) || null;
+      if (ev.type === "agent-name" && typeof ev.agentName === "string") {
+        agentName = ev.agentName.trim().slice(0, TITLE_MAX) || agentName;
       }
       if (userMessageTitle === null) {
         const candidate = userMessageTitleCandidate(ev);
         if (candidate) userMessageTitle = candidate.slice(0, TITLE_MAX);
       }
-      // Customs override everything below them; once we have one we can stop.
-      if (cwd && startedAt && model && customTitle) break;
+    }
+
+    // Pass 2 — tail: take the LAST customTitle / agentName so user renames
+    // override the auto-generated slug-style ones written near the start.
+    // Skip the first line of the tail buffer since reads at an arbitrary
+    // byte offset usually start mid-line.
+    if (tail) {
+      const tailLines = tail.toString("utf8").split("\n");
+      tailLines.shift(); // skip partial leading line
+      for (const line of tailLines) {
+        if (!line) continue;
+        const ev = safeParse(line);
+        if (!ev) continue;
+        if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
+          const t = ev.customTitle.trim().slice(0, TITLE_MAX);
+          if (t) customTitle = t;
+        }
+        if (ev.type === "agent-name" && typeof ev.agentName === "string") {
+          const t = ev.agentName.trim().slice(0, TITLE_MAX);
+          if (t) agentName = t;
+        }
+      }
     }
 
     return { sessionId: sessionIdFromName, cwd, startedAt, model, customTitle, agentName, userMessageTitle, slug };
@@ -401,6 +441,9 @@ export class ClaudeCodeWatcher {
         if (!tracker.slug && typeof ev.slug === "string") tracker.slug = ev.slug;
 
         const before = effectiveTitle(tracker);
+        // Always take the latest custom-title / agent-name — claude-code
+        // overwrites these when the user renames a session via /title etc.,
+        // so the last one wins.
         if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
           const t = ev.customTitle.trim().slice(0, TITLE_MAX) || null;
           if (t && t !== tracker.customTitle) tracker.customTitle = t;
