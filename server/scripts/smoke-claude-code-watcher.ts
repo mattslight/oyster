@@ -274,11 +274,18 @@ async function run() {
   }
   appendFileSync(racePath, newLines.join("\n") + "\n");
 
-  // Fire two consumeAppended calls in parallel — direct private-method
+  // Fire FOUR consumeAppended calls in parallel — direct private-method
   // access via cast since the race repro requires by-passing chokidar's
-  // queueing.
+  // queueing. Three or more is the case where a naive "treat only running
+  // as locked" would let a second concurrent consumeOnce start; the lock
+  // must collapse all extras into a single follow-up.
   const w = watcher as unknown as { consumeAppended(p: string): Promise<void> };
-  await Promise.all([w.consumeAppended(racePath), w.consumeAppended(racePath)]);
+  await Promise.all([
+    w.consumeAppended(racePath),
+    w.consumeAppended(racePath),
+    w.consumeAppended(racePath),
+    w.consumeAppended(racePath),
+  ]);
 
   const afterRace = sessionStore.getEventsBySession(raceId).length;
   const delta = afterRace - beforeRace;

@@ -19,6 +19,8 @@ type StateFilter = SessionState | "all";
 
 const FILTER_ORDER: StateFilter[] = ["running", "awaiting", "disconnected", "done", "all"];
 
+const EMPTY_COUNTS = { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
+
 const FILTER_LABELS: Record<StateFilter, string> = {
   running: "running",
   awaiting: "awaiting you",
@@ -46,7 +48,7 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 };
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
-  const { sessions, error } = useSessions();
+  const { sessions, error, loading } = useSessions();
   const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [sessionsView, setSessionsView] = useState<ViewMode>("icons");
   const [artefactsView, setArtefactsView] = useState<ViewMode>("icons");
@@ -73,6 +75,29 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     [scopedSessions, stateFilter],
   );
 
+  // Drop meta-spaces from the Spaces summary cards: the chat bar already
+  // renders Home as its own pill, so a `home` row in the spaces table would
+  // surface a redundant card. __all__ and __archived__ are similar.
+  const realSpaces = useMemo(
+    () => spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__"),
+    [spaces],
+  );
+
+  // Per-space session counts in a single pass instead of N×4 filter calls per
+  // re-render. The Home component re-renders on every session_changed SSE,
+  // so the inner loop matters once you have many spaces and sessions.
+  const sessionCountsBySpace = useMemo(() => {
+    const acc: Record<string, { total: number; running: number; awaiting: number; disconnected: number; done: number }> = {};
+    for (const s of sessions) {
+      if (!s.spaceId) continue;
+      const c = acc[s.spaceId] ?? { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
+      c.total++;
+      c[s.state]++;
+      acc[s.spaceId] = c;
+    }
+    return acc;
+  }, [sessions]);
+
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
   const eyebrow = isHomeView ? "Home"
     : isAllView ? "All"
@@ -92,15 +117,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
-        {isHomeView && spaces.length > 0 && (
+        {isHomeView && realSpaces.length > 0 && (
           <div className="home-spaces-section">
             <div className="home-spaces-grid">
-              {spaces.map((space) => {
-                const spaceSessions = sessions.filter((s) => s.spaceId === space.id);
-                const running = spaceSessions.filter((s) => s.state === "running").length;
-                const awaiting = spaceSessions.filter((s) => s.state === "awaiting").length;
-                const disconnected = spaceSessions.filter((s) => s.state === "disconnected").length;
-                const done = spaceSessions.filter((s) => s.state === "done").length;
+              {realSpaces.map((space) => {
+                const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
                 return (
                   <button
                     key={space.id}
@@ -109,11 +130,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   >
                     <div className="home-space-card-name">{space.displayName}</div>
                     <div className="home-space-card-counts">
-                      {running > 0 && <span className="signal"><span className="pip pip-green" />{running} running</span>}
-                      {awaiting > 0 && <span className="signal"><span className="pip pip-amber" />{awaiting} awaiting</span>}
-                      {disconnected > 0 && <span className="signal"><span className="pip pip-red" />{disconnected} disconnected</span>}
-                      {done > 0 && <span className="signal"><span className="pip pip-dim" />{done} done</span>}
-                      {spaceSessions.length === 0 && <span className="signal signal-muted">no sessions yet</span>}
+                      {counts.running > 0 && <span className="signal"><span className="pip pip-green" />{counts.running} running</span>}
+                      {counts.awaiting > 0 && <span className="signal"><span className="pip pip-amber" />{counts.awaiting} awaiting</span>}
+                      {counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{counts.disconnected} disconnected</span>}
+                      {counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{counts.done} done</span>}
+                      {counts.total === 0 && <span className="signal signal-muted">no sessions yet</span>}
                     </div>
                   </button>
                 );
@@ -171,7 +192,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             </div>
           </div>
 
-          {visibleSessions.length === 0 ? (
+          {loading && sessions.length === 0 ? (
+            <div className="home-empty">Loading sessions…</div>
+          ) : visibleSessions.length === 0 ? (
             <div className="home-empty">No sessions match this filter.</div>
           ) : sessionsView === "icons" ? (
             <div className="home-surface">

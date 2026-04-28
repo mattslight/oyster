@@ -396,10 +396,14 @@ export class ClaudeCodeWatcher {
   }
 
   private async consumeAppended(filePath: string): Promise<void> {
-    const lockState = this.fileLocks.get(filePath);
-    if (lockState === "running") {
-      // An in-flight read is already covering this file. Mark for a
-      // follow-up; that read will trigger it on completion.
+    if (this.fileLocks.has(filePath)) {
+      // Either a read is in flight ("running") or a follow-up is already
+      // scheduled ("queued"). In both cases, mark queued so the in-flight
+      // read knows to make another pass when it finishes — coalescing N
+      // pending events into a single follow-up. Treating only "running"
+      // as locked would let a third arrival start a second concurrent
+      // consumeOnce while a follow-up was pending, reintroducing the
+      // duplicate-insert race the lock was meant to prevent.
       this.fileLocks.set(filePath, "queued");
       return;
     }
