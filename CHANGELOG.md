@@ -4,10 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0-beta.8] - 2026-04-28
+
 ### Fixed
 
-- **First-run hero tagline no longer overlays the chat output.** Clicking the *Set up Oyster* prompt pill (instead of typing into the input) used to send the message without focusing the chat, so the *"Welcome to your surface."* tagline stayed on screen and floated over the streaming reply. The tagline now hides as soon as any chat message exists.
-- **Space pickers now show your renamed name.** The `#` and `/s` autocompletes used to label every space by its slug (`sample-dashboard`), so renaming *Sample Dashboard* → *Project X* still showed `sample-dashboard` in the picker. They now show the display name; the slug appears as a secondary hint.
+- **First-run hero tagline no longer overlays the chat output.** Clicking the *Set up Oyster* prompt pill (instead of typing into the input) used to send the message without focusing the chat, so the *"Welcome to your surface."* tagline stayed on screen and floated over the streaming reply. The tagline now hides as soon as any chat message exists. ([#235](https://github.com/mattslight/oyster/pull/235))
+- **Space pickers now show your renamed name.** The `#` and `/s` autocompletes used to label every space by its slug (`sample-dashboard`), so renaming *Sample Dashboard* → *Project X* still showed `sample-dashboard` in the picker. They now show the display name; the slug appears as a secondary hint. ([#236](https://github.com/mattslight/oyster/pull/236))
 
 ## [0.4.0-beta.7] - 2026-04-25
 
