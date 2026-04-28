@@ -558,6 +558,11 @@
   transition: background 0.15s ease;
 }
 .home-artefact-row:hover { background: rgba(124, 107, 255, 0.05); }
+.home-artefact-row:focus-visible {
+  outline: 2px solid var(--home-border-accent);
+  outline-offset: -2px;
+  background: rgba(124, 107, 255, 0.05);
+}
 .home-artefact-row:last-child { border-bottom: none; }
 
 .home-artefact-row-title {

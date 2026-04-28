@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link2 } from "lucide-react";
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
+import { parseTimestamp } from "../utils/parseTimestamp";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const typeConfig: Record<
@@ -67,7 +68,7 @@ interface Props {
 
 function formatArtifactRelative(iso?: string): string | null {
   if (!iso) return null;
-  const t = Date.parse(iso);
+  const t = parseTimestamp(iso);
   if (!Number.isFinite(t)) return null;
   const ms = Date.now() - t;
   if (ms < 0) return "just now";

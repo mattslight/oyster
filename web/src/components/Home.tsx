@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
+import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
 import "./Home.css";
 
@@ -328,8 +329,8 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
     return <div className="home-empty">No artefacts here yet.</div>;
   }
   const sorted = [...artifacts].sort((a, b) => {
-    const ta = Date.parse(a.createdAt);
-    const tb = Date.parse(b.createdAt);
+    const ta = parseTimestamp(a.createdAt);
+    const tb = parseTimestamp(b.createdAt);
     return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
   });
   return (
@@ -338,7 +339,19 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
         {sorted.map((art) => {
           const space = spaces.find((s) => s.id === art.spaceId);
           return (
-            <div key={art.id} className="home-artefact-row" onClick={() => onArtifactClick(art)}>
+            <div
+              key={art.id}
+              className="home-artefact-row"
+              role="button"
+              tabIndex={0}
+              onClick={() => onArtifactClick(art)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onArtifactClick(art);
+                }
+              }}
+            >
               <span className="home-artefact-row-title">{art.label}</span>
               <span className="home-artefact-row-space">{space?.displayName ?? art.spaceId}</span>
               <span className="home-artefact-row-kind">{art.artifactKind}</span>
@@ -352,7 +365,7 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
 }
 
 function formatRelative(iso: string): string | null {
-  const t = Date.parse(iso);
+  const t = parseTimestamp(iso);
   if (!Number.isFinite(t)) return null;
   const ms = Date.now() - t;
   if (ms < 0) return "just now";
