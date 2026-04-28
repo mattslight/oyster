@@ -43,14 +43,19 @@ raw          TEXT NULL            -- original JSONL line (or excerpt) for fideli
 
 **`session_artifacts`**
 ```
+id           INTEGER PRIMARY KEY
 session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE
 artifact_id  TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE
 role         TEXT NOT NULL        -- 'create' | 'modify' | 'read'
 when_at      TEXT NOT NULL DEFAULT (datetime('now'))
-PRIMARY KEY (session_id, artifact_id, role, when_at)
 ```
 
-The composite key allows the same session to read then later modify the same artefact, recorded as two rows.
+Surrogate `id` rather than a composite PK on `(session_id, artifact_id, role, when_at)` — `datetime('now')` is only second-precise, so two same-role touches in the same second would collide on a composite. Lookups go through two indexes:
+
+- `(session_id, when_at)` — "what did this session touch, in order"
+- `(artifact_id)` — "which sessions touched this artefact"
+
+The same session reading then later modifying the same artefact is just two rows with different `role` values.
 
 ## State machine
 
