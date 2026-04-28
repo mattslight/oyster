@@ -24,11 +24,16 @@ import type {
 
 const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 
-// Heartbeat: how long without a new event before we call a running session
-// "disconnected". Heuristic — claude-code emits no explicit done marker, so
-// we fall back to file mtime / event freshness. Generous enough to ride out
-// long Anthropic-side stalls (multi-minute extended thinking turns).
+// State transition thresholds. claude-code emits no explicit end marker, so
+// "done" is heuristic — anything that's been quiet for a full day is treated
+// as concluded. Hooks or MCP-push registration would give a real signal;
+// follow-up tickets.
+//
+// running       --(quiet > 90s)-->         disconnected
+// disconnected  --(quiet > 24h)-->         done
+// done          --(any new event)-->       running   (consumeAppended path)
 const DISCONNECT_THRESHOLD_MS = 90_000;
+const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 // How often the heartbeat sweep runs. Cheap query; this can be aggressive.
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -184,7 +189,9 @@ export class ClaudeCodeWatcher {
     if (!meta) return;
 
     const ageMs = this.now().getTime() - stat.mtime.getTime();
-    const state: SessionState = ageMs > DISCONNECT_THRESHOLD_MS ? "disconnected" : "running";
+    const state: SessionState = ageMs > DONE_THRESHOLD_MS ? "done"
+      : ageMs > DISCONNECT_THRESHOLD_MS ? "disconnected"
+      : "running";
 
     // Always pass ISO-8601 timestamps. If the JSONL didn't have a usable
     // event timestamp in the first 32KB, fall back to the file's birth time
@@ -442,22 +449,27 @@ export class ClaudeCodeWatcher {
   }
 
   // ── Heartbeat ───────────────────────────────────────────────────────────
-  // Sessions that are 'running' but haven't seen an event in
-  // DISCONNECT_THRESHOLD_MS get demoted to 'disconnected'. Any new file event
-  // promotes them back to 'running' inside consumeAppended above.
+  // running → disconnected after DISCONNECT_THRESHOLD_MS of quiet.
+  // disconnected → done after DONE_THRESHOLD_MS — i.e. a session that's been
+  // idle for a full day is treated as concluded. Any new file event in
+  // consumeAppended below resurrects it back to 'running'.
   private heartbeatSweep(): void {
     const now = this.now().getTime();
     for (const session of this.deps.sessionStore.getAll()) {
-      if (session.state !== "running") continue;
       if (session.agent !== "claude-code") continue;
+      if (session.state === "done") continue;
       const last = Date.parse(session.last_event_at);
       if (!Number.isFinite(last)) continue;
-      if (now - last > DISCONNECT_THRESHOLD_MS) {
-        this.deps.sessionStore.updateSessionState(
-          session.id,
-          "disconnected",
-          session.last_event_at,
-        );
+      const ageMs = now - last;
+
+      let next: SessionState | null = null;
+      if (ageMs > DONE_THRESHOLD_MS) next = "done";
+      else if (session.state === "running" && ageMs > DISCONNECT_THRESHOLD_MS) {
+        next = "disconnected";
+      }
+
+      if (next && next !== session.state) {
+        this.deps.sessionStore.updateSessionState(session.id, next, session.last_event_at);
         this.deps.emitSessionChanged?.(session.id);
       }
     }
