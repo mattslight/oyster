@@ -535,7 +535,17 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // session titles are derived from user prompts, which are private.
   if (url === "/api/sessions" && req.method === "GET") {
     if (rejectIfNonLocalOrigin()) return;
-    sendJson(sessionStore.getAll());
+    sendJson(sessionStore.getAll().map((row) => ({
+      id: row.id,
+      spaceId: row.space_id,
+      agent: row.agent,
+      title: row.title,
+      state: row.state,
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
+      model: row.model,
+      lastEventAt: row.last_event_at,
+    })));
     return;
   }
 

@@ -51,6 +51,22 @@ export interface ScanResult {
   artifacts: Array<{ id: string; label: string; kind: string; sourceRef: string | null }>;
 }
 
+export type SessionState = "running" | "awaiting" | "disconnected" | "done";
+export type SessionAgent = "claude-code" | "opencode" | "codex";
+
+/** Agent session captured by the watchers (#251). Read-only on the wire — UI mutations come later. */
+export interface Session {
+  id: string;
+  spaceId: string | null;
+  agent: SessionAgent;
+  title: string | null;
+  state: SessionState;
+  startedAt: string;
+  endedAt: string | null;
+  model: string | null;
+  lastEventAt: string;
+}
+
 export interface Space {
   id: string;
   displayName: string;

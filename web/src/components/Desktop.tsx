@@ -23,18 +23,21 @@ interface Props {
   onArtifactRemove?: (id: string) => void;
   revealId?: string | null;
   isArchivedView?: boolean;
+  /** Render relative-time meta line under each artifact label. Used by Home. */
+  showMeta?: boolean;
 }
 
 type DisplayItem =
   | { type: "group"; key: string; name: string; artifacts: Artifact[] }
   | { type: "artifact"; key: string; artifact: Artifact };
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView, showMeta }: Props) {
   const isAllSpace = space === "__all__";
-  // Meta-spaces (__all__, __archived__) span multiple real spaces, so groupName
-  // is no longer unique — `notes` from space A would merge with `notes` from
-  // space B into a single tile. Flatten in those views.
-  const isMetaSpace = isAllSpace || isArchivedView === true;
+  // Meta-spaces span multiple real spaces, so groupName is no longer unique —
+  // `notes` from space A would merge with `notes` from space B into a single
+  // tile. Flatten in those views. With #252 collapsing the `All` pill into
+  // Home, `home` is now the unscoped view too and gets the same treatment.
+  const isMetaSpace = space === "home" || isAllSpace || isArchivedView === true;
 
   // ── Folder context menu ──
   const [folderCtx, setFolderCtx] = useState<{ name: string; sourceSpaceId?: string; x: number; y: number } | null>(null);
@@ -218,6 +221,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 isRenaming={renamingId === item.artifact.id}
                 onRenameCommit={(label) => commitArtifactRename(item.artifact, label)}
                 onRenameCancel={() => setRenamingId(null)}
+                showMeta={showMeta}
               />
             )
           ))}

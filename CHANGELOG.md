@@ -6,7 +6,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Added
 
-- **Oyster sees your claude-code sessions.** When you run `claude` in any folder mapped to a space, Oyster now picks the session up automatically — no setup, no MCP wiring. The session shows as *running* / *disconnected* on the home feed (UI lands in the next sprint), with title pulled from your first prompt and tracked file reads/edits attributed back to their tiles. Sessions started in unregistered folders land as orphans rather than being dropped. ([#251](https://github.com/mattslight/oyster/issues/251))
+- **Oyster sees your claude-code sessions.** When you run `claude` in any folder mapped to a space, Oyster now picks the session up automatically — no setup, no MCP wiring. The session shows as *running* / *disconnected* on the home feed, with title pulled from your first prompt and tracked file reads/edits attributed back to their tiles. Sessions started in unregistered folders land as orphans rather than being dropped. ([#251](https://github.com/mattslight/oyster/issues/251))
+- **Home is now a sectioned feed.** Spaces · Sessions · Artefacts replace the spatial desktop as the default surface. The chat-bar pills scope all sections at once — pick a space and the sessions and artefacts list reflects it. State chips (Running / Awaiting / Disconnected / Done) filter the session list inline. Sessions update live as your agents work — no refresh needed. ([#252](https://github.com/mattslight/oyster/issues/252))
 
 ## [0.4.0] - 2026-04-28
 

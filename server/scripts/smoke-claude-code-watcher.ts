@@ -236,6 +236,66 @@ async function run() {
   }
   console.log("[smoke] phase 6 ok — all timestamps are ISO-8601");
 
+  // ── Phase 7: concurrent change events do not double-insert events.
+  // chokidar can fire two `change` callbacks before the first read finishes;
+  // without the per-file lock both reads see the same offset and write
+  // duplicates. The lock coalesces N pending events into one follow-up read,
+  // so the final session_events count must equal the number of lines actually
+  // appended.
+  const raceProjectDir = join(projectsRoot, "-Users-Test-race");
+  mkdirSync(raceProjectDir, { recursive: true });
+  const raceId = "00000000-aaaa-bbbb-cccc-444444444444";
+  const racePath = join(raceProjectDir, `${raceId}.jsonl`);
+  // Seed the session with a first event so subsequent calls are pure appends.
+  writeFileSync(racePath, JSON.stringify({
+    type: "user",
+    sessionId: raceId,
+    cwd: fakeCwd,
+    timestamp: "2026-04-28T12:03:00.000Z",
+    message: { role: "user", content: "race test" },
+  }) + "\n");
+  await sleep(800);
+
+  const beforeRace = sessionStore.getEventsBySession(raceId).length;
+
+  // Append 4 fresh events back-to-back, then fire consumeAppended twice in
+  // parallel to simulate chokidar's rapid double-firing. With the lock: the
+  // second call queues, and a single follow-up read covers the same bytes
+  // (or no bytes if the first read already drained them).
+  const newLines: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    newLines.push(JSON.stringify({
+      type: "user",
+      sessionId: raceId,
+      cwd: fakeCwd,
+      timestamp: `2026-04-28T12:03:0${i + 1}.000Z`,
+      message: { role: "user", content: `race event ${i}` },
+    }));
+  }
+  appendFileSync(racePath, newLines.join("\n") + "\n");
+
+  // Fire FOUR consumeAppended calls in parallel — direct private-method
+  // access via cast since the race repro requires by-passing chokidar's
+  // queueing. Three or more is the case where a naive "treat only running
+  // as locked" would let a second concurrent consumeOnce start; the lock
+  // must collapse all extras into a single follow-up.
+  const w = watcher as unknown as { consumeAppended(p: string): Promise<void> };
+  await Promise.all([
+    w.consumeAppended(racePath),
+    w.consumeAppended(racePath),
+    w.consumeAppended(racePath),
+    w.consumeAppended(racePath),
+  ]);
+
+  const afterRace = sessionStore.getEventsBySession(raceId).length;
+  const delta = afterRace - beforeRace;
+  assert.equal(
+    delta,
+    4,
+    `expected exactly 4 new events (no duplicates), got ${delta} (before=${beforeRace}, after=${afterRace})`,
+  );
+  console.log("[smoke] phase 7 ok — concurrent consumeAppended did not double-insert");
+
   // ── Cleanup ──
   await watcher.stop();
   db.close();

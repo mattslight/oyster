@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Desktop } from "./components/Desktop";
+import { Home } from "./components/Home";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
 import { ViewerWindow } from "./components/ViewerWindow";
@@ -261,9 +262,14 @@ export default function App() {
     }
   }, [activeSpace, handleSpaceChange]);
 
-  const isHero = activeSpace === "home";
+  // Hero mode = chat bar centred + large. Reserved for the truly empty Home
+  // (no spaces, no work yet). The moment a user has real spaces, the chat
+  // bar drops to its compact bottom position even on the Home pill —
+  // otherwise the spaces / sessions / artefacts feed reads as decoration
+  // beneath an oversized prompt.
   const isFirstRun = FORCE_ONBOARDING ||
     spaces.filter(s => s.id !== "home" && s.id !== "__all__").length === 0;
+  const isHero = activeSpace === "home" && isFirstRun;
 
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
@@ -358,33 +364,45 @@ export default function App() {
           <span>{aiError}</span>
         </div>
       )}
-      <Desktop
-        space={activeSpace}
-        spaces={spaces.map(s => s.id)}
+      <Home
+        activeSpace={activeSpace}
+        spaces={spaces}
         isHero={isHero}
-        artifacts={(activeSpace === "__all__" || activeSpace === "__archived__") ? artifacts : artifacts.filter((a) => a.spaceId === activeSpace)}
-        isArchivedView={isArchivedView}
-        onArtifactClick={handleArtifactClick}
-        onArtifactStop={handleArtifactStop}
-        onGroupClick={(name) => {
-          setOpenGroup(name);
-          window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
-        }}
         onSpaceChange={handleSpaceChange}
-        onConvertToSpace={handleConvertToSpace}
-        onRefresh={() =>
-          loadArtifacts()
-            .then((nextArtifacts) => { setArtifacts(nextArtifacts); setConnected(true); })
-            .catch(() => setConnected(false))
-        }
-        onArtifactUpdate={(id, fields) => setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, ...fields } : a)))}
-        onArtifactRemove={(id) => setArtifacts((prev) => prev.filter((a) => a.id !== id))}
-        revealId={revealId}
+        desktopProps={{
+          space: activeSpace,
+          spaces: spaces.map((s) => s.id),
+          // Home is the unscoped feed (matches the prototype's only-pill model
+          // — see #252). Per-space pills scope. __all__ kept as alias for old
+          // bookmarks; __archived__ stays as its own meta-view.
+          artifacts: (activeSpace === "home" || activeSpace === "__all__" || activeSpace === "__archived__")
+            ? artifacts
+            : artifacts.filter((a) => a.spaceId === activeSpace),
+          isArchivedView,
+          onArtifactClick: handleArtifactClick,
+          onArtifactStop: handleArtifactStop,
+          onGroupClick: (name) => {
+            setOpenGroup(name);
+            window.history.pushState(null, "", `/s/${activeSpace}/g/${encodeURIComponent(name.toLowerCase())}`);
+          },
+          onSpaceChange: handleSpaceChange,
+          onConvertToSpace: handleConvertToSpace,
+          onRefresh: () =>
+            loadArtifacts()
+              .then((nextArtifacts) => { setArtifacts(nextArtifacts); setConnected(true); })
+              .catch(() => setConnected(false)),
+          onArtifactUpdate: (id, fields) =>
+            setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, ...fields } : a))),
+          onArtifactRemove: (id) =>
+            setArtifacts((prev) => prev.filter((a) => a.id !== id)),
+          revealId,
+        }}
       />
 
       <div className="windows-layer">
         {viewers.map((w, i) => {
-          const docArtifacts = activeSpace === "__all__"
+          const isUnscoped = activeSpace === "home" || activeSpace === "__all__";
+          const docArtifacts = isUnscoped
             ? artifacts.filter((a) => a.artifactKind !== "app")
             : artifacts.filter((a) => a.artifactKind !== "app" && a.spaceId === activeSpace);
           const currentIdx = docArtifacts.findIndex((a) => a.url === w.artifactPath);

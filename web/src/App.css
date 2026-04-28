@@ -254,12 +254,13 @@ body {
   pointer-events: none;
   z-index: 0;
   background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
-  animation: desktop-orb-drift 28s ease-in-out infinite;
+  animation: desktop-orb-drift 1200s linear infinite;
 }
 
 @keyframes desktop-orb-drift {
-  0%, 100% { transform: translate(20vw, -10vh); }
-  50%       { transform: translate(60vw, 20vh); }
+  0%   { transform: translate(15vw, -12vh); }
+  50%  { transform: translate(35vw, -4vh); }
+  100% { transform: translate(15vw, -12vh); }
 }
 
 .desktop-grain {
@@ -393,6 +394,16 @@ body {
   word-break: break-word;
   max-width: 110px;
   text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+}
+
+/* Optional relative-time line under the label, used by Home (showMeta). */
+.icon-label-meta {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.02em;
+  color: rgba(232, 233, 240, 0.3);
+  text-align: center;
+  margin-top: 6px;
 }
 
 /* Inline rename input — visually matches .icon-label but editable */

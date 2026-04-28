@@ -1,4 +1,4 @@
-import { promises as fs, statSync } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -24,11 +24,20 @@ import type {
 
 const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 
-// Heartbeat: how long without a new event before we call a running session
-// "disconnected". Heuristic — claude-code emits no explicit done marker, so
-// we fall back to file mtime / event freshness. Generous enough to ride out
-// long Anthropic-side stalls (multi-minute extended thinking turns).
-const DISCONNECT_THRESHOLD_MS = 90_000;
+// State transition thresholds. claude-code emits no explicit end marker, so
+// "done" is heuristic — anything that's been quiet for a full day is treated
+// as concluded. Hooks or MCP-push registration would give a real signal;
+// follow-up tickets.
+//
+// running       --(quiet > 5 min)-->       disconnected
+// disconnected  --(quiet > 24h)-->         done
+// done          --(any new event)-->       running   (consumeAppended path)
+//
+// 5 minutes is generous enough to ride out long Anthropic-side stalls during
+// extended-thinking turns (which routinely run 3-4 min on Opus). Tighter
+// thresholds caused false-positive disconnections in real use.
+const DISCONNECT_THRESHOLD_MS = 5 * 60 * 1000;
+const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 // How often the heartbeat sweep runs. Cheap query; this can be aggressive.
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -61,15 +70,34 @@ interface FileTracker {
   cwd: string | null;
   startedAt: string | null;
   model: string | null;
-  title: string | null;
+  // Title sources, in descending priority: customTitle > agentName >
+  // userMessage > slug. claude-code now persists a named title via
+  // {type:"custom-title"} / {type:"agent-name"} events; fall back to the
+  // first real user prompt only if neither is present, and to the cute
+  // slug ("encapsulated-nibbling-scroll" etc.) as a last resort.
+  customTitle: string | null;
+  agentName: string | null;
+  userMessageTitle: string | null;
+  slug: string | null;
   // Carry-over for partial trailing lines between change events.
   partial: string;
+}
+
+function effectiveTitle(t: Pick<FileTracker, "customTitle" | "agentName" | "userMessageTitle" | "slug">): string | null {
+  return t.customTitle ?? t.agentName ?? t.userMessageTitle ?? t.slug ?? null;
 }
 
 export class ClaudeCodeWatcher {
   private watcher: FSWatcher | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private trackers = new Map<string, FileTracker>();
+  // Per-file serialisation: chokidar can fire two `change` events for the
+  // same path before the first read finishes. Without a lock, both reads
+  // see the same `tracker.offset`, both read the same byte range, and both
+  // insert duplicate session_event rows. "queued" coalesces N pending
+  // events into a single follow-up pass — the next read covers everything
+  // appended between the lock acquisition and release.
+  private fileLocks = new Map<string, "running" | "queued">();
   private readonly root: string;
   private readonly now: () => Date;
 
@@ -129,6 +157,7 @@ export class ClaudeCodeWatcher {
       this.watcher = null;
     }
     this.trackers.clear();
+    this.fileLocks.clear();
   }
 
   // ── Boot reconciliation ─────────────────────────────────────────────────
@@ -184,7 +213,9 @@ export class ClaudeCodeWatcher {
     if (!meta) return;
 
     const ageMs = this.now().getTime() - stat.mtime.getTime();
-    const state: SessionState = ageMs > DISCONNECT_THRESHOLD_MS ? "disconnected" : "running";
+    const state: SessionState = ageMs > DONE_THRESHOLD_MS ? "done"
+      : ageMs > DISCONNECT_THRESHOLD_MS ? "disconnected"
+      : "running";
 
     // Always pass ISO-8601 timestamps. If the JSONL didn't have a usable
     // event timestamp in the first 32KB, fall back to the file's birth time
@@ -197,7 +228,7 @@ export class ClaudeCodeWatcher {
       id: meta.sessionId,
       space_id: this.resolveSpaceId(meta.cwd),
       agent: "claude-code",
-      title: meta.title,
+      title: effectiveTitle(meta),
       state,
       started_at: startedAt,
       model: meta.model,
@@ -212,14 +243,25 @@ export class ClaudeCodeWatcher {
       cwd: meta.cwd,
       startedAt: meta.startedAt,
       model: meta.model,
-      title: meta.title,
+      customTitle: meta.customTitle,
+      agentName: meta.agentName,
+      userMessageTitle: meta.userMessageTitle,
+      slug: meta.slug,
       partial: "",
     });
   }
 
-  // Read just enough of a file to populate the session row. We scan up to
-  // ~32KB looking for the first user message (title) and first assistant
-  // message (model). Anything past that is irrelevant to the session row.
+  // Read enough of a file to populate the session row. JSONLs grow to
+  // multiple MB, and claude-code emits {type:"custom-title"} repeatedly:
+  // the first occurrence is usually an auto-generated slug, and the
+  // user-set title appears LATER in the file. So we scan two windows:
+  //
+  //   head (~64KB)  — cwd, startedAt, model, slug, first userMessageTitle
+  //   tail (~128KB) — the LATEST customTitle / agentName the file holds
+  //
+  // For small files (<head+tail) the windows overlap and we just scan
+  // everything once. The tail scan is bounded; even a 50 MB file pays
+  // a flat 128KB read on boot.
   private async readSessionMetadata(
     filePath: string,
   ): Promise<{
@@ -227,16 +269,32 @@ export class ClaudeCodeWatcher {
     cwd: string | null;
     startedAt: string | null;
     model: string | null;
-    title: string | null;
+    customTitle: string | null;
+    agentName: string | null;
+    userMessageTitle: string | null;
+    slug: string | null;
   } | null> {
-    let buf: Buffer;
+    const HEAD_BYTES = 65_536;
+    const TAIL_BYTES = 131_072;
+
+    let head: Buffer;
+    let tail: Buffer | null;
     try {
       const fh = await fs.open(filePath, "r");
       try {
         const stat = await fh.stat();
-        const len = Math.min(stat.size, 32_768);
-        buf = Buffer.alloc(len);
-        await fh.read(buf, 0, len, 0);
+        const headLen = Math.min(stat.size, HEAD_BYTES);
+        head = Buffer.alloc(headLen);
+        await fh.read(head, 0, headLen, 0);
+
+        if (stat.size > HEAD_BYTES) {
+          const tailLen = Math.min(stat.size - HEAD_BYTES, TAIL_BYTES);
+          const tailStart = stat.size - tailLen;
+          tail = Buffer.alloc(tailLen);
+          await fh.read(tail, 0, tailLen, tailStart);
+        } else {
+          tail = null;
+        }
       } finally {
         await fh.close();
       }
@@ -250,9 +308,13 @@ export class ClaudeCodeWatcher {
     let cwd: string | null = null;
     let startedAt: string | null = null;
     let model: string | null = null;
-    let title: string | null = null;
+    let customTitle: string | null = null;
+    let agentName: string | null = null;
+    let userMessageTitle: string | null = null;
+    let slug: string | null = null;
 
-    for (const line of buf.toString("utf8").split("\n")) {
+    // Pass 1 — head: early metadata + first-user-message title.
+    for (const line of head.toString("utf8").split("\n")) {
       if (!line) continue;
       const ev = safeParse(line);
       if (!ev) continue;
@@ -262,14 +324,42 @@ export class ClaudeCodeWatcher {
       if (model === null && ev.type === "assistant" && ev.message?.model) {
         model = String(ev.message.model);
       }
-      if (title === null) {
-        const candidate = userMessageTitleCandidate(ev);
-        if (candidate) title = candidate.slice(0, TITLE_MAX);
+      if (slug === null && typeof ev.slug === "string") slug = ev.slug;
+      if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
+        customTitle = ev.customTitle.trim().slice(0, TITLE_MAX) || customTitle;
       }
-      if (cwd && startedAt && model && title) break;
+      if (ev.type === "agent-name" && typeof ev.agentName === "string") {
+        agentName = ev.agentName.trim().slice(0, TITLE_MAX) || agentName;
+      }
+      if (userMessageTitle === null) {
+        const candidate = userMessageTitleCandidate(ev);
+        if (candidate) userMessageTitle = candidate.slice(0, TITLE_MAX);
+      }
     }
 
-    return { sessionId: sessionIdFromName, cwd, startedAt, model, title };
+    // Pass 2 — tail: take the LAST customTitle / agentName so user renames
+    // override the auto-generated slug-style ones written near the start.
+    // Skip the first line of the tail buffer since reads at an arbitrary
+    // byte offset usually start mid-line.
+    if (tail) {
+      const tailLines = tail.toString("utf8").split("\n");
+      tailLines.shift(); // skip partial leading line
+      for (const line of tailLines) {
+        if (!line) continue;
+        const ev = safeParse(line);
+        if (!ev) continue;
+        if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
+          const t = ev.customTitle.trim().slice(0, TITLE_MAX);
+          if (t) customTitle = t;
+        }
+        if (ev.type === "agent-name" && typeof ev.agentName === "string") {
+          const t = ev.agentName.trim().slice(0, TITLE_MAX);
+          if (t) agentName = t;
+        }
+      }
+    }
+
+    return { sessionId: sessionIdFromName, cwd, startedAt, model, customTitle, agentName, userMessageTitle, slug };
   }
 
   // ── Live updates ────────────────────────────────────────────────────────
@@ -286,7 +376,10 @@ export class ClaudeCodeWatcher {
       cwd: null,
       startedAt: null,
       model: null,
-      title: null,
+      customTitle: null,
+      agentName: null,
+      userMessageTitle: null,
+      slug: null,
       partial: "",
     });
     await this.consumeAppended(filePath);
@@ -303,6 +396,34 @@ export class ClaudeCodeWatcher {
   }
 
   private async consumeAppended(filePath: string): Promise<void> {
+    if (this.fileLocks.has(filePath)) {
+      // Either a read is in flight ("running") or a follow-up is already
+      // scheduled ("queued"). In both cases, mark queued so the in-flight
+      // read knows to make another pass when it finishes — coalescing N
+      // pending events into a single follow-up. Treating only "running"
+      // as locked would let a third arrival start a second concurrent
+      // consumeOnce while a follow-up was pending, reintroducing the
+      // duplicate-insert race the lock was meant to prevent.
+      this.fileLocks.set(filePath, "queued");
+      return;
+    }
+    this.fileLocks.set(filePath, "running");
+    try {
+      await this.consumeOnce(filePath);
+    } finally {
+      const wasQueued = this.fileLocks.get(filePath) === "queued";
+      this.fileLocks.delete(filePath);
+      if (wasQueued) {
+        // New events arrived during the read; coalesce them into one
+        // follow-up pass. The next consumeOnce reads from the new offset
+        // to current size, so any number of intermediate change events is
+        // covered by a single read.
+        await this.consumeAppended(filePath);
+      }
+    }
+  }
+
+  private async consumeOnce(filePath: string): Promise<void> {
     const tracker = this.trackers.get(filePath);
     if (!tracker) return;
 
@@ -349,19 +470,35 @@ export class ClaudeCodeWatcher {
 
       if (tracker.sessionId) {
         // Metadata refresh — every event can contribute. cwd/startedAt/model
-        // are usually set on the first event, but title often isn't (the
-        // first user-typed event may be a slash-command caveat we skip).
+        // are usually set on the first event, but the named title arrives
+        // on a `custom-title` event that may be later in the file. We track
+        // four title sources and keep upgrading whenever a higher-priority
+        // one shows up (custom > agent-name > user message > slug).
         if (!tracker.cwd && typeof ev.cwd === "string") tracker.cwd = ev.cwd;
         if (!tracker.startedAt && typeof ev.timestamp === "string") {
           tracker.startedAt = ev.timestamp;
         }
-        if (!tracker.title) {
-          const candidate = userMessageTitleCandidate(ev);
-          if (candidate) {
-            tracker.title = candidate.slice(0, TITLE_MAX);
-            if (sessionEnsured) titleChanged = true;
-          }
+        if (!tracker.slug && typeof ev.slug === "string") tracker.slug = ev.slug;
+
+        const before = effectiveTitle(tracker);
+        // Always take the latest custom-title / agent-name — claude-code
+        // overwrites these when the user renames a session via /title etc.,
+        // so the last one wins.
+        if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
+          const t = ev.customTitle.trim().slice(0, TITLE_MAX) || null;
+          if (t && t !== tracker.customTitle) tracker.customTitle = t;
         }
+        if (ev.type === "agent-name" && typeof ev.agentName === "string") {
+          const t = ev.agentName.trim().slice(0, TITLE_MAX) || null;
+          if (t && t !== tracker.agentName) tracker.agentName = t;
+        }
+        if (!tracker.userMessageTitle) {
+          const candidate = userMessageTitleCandidate(ev);
+          if (candidate) tracker.userMessageTitle = candidate.slice(0, TITLE_MAX);
+        }
+        const after = effectiveTitle(tracker);
+        if (after !== before && sessionEnsured) titleChanged = true;
+
         if (!tracker.model && ev.type === "assistant" && ev.message?.model) {
           tracker.model = String(ev.message.model);
         }
@@ -374,9 +511,13 @@ export class ClaudeCodeWatcher {
           id: tracker.sessionId,
           space_id: this.resolveSpaceId(tracker.cwd),
           agent: "claude-code",
-          title: tracker.title,
+          title: effectiveTitle(tracker),
           state: "running",
-          started_at: tracker.startedAt ?? undefined,
+          // Always pass ISO. Falling through to SQL's datetime('now')
+          // produces the naive `YYYY-MM-DD HH:MM:SS` form which Date.parse()
+          // is allowed to reject in some browsers — kept the wire contract
+          // mixed and the home feed flaky on those rows.
+          started_at: tracker.startedAt ?? this.now().toISOString(),
           model: tracker.model,
           last_event_at: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
         });
@@ -399,15 +540,18 @@ export class ClaudeCodeWatcher {
       // Artifact touches from tool_use blocks.
       if (ev.type === "assistant" && Array.isArray(ev.message?.content) && tracker.sessionId) {
         const spaceId = this.resolveSpaceId(tracker.cwd);
+        // Skip touch attribution entirely for orphan sessions (cwd not
+        // mapped to any space). Without a session→space link we can't
+        // tell whether the touch belongs here or is bleed-through from a
+        // tool reading across spaces, so creating provenance edges from a
+        // homeless session into other spaces would be misleading.
+        if (!spaceId) continue;
         for (const block of ev.message.content) {
           const touch = artifactTouchFromToolUse(block);
           if (!touch) continue;
           const artifact = this.deps.artifactStore.getByPath(touch.path);
           if (!artifact) continue;
-          // Only attribute touches to artifacts in the same space the session
-          // is registered to — guards against accidentally tagging artifacts
-          // from a different space if a tool happens to read across.
-          if (spaceId && artifact.space_id !== spaceId) continue;
+          if (artifact.space_id !== spaceId) continue;
           this.deps.sessionStore.insertArtifactTouch({
             session_id: tracker.sessionId,
             artifact_id: artifact.id,
@@ -432,7 +576,7 @@ export class ClaudeCodeWatcher {
         this.deps.sessionStore.updateSession(tracker.sessionId, {
           state: "running",
           last_event_at: ts,
-          title: tracker.title,
+          title: effectiveTitle(tracker),
         });
       } else {
         this.deps.sessionStore.updateSessionState(tracker.sessionId, "running", ts);
@@ -442,22 +586,27 @@ export class ClaudeCodeWatcher {
   }
 
   // ── Heartbeat ───────────────────────────────────────────────────────────
-  // Sessions that are 'running' but haven't seen an event in
-  // DISCONNECT_THRESHOLD_MS get demoted to 'disconnected'. Any new file event
-  // promotes them back to 'running' inside consumeAppended above.
+  // running → disconnected after DISCONNECT_THRESHOLD_MS of quiet.
+  // disconnected → done after DONE_THRESHOLD_MS — i.e. a session that's been
+  // idle for a full day is treated as concluded. Any new file event in
+  // consumeAppended below resurrects it back to 'running'.
   private heartbeatSweep(): void {
     const now = this.now().getTime();
     for (const session of this.deps.sessionStore.getAll()) {
-      if (session.state !== "running") continue;
       if (session.agent !== "claude-code") continue;
+      if (session.state === "done") continue;
       const last = Date.parse(session.last_event_at);
       if (!Number.isFinite(last)) continue;
-      if (now - last > DISCONNECT_THRESHOLD_MS) {
-        this.deps.sessionStore.updateSessionState(
-          session.id,
-          "disconnected",
-          session.last_event_at,
-        );
+      const ageMs = now - last;
+
+      let next: SessionState | null = null;
+      if (ageMs > DONE_THRESHOLD_MS) next = "done";
+      else if (session.state === "running" && ageMs > DISCONNECT_THRESHOLD_MS) {
+        next = "disconnected";
+      }
+
+      if (next && next !== session.state) {
+        this.deps.sessionStore.updateSessionState(session.id, next, session.last_event_at);
         this.deps.emitSessionChanged?.(session.id);
       }
     }
@@ -597,13 +746,3 @@ export function artifactTouchFromToolUse(
   }
 }
 
-// Convenience for code that doesn't want to import statSync from node:fs.
-// Kept for symmetry with chokidar's add/change which give us paths only.
-export function isJsonlFile(path: string): boolean {
-  if (!path.endsWith(".jsonl")) return false;
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
