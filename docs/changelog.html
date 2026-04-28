@@ -312,7 +312,7 @@
   </div>
 
   <nav class="version-pills" aria-label="Jump to version">
-      <a class="version-pill" href="#v-0-4-0-beta-8">0.4</a>
+      <a class="version-pill" href="#v-0-4-0">0.4</a>
       <a class="version-pill" href="#v-0-3-8">0.3</a>
       <a class="version-pill" href="#v-0-2-4">0.2</a>
       <a class="version-pill" href="#v-0-1-21">0.1</a>
@@ -320,6 +320,19 @@
   </nav>
 
   <main class="entries">
+<h2 id="v-0-4-0"><span class="release-version">0.4.0</span><span class="release-date"> — 2026-04-28</span></h2>
+<p>The 0.4.0 line is now stable. Code is identical to <code>0.4.0-beta.8</code>. Headline changes from the beta cycle:</p>
+<ul>
+<li><strong>Agent-led setup.</strong> Connect your AI, ask <em>&quot;Set up Oyster&quot;</em>, and your agent audits your filesystem and proposes spaces. Works through Claude Code, Cursor, Windsurf, VS Code, or Oyster&#39;s own chat bar. (<a href="https://github.com/mattslight/oyster/issues/184" rel="noopener noreferrer">#184</a>, <a href="https://github.com/mattslight/oyster/pull/195" rel="noopener noreferrer">#195</a>)</li>
+<li><strong>Visible workspace at <code>~/Oyster/</code></strong> with typed sub-folders — <code>db/</code>, <code>apps/</code>, <code>spaces/</code>, <code>backups/</code>. Browsable outside Oyster. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>Linked folders are first-class.</strong> Attach external folders to a space; detach removes their tiles cleanly; reattach restores them. The ↗ glyph and <em>Where do my files live?</em> tile make it obvious which tiles you own vs which are windows into folders elsewhere on disk. (<a href="https://github.com/mattslight/oyster/issues/208" rel="noopener noreferrer">#208</a>, <a href="https://github.com/mattslight/oyster/issues/220" rel="noopener noreferrer">#220</a>)</li>
+<li><strong>Cloud-AI memory import.</strong> Bring context across from another AI by pasting Oyster&#39;s export prompt — spaces, summaries, and memories seed in one pass.</li>
+<li><strong>Logical-only spaces.</strong> Create a conceptual space first; attach folders later or keep it folder-less.</li>
+<li><strong>HTML-styled documents render as designed</strong> (invoices, decks, letters), no longer forced through the dark markdown wrapper.</li>
+<li><strong>Windows polish.</strong> Coloured startup banner, slim dark scrollbars, opencode subprocess no longer leaks across crashes.</li>
+<li><strong>Better AI error surfacing.</strong> Provider failures (expired key, rate limit, outage) raise a banner with the reason and reconnect command instead of staying silent.</li>
+</ul>
+<p>See <code>0.4.0-beta.0</code> through <code>0.4.0-beta.8</code> below for per-beta detail.</p>
 <h2 id="v-0-4-0-beta-8"><span class="release-version">0.4.0-beta.8</span><span class="release-date"> — 2026-04-28</span></h2>
 <h3>Fixed</h3>
 <ul>

@@ -4,6 +4,21 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-28
+
+The 0.4.0 line is now stable. Code is identical to `0.4.0-beta.8`. Headline changes from the beta cycle:
+
+- **Agent-led setup.** Connect your AI, ask *"Set up Oyster"*, and your agent audits your filesystem and proposes spaces. Works through Claude Code, Cursor, Windsurf, VS Code, or Oyster's own chat bar. ([#184](https://github.com/mattslight/oyster/issues/184), [#195](https://github.com/mattslight/oyster/pull/195))
+- **Visible workspace at `~/Oyster/`** with typed sub-folders — `db/`, `apps/`, `spaces/`, `backups/`. Browsable outside Oyster. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Linked folders are first-class.** Attach external folders to a space; detach removes their tiles cleanly; reattach restores them. The ↗ glyph and *Where do my files live?* tile make it obvious which tiles you own vs which are windows into folders elsewhere on disk. ([#208](https://github.com/mattslight/oyster/issues/208), [#220](https://github.com/mattslight/oyster/issues/220))
+- **Cloud-AI memory import.** Bring context across from another AI by pasting Oyster's export prompt — spaces, summaries, and memories seed in one pass.
+- **Logical-only spaces.** Create a conceptual space first; attach folders later or keep it folder-less.
+- **HTML-styled documents render as designed** (invoices, decks, letters), no longer forced through the dark markdown wrapper.
+- **Windows polish.** Coloured startup banner, slim dark scrollbars, opencode subprocess no longer leaks across crashes.
+- **Better AI error surfacing.** Provider failures (expired key, rate limit, outage) raise a banner with the reason and reconnect command instead of staying silent.
+
+See `0.4.0-beta.0` through `0.4.0-beta.8` below for per-beta detail.
+
 ## [0.4.0-beta.8] - 2026-04-28
 
 ### Fixed
