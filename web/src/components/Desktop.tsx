@@ -31,6 +31,10 @@ type DisplayItem =
 
 export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView }: Props) {
   const isAllSpace = space === "__all__";
+  // Meta-spaces (__all__, __archived__) span multiple real spaces, so groupName
+  // is no longer unique — `notes` from space A would merge with `notes` from
+  // space B into a single tile. Flatten in those views.
+  const isMetaSpace = isAllSpace || isArchivedView === true;
 
   // ── Folder context menu ──
   const [folderCtx, setFolderCtx] = useState<{ name: string; sourceSpaceId?: string; x: number; y: number } | null>(null);
@@ -150,6 +154,9 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   // ── Display items — groups first (alpha), then ungrouped (alpha) ──
   const displayItems = useMemo((): DisplayItem[] => {
     const sorted = [...artifacts].sort((a, b) => a.label.localeCompare(b.label));
+    if (isMetaSpace) {
+      return sorted.map((a): DisplayItem => ({ type: "artifact", key: a.id, artifact: a }));
+    }
     const groupMap = new Map<string, Artifact[]>();
     const ungrouped: Artifact[] = [];
     for (const a of sorted) {
@@ -169,7 +176,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       items.push({ type: "artifact", key: a.id, artifact: a });
     }
     return items;
-  }, [artifacts]);
+  }, [artifacts, isMetaSpace]);
 
   return (
     <div className="desktop">
@@ -205,7 +212,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 artifact={item.artifact}
                 index={i}
                 onClick={() => onArtifactClick(item.artifact)}
-                onStop={onArtifactStop ? () => onArtifactStop!(item.artifact) : undefined}
+                onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
                 onContextMenu={(e) => { e.preventDefault(); setFolderCtx(null); setArtifactCtx({ artifact: item.artifact, x: e.clientX, y: e.clientY }); }}
                 reveal={item.artifact.id === revealId}
                 isRenaming={renamingId === item.artifact.id}
