@@ -42,6 +42,74 @@ This doc proposes **`runtime_kind: 'static_dir'`** for the new artefact runtime 
 
 Plugin `runtime: "static"` and artefact `runtime_kind: 'static_dir'` are structurally similar (both are folders served as iframes). The serving infrastructure is the existing `/artifacts/<...>` resolver — both already use it. The metadata layer differs (plugins have a manifest; artefacts have a DB row) and that's fine.
 
+## Ownership model — two patterns, agent picks
+
+This is the part that took several conversational iterations to surface, so it's spelled out explicitly before the schema. **Multi-file artefacts come in two flavours**, distinguished by *who owns the bytes*. Both are first-class. Picking the right one per artefact eliminates the sync problem entirely.
+
+### Pattern A — Managed bundle (Oyster-owned, MCP-mutable)
+
+```
+agent ─push_artifact─▶ Oyster
+                        ├─ writes bytes under SPACES_DIR/<space>/<id>/  (local)
+                        └─ writes bytes to s3://tenant/<id>/             (cloud)
+
+agent ─update_file_in_bundle─▶ Oyster mutates the file
+agent ─delete_file_in_bundle─▶ Oyster deletes the file
+agent ─push_artifact (same id)─▶ Oyster atomically replaces the bundle
+```
+
+- **Source of truth:** Oyster.
+- **Edits:** via MCP only. The agent reads via `list_bundle_files` + `read_artifact`, edits via `update_file_in_bundle`, deletes via `delete_file_in_bundle`, full-replaces via `push_artifact`. Never via shell.
+- **Works:** locally and in cloud (cross-environment).
+- **Use when:** the agent *generates* content (a prototype, a synthesised demo, an export). There's no other home for the bytes — Oyster is the home.
+- **Schema:** `storage_kind = 'managed'`, `runtime_kind = 'static_dir'`.
+
+### Pattern B — Linked directory (externally-owned, read-only-in-place)
+
+```
+agent ─Edit/Write/shell─▶ ~/Dev/some-project/dist/  (externally edited)
+                                  │
+                                  └── Oyster reads in real-time at request time
+                                      (registered with register_artifact)
+```
+
+- **Source of truth:** the external directory. Whatever puts files there (the user's editor, `vite build --watch`, the agent's shell tools, a sync tool, anything).
+- **Edits:** outside Oyster, at the original path. Oyster doesn't mutate.
+- **Works:** local install only — cloud Oyster has no shared filesystem to link against.
+- **Use when:** the user (or an agent with shell access) is *actively iterating* on a folder elsewhere — a dev repo, a build output, a working directory — and just wants Oyster to surface it. No copy, no sync, edits show up on next refresh.
+- **Schema:** `storage_kind = 'filesystem'`, `runtime_kind = 'static_dir'`. Created via an extended `register_artifact(path: <directory>, runtime_kind: 'static_dir')`.
+
+### Why this is *not* a sync problem
+
+The sync problem only arises if **the same artefact has two writeable copies** (managed *and* externally-edited at the same time). The schema prevents that:
+
+- Pattern A (managed): writes go through MCP. Shell-edits to the bundle directory are *possible* (it's just a folder on disk locally) but the convention is "don't" — the directory is Oyster-owned. Cloud version makes this explicit because the bundle isn't on the user's filesystem at all.
+- Pattern B (linked): MCP edit tools (`update_file_in_bundle` etc.) *refuse to operate* on linked artefacts. Pattern B is read-only from Oyster's side. Edits go to the external path and Oyster reads them on next request. There's only ever one canonical copy.
+
+So at any given moment, *one* writer owns *one* canonical copy of the bytes. No reconciliation, no merge, no conflicts.
+
+### Picking a pattern
+
+| Situation | Pattern |
+|---|---|
+| Agent just generated a one-off prototype to demo | A (managed — push it) |
+| User has a `vite build --watch` going on a dev repo, wants Oyster to surface the latest `dist/` | B (linked — register the path) |
+| Cloud Oyster, anything | A (B doesn't exist in cloud) |
+| Agent is iterating rapidly with shell tools on a folder it just `git clone`d | B locally; A cross-env |
+| User points Oyster at their `~/Documents/notes/` folder | B |
+
+In short: **Pattern A when bytes are born in the agent's MCP session, Pattern B when bytes are born somewhere else.**
+
+### How an agent picks
+
+The agent's choice is determined by where the content already lives:
+
+- *I just wrote these files into my own working directory and there's no expectation Oyster sees that directory* → **Pattern A (push)**. Bytes are copied into Oyster; agent's working copy is throwaway. After push, all further edits go through MCP.
+- *These files live somewhere the user controls (a dev repo, a known folder) and they'll keep being edited there* → **Pattern B (register)**. Oyster just gets a pointer.
+- *I don't know which to pick* → **Pattern A is the safer default**. Picks up no external dependency on a path that might move; works in cloud unchanged.
+
+In Claude Code today: the agent's "working copy" is wherever it ran `Edit`/`Write`. After `push_artifact`, that working copy can be deleted — Oyster has the canonical bytes. If the agent needs to iterate, it reads from Oyster (`list_bundle_files`, `read_artifact`), edits via MCP (`update_file_in_bundle`), and never re-establishes a local working copy. This is the cloud-portable flow.
+
 ## Design
 
 ### Storage
@@ -63,20 +131,38 @@ Multi-file artefacts live as plain directories under the space's native folder:
 
 The disk layout doesn't tell you what's a registered artefact and what isn't — **the DB row's `runtime_kind` does.** A folder like `invoices/` happens to contain registered single-file artefacts; it isn't itself registered. A folder like `portfolio-redesign/` *is* registered (as `runtime_kind=static_dir`), so it's a logical unit.
 
-DB row shape:
+DB row shape — **two values of `storage_kind` map to the two ownership patterns** (see "Ownership model" above):
 
+**Pattern A (managed bundle, Oyster-owned):**
 ```
 id:              portfolio-redesign
 space_id:        tokinvest
 artifact_kind:   app
-storage_kind:    filesystem
-storage_config:  {"path": "<absolute path to bundle directory>"}
-runtime_kind:    static_dir
+storage_kind:    managed                     ← NEW value
+storage_config:  {"path": "<SPACES_DIR>/tokinvest/portfolio-redesign"}
+runtime_kind:    static_dir                  ← NEW value
 runtime_config:  {"entry": "index.html"}     ← optional, defaults to index.html
-source_origin:   ai_generated | manual
+source_origin:   ai_generated
 ```
 
-`storage_kind` stays `filesystem` (bytes live on a filesystem-shaped surface — the local filesystem on a workstation, an S3/R2 mount in cloud). `runtime_kind` is what shifts.
+**Pattern B (linked directory, externally-owned):**
+```
+id:              dist-tokinvest-concept
+space_id:        tokinvest
+artifact_kind:   app
+storage_kind:    filesystem                  ← unchanged
+storage_config:  {"path": "/Users/me/Dev/tokinvest-concept/dist"}
+runtime_kind:    static_dir                  ← NEW value (same as managed)
+runtime_config:  {"entry": "index.html"}
+source_origin:   manual
+```
+
+The `runtime_kind` is the same — the *serving* logic is identical whether bytes are Oyster-owned or externally linked. The `storage_kind` is what determines who can mutate:
+
+- `storage_kind=managed` → MCP edit tools work; cloud-portable.
+- `storage_kind=filesystem` → MCP edit tools refuse; local install only.
+
+Existing single-file artefacts created via `create_artifact` (which writes under SPACES_DIR) are conceptually managed too. They stay typed as `storage_kind=filesystem` for now — backfilling them to `managed` is a future cleanup that doesn't block this work.
 
 ### Serving
 
@@ -158,7 +244,9 @@ Path safety: the validator rejects `..`, absolute paths, and paths starting with
 
 ### Editing flow — how agents iterate after the initial push
 
-This is the core iteration loop, so it's first-class in v1, not optional. Three editing modes:
+These tools operate **only on managed bundles** (Pattern A). Linked bundles (Pattern B) are read-only from Oyster's side — the agent edits them via shell tools at the original path, just like it would any other file. Calling `update_file_in_bundle` on a linked bundle returns an error directing the agent to edit at the external path.
+
+For managed bundles, three editing modes:
 
 #### Mode 1 — Surgical edit: `update_file_in_bundle`
 
@@ -213,9 +301,11 @@ list_bundle_files({ artifact_id: "portfolio-redesign" })
 // → [{ path: "index.html", bytes: 12345 }, { path: "assets/styles.css", ... }, ...]
 ```
 
-#### Sidebar: editing on disk (local install only)
+#### Sidebar: editing managed bundles on disk (local install only)
 
-For local installs, the bundle directory is just a folder. The user can open `~/Oyster/spaces/tokinvest/portfolio-redesign/` in their editor and edit files directly — Oyster reads them at request time, so changes show up on the next refresh. This is a *local* convenience and doesn't translate to cloud (where the bundle lives in object storage). Document it in the user-facing changelog as a feature, but the canonical agent flow stays MCP-based.
+For local installs, a managed bundle's directory is just a folder. The user *can* open `~/Oyster/spaces/tokinvest/portfolio-redesign/` in their editor and edit files directly — Oyster reads them at request time, so changes show up on the next refresh. This is a *local* convenience that exists because of how local storage happens to work, not a guaranteed feature. It doesn't translate to cloud (the bundle lives in object storage). The canonical agent flow stays MCP-based.
+
+If the user *wants* the externally-edited model as the primary mode, that's what Pattern B (linked directory) is for — and it works identically locally and (where applicable) lets the user point Oyster at a folder they own.
 
 ## Coexistence with existing artefact types
 
@@ -265,17 +355,18 @@ After accounting for the existing `/artifacts/<...>` resolver doing most of the 
 
 | Piece | LOC | Notes |
 |---|---|---|
-| DB: add `'static_dir'` to allowed `runtime_kind` values | ~10 | Idempotent ALTER, additive only |
+| DB: add `'static_dir'` to allowed `runtime_kind` values, `'managed'` to allowed `storage_kind` values | ~15 | Idempotent ALTER, additive only |
 | Resolver: directory-index helper (serve `entry` from a resolved directory) | ~20 | Inside or alongside `resolveArtifactsUrl` |
-| `rowToArtifact`: emit `/artifacts/<rel-path>/` for `static_dir` | ~5 | One conditional |
-| MCP: `push_artifact` tool | ~80-120 | Validation, write, DB insert, idempotent replace via temp+rename |
-| MCP: `update_file_in_bundle` tool | ~30 | Surgical single-file edit |
+| `rowToArtifact`: emit `/artifacts/<rel-path>/` for `static_dir` (managed and linked alike) | ~10 | One conditional, plus rel-path computation |
+| `register_artifact` extension: accept directory paths → `storage_kind=filesystem, runtime_kind=static_dir` (Pattern B) | ~30 | Validation: must be a directory; finds entry file |
+| MCP: `push_artifact` tool (Pattern A) | ~80-120 | Validation, write, DB insert with `storage_kind=managed`, idempotent replace via temp+rename |
+| MCP: `update_file_in_bundle` tool | ~30 | Refuses non-managed artefacts; surgical single-file edit |
 | MCP: `delete_file_in_bundle` tool | ~20 | Same validation as update; trivial once update is in |
-| MCP: `list_bundle_files` tool | ~20 | Read-only directory walk |
-| Tests | ~180 | Path traversal, atomic replace, MIME types, directory index, idempotency, edit/delete/list flows |
+| MCP: `list_bundle_files` tool | ~25 | Read-only directory walk; works on both patterns (managed and linked) |
+| Tests | ~220 | Path traversal, atomic replace, MIME types, directory index, idempotency, edit/delete/list flows, linked-vs-managed mutation rules |
 | Docs + changelog | — | User-outcome framing per `feedback_changelog_style` |
 
-Roughly **350-450 lines** with tests. **3-4 focused days** of work, plus review.
+Roughly **400-500 lines** with tests. **3-5 focused days** of work, plus review.
 
 ### Suggested PR shape
 
@@ -298,7 +389,7 @@ These are real concerns but tracked separately to keep this milestone shippable:
 2. **Directory index trailing-slash redirect?** When the user visits `/artifacts/.../portfolio-redesign` (no trailing slash), should the server 301 to `/artifacts/.../portfolio-redesign/`? Probably yes — relative links inside the entry HTML resolve incorrectly without it.
 3. **Idempotent replace strategy.** Write to `<id>.tmp/`, then `rename` over `<id>/`? Or write in place after clearing the directory? The first is atomic; the second is simpler. Lean: temp+rename.
 4. **Bundle size limit.** Should `push_artifact` cap total payload size (e.g. 50MB)? Reasonable for cloud, less critical locally. Lean: cap, configurable via env var.
-5. **Should `register_artifact` also accept `runtime_kind=static_dir`** (for "I already have a directory at this path on my disk, surface it as a multi-file artefact")? Useful for local-discovery cases. Probably yes — small extension.
+5. ~~**Should `register_artifact` also accept `runtime_kind=static_dir`?**~~ Resolved — yes, this is Pattern B (linked directory) and is now first-class in the design. `register_artifact` extension to accept directory paths and emit `storage_kind=filesystem, runtime_kind=static_dir`.
 
 ## References
 
