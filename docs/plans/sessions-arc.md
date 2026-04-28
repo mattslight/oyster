@@ -19,15 +19,17 @@ Three new SQLite tables, additive migrations only.
 **`sessions`**
 ```
 id           TEXT PRIMARY KEY     -- session UUID from the source agent
-space_id     TEXT NULL            -- nullable: orphan sessions (no matching space) appear unattached on Home
-agent        TEXT NOT NULL        -- 'claude-code' | 'opencode' | 'codex'
-title        TEXT                 -- derived from first user message; nullable until populated
-state        TEXT NOT NULL        -- 'running' | 'awaiting' | 'disconnected' | 'done'
-started_at   INTEGER NOT NULL
-ended_at     INTEGER NULL
-model        TEXT NULL            -- e.g. 'claude-opus-4-7', 'gpt-5'
-last_event_at INTEGER NOT NULL    -- drives heartbeat → disconnected detection
+space_id      TEXT NULL            -- nullable: orphan sessions (no matching space) appear unattached on Home
+agent         TEXT NOT NULL        -- 'claude-code' | 'opencode' | 'codex'
+title         TEXT                 -- derived from first user message; nullable until populated
+state         TEXT NOT NULL        -- 'running' | 'awaiting' | 'disconnected' | 'done'
+started_at    TEXT NOT NULL DEFAULT (datetime('now'))
+ended_at      TEXT NULL
+model         TEXT NULL            -- e.g. 'claude-opus-4-7', 'gpt-5'
+last_event_at TEXT NOT NULL DEFAULT (datetime('now'))   -- drives heartbeat → disconnected detection
 ```
+
+Timestamp columns follow the existing `server/src/db.ts` convention: `TEXT` storing ISO-8601 UTC via `datetime('now')`. Heartbeat comparisons use SQLite's date functions on the text values, not numeric subtraction — slightly slower than INTEGER epoch ms, but the rest of the schema does it this way and consistency wins.
 
 **`session_events`**
 ```
@@ -35,7 +37,7 @@ id           INTEGER PRIMARY KEY
 session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE
 role         TEXT NOT NULL        -- 'user' | 'assistant' | 'tool' | 'tool_result' | 'system'
 text         TEXT NOT NULL        -- rendered transcript line; tool calls are summarised, not raw JSON
-timestamp    INTEGER NOT NULL
+ts           TEXT NOT NULL DEFAULT (datetime('now'))
 raw          TEXT NULL            -- original JSONL line (or excerpt) for fidelity / debug
 ```
 
@@ -44,7 +46,7 @@ raw          TEXT NULL            -- original JSONL line (or excerpt) for fideli
 session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE
 artifact_id  TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE
 role         TEXT NOT NULL        -- 'create' | 'modify' | 'read'
-when_at      INTEGER NOT NULL
+when_at      TEXT NOT NULL DEFAULT (datetime('now'))
 PRIMARY KEY (session_id, artifact_id, role, when_at)
 ```
 
@@ -74,7 +76,7 @@ Transitions:
 - **awaiting → running** — the next event in the JSONL is a tool result, indicating the user resolved the approval
 - **running → disconnected** — `last_event_at` is more than 30s old and no `done` marker exists. Heuristic, not authoritative.
 - **disconnected → running** — file gets written to again (the user came back)
-- *** → done** — explicit session-ended event in the JSONL, or process exit detected
+- **(any) → done** — explicit session-ended event in the JSONL, or process exit detected
 
 `disconnected` is best-effort. The point isn't precision — it's surfacing "you started something and it stopped" so the user can decide.
 
