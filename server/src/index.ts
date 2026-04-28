@@ -16,6 +16,8 @@ import {
 } from "./process-manager.js";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
+import { SqliteSessionStore } from "./session-store.js";
+import { ClaudeCodeWatcher } from "./watchers/claude-code.js";
 import { ArtifactService } from "./artifact-service.js";
 import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
@@ -295,6 +297,7 @@ delete cleanEnv["OPENAI_API_KEY"];
 const db = initDb(DB_DIR);
 const store = new SqliteArtifactStore(db);
 const spaceStore = new SqliteSpaceStore(db);
+const sessionStore = new SqliteSessionStore(db);
 // artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
 // not inside DB_DIR. spaceStore is passed in so rowToArtifact can resolve the
@@ -524,6 +527,15 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         }); } catch { return []; }
       })(),
     }));
+    return;
+  }
+
+  // GET /api/sessions — agent sessions captured by the watchers (#251).
+  // Read-only for 0.5.0; the home feed renders these. Local-origin only —
+  // session titles are derived from user prompts, which are private.
+  if (url === "/api/sessions" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return;
+    sendJson(sessionStore.getAll());
     return;
   }
 
@@ -1395,6 +1407,20 @@ httpServer.listen(port, () => {
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
+
+  // Sessions arc — start the claude-code log watcher (#251). Failures
+  // (missing ~/.claude/projects, permission denied) shouldn't block the
+  // server; the watcher logs and stays dormant.
+  const claudeCodeWatcher = new ClaudeCodeWatcher({
+    sessionStore,
+    spaceStore,
+    artifactStore: store,
+    emitSessionChanged: (id) =>
+      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } }),
+  });
+  claudeCodeWatcher.start().catch((err) => {
+    console.warn(`[claude-code-watcher] start failed: ${err instanceof Error ? err.message : err}`);
+  });
 
   // Reap any orphaned opencode-ai processes from a prior Oyster run that
   // didn't shut down cleanly (SIGKILL, crash, laptop sleep). See #191.
