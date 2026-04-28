@@ -3,7 +3,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
-  --desktop-bg: #1a1b2e;
+  --desktop-bg: #1e1f36;
   --window-chrome: rgba(35, 36, 64, 0.75);
   --window-body: rgba(30, 31, 54, 0.85);
   --accent: #7c6bff;
@@ -340,11 +340,54 @@ body {
   mask-image: linear-gradient(to bottom, black 18%, transparent 38%);
 }
 
-.desktop-bg {
-  position: absolute;
+.desktop-glow {
+  position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.45;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 10%, rgba(124, 107, 255, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(165, 151, 255, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 30% at 15% 75%, rgba(74, 222, 128, 0.03) 0%, transparent 50%);
+}
+
+.desktop-orb {
+  position: fixed;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.13;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+  animation: desktop-orb-drift 28s ease-in-out infinite;
+}
+
+@keyframes desktop-orb-drift {
+  0%, 100% { transform: translate(20vw, -10vh); }
+  50%       { transform: translate(60vw, 20vh); }
+}
+
+.desktop-grain {
+  position: fixed;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+  animation: grain-shift 0.8s steps(1) infinite;
+}
+
+@keyframes grain-shift {
+  0%  { transform: translate(0,    0); }
+  25% { transform: translate(-5%,  -10%); }
+  50% { transform: translate(-15%, 5%); }
+  75% { transform: translate(7%,   -15%); }
 }
 
 /* ── Filter bar (wraps filter notice + view toggle) ── */
