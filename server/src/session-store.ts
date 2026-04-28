@@ -128,10 +128,14 @@ export class SqliteSessionStore implements SessionStore {
       `),
       // Idempotent boot scan needs upsert: re-seeing a session file should
       // refresh metadata without duplicating the row. The watcher is the
-      // authoritative source for title/model/space_id — when it re-derives
-      // them (with, e.g., better filters than a previous version), the new
-      // value should overwrite. started_at is the one column we preserve,
-      // since the session only starts once. last_event_at ratchets forward.
+      // authoritative source for everything but `last_event_at` — when it
+      // re-derives a column (with, e.g., better filters than a previous
+      // version, or by replacing a stale naive `datetime('now')` with an
+      // ISO timestamp), the new value should overwrite. last_event_at
+      // ratchets forward via MAX so a stale boot scan can't rewind it.
+      // The watcher always passes ISO for started_at (see consumeAppended +
+      // reconcileExistingFile), so the overwrite here keeps the column
+      // shape consistent across rows.
       upsertSession: db.prepare(`
         INSERT INTO sessions (id, space_id, agent, title, state, started_at, model, last_event_at)
         VALUES (

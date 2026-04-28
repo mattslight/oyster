@@ -473,7 +473,11 @@ export class ClaudeCodeWatcher {
           agent: "claude-code",
           title: effectiveTitle(tracker),
           state: "running",
-          started_at: tracker.startedAt ?? undefined,
+          // Always pass ISO. Falling through to SQL's datetime('now')
+          // produces the naive `YYYY-MM-DD HH:MM:SS` form which Date.parse()
+          // is allowed to reject in some browsers — kept the wire contract
+          // mixed and the home feed flaky on those rows.
+          started_at: tracker.startedAt ?? this.now().toISOString(),
           model: tracker.model,
           last_event_at: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
         });
