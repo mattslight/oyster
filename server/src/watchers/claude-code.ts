@@ -1,4 +1,4 @@
-import { promises as fs, statSync } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -29,10 +29,14 @@ const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 // as concluded. Hooks or MCP-push registration would give a real signal;
 // follow-up tickets.
 //
-// running       --(quiet > 90s)-->         disconnected
+// running       --(quiet > 5 min)-->       disconnected
 // disconnected  --(quiet > 24h)-->         done
 // done          --(any new event)-->       running   (consumeAppended path)
-const DISCONNECT_THRESHOLD_MS = 90_000;
+//
+// 5 minutes is generous enough to ride out long Anthropic-side stalls during
+// extended-thinking turns (which routinely run 3-4 min on Opus). Tighter
+// thresholds caused false-positive disconnections in real use.
+const DISCONNECT_THRESHOLD_MS = 5 * 60 * 1000;
 const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 // How often the heartbeat sweep runs. Cheap query; this can be aggressive.
@@ -87,6 +91,13 @@ export class ClaudeCodeWatcher {
   private watcher: FSWatcher | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private trackers = new Map<string, FileTracker>();
+  // Per-file serialisation: chokidar can fire two `change` events for the
+  // same path before the first read finishes. Without a lock, both reads
+  // see the same `tracker.offset`, both read the same byte range, and both
+  // insert duplicate session_event rows. "queued" coalesces N pending
+  // events into a single follow-up pass — the next read covers everything
+  // appended between the lock acquisition and release.
+  private fileLocks = new Map<string, "running" | "queued">();
   private readonly root: string;
   private readonly now: () => Date;
 
@@ -146,6 +157,7 @@ export class ClaudeCodeWatcher {
       this.watcher = null;
     }
     this.trackers.clear();
+    this.fileLocks.clear();
   }
 
   // ── Boot reconciliation ─────────────────────────────────────────────────
@@ -384,6 +396,30 @@ export class ClaudeCodeWatcher {
   }
 
   private async consumeAppended(filePath: string): Promise<void> {
+    const lockState = this.fileLocks.get(filePath);
+    if (lockState === "running") {
+      // An in-flight read is already covering this file. Mark for a
+      // follow-up; that read will trigger it on completion.
+      this.fileLocks.set(filePath, "queued");
+      return;
+    }
+    this.fileLocks.set(filePath, "running");
+    try {
+      await this.consumeOnce(filePath);
+    } finally {
+      const wasQueued = this.fileLocks.get(filePath) === "queued";
+      this.fileLocks.delete(filePath);
+      if (wasQueued) {
+        // New events arrived during the read; coalesce them into one
+        // follow-up pass. The next consumeOnce reads from the new offset
+        // to current size, so any number of intermediate change events is
+        // covered by a single read.
+        await this.consumeAppended(filePath);
+      }
+    }
+  }
+
+  private async consumeOnce(filePath: string): Promise<void> {
     const tracker = this.trackers.get(filePath);
     if (!tracker) return;
 
@@ -500,15 +536,18 @@ export class ClaudeCodeWatcher {
       // Artifact touches from tool_use blocks.
       if (ev.type === "assistant" && Array.isArray(ev.message?.content) && tracker.sessionId) {
         const spaceId = this.resolveSpaceId(tracker.cwd);
+        // Skip touch attribution entirely for orphan sessions (cwd not
+        // mapped to any space). Without a session→space link we can't
+        // tell whether the touch belongs here or is bleed-through from a
+        // tool reading across spaces, so creating provenance edges from a
+        // homeless session into other spaces would be misleading.
+        if (!spaceId) continue;
         for (const block of ev.message.content) {
           const touch = artifactTouchFromToolUse(block);
           if (!touch) continue;
           const artifact = this.deps.artifactStore.getByPath(touch.path);
           if (!artifact) continue;
-          // Only attribute touches to artifacts in the same space the session
-          // is registered to — guards against accidentally tagging artifacts
-          // from a different space if a tool happens to read across.
-          if (spaceId && artifact.space_id !== spaceId) continue;
+          if (artifact.space_id !== spaceId) continue;
           this.deps.sessionStore.insertArtifactTouch({
             session_id: tracker.sessionId,
             artifact_id: artifact.id,
@@ -703,13 +742,3 @@ export function artifactTouchFromToolUse(
   }
 }
 
-// Convenience for code that doesn't want to import statSync from node:fs.
-// Kept for symmetry with chokidar's add/change which give us paths only.
-export function isJsonlFile(path: string): boolean {
-  if (!path.endsWith(".jsonl")) return false;
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
