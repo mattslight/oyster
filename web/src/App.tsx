@@ -372,7 +372,10 @@ export default function App() {
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
-          artifacts: (activeSpace === "__all__" || activeSpace === "__archived__")
+          // Home is the unscoped feed (matches the prototype's only-pill model
+          // — see #252). Per-space pills scope. __all__ kept as alias for old
+          // bookmarks; __archived__ stays as its own meta-view.
+          artifacts: (activeSpace === "home" || activeSpace === "__all__" || activeSpace === "__archived__")
             ? artifacts
             : artifacts.filter((a) => a.spaceId === activeSpace),
           isArchivedView,
@@ -398,7 +401,8 @@ export default function App() {
 
       <div className="windows-layer">
         {viewers.map((w, i) => {
-          const docArtifacts = activeSpace === "__all__"
+          const isUnscoped = activeSpace === "home" || activeSpace === "__all__";
+          const docArtifacts = isUnscoped
             ? artifacts.filter((a) => a.artifactKind !== "app")
             : artifacts.filter((a) => a.artifactKind !== "app" && a.spaceId === activeSpace);
           const currentIdx = docArtifacts.findIndex((a) => a.url === w.artifactPath);

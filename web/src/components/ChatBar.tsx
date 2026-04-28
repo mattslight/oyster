@@ -181,18 +181,20 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const slashItems = useMemo(() => {
     const lower = input.toLowerCase().trim();
 
-    // # prefix — space switcher
+    // # prefix — space switcher. Home is the unscoped feed (sessions arc
+     // collapsed `#all` into Home — see #252). The `__all__` id stays only
+     // as a defensive entry for old URL bookmarks; not surfaced in
+     // autocomplete.
     if (input.startsWith("#")) {
       const q = lower.slice(1);
-      const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
+      const userSpaces = spaces.filter(s => s.id !== "home");
       const ordered = [
         { id: "home", displayName: "Home", hint: "#." },
-        { id: "__all__", displayName: "All", hint: "#0" },
         ...userSpaces.map((s, i) => ({ ...s, hint: `#${i + 1}` })),
         { id: "__archived__", displayName: "Archived", hint: "#archived" },
       ];
       return ordered
-        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || (q.startsWith("arch") && s.id === "__archived__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q.startsWith("arch") && s.id === "__archived__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
         .map(s => ({ key: s.id, label: s.displayName, desc: s.hint, type: "space" as const }));
     }
@@ -204,7 +206,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     if (spaceArgMatch !== null && (lower === "/s" || lower.startsWith("/s "))) {
       const q = (spaceArgMatch[2] || "").trim();
       return spaces
-        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || (q === "all" && s.id === "__all__") || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
+        .filter(s => !q || s.id.startsWith(q) || s.displayName.toLowerCase().startsWith(q) || subseq(q, s.id) || subseq(q, s.displayName.toLowerCase()))
         .slice(0, 8)
         .map(s => ({ key: s.id, label: s.displayName, desc: s.id, type: "space" as const }));
     }
@@ -273,23 +275,24 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
       setInput("");
       const q = content.trim().slice(1).toLowerCase();
 
-      // Special: #. = home, #0 = all
-      if (q === ".") { onSpaceChange("home"); return; }
-      if (q === "0") { onSpaceChange("__all__"); return; }
+      // Special: #. and #0 both go to Home (the unscoped feed). Pre-0.5.0
+      // #0 meant the All meta-space; that collapsed into Home with #252
+      // but the muscle-memory shortcut still works.
+      if (q === "." || q === "0") { onSpaceChange("home"); return; }
 
-      // Positional: #1 to #N = spaces in pill order (excluding home and all)
+      // Positional: #1 to #N = spaces in pill order (excluding home)
       const positional = q.match(/^(\d+)$/);
       if (positional) {
         const idx = parseInt(positional[1], 10);
-        const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
+        const userSpaces = spaces.filter(s => s.id !== "home");
         if (idx >= 1 && idx <= userSpaces.length) {
           onSpaceChange(userSpaces[idx - 1].id);
           return;
         }
       }
 
-      // Named: #all → __all__, #archived → __archived__, #bf → blunderfixer
-      if (q === "all") { onSpaceChange("__all__"); return; }
+      // Named: #all → home (alias), #archived → __archived__, #bf → blunderfixer
+      if (q === "all") { onSpaceChange("home"); return; }
       if (q === "archived") { onSpaceChange("__archived__"); return; }
       const match = spaces.find(s => s.id === q)
         || spaces.find(s => s.id.startsWith(q))
@@ -316,7 +319,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         const q = arg.trim().toLowerCase();
 
         if (cmd === "s" && onSpaceChange) {
-          if (q === "all") { onSpaceChange("__all__"); return; }
+          if (q === "all") { onSpaceChange("home"); return; }
           const match = spaces.find(s => s.id === q)
             || spaces.find(s => s.id.startsWith(q))
             || spaces.find(s => s.displayName.toLowerCase().startsWith(q))
@@ -558,10 +561,9 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             // Instant space switch for #0-#9 and #. (unambiguous — space names can't start with digit or dot)
             if (onSpaceChange && /^#[0-9.]$/.test(val)) {
               const ch = val[1];
-              if (ch === ".") { setInput(""); onSpaceChange("home"); return; }
-              if (ch === "0") { setInput(""); onSpaceChange("__all__"); return; }
+              if (ch === "." || ch === "0") { setInput(""); onSpaceChange("home"); return; }
               const idx = parseInt(ch, 10);
-              const userSpaces = spaces.filter(s => s.id !== "home" && s.id !== "__all__");
+              const userSpaces = spaces.filter(s => s.id !== "home");
               if (idx >= 1 && idx <= userSpaces.length) { setInput(""); onSpaceChange(userSpaces[idx - 1].id); return; }
             }
             setInput(val);
@@ -577,7 +579,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                 e.preventDefault();
                 const item = slashItems[slashIndex];
                 if (item.type === "space") {
-                  const label = item.key === "__all__" ? "all" : item.key === "__archived__" ? "archived" : item.key;
+                  const label = item.key === "__archived__" ? "archived" : item.key;
                   setInput(`#${label}`);
                 } else if (item.type === "artifact") {
                   const a = artifacts.find((x) => x.id === item.key);
@@ -641,13 +643,8 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
               </svg>
             </button>
 
-            {/* All */}
-            <button className={`space-pill${activeSpace === "__all__" ? " active" : ""}`} onClick={() => onSpaceChange("__all__")} style={{ position: "relative" }}>
-              {activeSpace === "__all__" && (
-                <motion.span layoutId="space-pill-bg" className="space-pill-bg" style={{ background: "#7c6bff" }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />
-              )}
-              <span style={{ position: "relative", zIndex: 1 }}>All</span>
-            </button>
+            {/* The "All" pill collapsed into Home with the sessions arc
+                (#252). #all and #0 still alias to home for muscle memory. */}
 
             {/* Named spaces */}
             {spaces.filter(s => s.id !== "home").map((s) => {
