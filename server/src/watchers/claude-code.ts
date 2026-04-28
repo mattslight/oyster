@@ -492,12 +492,11 @@ export function userMessageTitleCandidate(ev: Record<string, any>): string | nul
   if (typeof content !== "string") return null;
   const trimmed = content.trim();
   if (!trimmed) return null;
-  if (
-    trimmed.startsWith("<local-command-caveat>") ||
-    trimmed.startsWith("<command-name>") ||
-    trimmed.startsWith("<command-message>") ||
-    trimmed.startsWith("<command-stdout>")
-  ) {
+  // Slash-command machinery shows up under several tag prefixes — current
+  // ones are <local-command-caveat>, <local-command-stdout>, and the older
+  // <command-name>/<command-message>. Catch the family with a single check
+  // so future variants don't slip through.
+  if (trimmed.startsWith("<local-command-") || trimmed.startsWith("<command-")) {
     return null;
   }
   return trimmed;
