@@ -11,7 +11,7 @@
 | External link (e.g. a Figma URL) | ✅ `runtime_kind = 'redirect'` |
 | Single document (`.md`, `.html`, single-file SPA) | ✅ `runtime_kind = 'static_file'`, served at `/docs/<id>` |
 | **Multi-file static thing** (a `vite build` output, Storybook export, clickable demo) | ❌ **missing** |
-| Local-runnable app (needs `npm run dev`) | ⚠️ `runtime_kind = 'local_process'` exists, but [can't be set via MCP](./../../) — separate gap |
+| Local-runnable app (needs `npm run dev`) | ⚠️ `runtime_kind = 'local_process'` exists, but can't be set via MCP — see [Out of scope § `local_process` MCP gap](#out-of-scope) |
 
 A folder of HTML/CSS/JS *can be moved onto disk* under `~/Oyster/spaces/<space>/`, but Oyster has no concept of "this folder is one logical artefact." Today's only way to register multi-file content is to register *one* file inside the folder via `register_artifact` — which serves only that file at `/docs/<id>`. Sibling files are unreachable through any registered artefact URL. This is the wall the tokinvest prototype hit: `index.html` was registered, the meta-refresh to `portfolio.html` resolved to `/docs/portfolio.html` (a different, non-existent artefact id), 404.
 
@@ -231,7 +231,7 @@ The cloud-relevant piece. Today's `register_artifact` takes a server-readable fi
 push_artifact({
   space_id: "tokinvest",
   label: "Portfolio Redesign",
-  kind: "app",                            // optional, inferred if omitted
+  artifact_kind: "app",                   // optional, inferred if omitted
   files: [
     { path: "index.html",        content: "<!DOCTYPE html>..." },
     { path: "portfolio.html",    content: "..." },
@@ -415,7 +415,7 @@ Roughly **400-500 lines** with tests. **3-5 focused days** of work, plus review.
 
 These are real concerns but tracked separately to keep this milestone shippable:
 
-- **`local_process` MCP gap.** MCP can't currently set `runtime_kind=local_process` or assign ports. Tracked in `project_mcp_runtime_gap.md` (and a sibling ticket). Local-install-only fix; not a cross-environment concern.
+- **`local_process` MCP gap.** MCP can't currently set `runtime_kind=local_process` or assign ports. Tracked as a separate follow-up (with a sibling ticket for port assignment). Local-install-only fix; not a cross-environment concern.
 - **Sharing layer (`/p/<token>/*`).** Filed as 0.6.x follow-up after this lands.
 - **Cloud storage backend.** Bundles' MCP contract is cloud-ready; the cloud build-out (auth, object storage, multi-tenancy) is a separate arc.
 - **Plugin system unification.** Plugin `runtime: "static"` and artefact `runtime_kind: 'static_dir'` are structurally similar, but unifying their metadata (manifest vs DB row) is its own design question. Not blocking.
