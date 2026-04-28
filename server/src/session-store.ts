@@ -127,9 +127,11 @@ export class SqliteSessionStore implements SessionStore {
         )
       `),
       // Idempotent boot scan needs upsert: re-seeing a session file should
-      // refresh metadata (state / last_event_at / title once derived) without
-      // duplicating the row. ON CONFLICT preserves started_at (the original
-      // birth) and only ratchets last_event_at forward.
+      // refresh metadata without duplicating the row. The watcher is the
+      // authoritative source for title/model/space_id — when it re-derives
+      // them (with, e.g., better filters than a previous version), the new
+      // value should overwrite. started_at is the one column we preserve,
+      // since the session only starts once. last_event_at ratchets forward.
       upsertSession: db.prepare(`
         INSERT INTO sessions (id, space_id, agent, title, state, started_at, model, last_event_at)
         VALUES (
@@ -139,10 +141,11 @@ export class SqliteSessionStore implements SessionStore {
           COALESCE(@last_event_at, datetime('now'))
         )
         ON CONFLICT(id) DO UPDATE SET
-          space_id      = COALESCE(excluded.space_id, sessions.space_id),
-          title         = COALESCE(excluded.title, sessions.title),
+          space_id      = excluded.space_id,
+          title         = excluded.title,
           state         = excluded.state,
-          model         = COALESCE(excluded.model, sessions.model),
+          model         = excluded.model,
+          started_at    = excluded.started_at,
           last_event_at = MAX(excluded.last_event_at, sessions.last_event_at)
       `),
       updateSessionState: db.prepare(
