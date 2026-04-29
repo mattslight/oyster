@@ -180,19 +180,37 @@ export function initDb(userlandDir: string): Database.Database {
   `);
 
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
-  // SQLite can't ALTER a CHECK constraint. Detect the old constraint by
-  // looking at the table's defining SQL; if it still names 'running', do the
-  // 12-step rename-rebuild. Idempotent — subsequent boots find the new SQL
-  // and skip.
-  const sessionsSql = (db.prepare(
-    "SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'",
-  ).get() as { sql: string } | undefined)?.sql ?? "";
-  if (sessionsSql.includes("'running'")) {
+  // SQLite can't ALTER a CHECK constraint, so we rebuild via temp table.
+  //
+  // Two trigger conditions:
+  //   (a) sessions table SQL still contains the old CHECK constraint
+  //       ('running'/'awaiting') — pre-migration.
+  //   (b) session_events / session_artifacts FK references point at
+  //       "sessions_old" — half-migrated state from an earlier broken
+  //       version of this migration that used `RENAME TO sessions_old`
+  //       and let SQLite auto-rewrite the dependent FKs to that phantom
+  //       name. Detect either; both paths run the same rebuild.
+  //
+  // The rebuild is idempotent — once dependent FKs reference 'sessions'
+  // and the CHECK lists the new state names, neither condition fires.
+  const tableSql = (name: string): string =>
+    (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name) as { sql: string } | undefined)?.sql ?? "";
+
+  const sessionsSql = tableSql("sessions");
+  const eventsSql = tableSql("session_events");
+  const artifactsSql = tableSql("session_artifacts");
+  const needsMigrate =
+    sessionsSql.includes("'running'") ||
+    eventsSql.includes("sessions_old") ||
+    artifactsSql.includes("sessions_old");
+
+  if (needsMigrate) {
     db.exec(`
       PRAGMA foreign_keys = OFF;
       BEGIN TRANSACTION;
-      ALTER TABLE sessions RENAME TO sessions_old;
-      CREATE TABLE sessions (
+
+      -- 1. Rebuild sessions with the new CHECK constraint and remap states.
+      CREATE TABLE _sessions_new (
         id            TEXT PRIMARY KEY,
         space_id      TEXT REFERENCES spaces(id) ON DELETE SET NULL,
         agent         TEXT NOT NULL CHECK (agent IN ('claude-code','opencode','codex')),
@@ -203,14 +221,46 @@ export function initDb(userlandDir: string): Database.Database {
         model         TEXT,
         last_event_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-      INSERT INTO sessions (id, space_id, agent, title, state, started_at, ended_at, model, last_event_at)
+      INSERT INTO _sessions_new (id, space_id, agent, title, state, started_at, ended_at, model, last_event_at)
         SELECT id, space_id, agent, title,
           CASE state WHEN 'running' THEN 'active' WHEN 'awaiting' THEN 'waiting' ELSE state END,
           started_at, ended_at, model, last_event_at
-        FROM sessions_old;
-      DROP TABLE sessions_old;
+        FROM sessions;
+      DROP TABLE sessions;
+      ALTER TABLE _sessions_new RENAME TO sessions;
       CREATE INDEX IF NOT EXISTS sessions_space_id ON sessions(space_id);
       CREATE INDEX IF NOT EXISTS sessions_state_last_event ON sessions(state, last_event_at);
+
+      -- 2. Rebuild session_events so its FK points at the new sessions table.
+      CREATE TABLE _session_events_new (
+        id         INTEGER PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        role       TEXT NOT NULL CHECK (role IN ('user','assistant','tool','tool_result','system')),
+        text       TEXT NOT NULL,
+        ts         TEXT NOT NULL DEFAULT (datetime('now')),
+        raw        TEXT
+      );
+      INSERT INTO _session_events_new (session_id, role, text, ts, raw)
+        SELECT session_id, role, text, ts, raw FROM session_events;
+      DROP TABLE session_events;
+      ALTER TABLE _session_events_new RENAME TO session_events;
+      CREATE INDEX IF NOT EXISTS session_events_session_ts ON session_events(session_id, ts);
+
+      -- 3. Same for session_artifacts.
+      CREATE TABLE _session_artifacts_new (
+        id          INTEGER PRIMARY KEY,
+        session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        role        TEXT NOT NULL CHECK (role IN ('create','modify','read')),
+        when_at     TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO _session_artifacts_new (session_id, artifact_id, role, when_at)
+        SELECT session_id, artifact_id, role, when_at FROM session_artifacts;
+      DROP TABLE session_artifacts;
+      ALTER TABLE _session_artifacts_new RENAME TO session_artifacts;
+      CREATE INDEX IF NOT EXISTS session_artifacts_session ON session_artifacts(session_id, when_at);
+      CREATE INDEX IF NOT EXISTS session_artifacts_artifact ON session_artifacts(artifact_id);
+
       COMMIT;
       PRAGMA foreign_keys = ON;
     `);
