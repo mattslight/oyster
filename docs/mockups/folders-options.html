@@ -278,30 +278,6 @@
       border-color: rgba(74, 222, 128, 0.12);
     }
 
-    /* Filter bar */
-    .filter-bar {
-      display: none;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      background: rgba(124, 107, 255, 0.08);
-      border: 1px solid rgba(124, 107, 255, 0.24);
-      border-radius: 8px;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--accent-bright);
-    }
-    .filter-bar.show { display: flex; }
-    .filter-bar .clear {
-      margin-left: auto;
-      cursor: pointer;
-      color: var(--text-dim);
-      padding: 2px 8px;
-      border-radius: 4px;
-    }
-    .filter-bar .clear:hover { background: rgba(255,255,255,0.05); color: var(--text); }
-
     /* Confirm modal */
     .modal-bg {
       position: fixed; inset: 0;
@@ -372,10 +348,11 @@
   <div class="page">
     <div class="page-title">Project tiles</div>
     <div class="page-subtitle">
-      Project tiles use <strong>the same visual primitive</strong> as the space cards on Home.
-      Click a tile → filter to that project. Hover → "⋯" in the corner opens a context menu
-      (Reveal in Finder, Detach). Active sessions show a green pip; the primary tile gets a ★.
-      <strong style="color:var(--text);">Same mental model at every level: tiles are scopes.</strong>
+      Same visual primitive as Home's space cards. <strong>"All" tile</strong> at the start
+      is the meta-scope — one tile is always highlighted, no separate filter bar needed.
+      <strong>"oyster" scratchpad</strong> tile is the userland folder for this space, always
+      present, can't be detached. <strong style="color:var(--text);">Tiles are scopes at every
+      nav level.</strong>
     </div>
 
     <div class="panel">
@@ -384,9 +361,29 @@
 
       <!-- Project tiles row -->
       <div class="tile-grid" id="projectGrid">
+        <!-- All — meta-scope, default selected -->
+        <button class="tile selected" data-folder="__all__">
+          <span class="tile-name">All</span>
+          <span class="tile-counts">
+            <span class="signal"><span class="pip green"></span>1 active</span>
+            <span class="signal"><span class="pip amber"></span>1 waiting</span>
+            <span class="signal"><span class="pip red"></span>1 disconnected</span>
+            <span class="signal"><span class="pip dim"></span>20 done</span>
+          </span>
+        </button>
+
+        <!-- Oyster scratchpad — userland-managed, always present, can't be detached -->
+        <button class="tile" data-folder="oyster">
+          <span class="tile-more" data-more="oyster" title="Folder actions" data-no-detach="1">⋯</span>
+          <span class="tile-name"><span class="star">★</span> oyster <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;">scratchpad</span></span>
+          <span class="tile-counts">
+            <span class="signal signal-muted">no sessions</span>
+          </span>
+        </button>
+
         <button class="tile" data-folder="oyster-os">
           <span class="tile-more" data-more="oyster-os" title="Folder actions">⋯</span>
-          <span class="tile-name"><span class="star">★</span> oyster-os</span>
+          <span class="tile-name">oyster-os</span>
           <span class="tile-counts">
             <span class="signal"><span class="pip green"></span>1 active</span>
             <span class="signal"><span class="pip dim"></span>17 done</span>
@@ -429,12 +426,6 @@
         <button class="tile add" id="addTile">+ Attach folder</button>
       </div>
 
-      <!-- Filter bar appears when a project is selected -->
-      <div class="filter-bar" id="filterBar">
-        Scoped to <strong id="filterFolder" style="color:#fff;"></strong>
-        <span class="clear" id="filterClear">Clear ✕</span>
-      </div>
-
       <div class="h-section">
         <div class="h-section-head"><span class="h-section-label">Sessions</span><span class="h-section-count">3 live</span><span class="h-section-rule"></span></div>
         <div class="h-grid sessions" id="sessionGrid">
@@ -472,18 +463,19 @@
     <div class="notes">
       <strong>Try it:</strong>
       <ul>
-        <li>Click <em>oyster-os</em> tile → Sessions and Artefacts both scope to it · click again → all back</li>
-        <li>Hover a tile → <strong>⋯</strong> appears top-right · click → Reveal in Finder, Detach</li>
-        <li>Click <em>+ Attach folder</em> tile → opens an inline path input (mock leaves stub)</li>
+        <li>Click any tile → Sessions and Artefacts scope to it · click the selected tile again → back to All</li>
+        <li>Hover a tile → <strong>⋯</strong> appears top-right · click → Reveal in Finder, Re-scan, Detach</li>
+        <li><strong>oyster (scratchpad)</strong> tile shows the userland-managed folder for this space — always present, can't be detached (no Detach in its ⋯ menu)</li>
+        <li>Click <em>+ Attach folder</em> tile → mock alert (real impl: inline path input)</li>
       </ul>
 
-      <strong style="display:block; margin-top:14px;">Why this beats the chip approach:</strong>
+      <strong style="display:block; margin-top:14px;">What this brings together:</strong>
       <ul>
-        <li><strong>Same primitive at every nav level.</strong> Home shows space tiles, a space shows project tiles. Scope is always a tile click. One mental model.</li>
-        <li><strong>More information per tile.</strong> Pip-level session counts give you "what's live in oyster-os right now" at a glance — exactly the "we care when claude operates here" insight.</li>
-        <li><strong>One attach path, one detach path.</strong> The + tile is the only attach surface. The ⋯ menu is the only detach surface. No duplication.</li>
-        <li><strong>Empty state</strong> can replace the tile row with the red "no folders attached" warning — same loud detection.</li>
-        <li><strong>Visual weight</strong> matches the importance of the choice — a project is a meaningful scope, deserves a tile not a chip.</li>
+        <li><strong>Same primitive at every nav level.</strong> Home → space cards. Space → project tiles. Scope is always a tile click.</li>
+        <li><strong>"All" tile replaces the filter bar.</strong> The row itself shows the active scope — exactly one tile highlighted, always. No floating banner.</li>
+        <li><strong>Scratchpad is its own thing.</strong> The userland folder where Oyster stores natively-created artefacts becomes a first-class tile, distinct from linked repos. Reads as "your space's own stuff."</li>
+        <li><strong>One attach path, one detach path.</strong> + tile = attach. ⋯ menu = detach. The scratchpad tile's menu hides Detach because it can't be detached.</li>
+        <li><strong>Pip-level counts</strong> on each tile answer "what's live in oyster-os right now" at a glance.</li>
       </ul>
     </div>
   </div>
@@ -511,44 +503,36 @@
       'oyster-community-plugins': '/Users/Matthew.Slight/Dev/oyster-community-plugins',
       'oyster-technology-www': '/Users/Matthew.Slight/Dev/oyster-technology-www',
     };
-    let activeFilter = null;
-
-    const filterBar = document.getElementById('filterBar');
-    const filterLabel = document.getElementById('filterFolder');
+    // Exclusive selection. Default is "__all__" — one tile is always
+    // highlighted, no separate filter banner needed; the row itself
+    // tells you the scope.
+    let activeFilter = '__all__';
 
     function applyFilter() {
+      const all = activeFilter === '__all__';
       // Filter sessions and artefacts
       ['sessionGrid', 'artefactGrid'].forEach((id) => {
         document.getElementById(id).querySelectorAll('.h-tile').forEach((t) => {
           const from = t.getAttribute('data-from');
-          t.classList.toggle('dim', !!activeFilter && from !== activeFilter);
+          t.classList.toggle('dim', !all && from !== activeFilter);
         });
       });
-      // Mark selected tile
+      // Mark selected tile (mutually exclusive)
       document.querySelectorAll('.tile[data-folder]').forEach((tile) => {
         tile.classList.toggle('selected', tile.getAttribute('data-folder') === activeFilter);
       });
-      if (activeFilter) {
-        filterLabel.textContent = activeFilter;
-        filterBar.classList.add('show');
-      } else {
-        filterBar.classList.remove('show');
-      }
     }
 
     document.querySelectorAll('.tile[data-folder]').forEach((tile) => {
       tile.addEventListener('click', (e) => {
-        // Don't fire filter when clicking the more button
         if (e.target.classList.contains('tile-more')) return;
         const folder = tile.getAttribute('data-folder');
-        activeFilter = activeFilter === folder ? null : folder;
+        // Click the already-selected tile re-selects "All" (predictable
+        // way to clear without a separate Clear button).
+        activeFilter = activeFilter === folder ? '__all__' : folder;
         closeMenu();
         applyFilter();
       });
-    });
-    document.getElementById('filterClear').addEventListener('click', () => {
-      activeFilter = null;
-      applyFilter();
     });
 
     // Tile context menu (⋯)
@@ -560,10 +544,13 @@
         openMenu = null;
       }
     }
+    const SCRATCHPAD_PATH = '/Users/Matthew.Slight/Oyster/spaces/oyster';
     document.querySelectorAll('.tile-more').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const folder = btn.getAttribute('data-more');
+        const noDetach = btn.getAttribute('data-no-detach') === '1';
+        const path = noDetach ? SCRATCHPAD_PATH : FOLDERS[folder];
         if (openMenu && openMenu.folder === folder) {
           closeMenu();
           return;
@@ -572,22 +559,26 @@
         const menu = document.createElement('div');
         menu.className = 'tile-menu open';
         menu.innerHTML = `
-          <div class="tile-menu-path">${FOLDERS[folder]}</div>
+          <div class="tile-menu-path">${path}</div>
           <div class="tile-menu-divider"></div>
           <button class="tile-menu-item">Reveal in Finder</button>
           <button class="tile-menu-item">Re-scan now</button>
-          <div class="tile-menu-divider"></div>
-          <button class="tile-menu-item danger" data-detach="${folder}">Detach folder…</button>
+          ${noDetach ? '' : `
+            <div class="tile-menu-divider"></div>
+            <button class="tile-menu-item danger" data-detach="${folder}">Detach folder…</button>
+          `}
         `;
         btn.parentElement.appendChild(menu);
         btn.classList.add('open');
         openMenu = { folder, menu, btn };
-        // Wire detach action
-        menu.querySelector('[data-detach]').addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          openDetachModal(folder);
-          closeMenu();
-        });
+        const detachBtn = menu.querySelector('[data-detach]');
+        if (detachBtn) {
+          detachBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            openDetachModal(folder);
+            closeMenu();
+          });
+        }
       });
     });
     document.addEventListener('click', () => closeMenu());
