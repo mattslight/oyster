@@ -285,6 +285,11 @@
   border-color: var(--home-border-accent);
   background: rgba(124, 107, 255, 0.05);
 }
+.home-space-card.selected {
+  background: rgba(124, 107, 255, 0.14);
+  border-color: var(--home-border-accent);
+  box-shadow: 0 0 0 1px var(--home-border-accent) inset;
+}
 .home-space-card-name {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -320,8 +325,6 @@
   font-style: italic;
 }
 .home-space-card--elsewhere.selected {
-  background: rgba(124, 107, 255, 0.12);
-  border-color: var(--home-border-accent);
   border-style: solid;
 }
 
