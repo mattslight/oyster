@@ -356,7 +356,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
-        {!isAllView && !isArchivedView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
+        {/*
+          Cards always represent CHILDREN OF THE CURRENT SCOPE:
+            Home  → spaces        (this block — Home / each space / Elsewhere)
+            Space → projects      (the ProjectTileGrid below)
+          The chat-bar pills are the canonical inter-space navigation, so we
+          don't need to keep the rich space cards visible on a real-space
+          view — that just stacks two rows of similar-looking cards and
+          muddies which one is the active scope.
+        */}
+        {isHomeView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
           <div className="home-spaces-section">
             <div className="home-spaces-grid">
               <button
