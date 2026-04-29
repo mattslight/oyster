@@ -145,6 +145,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total };
   }, [sessions]);
 
+  // When scoped to Elsewhere, artefacts should mirror the sessions filter:
+  // anything not attributed to a known real space (null spaceId or a stale
+  // pointer to a deleted space). App.tsx hands us all artefacts on home —
+  // we narrow them locally so artefacts and sessions tell the same story.
+  const realSpaceIds = useMemo(() => new Set(realSpaces.map((s) => s.id)), [realSpaces]);
+  const effectiveDesktopProps = useMemo(() => {
+    if (showElsewhere && isHomeView) {
+      return {
+        ...desktopProps,
+        artifacts: effectiveDesktopProps.artifacts.filter((a) => !a.spaceId || !realSpaceIds.has(a.spaceId)),
+      };
+    }
+    return desktopProps;
+  }, [showElsewhere, isHomeView, desktopProps, realSpaceIds]);
+
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
   const eyebrow = isHomeView ? (showElsewhere ? "Elsewhere" : "Home")
     : isAllView ? "All"
@@ -315,7 +330,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         <section className="home-section">
           <div className="home-section-head">
             <span className="home-section-label">Artefacts</span>
-            <span className="home-artefacts-count">{desktopProps.artifacts.length}</span>
+            <span className="home-artefacts-count">{effectiveDesktopProps.artifacts.length}</span>
             <span className="home-section-rule" />
             <div className="home-view-toggle">
               <button
@@ -347,13 +362,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           </div>
           {artefactsView === "icons" ? (
             <div className="home-artefacts">
-              <Desktop {...desktopProps} isHero={false} showMeta />
+              <Desktop {...effectiveDesktopProps} isHero={false} showMeta />
             </div>
           ) : (
             <ArtefactTable
-              artifacts={desktopProps.artifacts}
+              artifacts={effectiveDesktopProps.artifacts}
               spaces={spaces}
-              onArtifactClick={desktopProps.onArtifactClick}
+              onArtifactClick={effectiveDesktopProps.onArtifactClick}
             />
           )}
         </section>
