@@ -47,6 +47,12 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("transcript");
   const latestReqId = useRef(0);
+  // Capture onNotFound by ref so the effects don't re-run when the caller
+  // passes a fresh inline lambda each render. Without this, a parent
+  // re-render (e.g. from the Home `useSessions` SSE tick) recreates the
+  // closure → effect re-fires → state resets to null → spinner flicker.
+  const onNotFoundRef = useRef(onNotFound);
+  useEffect(() => { onNotFoundRef.current = onNotFound; }, [onNotFound]);
 
   useEffect(() => {
     const reqId = ++latestReqId.current;
@@ -70,13 +76,13 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
       .catch((err) => {
         if (reqId !== latestReqId.current || ac.signal.aborted) return;
         if (err instanceof SessionNotFoundError) {
-          onNotFound();
+          onNotFoundRef.current();
           return;
         }
         setError(err instanceof Error ? err.message : String(err));
       });
     return () => ac.abort();
-  }, [sessionId, onNotFound]);
+  }, [sessionId]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -101,7 +107,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
           .catch((err) => {
             if (inflight?.signal.aborted) return;
             if (err instanceof SessionNotFoundError) {
-              onNotFound();
+              onNotFoundRef.current();
               return;
             }
             console.warn("[SessionInspector] live refresh failed:", err);
@@ -123,7 +129,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
       if (inflight) inflight.abort();
       unsubscribe();
     };
-  }, [sessionId, onNotFound]);
+  }, [sessionId]);
 
   if (error) {
     return (
