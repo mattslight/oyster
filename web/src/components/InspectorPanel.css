@@ -144,13 +144,6 @@
   padding: 10px 28px;
   flex-wrap: wrap;
 }
-.transcript-filter-icon {
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-dim);
-  margin-right: 2px;
-  flex-shrink: 0;
-}
 .transcript-filter-chip {
   padding: 3px 10px;
   border-radius: 12px;
