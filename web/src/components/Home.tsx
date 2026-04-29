@@ -5,6 +5,8 @@ import { createMemory } from "../data/memories-api";
 import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
 import { useMemories } from "../hooks/useMemories";
+import { useSpaceSources } from "../hooks/useSpaceSources";
+import type { SpaceSource } from "../data/spaces-api";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
 import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
@@ -113,6 +115,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     error: memoriesError,
     refresh: refreshMemories,
   } = useMemories();
+  // Space sources only fetch when scoped to a real space — Home / Elsewhere
+  // / All / Archived don't have a single source list. Identifies the
+  // "zero sources attached" pitfall (#266) at a glance.
+  const isMetaScope = activeSpace === "home" || activeSpace === "__all__" || activeSpace === "__archived__";
+  const sourcesSpaceId = !isMetaScope ? activeSpace : null;
+  const {
+    sources: spaceSources,
+    loading: spaceSourcesLoading,
+    error: spaceSourcesError,
+  } = useSpaceSources(sourcesSpaceId);
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
@@ -371,6 +383,40 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               )}
             </div>
           </div>
+        )}
+
+        {sourcesSpaceId && (
+          <section className="home-section">
+            <div className="home-section-head">
+              <span className="home-section-label">Folders</span>
+              <span className="home-artefacts-count">{spaceSources.length}</span>
+              <span className="home-section-rule" />
+            </div>
+            {spaceSourcesError ? (
+              <div className="home-empty">
+                Couldn't load folders: {spaceSourcesError.message}
+              </div>
+            ) : spaceSourcesLoading && spaceSources.length === 0 ? (
+              <div className="home-empty">Loading folders…</div>
+            ) : spaceSources.length === 0 ? (
+              <div className="home-empty home-folders-empty">
+                <strong>No folders attached to this space.</strong>{" "}
+                Sessions started in unattached folders land in Elsewhere,
+                and tile discovery relies on these.{" "}
+                <span className="home-folders-empty-hint">
+                  Use <code>/attach &lt;path&gt;</code> from the chat bar.
+                </span>
+              </div>
+            ) : (
+              <div className="home-memories-wrap">
+                <div className="home-memories">
+                  {spaceSources.map((s) => (
+                    <FolderRow key={s.id} source={s} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
         )}
 
         <section className="home-section">
@@ -855,6 +901,19 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
       </div>
       {error && <div className="home-memories-add-error">Couldn't save: {error}</div>}
     </form>
+  );
+}
+
+function FolderRow({ source }: { source: SpaceSource }) {
+  const basename = source.path.split("/").filter(Boolean).pop() ?? source.path;
+  return (
+    <div className="home-memory home-folder" title={source.path}>
+      <div className="home-folder-row">
+        <span className="home-memory-space">{basename}</span>
+        <span className="home-folder-path">{source.path}</span>
+        <span className="home-memory-time">attached {formatRelative(source.added_at) ?? "—"}</span>
+      </div>
+    </div>
   );
 }
 

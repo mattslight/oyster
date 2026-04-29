@@ -32,6 +32,24 @@ export async function convertFolderToSpace(folderName: string, sourceSpaceId: st
   return res.json();
 }
 
+// Sources = linked folders attached to a space. Read-only from the UI;
+// attach/detach happen via MCP through the chat bar. (#266)
+export interface SpaceSource {
+  id: string;
+  space_id: string;
+  type: "local_folder";
+  path: string;
+  label: string | null;
+  added_at: string;
+  removed_at: string | null;
+}
+
+export async function fetchSpaceSources(spaceId: string, signal?: AbortSignal): Promise<SpaceSource[]> {
+  const res = await fetch(`/api/spaces/${encodeURIComponent(spaceId)}/sources`, { signal });
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
+  return res.json();
+}
+
 export async function deleteSpace(spaceId: string, folderName?: string): Promise<void> {
   const opts: RequestInit = { method: "DELETE" };
   if (folderName) {

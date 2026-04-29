@@ -530,6 +530,25 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // GET /api/spaces/:id/sources — active sources (linked folders) for a
+  // space. Local-origin only: paths leak the user's home directory.
+  // Surfaces #266 — without this you can't see at a glance whether a
+  // space has zero attached folders, which silently sends every claude
+  // session into orphan-land.
+  {
+    const m = url.split("?")[0].match(/^\/api\/spaces\/([^/]+)\/sources$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        const sources = spaceService.getSources(m[1]);
+        sendJson(sources);
+      } catch (err) {
+        sendError(err, 500);
+      }
+      return;
+    }
+  }
+
   // GET /api/memories — list memories, optionally scoped to a space.
   // Local-origin only: memory contents are private user notes. Strip the
   // query string before path-matching (same trap the events route had —
