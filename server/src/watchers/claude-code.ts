@@ -268,7 +268,19 @@ export class ClaudeCodeWatcher {
     });
     this.deps.emitSessionChanged?.(meta.sessionId);
 
-    // Seed offset at end-of-file so future appends are read incrementally.
+    // Backfill any unread bytes. Persisted offset is 0 on first sight (so we
+    // ingest the whole transcript) and `stat.size` on subsequent boots (no
+    // work). If the file was truncated since last boot — unusual for an
+    // append-only log — fall back to 0 and re-read.
+    let lastOffset = this.deps.sessionStore.getLastOffset(meta.sessionId);
+    if (lastOffset > stat.size) lastOffset = 0;
+    if (stat.size > lastOffset) {
+      await this.backfillRange(filePath, meta.sessionId, meta.cwd, lastOffset, stat.size);
+    }
+    this.deps.sessionStore.setLastOffset(meta.sessionId, stat.size);
+
+    // Seed in-memory tracker at EOF — backfill covered everything up to
+    // here, and live appends pick up from here.
     this.trackers.set(filePath, {
       offset: stat.size,
       sessionId: meta.sessionId,
@@ -281,6 +293,80 @@ export class ClaudeCodeWatcher {
       slug: meta.slug,
       partial: "",
     });
+  }
+
+  // One-shot backfill of [fromOffset, toOffset). Used by boot scan to ingest
+  // the existing JSONL contents into session_events / session_artifacts.
+  // The session row is assumed already upserted by the caller.
+  private async backfillRange(
+    filePath: string,
+    sessionId: string,
+    cwd: string | null,
+    fromOffset: number,
+    toOffset: number,
+  ): Promise<void> {
+    const len = toOffset - fromOffset;
+    if (len <= 0) return;
+    const fh = await fs.open(filePath, "r");
+    let chunk: Buffer;
+    try {
+      chunk = Buffer.alloc(len);
+      await fh.read(chunk, 0, len, fromOffset);
+    } finally {
+      await fh.close();
+    }
+
+    // Boot scan reads complete files, but a non-zero `fromOffset` means we
+    // may start mid-line (partial line landed before the previous stop).
+    // Drop the leading fragment in that case; if it ever had a complete
+    // event we'd have ingested it last time.
+    const text = chunk.toString("utf8");
+    const lines = text.split("\n");
+    if (fromOffset > 0) lines.shift();
+    // Trailing empty (clean newline boundary) or partial line. The watcher
+    // will pick up any partial via consumeOnce on the next append.
+    if (lines.length > 0) lines.pop();
+
+    const spaceId = this.resolveSpaceId(cwd);
+    const events: InsertSessionEvent[] = [];
+
+    for (const line of lines) {
+      if (!line) continue;
+      const ev = safeParse(line);
+      if (!ev) continue;
+
+      const rendered = renderEvent(ev);
+      if (rendered) {
+        events.push({
+          session_id: sessionId,
+          role: rendered.role,
+          text: rendered.text.slice(0, TEXT_PREVIEW_MAX),
+          ts: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
+          raw: line,
+        });
+      }
+
+      // Same orphan-skip rule as consumeOnce: don't attribute touches when
+      // we can't anchor them to a space.
+      if (ev.type === "assistant" && Array.isArray(ev.message?.content) && spaceId) {
+        for (const block of ev.message.content) {
+          const touch = artifactTouchFromToolUse(block);
+          if (!touch) continue;
+          const artifact = this.deps.artifactStore.getByPath(touch.path);
+          if (!artifact) continue;
+          if (artifact.space_id !== spaceId) continue;
+          this.deps.sessionStore.insertArtifactTouch({
+            session_id: sessionId,
+            artifact_id: artifact.id,
+            role: touch.role,
+          });
+        }
+      }
+    }
+
+    if (events.length > 0) {
+      this.deps.sessionStore.insertEvents(events);
+    }
   }
 
   // Read enough of a file to populate the session row. JSONLs grow to
@@ -598,6 +684,11 @@ export class ClaudeCodeWatcher {
     }
 
     if (tracker.sessionId) {
+      // Persist the new offset so a restart picks up exactly where we
+      // stopped. Without this, every restart would re-seed at EOF and drop
+      // anything appended between offset persistence and shutdown.
+      this.deps.sessionStore.setLastOffset(tracker.sessionId, stat.size);
+
       // Bytes just landed → JSONL is fresh by definition, so this session is
       // 'active'. Even if the heartbeat had previously demoted it to
       // 'waiting'/'disconnected', a new event resurrects it. If a title we

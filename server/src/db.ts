@@ -149,7 +149,13 @@ export function initDb(userlandDir: string): Database.Database {
       started_at    TEXT NOT NULL DEFAULT (datetime('now')),
       ended_at      TEXT,
       model         TEXT,
-      last_event_at TEXT NOT NULL DEFAULT (datetime('now'))
+      last_event_at TEXT NOT NULL DEFAULT (datetime('now')),
+      -- Persisted JSONL byte offset. Boot scan reads from last_offset to
+      -- EOF and inserts events; live appends update it on every consume.
+      -- Without this, sessions that finished before the watcher started
+      -- (or before a restart) seeded the tracker at EOF and silently lost
+      -- their transcript.
+      last_offset   INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS sessions_space_id ON sessions(space_id);
     CREATE INDEX IF NOT EXISTS sessions_state_last_event
@@ -178,6 +184,12 @@ export function initDb(userlandDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS session_artifacts_artifact
       ON session_artifacts(artifact_id);
   `);
+
+  // last_offset added in 0.5.0 to backfill transcripts on boot scan (#275).
+  // Existing installs created sessions without this column; ALTER adds it.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0");
+  } catch { /* already exists */ }
 
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
   // SQLite can't ALTER a CHECK constraint, so we rebuild via temp table.
@@ -210,6 +222,10 @@ export function initDb(userlandDir: string): Database.Database {
       BEGIN TRANSACTION;
 
       -- 1. Rebuild sessions with the new CHECK constraint and remap states.
+      -- last_offset is set to 0 here; it only matters for installs that
+      -- pre-date the running/awaiting rename, and those rebuilds always
+      -- ran before #275 anyway (so the source rows have no last_offset).
+      -- The boot scan re-derives offsets from disk on first run.
       CREATE TABLE _sessions_new (
         id            TEXT PRIMARY KEY,
         space_id      TEXT REFERENCES spaces(id) ON DELETE SET NULL,
@@ -219,7 +235,8 @@ export function initDb(userlandDir: string): Database.Database {
         started_at    TEXT NOT NULL DEFAULT (datetime('now')),
         ended_at      TEXT,
         model         TEXT,
-        last_event_at TEXT NOT NULL DEFAULT (datetime('now'))
+        last_event_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_offset   INTEGER NOT NULL DEFAULT 0
       );
       INSERT INTO _sessions_new (id, space_id, agent, title, state, started_at, ended_at, model, last_event_at)
         SELECT id, space_id, agent, title,
