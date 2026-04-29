@@ -120,8 +120,8 @@
 }
 .inspector-tab:hover { color: var(--text); }
 .inspector-tab.active {
-  color: var(--accent-bright);
-  border-bottom-color: var(--accent-bright);
+  color: var(--text);
+  border-bottom-color: var(--text);
 }
 .inspector-tab .badge {
   display: inline-block;
