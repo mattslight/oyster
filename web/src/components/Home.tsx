@@ -482,7 +482,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         )}
 
         <header className="home-header">
-          <div className="home-eyebrow">{eyebrow}</div>
+          {/* Eyebrow dropped — the breadcrumb above already shows the
+              active scope, so a separate "HOME" / "OYSTER" label is
+              redundant. */}
           <h1 className="home-title">{isHomeView ? (showElsewhere ? "Everything else." : "Everything.") : eyebrow}</h1>
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
@@ -495,11 +497,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
 
         {isHomeView && !showElsewhere && activeProjects.length > 0 && (
           <div className="home-section home-active-projects-section">
-            <div className="home-section-head">
-              <span className="home-section-label">Active projects</span>
-              <span className="home-artefacts-count">{activeProjects.length}</span>
-              <span className="home-section-rule" />
-            </div>
             <div className="home-active-projects-grid">
               {activeProjects.map((p) => {
                 const space = spaces.find((s) => s.id === p.spaceId);

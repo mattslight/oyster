@@ -1135,7 +1135,7 @@
 .home-breadcrumb-inner {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   padding: 3px 4px;
   border-radius: 9999px;
   background: rgba(13, 14, 26, 0.6);
