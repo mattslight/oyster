@@ -93,6 +93,9 @@ export interface SessionStore {
   insertArtifactTouch(row: InsertSessionArtifact): void;
   getArtifactsBySession(sessionId: string): SessionArtifactRow[];
   getSessionsByArtifact(artifactId: string): SessionArtifactRow[];
+  // last_offset — JSONL bytes already ingested for this session.
+  getLastOffset(sessionId: string): number;
+  setLastOffset(sessionId: string, offset: number): void;
 }
 
 // ── SQLite implementation ──
@@ -111,6 +114,8 @@ export class SqliteSessionStore implements SessionStore {
     insertArtifactTouch: Database.Statement;
     getArtifactsBySession: Database.Statement;
     getSessionsByArtifact: Database.Statement;
+    getLastOffset: Database.Statement;
+    setLastOffset: Database.Statement;
   };
 
   private insertEventsTxn: (rows: InsertSessionEvent[]) => void;
@@ -179,6 +184,12 @@ export class SqliteSessionStore implements SessionStore {
       ),
       getSessionsByArtifact: db.prepare(
         "SELECT * FROM session_artifacts WHERE artifact_id = ? ORDER BY when_at DESC"
+      ),
+      getLastOffset: db.prepare(
+        "SELECT last_offset FROM sessions WHERE id = ?"
+      ),
+      setLastOffset: db.prepare(
+        "UPDATE sessions SET last_offset = ? WHERE id = ?"
       ),
     };
 
@@ -275,5 +286,14 @@ export class SqliteSessionStore implements SessionStore {
 
   getSessionsByArtifact(artifactId: string): SessionArtifactRow[] {
     return this.stmts.getSessionsByArtifact.all(artifactId) as SessionArtifactRow[];
+  }
+
+  getLastOffset(sessionId: string): number {
+    const row = this.stmts.getLastOffset.get(sessionId) as { last_offset: number } | undefined;
+    return row?.last_offset ?? 0;
+  }
+
+  setLastOffset(sessionId: string, offset: number): void {
+    this.stmts.setLastOffset.run(offset, sessionId);
   }
 }

@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Older sessions now show their transcripts.** Sessions whose `claude` process finished before Oyster started watching used to land with empty transcripts in the inspector — Oyster only ingested events appended after it was running. The watcher now backfills events from each JSONL on boot scan, so existing sessions show their full transcript on the next server restart. Idempotent across restarts. ([#275](https://github.com/mattslight/oyster/issues/275))
+
 ### Added
 
 - **Session inspector.** Click a session tile (or row) and a slide-panel opens with the live transcript, the artefacts the agent touched, and a *Copy resume command* button — paste it in your terminal to pick the conversation back up. Disconnected sessions show a banner with the last heartbeat. Click any artefact to see which sessions touched it, then jump back into one. The transcript updates live as the agent works. ([#253](https://github.com/mattslight/oyster/issues/253))
