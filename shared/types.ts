@@ -41,6 +41,8 @@ export interface Artifact {
   sourceLabel?: string | null;
   /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan / linked source. `ai_generated` — produced by an agent. Drives the source filter on Home. */
   sourceOrigin?: "manual" | "discovered" | "ai_generated";
+  /** ID of the linked source folder this artefact came from. Null/undefined for native artefacts (manual / ai_generated). Drives per-folder filtering on the project-tile grid. */
+  sourceId?: string | null;
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";

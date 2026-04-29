@@ -571,6 +571,7 @@ export class ArtifactService {
         groupName: row.group_name || undefined,
         sourceLabel,
         sourceOrigin: row.source_origin,
+        sourceId: row.source_id,
         ...this.resolveIcon(row),
       };
     }

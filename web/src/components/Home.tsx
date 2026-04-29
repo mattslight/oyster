@@ -82,6 +82,10 @@ const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0
 // <5 memories) stay fully visible.
 const MEMORIES_PREVIEW = 5;
 
+// Sentinel for the scratchpad tile (artefacts with no source_id —
+// natively-created via create_artifact, not from a linked folder).
+const SCRATCHPAD = "__scratchpad__";
+
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
   active: "active",
@@ -151,6 +155,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // so each space starts compact and at "all".
   const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
   const [artefactsLimit, setArtefactsLimit] = useState(ARTEFACTS_PREVIEW);
+  // Project-tile filter: null = "All" (no folder scope), "__scratchpad__" =
+  // native artefacts, otherwise a source_id. The tile grid is the canonical
+  // surface for switching between folders; selection is exclusive.
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -166,11 +174,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
 
   // Collapse limits + filter reset on scope change — switching from a
   // 60-item Home view to a single-space view shouldn't carry over either
-  // the "show more" depth or the source filter.
+  // the "show more" depth, source filter, or tile selection.
   useEffect(() => {
     setMemoriesLimit(MEMORIES_PREVIEW);
     setArtefactsLimit(ARTEFACTS_PREVIEW);
     setArtefactSource("all");
+    setSelectedFolderId(null);
   }, [scopedSpace, showElsewhere, isHomeView]);
 
   const scopedSessions = useMemo(() => {
@@ -279,13 +288,34 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
+  // Per-source artefact counts for the project tile grid. "scratchpad"
+  // collects everything without a source_id (manual + ai_generated tiles
+  // that didn't come from a linked folder). The tile grid itself drives
+  // the SELECTED_FOLDER filter, separate from the source-origin chips.
+  const folderArtefactCounts = useMemo(() => {
+    const counts: Record<string, number> = { [SCRATCHPAD]: 0 };
+    for (const a of effectiveDesktopProps.artifacts) {
+      if (a.sourceId) counts[a.sourceId] = (counts[a.sourceId] ?? 0) + 1;
+      else counts[SCRATCHPAD]++;
+    }
+    return counts;
+  }, [effectiveDesktopProps.artifacts]);
+
   // Filter + collapse to an incremental preview. Each "Show more" click
   // grows artefactsLimit by ARTEFACTS_PREVIEW; the table view bypasses
   // the cap because it's already linear and easy to scan.
   const filteredArtefacts = useMemo(() => {
-    if (artefactSource === "all") return effectiveDesktopProps.artifacts;
-    return effectiveDesktopProps.artifacts.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
-  }, [effectiveDesktopProps.artifacts, artefactSource]);
+    let list = effectiveDesktopProps.artifacts;
+    if (selectedFolderId === SCRATCHPAD) {
+      list = list.filter((a) => !a.sourceId);
+    } else if (selectedFolderId) {
+      list = list.filter((a) => a.sourceId === selectedFolderId);
+    }
+    if (artefactSource !== "all") {
+      list = list.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
+    }
+    return list;
+  }, [effectiveDesktopProps.artifacts, artefactSource, selectedFolderId]);
   const visibleArtefacts = useMemo(() => {
     if (artefactsView === "table") return filteredArtefacts;
     return filteredArtefacts.slice(0, artefactsLimit);
@@ -393,67 +423,55 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         )}
 
         {sourcesSpaceId && (
-          <section className="home-section">
-            <div className="home-section-head">
-              <span className="home-section-label">Folders</span>
-              <span className="home-artefacts-count">{spaceSources.length}</span>
-              <span className="home-section-rule" />
-              <button
-                type="button"
-                className="home-memories-add-btn"
-                onClick={() => setShowAttachForm((v) => !v)}
-                aria-expanded={showAttachForm}
-              >
-                {showAttachForm ? "Cancel" : "+ Attach folder"}
-              </button>
-            </div>
-            {showAttachForm && (
-              <AttachFolderForm
-                spaceId={sourcesSpaceId}
-                onAttached={() => {
-                  setShowAttachForm(false);
-                  refreshSpaceSources();
-                }}
-                onCancel={() => setShowAttachForm(false)}
-              />
-            )}
-            {spaceSourcesError ? (
-              <div className="home-empty">
-                Couldn't load folders: {spaceSourcesError.message}
+          spaceSourcesError ? (
+            <div className="home-spaces-section">
+              <div className="home-spaces-grid">
+                <div className="home-empty" style={{ gridColumn: "1 / -1" }}>
+                  Couldn't load folders: {spaceSourcesError.message}
+                </div>
               </div>
-            ) : spaceSourcesLoading && spaceSources.length === 0 ? (
-              <div className="home-empty">Loading folders…</div>
-            ) : spaceSources.length === 0 ? (
-              <div className="home-empty home-folders-empty">
+            </div>
+          ) : spaceSources.length === 0 && !spaceSourcesLoading ? (
+            <div className="home-spaces-section">
+              <div className="home-folders-empty">
                 <strong>No folders attached to this space.</strong>{" "}
                 Sessions started in unattached folders land in Elsewhere,
                 and tile discovery relies on these.{" "}
                 <span className="home-folders-empty-hint">
-                  Click <em>+ Attach folder</em> above, or use{" "}
-                  <code>/attach &lt;path&gt;</code> from the chat bar.
+                  Use <code>/attach &lt;path&gt;</code> from the chat bar, or{" "}
+                  <button
+                    type="button"
+                    className="home-folders-empty-link"
+                    onClick={() => setShowAttachForm(true)}
+                  >
+                    attach one now
+                  </button>.
                 </span>
               </div>
-            ) : (
-              <div className="home-memories-wrap">
-                <div className="home-memories">
-                  {spaceSources.map((s) => (
-                    <FolderRow
-                      key={s.id}
-                      source={s}
-                      onDetach={async () => {
-                        try {
-                          await removeSpaceSource(s.space_id, s.id);
-                          refreshSpaceSources();
-                        } catch (err) {
-                          alert(`Couldn't detach: ${err instanceof Error ? err.message : String(err)}`);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
+              {showAttachForm && (
+                <AttachFolderForm
+                  spaceId={sourcesSpaceId}
+                  onAttached={() => {
+                    setShowAttachForm(false);
+                    refreshSpaceSources();
+                  }}
+                  onCancel={() => setShowAttachForm(false)}
+                />
+              )}
+            </div>
+          ) : (
+            <ProjectTileGrid
+              spaceId={sourcesSpaceId}
+              sources={spaceSources}
+              folderArtefactCounts={folderArtefactCounts}
+              selectedFolderId={selectedFolderId}
+              setSelectedFolderId={setSelectedFolderId}
+              totalCounts={stateCounts}
+              showAttachForm={showAttachForm}
+              setShowAttachForm={setShowAttachForm}
+              onDetached={refreshSpaceSources}
+            />
+          )
         )}
 
         <section className="home-section">
@@ -941,21 +959,146 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
   );
 }
 
-function FolderRow({
-  source, onDetach,
+// Project tile grid — same visual primitive as Home's space cards.
+// Renders one tile per attached folder (plus an "All" meta-tile, a
+// scratchpad tile for native artefacts, and a "+ Attach" tile). The
+// selected tile is exclusive: clicking another switches scope, clicking
+// the selected tile snaps back to All. Detach lives in a hover ⋯ menu
+// on linked tiles only — scratchpad can't be detached.
+function ProjectTileGrid({
+  spaceId, sources, folderArtefactCounts, selectedFolderId, setSelectedFolderId,
+  totalCounts, showAttachForm, setShowAttachForm, onDetached,
+}: {
+  spaceId: string;
+  sources: SpaceSource[];
+  folderArtefactCounts: Record<string, number>;
+  selectedFolderId: string | null;
+  setSelectedFolderId: (next: string | null) => void;
+  totalCounts: Record<StateFilter, number>;
+  showAttachForm: boolean;
+  setShowAttachForm: (v: boolean) => void;
+  onDetached: () => void;
+}) {
+  // Sort linked tiles by tile count desc — busiest folders first.
+  const sortedSources = useMemo(
+    () => [...sources].sort((a, b) =>
+      (folderArtefactCounts[b.id] ?? 0) - (folderArtefactCounts[a.id] ?? 0)
+    ),
+    [sources, folderArtefactCounts],
+  );
+  const scratchpadCount = folderArtefactCounts[SCRATCHPAD] ?? 0;
+
+  function pickTile(id: string | null) {
+    setSelectedFolderId(selectedFolderId === id ? null : id);
+  }
+
+  return (
+    <div className="home-spaces-section home-projects-section">
+      <div className="home-spaces-grid">
+        <button
+          type="button"
+          className={`home-space-card${selectedFolderId === null ? " selected" : ""}`}
+          onClick={() => pickTile(null)}
+          title="All projects in this space"
+        >
+          <div className="home-space-card-name">All</div>
+          <div className="home-space-card-counts">
+            {totalCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{totalCounts.active} active</span>}
+            {totalCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{totalCounts.waiting} waiting</span>}
+            {totalCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{totalCounts.disconnected} disconnected</span>}
+            {totalCounts.done > 0 && <span className="signal"><span className="pip pip-dim" />{totalCounts.done} done</span>}
+            {totalCounts.all === 0 && <span className="signal signal-muted">no sessions yet</span>}
+          </div>
+        </button>
+
+        {scratchpadCount > 0 && (
+          <button
+            type="button"
+            className={`home-space-card home-project-tile--scratchpad${selectedFolderId === SCRATCHPAD ? " selected" : ""}`}
+            onClick={() => pickTile(SCRATCHPAD)}
+            title="Native artefacts created in this space (not from a linked folder)"
+          >
+            <div className="home-space-card-name">
+              <span className="home-project-star">★</span> {spaceId}
+              <span className="home-project-tag">scratchpad</span>
+            </div>
+            <div className="home-space-card-counts">
+              <span className="signal"><span className="pip pip-dim" />{scratchpadCount} {scratchpadCount === 1 ? "artefact" : "artefacts"}</span>
+            </div>
+          </button>
+        )}
+
+        {sortedSources.map((s) => (
+          <ProjectTile
+            key={s.id}
+            source={s}
+            artefactCount={folderArtefactCounts[s.id] ?? 0}
+            selected={selectedFolderId === s.id}
+            onSelect={() => pickTile(s.id)}
+            onDetached={onDetached}
+          />
+        ))}
+
+        <button
+          type="button"
+          className="home-space-card home-project-tile--add"
+          onClick={() => setShowAttachForm(true)}
+        >
+          <div className="home-space-card-name">+ Attach folder</div>
+          <div className="home-space-card-counts">
+            <span className="signal signal-muted">link a repo or folder</span>
+          </div>
+        </button>
+      </div>
+
+      {showAttachForm && (
+        <AttachFolderForm
+          spaceId={spaceId}
+          onAttached={() => {
+            setShowAttachForm(false);
+            onDetached();
+          }}
+          onCancel={() => setShowAttachForm(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProjectTile({
+  source, artefactCount, selected, onSelect, onDetached,
 }: {
   source: SpaceSource;
-  onDetach: () => Promise<void>;
+  artefactCount: number;
+  selected: boolean;
+  onSelect: () => void;
+  onDetached: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const basename = source.path.split("/").filter(Boolean).pop() ?? source.path;
+
+  // Close menu on outside click — same pattern as space-card menus.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement)?.closest(".home-project-tile-menu, .home-project-tile-more")) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [menuOpen]);
 
   async function performDetach() {
     setBusy(true);
     try {
-      await onDetach();
+      await removeSpaceSource(source.space_id, source.id);
+      onDetached();
       setConfirmOpen(false);
+    } catch (err) {
+      alert(`Couldn't detach: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -963,22 +1106,41 @@ function FolderRow({
 
   return (
     <>
-      <div className="home-memory home-folder" title={source.path}>
-        <div className="home-folder-row">
-          <span className="home-memory-space">{basename}</span>
-          <span className="home-folder-path">{source.path}</span>
-          <span className="home-memory-time">attached {formatRelative(source.added_at) ?? "—"}</span>
-          <button
-            type="button"
-            className="home-folder-detach"
-            onClick={() => !busy && setConfirmOpen(true)}
-            disabled={busy}
-            aria-label={`Detach ${basename}`}
-            title="Detach this folder"
-          >
-            {busy ? "…" : "Detach"}
-          </button>
-        </div>
+      <div className={`home-space-card home-project-tile${selected ? " selected" : ""}`}>
+        <button
+          type="button"
+          className="home-project-tile-body"
+          onClick={onSelect}
+          title={source.path}
+        >
+          <div className="home-space-card-name">{basename}</div>
+          <div className="home-space-card-counts">
+            <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>
+          </div>
+        </button>
+        <button
+          type="button"
+          className={`home-project-tile-more${menuOpen ? " open" : ""}`}
+          onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+          aria-label="Folder actions"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          ⋯
+        </button>
+        {menuOpen && (
+          <div className="home-project-tile-menu" role="menu">
+            <div className="home-project-tile-menu-path">{source.path}</div>
+            <div className="home-project-tile-menu-divider" />
+            <button
+              type="button"
+              className="home-project-tile-menu-item danger"
+              onClick={() => { setMenuOpen(false); setConfirmOpen(true); }}
+            >
+              Detach folder…
+            </button>
+          </div>
+        )}
       </div>
       <ConfirmModal
         open={confirmOpen}
@@ -991,7 +1153,7 @@ function FolderRow({
             Its artefacts will be hidden. Reattach the same path to restore them.
           </>
         }
-        confirmLabel="Detach"
+        confirmLabel={busy ? "Detaching…" : "Detach"}
         destructive
         onConfirm={performDetach}
         onCancel={() => !busy && setConfirmOpen(false)}
