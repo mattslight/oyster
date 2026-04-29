@@ -198,8 +198,11 @@ export function initDb(userlandDir: string): Database.Database {
   // session record — it just unlinks the project association.
   try {
     db.exec("ALTER TABLE sessions ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
-    db.exec("CREATE INDEX IF NOT EXISTS sessions_source_id ON sessions(source_id)");
   } catch { /* already exists */ }
+  // Index creation lives in its own try so an already-applied ALTER
+  // (which throws above) doesn't skip indexing on installs that
+  // pre-date this migration.
+  db.exec("CREATE INDEX IF NOT EXISTS sessions_source_id ON sessions(source_id)");
 
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
   // SQLite can't ALTER a CHECK constraint, so we rebuild via temp table.

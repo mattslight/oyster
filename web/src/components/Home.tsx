@@ -1177,7 +1177,8 @@ function ProjectTile({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const basename = source.path.split("/").filter(Boolean).pop() ?? source.path;
+  // Separator-agnostic so Windows paths (`C:\Users\...`) display correctly too.
+  const basename = source.path.split(/[\\/]/).filter(Boolean).pop() ?? source.path;
 
   // Close menu on outside click — same pattern as space-card menus.
   useEffect(() => {

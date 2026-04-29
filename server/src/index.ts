@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join, dirname, resolve, sep } from "node:path";
+import { basename, extname, join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, renderMermaid } from "./renderers.js";
 import { handleSpacesRequest } from "./spaces-routes.js";
@@ -652,7 +652,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     );
     sendJson(rows.map((row) => {
       const src = row.source_id ? sourcesById.get(row.source_id) : null;
-      const label = src ? (src.label ?? src.path.split("/").pop() ?? null) : null;
+      const label = src ? (src.label ?? (basename(src.path) || null)) : null;
       return {
         id: row.id,
         spaceId: row.space_id,
@@ -682,7 +682,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         return;
       }
       const src = row.source_id ? spaceStore.getSourceById(row.source_id) : undefined;
-      const sourceLabel = src ? (src.label ?? src.path.split("/").pop() ?? null) : null;
+      const sourceLabel = src ? (src.label ?? (basename(src.path) || null)) : null;
       sendJson({
         id: row.id,
         spaceId: row.space_id,

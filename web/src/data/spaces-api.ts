@@ -32,8 +32,9 @@ export async function convertFolderToSpace(folderName: string, sourceSpaceId: st
   return res.json();
 }
 
-// Sources = linked folders attached to a space. Read-only from the UI;
-// attach/detach happen via MCP through the chat bar. (#266)
+// Sources = linked folders attached to a space. The UI can list, attach,
+// and detach them via the REST endpoints in this file; MCP via the chat
+// bar still works as a parallel path. (#266)
 export interface SpaceSource {
   id: string;
   space_id: string;

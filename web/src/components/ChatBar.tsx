@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { motion, LayoutGroup } from "framer-motion";
-import { spaceColor } from "../utils/spaceColor";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { sendMessage, replyToQuestion, formatChatError, ChatSendError } from "../data/chat-api";

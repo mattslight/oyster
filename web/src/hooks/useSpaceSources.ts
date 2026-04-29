@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { fetchSpaceSources } from "../data/spaces-api";
 import type { SpaceSource } from "../data/spaces-api";
 
-// Per-space sources. Read-only — attach/detach happen via MCP, so the
-// list rarely changes during a session and a single fetch on space change
-// is enough. We don't subscribe to SSE today; if a `space_changed` event
-// surfaces later, refetch via `refresh()`.
+// Per-space sources. The Home UI can attach/detach via REST endpoints,
+// so call `refresh()` after those mutations to pick up the new list.
+// SSE subscription is future work; today the hook re-fetches on
+// `spaceId` change or an explicit `refresh()` tick.
 export function useSpaceSources(spaceId: string | null): {
   sources: SpaceSource[];
   loading: boolean;
@@ -17,6 +17,18 @@ export function useSpaceSources(spaceId: string | null): {
   const [error, setError] = useState<Error | null>(null);
   const [tick, setTick] = useState(0);
   const latestReqId = useRef(0);
+  // Clear stale `sources`/`error` immediately when the user navigates to
+  // a different space. Without this, switching from a 6-source space
+  // to a 0-source one would briefly show the previous list (or a
+  // stale error masking the loading state). Manual `refresh()` calls
+  // hit the same effect via `tick` but stay on the same spaceId, so
+  // they retain the current data while the new request is in flight.
+  const previousSpaceId = useRef<string | null>(null);
+  if (previousSpaceId.current !== spaceId) {
+    previousSpaceId.current = spaceId;
+    if (sources.length > 0) setSources([]);
+    if (error) setError(null);
+  }
 
   useEffect(() => {
     if (!spaceId) {
