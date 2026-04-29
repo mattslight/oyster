@@ -4,8 +4,13 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Scroll up to load older transcript turns.** The session inspector loads the latest 1000 turns by default and shows a `1000+` badge when there's more behind them. Scroll near the top of the transcript and the next 1000 older turns prepend in place — your scroll position stays pinned to the same turn so you don't lose your place. Live updates still append to the bottom as the agent works. ([#274](https://github.com/mattslight/oyster/issues/274))
+
 ### Fixed
 
+- **`?limit=N` on the events endpoint was silently ignored.** The route regex `$`-anchored before the query string so the parameter never reached the handler — the inspector always got the default 1000. Fixed as part of #274.
 - **Older sessions now show their transcripts.** Sessions whose `claude` process finished before Oyster started watching used to land with empty transcripts in the inspector — Oyster only ingested events appended after it was running. The watcher now backfills events from each JSONL on boot scan, so existing sessions show their full transcript on the next server restart. Idempotent across restarts. ([#275](https://github.com/mattslight/oyster/issues/275))
 
 ### Added

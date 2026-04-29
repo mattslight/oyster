@@ -88,6 +88,9 @@ export interface SessionStore {
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
   getEventsBySession(sessionId: string, opts?: { limit?: number }): SessionEventRow[];
+  // Cursor pagination: scroll-up to load older, live SSE to append newer.
+  getEventsBeforeBySession(sessionId: string, beforeId: number, limit: number): SessionEventRow[];
+  getEventsAfterBySession(sessionId: string, afterId: number, limit: number): SessionEventRow[];
   getEventById(sessionId: string, eventId: number): SessionEventRow | undefined;
   // session_artifacts
   insertArtifactTouch(row: InsertSessionArtifact): void;
@@ -110,6 +113,8 @@ export class SqliteSessionStore implements SessionStore {
     insertEvent: Database.Statement;
     getEventsBySession: Database.Statement;
     getEventsBySessionLimit: Database.Statement;
+    getEventsBefore: Database.Statement;
+    getEventsAfter: Database.Statement;
     getEventById: Database.Statement;
     insertArtifactTouch: Database.Statement;
     getArtifactsBySession: Database.Statement;
@@ -171,6 +176,12 @@ export class SqliteSessionStore implements SessionStore {
       ),
       getEventsBySessionLimit: db.prepare(
         "SELECT * FROM session_events WHERE session_id = ? ORDER BY id DESC LIMIT ?"
+      ),
+      getEventsBefore: db.prepare(
+        "SELECT * FROM session_events WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?"
+      ),
+      getEventsAfter: db.prepare(
+        "SELECT * FROM session_events WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT ?"
       ),
       getEventById: db.prepare(
         "SELECT * FROM session_events WHERE session_id = ? AND id = ? LIMIT 1"
@@ -274,6 +285,19 @@ export class SqliteSessionStore implements SessionStore {
 
   getEventById(sessionId: string, eventId: number): SessionEventRow | undefined {
     return this.stmts.getEventById.get(sessionId, eventId) as SessionEventRow | undefined;
+  }
+
+  // Returns up to `limit` events with id < beforeId, oldest first within the
+  // slice. Used for scroll-up infinite load.
+  getEventsBeforeBySession(sessionId: string, beforeId: number, limit: number): SessionEventRow[] {
+    const rows = this.stmts.getEventsBefore.all(sessionId, beforeId, limit) as SessionEventRow[];
+    return rows.reverse();
+  }
+
+  // Returns up to `limit` events with id > afterId, oldest first. Used for
+  // live append: SSE fires, fetch only the new events past the latest cursor.
+  getEventsAfterBySession(sessionId: string, afterId: number, limit: number): SessionEventRow[] {
+    return this.stmts.getEventsAfter.all(sessionId, afterId, limit) as SessionEventRow[];
   }
 
   insertArtifactTouch(row: InsertSessionArtifact): void {
