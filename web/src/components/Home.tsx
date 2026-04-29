@@ -350,6 +350,57 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
       <div className="home-grain" />
 
       <div className={`home-scroll${isHero ? " home-scroll--hero" : ""}`}>
+        {/* Compact space switcher — only visible on real-space views.
+            On Home, the rich space cards below cover this need. Inside a
+            space, this is the quick-move between top-level spaces so the
+            user isn't relying on the chat-bar pills alone for nav-up. */}
+        {scopedSpace && (realSpaces.length > 0 || orphanCounts.total > 0) && (
+          <nav className="home-breadcrumb" aria-label="Spaces">
+            <button
+              type="button"
+              className={`home-breadcrumb-pill${isHomeView ? " selected" : ""}`}
+              onClick={() => onSpaceChange("home")}
+              title="Back to Home — across all spaces"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6, verticalAlign: -1 }}>
+                <path d="M3 12l9-9 9 9" />
+                <path d="M5 10v10h14V10" />
+              </svg>
+              Home
+            </button>
+            {realSpaces.map((space) => {
+              const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
+              const liveCount = counts.active + counts.waiting + counts.disconnected;
+              const dot = counts.active > 0 ? "green"
+                : counts.waiting > 0 ? "amber"
+                : counts.disconnected > 0 ? "red"
+                : null;
+              return (
+                <button
+                  key={space.id}
+                  type="button"
+                  className={`home-breadcrumb-pill${scopedSpace === space.id ? " selected" : ""}`}
+                  onClick={() => onSpaceChange(space.id)}
+                  title={liveCount > 0 ? `${liveCount} live` : "no live sessions"}
+                >
+                  {dot && <span className={`pip pip-${dot}`} />}
+                  {space.displayName}
+                </button>
+              );
+            })}
+            {orphanCounts.total > 0 && (
+              <button
+                type="button"
+                className="home-breadcrumb-pill home-breadcrumb-pill--elsewhere"
+                onClick={() => { onSpaceChange("home"); setShowElsewhere(true); }}
+                title="Sessions outside any registered space"
+              >
+                Elsewhere
+              </button>
+            )}
+          </nav>
+        )}
+
         <header className="home-header">
           <div className="home-eyebrow">{eyebrow}</div>
           <h1 className="home-title">{isHomeView ? (showElsewhere ? "Everything else." : "Everything.") : eyebrow}</h1>
