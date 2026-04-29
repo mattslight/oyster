@@ -905,3 +905,30 @@
   font-size: 11px;
   color: #f87171;
 }
+
+/* ── Show more (memories + artefacts) ── */
+.home-show-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.home-show-more-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--home-text-muted);
+}
+
+.home-show-more-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--home-border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: 0 1px;
+}

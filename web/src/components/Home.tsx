@@ -126,12 +126,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // Memories collapse: long lists are noisy on Home. Default to 5 rows;
   // "Show all" expands. Resets when the user changes scope so a different
   // space starts collapsed too.
-  const [memoriesExpanded, setMemoriesExpanded] = useState(false);
+  const [memoriesLimit, setMemoriesLimit] = useState(MEMORIES_PREVIEW);
   const [showAddMemory, setShowAddMemory] = useState(false);
   // Artefact source filter (#280) + 3-row collapse. Reset on scope change
   // so each space starts compact and at "all".
   const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
-  const [artefactsExpanded, setArtefactsExpanded] = useState(false);
+  const [artefactsLimit, setArtefactsLimit] = useState(ARTEFACTS_PREVIEW);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -145,12 +145,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     if (!isHomeView) setShowElsewhere(false);
   }, [isHomeView]);
 
-  // Collapse memories whenever scope changes — switching from a long
-  // 60-item Home view to a single-space view shouldn't carry over the
-  // "show all" state. Same logic for artefact source filter + collapse.
+  // Collapse limits + filter reset on scope change — switching from a
+  // 60-item Home view to a single-space view shouldn't carry over either
+  // the "show more" depth or the source filter.
   useEffect(() => {
-    setMemoriesExpanded(false);
-    setArtefactsExpanded(false);
+    setMemoriesLimit(MEMORIES_PREVIEW);
+    setArtefactsLimit(ARTEFACTS_PREVIEW);
     setArtefactSource("all");
   }, [scopedSpace, showElsewhere, isHomeView]);
 
@@ -260,20 +260,18 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
-  // Filter + collapse to a 3-row preview. The collapse only applies to
-  // the icon view; table view stays full-length because it's already
-  // linear and easy to scan.
-  const visibleArtefacts = useMemo(() => {
-    const filtered = artefactSource === "all"
-      ? effectiveDesktopProps.artifacts
-      : effectiveDesktopProps.artifacts.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
-    if (artefactsView === "table" || artefactsExpanded) return filtered;
-    return filtered.slice(0, ARTEFACTS_PREVIEW);
-  }, [effectiveDesktopProps.artifacts, artefactSource, artefactsView, artefactsExpanded]);
-  const visibleArtefactsTotal = useMemo(() => {
-    if (artefactSource === "all") return effectiveDesktopProps.artifacts.length;
-    return effectiveDesktopProps.artifacts.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource).length;
+  // Filter + collapse to an incremental preview. Each "Show more" click
+  // grows artefactsLimit by ARTEFACTS_PREVIEW; the table view bypasses
+  // the cap because it's already linear and easy to scan.
+  const filteredArtefacts = useMemo(() => {
+    if (artefactSource === "all") return effectiveDesktopProps.artifacts;
+    return effectiveDesktopProps.artifacts.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
   }, [effectiveDesktopProps.artifacts, artefactSource]);
+  const visibleArtefacts = useMemo(() => {
+    if (artefactsView === "table") return filteredArtefacts;
+    return filteredArtefacts.slice(0, artefactsLimit);
+  }, [filteredArtefacts, artefactsView, artefactsLimit]);
+  const filteredArtefactsTotal = filteredArtefacts.length;
 
   // Resolve the active artefact against the FULL artifact list, not the
   // showElsewhere-filtered one. Cross-navigating from a session inspector
@@ -517,16 +515,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
                 />
               </div>
-              {visibleArtefactsTotal > ARTEFACTS_PREVIEW && (
-                <button
-                  type="button"
-                  className="home-memories-toggle"
-                  onClick={() => setArtefactsExpanded((v) => !v)}
-                >
-                  {artefactsExpanded
-                    ? "Show fewer"
-                    : `Show all ${visibleArtefactsTotal}`}
-                </button>
+              {artefactsLimit < filteredArtefactsTotal && (
+                <ShowMore
+                  onClick={() => setArtefactsLimit((n) => n + ARTEFACTS_PREVIEW)}
+                  remaining={filteredArtefactsTotal - artefactsLimit}
+                />
               )}
             </>
           ) : (
@@ -576,20 +569,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           ) : (
             <div className="home-memories-wrap">
               <div className="home-memories">
-                {(memoriesExpanded ? scopedMemories : scopedMemories.slice(0, MEMORIES_PREVIEW)).map((m) => (
+                {scopedMemories.slice(0, memoriesLimit).map((m) => (
                   <MemoryCard key={m.id} memory={m} spaces={spaces} showSpaceChip={isMetaView} />
                 ))}
               </div>
-              {scopedMemories.length > MEMORIES_PREVIEW && (
-                <button
-                  type="button"
-                  className="home-memories-toggle"
-                  onClick={() => setMemoriesExpanded((v) => !v)}
-                >
-                  {memoriesExpanded
-                    ? "Show fewer"
-                    : `Show all ${scopedMemories.length}`}
-                </button>
+              {memoriesLimit < scopedMemories.length && (
+                <ShowMore
+                  onClick={() => setMemoriesLimit((n) => n + MEMORIES_PREVIEW)}
+                  remaining={scopedMemories.length - memoriesLimit}
+                />
               )}
             </div>
           )}
@@ -754,6 +742,24 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Reused under both the Memories and Artefacts sections. "Show more"
+// loads another preview-sized batch (5 memories, 21 artefacts). Right of
+// the button is a subtle ⌘K hint — the existing artifact Spotlight
+// already binds the shortcut, and #264 will broaden it to a unified
+// search across sessions / artefacts / memories.
+function ShowMore({ onClick, remaining }: { onClick: () => void; remaining: number }) {
+  return (
+    <div className="home-show-more">
+      <button type="button" className="home-memories-toggle" onClick={onClick}>
+        Show more
+      </button>
+      <span className="home-show-more-hint">
+        {remaining} more · <kbd>⌘K</kbd> to search
+      </span>
     </div>
   );
 }
