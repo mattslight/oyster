@@ -102,6 +102,11 @@ function effectiveTitle(t: Pick<FileTracker, "customTitle" | "agentName" | "user
 export class ClaudeCodeWatcher {
   private watcher: FSWatcher | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
+  // Guard against overlapping heartbeat sweeps. Each sweep does a subprocess
+  // probe (pgrep + lsof) plus per-session DB updates. If a slow lsof call
+  // pushes a sweep past HEARTBEAT_INTERVAL_MS, the next tick would otherwise
+  // start in parallel and duplicate work.
+  private heartbeatInFlight = false;
   private trackers = new Map<string, FileTracker>();
   // Per-file serialisation: chokidar can fire two `change` events for the
   // same path before the first read finishes. Without a lock, both reads
@@ -613,6 +618,16 @@ export class ClaudeCodeWatcher {
   // between turns). The recency cap in deriveState handles the one-live-
   // claude-many-old-transcripts case cleanly.
   private async heartbeatSweep(): Promise<void> {
+    if (this.heartbeatInFlight) return;
+    this.heartbeatInFlight = true;
+    try {
+      await this.runHeartbeatSweep();
+    } finally {
+      this.heartbeatInFlight = false;
+    }
+  }
+
+  private async runHeartbeatSweep(): Promise<void> {
     const cwdCounts = await activeClaudeCwdCounts();
     const now = this.now().getTime();
 
