@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Folders — chip = filter</title>
+  <title>Folders — chip filter + Manage list</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -43,7 +43,7 @@
     }
     .page-subtitle {
       font-size: 14px; color: var(--text-dim);
-      margin-bottom: 48px; max-width: 720px; line-height: 1.55;
+      margin-bottom: 36px; max-width: 720px; line-height: 1.55;
     }
     .panel {
       padding: 38px 40px 44px;
@@ -75,7 +75,6 @@
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       gap: 14px;
-      transition: opacity 0.15s ease;
     }
     .h-tile {
       aspect-ratio: 1;
@@ -86,8 +85,9 @@
       font-family: var(--font-mono); font-size: 9px;
       color: var(--text-muted);
       transition: opacity 0.15s ease;
+      text-align: center;
+      padding: 4px;
     }
-    .h-tile.hidden { display: none; }
     .h-tile.dim { opacity: 0.18; }
     .h-grid.sessions { grid-template-columns: repeat(5, 1fr); }
     .h-grid.sessions .h-tile {
@@ -96,14 +96,13 @@
       border-color: rgba(74, 222, 128, 0.12);
     }
 
-    /* Chip strip */
+    /* Chip strip — chips are filters only */
     .h-folders-strip {
       display: flex; flex-wrap: wrap; gap: 8px;
       padding: 6px 0 16px;
       align-items: center;
     }
     .h-chip-folder {
-      position: relative;
       padding: 4px 12px;
       border-radius: 4px;
       background: rgba(124, 107, 255, 0.12);
@@ -117,19 +116,17 @@
       border: 1px solid transparent;
       display: inline-flex; align-items: center; gap: 6px;
     }
-    .h-chip-folder:hover {
-      background: rgba(124, 107, 255, 0.22);
-    }
+    .h-chip-folder:hover { background: rgba(124, 107, 255, 0.22); }
     .h-chip-folder.primary {
       background: rgba(124, 107, 255, 0.32);
       border-color: rgba(124, 107, 255, 0.6);
       color: #fff;
     }
     .h-chip-folder.selected {
-      background: rgba(124, 107, 255, 0.45);
-      border-color: rgba(124, 107, 255, 0.8);
+      background: rgba(124, 107, 255, 0.5);
+      border-color: rgba(124, 107, 255, 0.85);
       color: #fff;
-      box-shadow: 0 0 0 2px rgba(124, 107, 255, 0.15);
+      box-shadow: 0 0 0 2px rgba(124, 107, 255, 0.18);
     }
     .h-chip-folder.add {
       background: transparent;
@@ -149,31 +146,6 @@
     }
     @keyframes breathe { 50% { opacity: 0.4; } }
 
-    .h-chip-folder .detach-x {
-      position: absolute;
-      top: -6px; right: -6px;
-      width: 16px; height: 16px;
-      border-radius: 50%;
-      background: var(--red);
-      color: #fff;
-      font-size: 10px;
-      line-height: 16px;
-      text-align: center;
-      cursor: pointer;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.15s ease, transform 0.15s ease;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-      font-weight: 700;
-    }
-    .h-chip-folder:hover .detach-x {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    .h-chip-folder .detach-x:hover {
-      transform: scale(1.15);
-    }
-
     /* Source-origin filter chips (existing) */
     .h-stat-chips {
       display: inline-flex; gap: 4px;
@@ -189,7 +161,7 @@
       cursor: pointer;
     }
 
-    /* "Filtering by …" indicator */
+    /* Filter bar */
     .filter-bar {
       display: none;
       align-items: center;
@@ -213,6 +185,123 @@
     }
     .filter-bar .clear:hover { background: rgba(255,255,255,0.05); color: var(--text); }
 
+    /* Manage disclosure */
+    .manage-toggle {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 14px 0 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .manage-toggle:hover { color: var(--text); }
+    .manage-toggle .caret {
+      font-size: 10px;
+      transition: transform 0.15s ease;
+    }
+    .manage-toggle.open .caret { transform: rotate(90deg); }
+
+    .manage-list {
+      display: none;
+      margin-top: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .manage-list.open { display: block; }
+    .manage-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .manage-row:last-child { border-bottom: none; }
+    .manage-row .chip {
+      padding: 1px 8px;
+      border-radius: 4px;
+      background: rgba(124, 107, 255, 0.12);
+      color: var(--accent-bright);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .manage-row .chip.primary {
+      background: rgba(124, 107, 255, 0.32);
+      border: 1px solid rgba(124, 107, 255, 0.6);
+      color: #fff;
+    }
+    .manage-row .path {
+      flex: 1;
+      min-width: 0;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .manage-row .when {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .manage-row .detach {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 4px 12px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+    .manage-row .detach:hover {
+      background: rgba(248, 113, 113, 0.08);
+      border-color: rgba(248, 113, 113, 0.28);
+      color: var(--red);
+    }
+    .manage-attach-row {
+      padding: 14px 18px;
+      background: rgba(0, 0, 0, 0.2);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .manage-attach-row input {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px 10px;
+      outline: none;
+    }
+    .manage-attach-row input:focus { border-color: rgba(124, 107, 255, 0.5); }
+    .manage-attach-btn {
+      background: rgba(124, 107, 255, 0.18);
+      border: 1px solid rgba(124, 107, 255, 0.4);
+      border-radius: 6px;
+      color: var(--accent-bright);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 6px 14px;
+      cursor: pointer;
+    }
+
     /* Confirm modal */
     .modal-bg {
       position: fixed; inset: 0;
@@ -230,11 +319,7 @@
       padding: 24px 28px;
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
     }
-    .modal h2 {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 12px;
-    }
+    .modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
     .modal .sub {
       font-family: var(--font-mono);
       font-size: 11px;
@@ -248,9 +333,7 @@
       margin-bottom: 22px;
       line-height: 1.5;
     }
-    .modal .actions {
-      display: flex; gap: 8px; justify-content: flex-end;
-    }
+    .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
     .btn {
       padding: 8px 16px;
       font-size: 12px;
@@ -287,13 +370,11 @@
 <body>
   <div class="glow"></div>
   <div class="page">
-    <div class="page-title">Folders — chip is the filter</div>
+    <div class="page-title">Chip strip = filter · Manage list = audit</div>
     <div class="page-subtitle">
-      <strong style="color:var(--accent-bright);">Click a folder chip below</strong> — the
-      Artefacts grid scopes to just that folder. Click the same chip again (or "Clear")
-      to return to all. <strong style="color:var(--text);">Hover any chip</strong> for the
-      red <strong style="color:var(--red);">×</strong> in the corner — that's detach. Green
-      pip = a live claude session in that folder.
+      <strong style="color:var(--accent-bright);">Click a chip</strong> to filter the grid.
+      <strong style="color:var(--accent-bright);">Click "Manage folders"</strong> below the grid
+      to see paths and detach. Two surfaces, two velocities — hot click never destroys.
     </div>
 
     <div class="panel">
@@ -321,29 +402,24 @@
         </div>
 
         <div class="h-folders-strip">
-          <span class="h-chip-folder primary" data-folder="oyster-os">
+          <span class="h-chip-folder primary" data-folder="oyster-os" title="Click to filter grid">
             ★ oyster-os · 45
             <span class="pip" title="Live session running here"></span>
-            <span class="detach-x" data-detach="oyster-os" title="Detach (will be confirmed)">✕</span>
           </span>
-          <span class="h-chip-folder" data-folder="oyster-crm">
+          <span class="h-chip-folder" data-folder="oyster-crm" title="Click to filter grid">
             oyster-crm · 12
-            <span class="pip" title="Live session running here"></span>
-            <span class="detach-x" data-detach="oyster-crm">✕</span>
+            <span class="pip"></span>
           </span>
-          <span class="h-chip-folder" data-folder="oyster-sample-plugin">
+          <span class="h-chip-folder" data-folder="oyster-sample-plugin" title="Click to filter grid">
             oyster-sample-plugin · 4
-            <span class="detach-x" data-detach="oyster-sample-plugin">✕</span>
           </span>
-          <span class="h-chip-folder" data-folder="oyster-community-plugins">
+          <span class="h-chip-folder" data-folder="oyster-community-plugins" title="Click to filter grid">
             oyster-community-plugins · 2
-            <span class="detach-x" data-detach="oyster-community-plugins">✕</span>
           </span>
-          <span class="h-chip-folder" data-folder="oyster-technology-www">
+          <span class="h-chip-folder" data-folder="oyster-technology-www" title="Click to filter grid">
             oyster-technology-www · 1
-            <span class="detach-x" data-detach="oyster-technology-www">✕</span>
           </span>
-          <span class="h-chip-folder add">+ attach</span>
+          <span class="h-chip-folder add" id="quickAttach" title="Add a folder to this space">+ attach</span>
         </div>
 
         <div class="filter-bar" id="filterBar">
@@ -352,7 +428,6 @@
         </div>
 
         <div class="h-grid" id="grid">
-          <!-- Each tile carries its origin folder so we can dim / hide it on filter -->
           <div class="h-tile" data-from="oyster-os">README · oyster-os</div>
           <div class="h-tile" data-from="oyster-os">CLAUDE · oyster-os</div>
           <div class="h-tile" data-from="oyster-crm">README · oyster-crm</div>
@@ -360,6 +435,47 @@
           <div class="h-tile" data-from="oyster-sample-plugin">app · oyster-sample-plugin</div>
           <div class="h-tile" data-from="oyster-os">plans/sessions-arc</div>
           <div class="h-tile" data-from="oyster-crm">app · oyster-crm</div>
+        </div>
+
+        <button class="manage-toggle" id="manageToggle">
+          <span class="caret">▸</span> Manage folders
+          <span style="font-family: var(--font-mono); color: var(--text-muted); font-size: 10px; letter-spacing: 0.06em;">— paths · attach time · detach</span>
+        </button>
+        <div class="manage-list" id="manageList">
+          <div class="manage-row">
+            <span class="chip primary">★ oyster-os</span>
+            <span class="path">/Users/Matthew.Slight/Dev/oyster-os</span>
+            <span class="when">attached 1d</span>
+            <button class="detach" data-detach="oyster-os">Detach</button>
+          </div>
+          <div class="manage-row">
+            <span class="chip">oyster-crm</span>
+            <span class="path">/Users/Matthew.Slight/Dev/oyster-crm</span>
+            <span class="when">attached 1d</span>
+            <button class="detach" data-detach="oyster-crm">Detach</button>
+          </div>
+          <div class="manage-row">
+            <span class="chip">oyster-sample-plugin</span>
+            <span class="path">/Users/Matthew.Slight/Dev/oyster-sample-plugin</span>
+            <span class="when">attached 1d</span>
+            <button class="detach" data-detach="oyster-sample-plugin">Detach</button>
+          </div>
+          <div class="manage-row">
+            <span class="chip">oyster-community-plugins</span>
+            <span class="path">/Users/Matthew.Slight/Dev/oyster-community-plugins</span>
+            <span class="when">attached 1d</span>
+            <button class="detach" data-detach="oyster-community-plugins">Detach</button>
+          </div>
+          <div class="manage-row">
+            <span class="chip">oyster-technology-www</span>
+            <span class="path">/Users/Matthew.Slight/Dev/oyster-technology-www</span>
+            <span class="when">attached 1d</span>
+            <button class="detach" data-detach="oyster-technology-www">Detach</button>
+          </div>
+          <div class="manage-attach-row">
+            <input placeholder="/absolute/path/to/folder (or ~/path)" />
+            <button class="manage-attach-btn">+ Attach folder</button>
+          </div>
         </div>
       </div>
 
@@ -370,14 +486,20 @@
     </div>
 
     <div class="notes">
-      <strong>Folder chip behaviour</strong>
+      <strong>Try it:</strong>
       <ul>
-        <li><strong>Click chip</strong> → grid scopes to that folder. Tiles from other folders dim out (or hide; toggle below).</li>
-        <li><strong>Click selected chip again</strong> → clear. Or click <strong>Clear ✕</strong> in the filter bar above the grid.</li>
-        <li><strong>Hover chip</strong> → red ✕ appears top-right. Click → confirm modal → soft-delete the source + its artefacts. Reattach restores everything.</li>
-        <li><strong>Green pip</strong> on a chip = a live (active or waiting) claude session in that folder's cwd. The "we care because claude is operating on it" signal, no extra click needed.</li>
-        <li><strong>★</strong> = primary (namesake match → fallback to oldest attached). Filled chip styling reinforces it.</li>
-        <li><strong>+ attach</strong> chip → inline form same as today.</li>
+        <li>Click <em>oyster-os</em> → grid filters · click again or <em>Clear ✕</em> → all back</li>
+        <li>Click <em>+ attach</em> chip → opens the manage list (and could focus its input)</li>
+        <li>Click <em>▸ Manage folders</em> → expands the audit list with paths, attach times, Detach buttons</li>
+        <li>Click <em>Detach</em> on a row → confirm modal</li>
+      </ul>
+
+      <strong style="display:block; margin-top:14px;">What this trades:</strong>
+      <ul>
+        <li>One chip click = one thing (filter). No accidental destruction.</li>
+        <li>Detach takes two deliberate clicks (expand → detach button → confirm). Right velocity for a destructive op.</li>
+        <li>Power users keep the simple list view. Casual users see clean chips.</li>
+        <li>Disclosure persists in localStorage — open once, stays open.</li>
       </ul>
     </div>
   </div>
@@ -414,11 +536,7 @@
     function applyFilter() {
       grid.querySelectorAll('.h-tile').forEach((t) => {
         const from = t.getAttribute('data-from');
-        if (!activeFilter) {
-          t.classList.remove('dim');
-        } else {
-          t.classList.toggle('dim', from !== activeFilter);
-        }
+        t.classList.toggle('dim', !!activeFilter && from !== activeFilter);
       });
       document.querySelectorAll('.h-chip-folder[data-folder]').forEach((c) => {
         c.classList.toggle('selected', c.getAttribute('data-folder') === activeFilter);
@@ -430,11 +548,8 @@
         filterBar.classList.remove('show');
       }
     }
-
     document.querySelectorAll('.h-chip-folder[data-folder]').forEach((chip) => {
-      chip.addEventListener('click', (e) => {
-        // Don't fire filter when the click was on the detach ✕
-        if (e.target && e.target.classList.contains('detach-x')) return;
+      chip.addEventListener('click', () => {
         const folder = chip.getAttribute('data-folder');
         activeFilter = activeFilter === folder ? null : folder;
         applyFilter();
@@ -445,42 +560,43 @@
       applyFilter();
     });
 
+    // Manage disclosure
+    const manageToggle = document.getElementById('manageToggle');
+    const manageList = document.getElementById('manageList');
+    function setManage(open) {
+      manageToggle.classList.toggle('open', open);
+      manageList.classList.toggle('open', open);
+      try { localStorage.setItem('mockup.manageFoldersOpen', open ? '1' : '0'); } catch (e) {}
+    }
+    try {
+      if (localStorage.getItem('mockup.manageFoldersOpen') === '1') setManage(true);
+    } catch (e) {}
+    manageToggle.addEventListener('click', () => setManage(!manageList.classList.contains('open')));
+
+    // + attach chip → open manage and focus input
+    document.getElementById('quickAttach').addEventListener('click', () => {
+      setManage(true);
+      const input = manageList.querySelector('input');
+      if (input) input.focus();
+    });
+
     // Detach confirmation
     const modalBg = document.getElementById('modalBg');
     const modalTitle = document.getElementById('modalTitle');
     const modalPath = document.getElementById('modalPath');
-    let pendingDetach = null;
-
-    document.querySelectorAll('.detach-x').forEach((x) => {
-      x.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const folder = x.getAttribute('data-detach');
-        pendingDetach = folder;
+    document.querySelectorAll('.detach').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const folder = btn.getAttribute('data-detach');
         modalTitle.textContent = `Detach "${folder}"?`;
         modalPath.textContent = FOLDERS[folder] || folder;
         modalBg.classList.add('open');
       });
     });
-    document.getElementById('modalCancel').addEventListener('click', () => {
-      modalBg.classList.remove('open');
-      pendingDetach = null;
-    });
-    document.getElementById('modalConfirm').addEventListener('click', () => {
-      // Mock: just close. Real impl calls DELETE.
-      modalBg.classList.remove('open');
-      pendingDetach = null;
-    });
-    modalBg.addEventListener('click', (e) => {
-      if (e.target === modalBg) {
-        modalBg.classList.remove('open');
-        pendingDetach = null;
-      }
-    });
+    document.getElementById('modalCancel').addEventListener('click', () => modalBg.classList.remove('open'));
+    document.getElementById('modalConfirm').addEventListener('click', () => modalBg.classList.remove('open'));
+    modalBg.addEventListener('click', (e) => { if (e.target === modalBg) modalBg.classList.remove('open'); });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && modalBg.classList.contains('open')) {
-        modalBg.classList.remove('open');
-        pendingDetach = null;
-      }
+      if (e.key === 'Escape' && modalBg.classList.contains('open')) modalBg.classList.remove('open');
     });
   </script>
 </body>
