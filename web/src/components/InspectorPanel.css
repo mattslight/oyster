@@ -139,6 +139,59 @@
   color: var(--accent-bright);
 }
 
+.transcript-filter {
+  display: flex;
+  gap: 6px;
+  padding: 10px 28px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.transcript-filter-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.transcript-filter-chip:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.transcript-filter-chip.active {
+  background: rgba(124, 107, 255, 0.16);
+  border-color: rgba(124, 107, 255, 0.5);
+  color: var(--accent-bright);
+}
+
+/* Close button — keep the same visual but make it focusable. */
+.inspector-meta button.close {
+  background: transparent;
+  border: none;
+  font-family: inherit;
+}
+
+/* Link rows are buttons — strip default browser button chrome. */
+button.link-row {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+button.link-row:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
 .inspector-body {
   flex: 1;
   overflow-y: auto;
@@ -148,6 +201,37 @@
 .inspector-body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.06);
   border-radius: 3px;
+}
+
+.inspector-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.inspector-actions .btn {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-family: inherit;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.inspector-actions .btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.inspector-actions .btn.primary {
+  background: rgba(124, 107, 255, 0.16);
+  border-color: rgba(124, 107, 255, 0.32);
+  color: var(--accent-bright);
+}
+.inspector-actions .btn.primary:hover {
+  background: rgba(124, 107, 255, 0.24);
+  border-color: rgba(124, 107, 255, 0.5);
 }
 
 .inspector-footer {
@@ -200,7 +284,7 @@
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--accent-bright);
   margin-bottom: 4px;
 }
 .turn.user .turn-role { color: var(--accent-bright); }

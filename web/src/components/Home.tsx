@@ -183,9 +183,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return desktopProps;
   }, [showElsewhere, isHomeView, desktopProps, realSpaceIds]);
 
-  // Derived value: resolve the active artefact from the panel ID
+  // Resolve the active artefact against the FULL artifact list, not the
+  // showElsewhere-filtered one. Cross-navigating from a session inspector
+  // to an artefact in a different scope (e.g. clicking a registered-space
+  // artefact while the user is in Elsewhere mode) shouldn't close the panel.
   const activeArtefact = activePanel?.kind === "artefact"
-    ? effectiveDesktopProps.artifacts.find((a) => a.id === activePanel.id)
+    ? desktopProps.artifacts.find((a) => a.id === activePanel.id)
     : null;
 
   // Close the panel if the active artefact disappears (e.g. archived from under the inspector)

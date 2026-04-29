@@ -36,11 +36,17 @@ export function ArtefactInspector({ artifact, onSwitchTo, onClose, onOpen }: Pro
   }, [artifact.id]);
 
   function copyId() {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(artifact.id).then(() => {
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 1500);
-    });
+    if (!navigator.clipboard) {
+      alert(`Copy failed — artefact id:\n${artifact.id}`);
+      return;
+    }
+    navigator.clipboard.writeText(artifact.id).then(
+      () => {
+        setCopiedId(true);
+        setTimeout(() => setCopiedId(false), 1500);
+      },
+      () => alert(`Copy failed — artefact id:\n${artifact.id}`),
+    );
   }
 
   return (
@@ -50,7 +56,7 @@ export function ArtefactInspector({ artifact, onSwitchTo, onClose, onOpen }: Pro
           {artifact.spaceId && <span className="space">{artifact.spaceId}</span>}
           {artifact.spaceId && <span>·</span>}
           <span>{artifact.artifactKind}</span>
-          <span className="close" onClick={onClose}>✕</span>
+          <button type="button" className="close" onClick={onClose} aria-label="Close inspector">✕</button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12 }}>
           <KindThumb kind={artifact.artifactKind} size={64} />
@@ -61,6 +67,14 @@ export function ArtefactInspector({ artifact, onSwitchTo, onClose, onOpen }: Pro
               {artifact.sourceLabel && ` · ${artifact.sourceLabel}`}
             </div>
           </div>
+        </div>
+        <div className="inspector-actions">
+          <button type="button" className="btn primary" onClick={() => onOpen(artifact)}>
+            Open
+          </button>
+          <button type="button" className="btn" onClick={copyId}>
+            {copiedId ? "Copied!" : "Copy artefact ID"}
+          </button>
         </div>
       </header>
       <div className="inspector-body">
@@ -73,7 +87,8 @@ export function ArtefactInspector({ artifact, onSwitchTo, onClose, onOpen }: Pro
           <div className="inspector-empty">No sessions have touched this artefact.</div>
         )}
         {!error && sessions && sessions.length > 0 && sessions.map((row) => (
-          <div
+          <button
+            type="button"
             key={row.id}
             className="link-row"
             onClick={() => onSwitchTo({ kind: "session", id: row.session.id })}
@@ -87,17 +102,9 @@ export function ArtefactInspector({ artifact, onSwitchTo, onClose, onOpen }: Pro
                 <span>{formatRel(row.whenAt)}</span>
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
-      <footer className="inspector-footer">
-        <button type="button" className="btn primary" onClick={() => onOpen(artifact)}>
-          Open
-        </button>
-        <button type="button" className="btn" onClick={copyId}>
-          {copiedId ? "Copied!" : "Copy artefact ID"}
-        </button>
-      </footer>
     </>
   );
 }

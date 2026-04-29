@@ -42,6 +42,48 @@ const RAW_CAP_BYTES = 4096;
 
 type Tab = "transcript" | "artefacts";
 
+type RoleCategory = "user" | "assistant" | "tools" | "system" | "thinking";
+const ALL_CATEGORIES: RoleCategory[] = ["user", "assistant", "tools", "system", "thinking"];
+const DEFAULT_VISIBLE: RoleCategory[] = ["user", "assistant", "tools", "system"];
+
+// Match patterns the watcher's older code emitted for assistant-only-tool
+// turns ("[Bash]", "[Edit] [Read]", etc.) so historical rows categorise
+// as tools rather than thinking/assistant text.
+const TOOL_ONLY_RE = /^(\[[A-Za-z][A-Za-z0-9_-]*\]\s*)+$/;
+
+function categoryOf(event: SessionEvent): RoleCategory {
+  if (event.role === "user") return "user";
+  if (event.role === "tool" || event.role === "tool_result") return "tools";
+  if (event.role === "system") return "system";
+  if (event.role === "assistant") {
+    if (event.text === "(thinking)") return "thinking";
+    if (TOOL_ONLY_RE.test(event.text.trim())) return "tools";
+    return "assistant";
+  }
+  return "system";
+}
+
+function loadVisibleCategories(): Set<RoleCategory> {
+  try {
+    const stored = window.localStorage.getItem("oyster.inspector.transcriptFilter");
+    if (stored) {
+      const parsed = JSON.parse(stored) as RoleCategory[];
+      const valid = parsed.filter((c) => ALL_CATEGORIES.includes(c));
+      if (valid.length > 0) return new Set(valid);
+    }
+  } catch { /* fall through */ }
+  return new Set(DEFAULT_VISIBLE);
+}
+
+function saveVisibleCategories(set: Set<RoleCategory>) {
+  try {
+    window.localStorage.setItem(
+      "oyster.inspector.transcriptFilter",
+      JSON.stringify(Array.from(set)),
+    );
+  } catch { /* ignore */ }
+}
+
 export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
@@ -181,7 +223,6 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         sessionId={sessionId}
         agent={session.agent}
       />
-      <Footer session={session} />
     </>
   );
 }
@@ -205,8 +246,20 @@ function TranscriptBody({
   agent: SessionAgent;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const eventsLen = events?.length ?? 0;
   const wasNearBottomRef = useRef(true);
+  const [visible, setVisible] = useState<Set<RoleCategory>>(loadVisibleCategories);
+
+  function toggleCategory(cat: RoleCategory) {
+    setVisible((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      saveVisibleCategories(next);
+      return next;
+    });
+  }
+
+  const filteredEvents = events ? events.filter((e) => visible.has(categoryOf(e))) : null;
+  const filteredLen = filteredEvents?.length ?? 0;
 
   useEffect(() => {
     const el = ref.current;
@@ -225,12 +278,50 @@ function TranscriptBody({
     if (wasNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [eventsLen, tab]);
+  }, [filteredLen, tab]);
 
   return (
-    <div className="inspector-body" ref={ref}>
-      {tab === "transcript" && <Transcript events={events} sessionId={sessionId} agent={agent} />}
-      {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
+    <>
+      {tab === "transcript" && (
+        <TranscriptFilter visible={visible} onToggle={toggleCategory} agent={agent} />
+      )}
+      <div className="inspector-body" ref={ref}>
+        {tab === "transcript" && (
+          <Transcript events={filteredEvents} sessionId={sessionId} agent={agent} />
+        )}
+        {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
+      </div>
+    </>
+  );
+}
+
+function TranscriptFilter({
+  visible, onToggle, agent,
+}: {
+  visible: Set<RoleCategory>;
+  onToggle: (cat: RoleCategory) => void;
+  agent: SessionAgent;
+}) {
+  const labels: Array<[RoleCategory, string]> = [
+    ["user", "User"],
+    ["assistant", agent.toUpperCase()],
+    ["tools", "Tools"],
+    ["system", "System"],
+    ["thinking", "Thinking"],
+  ];
+  return (
+    <div className="transcript-filter" role="group" aria-label="Filter transcript by role">
+      {labels.map(([cat, label]) => (
+        <button
+          key={cat}
+          type="button"
+          className={`transcript-filter-chip${visible.has(cat) ? " active" : ""}`}
+          onClick={() => onToggle(cat)}
+          aria-pressed={visible.has(cat)}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -245,14 +336,60 @@ function Header({ session, onClose }: { session: Session; onClose: () => void })
         <span>·</span>
         <span className={`pip ${PIP_CLASS[session.state]}`} />
         <span>{STATE_LABEL[session.state]}</span>
-        <span className="close" onClick={onClose}>✕</span>
+        <button type="button" className="close" onClick={onClose} aria-label="Close inspector">✕</button>
       </div>
       <div className="inspector-title">{session.title ?? "(no title yet)"}</div>
       <div className="inspector-sub">
         {session.id} · started {formatTs(session.startedAt)}
         {session.model ? ` · ${session.model}` : ""}
       </div>
+      <SessionActions session={session} />
     </header>
+  );
+}
+
+function SessionActions({ session }: { session: Session }) {
+  const [copiedCmd, setCopiedCmd] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const command = `claude --resume ${session.id}`;
+
+  function copyCommand() {
+    if (!navigator.clipboard) {
+      alert(`Copy failed — resume command:\n${command}`);
+      return;
+    }
+    navigator.clipboard.writeText(command).then(
+      () => {
+        setCopiedCmd(true);
+        setTimeout(() => setCopiedCmd(false), 1500);
+      },
+      () => alert(`Copy failed — resume command:\n${command}`),
+    );
+  }
+
+  function copyId() {
+    if (!navigator.clipboard) {
+      alert(`Copy failed — session id:\n${session.id}`);
+      return;
+    }
+    navigator.clipboard.writeText(session.id).then(
+      () => {
+        setCopiedId(true);
+        setTimeout(() => setCopiedId(false), 1500);
+      },
+      () => alert(`Copy failed — session id:\n${session.id}`),
+    );
+  }
+
+  return (
+    <div className="inspector-actions">
+      <button type="button" className="btn primary" onClick={copyCommand}>
+        {copiedCmd ? "Copied!" : "Copy resume command"}
+      </button>
+      <button type="button" className="btn" onClick={copyId}>
+        {copiedId ? "Copied!" : "Copy session ID"}
+      </button>
+    </div>
   );
 }
 
@@ -321,12 +458,6 @@ function Transcript({
     </>
   );
 }
-
-// Backfill heuristic for sessions written by older watchers: assistant events
-// whose text is a single `[ToolName]` token (or whitespace-separated tokens)
-// were really pure tool calls. New events use role:"tool" directly; this
-// catches the historical rows so they render as collapsible tool turns.
-const TOOL_ONLY_RE = /^(\[[A-Za-z][A-Za-z0-9_-]*\]\s*)+$/;
 
 function Turn({
   event, sessionId, agent,
@@ -438,7 +569,8 @@ function Artefacts({
   return (
     <>
       {deduped.map((item) => (
-        <div
+        <button
+          type="button"
           key={item.artifact.id}
           className="link-row"
           onClick={() => onSwitchTo({ kind: "artefact", id: item.artifact.id })}
@@ -451,7 +583,7 @@ function Artefacts({
               <span>{formatRel(item.whenAt)}</span>
             </div>
           </div>
-        </div>
+        </button>
       ))}
     </>
   );
@@ -459,44 +591,6 @@ function Artefacts({
 
 // KindThumb is extracted to its own file (created earlier in Task 4 — see KindThumb.tsx)
 
-function Footer({ session }: { session: Session }) {
-  const [copiedCmd, setCopiedCmd] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
-  const command = `claude --resume ${session.id}`;
-
-  function copyCommand() {
-    if (!navigator.clipboard) {
-      alert(`Copy failed — resume command:\n${command}`);
-      return;
-    }
-    navigator.clipboard.writeText(command).then(
-      () => {
-        setCopiedCmd(true);
-        setTimeout(() => setCopiedCmd(false), 1500);
-      },
-      () => alert(`Copy failed — resume command:\n${command}`),
-    );
-  }
-
-  function copyId() {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(session.id).then(() => {
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 1500);
-    });
-  }
-
-  return (
-    <footer className="inspector-footer">
-      <button type="button" className="btn primary" onClick={copyCommand}>
-        {copiedCmd ? "Copied!" : "Copy resume command"}
-      </button>
-      <button type="button" className="btn" onClick={copyId}>
-        {copiedId ? "Copied!" : "Copy session ID"}
-      </button>
-    </footer>
-  );
-}
 
 // --- helpers ---
 
