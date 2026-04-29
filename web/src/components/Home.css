@@ -720,8 +720,6 @@
 .home-memory:last-child { border-bottom: none; }
 
 .home-memories-toggle {
-  display: block;
-  margin: 10px auto 0;
   padding: 6px 14px;
   background: transparent;
   border: 1px solid var(--home-border);
@@ -908,11 +906,13 @@
 
 /* ── Show more (memories + artefacts) ── */
 .home-show-more {
+  max-width: 1100px;
+  margin: 12px auto 0;
+  padding: 0 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  margin-top: 12px;
 }
 
 .home-show-more-hint {
