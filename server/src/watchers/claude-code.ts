@@ -44,7 +44,7 @@ const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 // elevated to waiting. False negative case: a claude tab idle for >30min
 // reads as disconnected even though the process is live — that flips
 // back to active the moment the user types and JSONL streams.
-const ACTIVE_WINDOW_MS = 30_000;
+const ACTIVE_WINDOW_MS = 60_000;
 const WAITING_WINDOW_MS = 30 * 60 * 1000;
 const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 

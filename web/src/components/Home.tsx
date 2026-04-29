@@ -287,9 +287,10 @@ function spaceLabelFor(spaceId: string | null, spaces: Space[]): string | null {
 }
 
 function metaForSession(session: Session): string {
-  if (session.state === "waiting") return `${session.agent} · waiting`;
-  if (session.state === "disconnected") return `${session.agent} · disconnected`;
-  return `${session.agent} · ${formatRelative(session.lastEventAt) ?? "—"}`;
+  const rel = formatRelative(session.lastEventAt) ?? "—";
+  if (session.state === "waiting") return `${session.agent} · waiting ${rel}`;
+  if (session.state === "disconnected") return `${session.agent} · disconnected ${rel}`;
+  return `${session.agent} · ${rel}`;
 }
 
 interface SessionTileProps {
@@ -323,9 +324,10 @@ interface SessionRowProps {
 
 function SessionRow({ session, spaces }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
-  const time = session.state === "waiting" ? "waiting"
-    : session.state === "disconnected" ? "disconnected"
-    : formatRelative(session.lastEventAt) ?? "—";
+  const rel = formatRelative(session.lastEventAt) ?? "—";
+  const time = session.state === "waiting" ? `waiting ${rel}`
+    : session.state === "disconnected" ? `disconnected ${rel}`
+    : rel;
   const title = session.title ?? "(no title yet)";
   return (
     <div className="home-row">
