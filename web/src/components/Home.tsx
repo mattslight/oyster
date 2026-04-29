@@ -6,6 +6,7 @@ import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
 import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
 import { SessionInspector } from "./SessionInspector";
+import { ArtefactInspector } from "./ArtefactInspector";
 import "./Home.css";
 
 interface Props {
@@ -386,13 +387,18 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           </div>
           {artefactsView === "icons" ? (
             <div className="home-artefacts">
-              <Desktop {...effectiveDesktopProps} isHero={false} showMeta />
+              <Desktop
+                {...effectiveDesktopProps}
+                isHero={false}
+                showMeta
+                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+              />
             </div>
           ) : (
             <ArtefactTable
               artifacts={effectiveDesktopProps.artifacts}
               spaces={spaces}
-              onArtifactClick={effectiveDesktopProps.onArtifactClick}
+              onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
             />
           )}
         </section>
@@ -409,9 +415,24 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             }}
           />
         )}
-        {activePanel?.kind === "artefact" && (
-          <div style={{ padding: 24, color: "white" }}>Artefact panel — Task 7</div>
-        )}
+        {activePanel?.kind === "artefact" && (() => {
+          const artifact = effectiveDesktopProps.artifacts.find((a) => a.id === activePanel.id);
+          if (!artifact) {
+            setActivePanel(null);
+            return null;
+          }
+          return (
+            <ArtefactInspector
+              artifact={artifact}
+              onSwitchTo={setActivePanel}
+              onClose={() => setActivePanel(null)}
+              onOpen={(a) => {
+                setActivePanel(null);
+                desktopProps.onArtifactClick(a);
+              }}
+            />
+          );
+        })()}
       </InspectorPanel>
     </div>
   );
