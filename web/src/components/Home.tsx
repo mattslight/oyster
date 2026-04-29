@@ -183,6 +183,18 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return desktopProps;
   }, [showElsewhere, isHomeView, desktopProps, realSpaceIds]);
 
+  // Derived value: resolve the active artefact from the panel ID
+  const activeArtefact = activePanel?.kind === "artefact"
+    ? effectiveDesktopProps.artifacts.find((a) => a.id === activePanel.id)
+    : null;
+
+  // Close the panel if the active artefact disappears (e.g. archived from under the inspector)
+  useEffect(() => {
+    if (activePanel?.kind === "artefact" && !activeArtefact) {
+      setActivePanel(null);
+    }
+  }, [activePanel, activeArtefact]);
+
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
   const eyebrow = isHomeView ? (showElsewhere ? "Elsewhere" : "Home")
     : isAllView ? "All"
@@ -415,24 +427,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             }}
           />
         )}
-        {activePanel?.kind === "artefact" && (() => {
-          const artifact = effectiveDesktopProps.artifacts.find((a) => a.id === activePanel.id);
-          if (!artifact) {
-            setActivePanel(null);
-            return null;
-          }
-          return (
-            <ArtefactInspector
-              artifact={artifact}
-              onSwitchTo={setActivePanel}
-              onClose={() => setActivePanel(null)}
-              onOpen={(a) => {
-                setActivePanel(null);
-                desktopProps.onArtifactClick(a);
-              }}
-            />
-          );
-        })()}
+        {activePanel?.kind === "artefact" && activeArtefact && (
+          <ArtefactInspector
+            artifact={activeArtefact}
+            onSwitchTo={setActivePanel}
+            onClose={() => setActivePanel(null)}
+            onOpen={(a) => {
+              setActivePanel(null);
+              desktopProps.onArtifactClick(a);
+            }}
+          />
+        )}
       </InspectorPanel>
     </div>
   );
