@@ -326,7 +326,11 @@
 }
 /* Elsewhere keeps its dashed border even when selected — the dashed
    line is a "you're not in a real space" cue, distinct from the solid
-   space cards. */
+   space cards. Drop the inset ring used for solid cards; it clashes
+   with the dashes. */
+.home-space-card--elsewhere.selected {
+  box-shadow: none;
+}
 
 /* ── Sessions surface (icon view) ── */
 .home-surface {
