@@ -165,7 +165,12 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
     <>
       <Header session={session} onClose={onClose} />
       <Banner session={session} />
-      <Tabs tab={tab} setTab={setTab} eventsCount={events?.length ?? 0} artefactsCount={artefacts?.length ?? 0} />
+      <Tabs
+        tab={tab}
+        setTab={setTab}
+        eventsCount={events?.length ?? 0}
+        artefactsCount={artefacts ? new Set(artefacts.map((a) => a.artifact.id)).size : 0}
+      />
       <TranscriptBody
         tab={tab}
         events={events}
@@ -346,6 +351,37 @@ function ToolTurn({ event }: { event: SessionEvent }) {
   );
 }
 
+const ROLE_PRIORITY = { create: 3, modify: 2, read: 1 } as const;
+
+/**
+ * Collapse repeated touches of the same artefact into one row, keeping the
+ * highest-impact role (create > modify > read) and the most recent timestamp.
+ * A long session may Read+Edit the same file many times; the user wants one
+ * "this artefact was modified" row, not the full audit trail.
+ */
+function dedupeTouches(items: SessionArtifactJoined[]): SessionArtifactJoined[] {
+  const byId = new Map<string, SessionArtifactJoined>();
+  for (const item of items) {
+    const existing = byId.get(item.artifact.id);
+    if (!existing) {
+      byId.set(item.artifact.id, item);
+      continue;
+    }
+    const incomingPriority = ROLE_PRIORITY[item.role];
+    const existingPriority = ROLE_PRIORITY[existing.role];
+    if (incomingPriority > existingPriority) {
+      byId.set(item.artifact.id, item);
+    } else if (incomingPriority === existingPriority && item.whenAt > existing.whenAt) {
+      byId.set(item.artifact.id, item);
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => {
+    const dp = ROLE_PRIORITY[b.role] - ROLE_PRIORITY[a.role];
+    if (dp !== 0) return dp;
+    return b.whenAt.localeCompare(a.whenAt);
+  });
+}
+
 function Artefacts({
   items, onSwitchTo,
 }: {
@@ -353,14 +389,15 @@ function Artefacts({
   onSwitchTo: (next: ActivePanel) => void;
 }) {
   if (items === null) return <div className="inspector-empty">Loading artefacts…</div>;
-  if (items.length === 0) {
+  const deduped = dedupeTouches(items);
+  if (deduped.length === 0) {
     return <div className="inspector-empty">No artefacts touched yet.</div>;
   }
   return (
     <>
-      {items.map((item) => (
+      {deduped.map((item) => (
         <div
-          key={item.id}
+          key={item.artifact.id}
           className="link-row"
           onClick={() => onSwitchTo({ kind: "artefact", id: item.artifact.id })}
         >
