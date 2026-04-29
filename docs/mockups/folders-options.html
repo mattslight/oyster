@@ -103,7 +103,9 @@
       gap: 3px;
       align-items: center;
     }
-    .topnav-pill .pip {
+    /* Tile / inline pip — small dot used in tile counts */
+    .topnav-pill .pip,
+    .tile-counts .pip {
       width: 5px; height: 5px; border-radius: 50%;
     }
     .pip.green { background: var(--green); box-shadow: 0 0 4px var(--green); animation: breathe 2.4s ease-in-out infinite; }
@@ -111,6 +113,25 @@
     .pip.red   { background: var(--red);   box-shadow: 0 0 4px var(--red); }
     .pip.dim   { background: var(--text-muted); }
     @keyframes breathe { 50% { opacity: 0.45; } }
+
+    /* Numbered status badges — used on top-nav pills */
+    .topnav-pill .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(0, 0, 0, 0.82);
+      letter-spacing: -0.02em;
+    }
+    .topnav-pill .badge.green { background: var(--green); box-shadow: 0 0 6px rgba(74, 222, 128, 0.4); }
+    .topnav-pill .badge.amber { background: var(--amber); box-shadow: 0 0 6px rgba(251, 191, 36, 0.4); }
+    .topnav-pill .badge.red   { background: var(--red);   box-shadow: 0 0 6px rgba(248, 113, 113, 0.4); }
 
     /* Tooltip on pill hover */
     .topnav-pill[data-tip]:hover::after {
@@ -289,19 +310,21 @@
         </button>
         <button class="topnav-pill" data-view="oyster" data-tip="1 active · 1 waiting · 1 disconnected · 18 done">
           <span class="pip-cluster">
-            <span class="pip green"></span><span class="pip amber"></span><span class="pip red"></span>
+            <span class="badge green">1</span>
+            <span class="badge amber">1</span>
+            <span class="badge red">1</span>
           </span>
           Oyster
         </button>
         <button class="topnav-pill" data-view="tokinvest" data-tip="1 disconnected · 8 done">
           <span class="pip-cluster">
-            <span class="pip red"></span>
+            <span class="badge red">1</span>
           </span>
           Tokinvest
         </button>
         <button class="topnav-pill elsewhere" data-view="elsewhere" data-tip="1 disconnected · 15 done">
           <span class="pip-cluster">
-            <span class="pip red"></span>
+            <span class="badge red">1</span>
           </span>
           Elsewhere
         </button>
