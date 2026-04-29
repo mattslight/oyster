@@ -383,7 +383,7 @@ function Artefacts({
 function Footer({ session }: { session: Session }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
-  const command = `claude-code --resume ${session.id}`;
+  const command = `claude --resume ${session.id}`;
 
   function copyCommand() {
     if (!navigator.clipboard) {
