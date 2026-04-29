@@ -105,11 +105,14 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   );
 
   // Per-space session counts + a separate orphan tally (sessions with
-  // spaceId === null), all in one pass.
-  const { sessionCountsBySpace, orphanCounts } = useMemo(() => {
+  // spaceId === null) + a grand total for the Home card, all in one pass.
+  const { sessionCountsBySpace, orphanCounts, totalCounts } = useMemo(() => {
     const bySpace: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
     const orphans = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const total = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
     for (const s of sessions) {
+      total.total++;
+      total[s.state]++;
       if (s.spaceId) {
         const c = bySpace[s.spaceId] ?? { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
         c.total++;
@@ -120,7 +123,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         orphans[s.state]++;
       }
     }
-    return { sessionCountsBySpace: bySpace, orphanCounts: orphans };
+    return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total };
   }, [sessions]);
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
@@ -155,7 +158,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               >
                 <div className="home-space-card-name">Home</div>
                 <div className="home-space-card-counts">
-                  <span className="signal signal-muted">all spaces</span>
+                  {totalCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{totalCounts.active} active</span>}
+                  {totalCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{totalCounts.waiting} waiting</span>}
+                  {totalCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{totalCounts.disconnected} disconnected</span>}
+                  {totalCounts.done > 0 && <span className="signal"><span className="pip pip-dim" />{totalCounts.done} done</span>}
+                  {totalCounts.total === 0 && <span className="signal signal-muted">no sessions yet</span>}
                 </div>
               </button>
               {realSpaces.map((space) => {
