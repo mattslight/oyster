@@ -141,23 +141,36 @@
       border-color: rgba(124, 107, 255, 0.5);
     }
 
-    /* Inspector panel preview */
+    /* Inspector panel — slides in from right, like the real app */
+    .inspector-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 10;
+    }
+    .inspector-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
     .inspector-preview {
-      position: absolute;
-      top: 60px; right: 32px;
-      width: 420px;
-      max-width: calc(100vw - 64px);
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(560px, 92vw);
       background: rgba(20, 21, 40, 0.94);
       border-left: 1px solid var(--border);
-      border: 1px solid var(--border);
-      border-radius: 14px;
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
       box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
-      z-index: 5;
+      z-index: 11;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       display: flex;
       flex-direction: column;
     }
+    .inspector-preview.open { transform: translateX(0); }
     .inspector-meta {
       padding: 22px 26px 14px;
       display: flex; align-items: center; gap: 10px;
@@ -175,9 +188,14 @@
     .inspector-meta .close {
       margin-left: auto;
       cursor: pointer;
-      padding: 4px 8px;
+      padding: 4px 10px;
       color: var(--text-dim);
       font-size: 14px;
+      border-radius: 4px;
+    }
+    .inspector-meta .close:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
     }
     .inspector-title-block {
       padding: 0 26px 6px;
@@ -292,9 +310,10 @@
     <div class="page-title">Folders — chip strip + inspector</div>
     <div class="page-subtitle">
       One affordance, one place for detail. Chips above the Artefacts grid are the spatial
-      source→output signal. Click any chip → folder inspector slides out (same chrome as
-      sessions / artefacts / memories). <strong style="color:var(--text);">Detach lives only
-      in the inspector</strong> so a chip click is unambiguously "show me this folder."
+      source→output signal. <strong style="color:var(--accent-bright);">Click any chip below
+      to see the inspector slide in</strong> — same chrome as sessions / artefacts / memories.
+      <strong style="color:var(--text);">Detach lives only in the inspector</strong> so a chip
+      click is unambiguously "show me this folder."
     </div>
 
     <!-- Page mock -->
@@ -313,11 +332,11 @@
       <div class="h-section">
         <div class="h-section-head"><span class="h-section-label">Artefacts</span><span class="h-section-count">all 64 · mine 0 · from agents 0 · linked 64</span><span class="h-section-rule"></span></div>
         <div class="h-folders-strip">
-          <span class="h-chip-folder primary" title="Click to inspect · primary folder">★ oyster-os · 45</span>
-          <span class="h-chip-folder">oyster-crm · 12</span>
-          <span class="h-chip-folder">oyster-sample-plugin · 4</span>
-          <span class="h-chip-folder">oyster-community-plugins · 2</span>
-          <span class="h-chip-folder">oyster-technology-www · 1</span>
+          <span class="h-chip-folder primary" data-folder="oyster-os" title="Click to inspect · primary folder">★ oyster-os · 45</span>
+          <span class="h-chip-folder" data-folder="oyster-crm">oyster-crm · 12</span>
+          <span class="h-chip-folder" data-folder="oyster-sample-plugin">oyster-sample-plugin · 4</span>
+          <span class="h-chip-folder" data-folder="oyster-community-plugins">oyster-community-plugins · 2</span>
+          <span class="h-chip-folder" data-folder="oyster-technology-www">oyster-technology-www · 1</span>
           <span class="h-chip-folder add">+ attach</span>
         </div>
         <div class="h-grid">
@@ -333,8 +352,9 @@
       </div>
     </div>
 
-    <!-- Inspector preview floating right -->
-    <div class="inspector-preview" aria-hidden="true">
+    <!-- Inspector — slides in when a chip is clicked. ESC or backdrop closes. -->
+    <div class="inspector-backdrop" id="backdrop"></div>
+    <div class="inspector-preview" id="inspector" aria-hidden="true">
       <div class="inspector-meta">
         <span class="space">oyster</span>
         <span>·</span>
@@ -342,20 +362,20 @@
         <span>·</span>
         <span class="pip"></span>
         <span>linked</span>
-        <span class="close">✕</span>
+        <span class="close" id="closeBtn" title="Close (or press ESC)">✕</span>
       </div>
       <div class="inspector-title-block">
         <div class="inspector-title">
-          oyster-os
-          <span class="primary-badge">★ primary</span>
+          <span id="iName">oyster-os</span>
+          <span class="primary-badge" id="iPrimary">★ primary</span>
         </div>
-        <div class="inspector-sub">/Users/Matthew.Slight/Dev/oyster-os</div>
+        <div class="inspector-sub" id="iPath">/Users/Matthew.Slight/Dev/oyster-os</div>
       </div>
       <div class="inspector-body">
         <div class="stat-row">
           <div class="stat-card">
             <div class="label">Tiles</div>
-            <div class="value">45</div>
+            <div class="value" id="iTiles">45</div>
             <div class="sub">in this space</div>
           </div>
           <div class="stat-card">
@@ -376,6 +396,42 @@
         <button class="btn danger" style="margin-left: auto;">Detach</button>
       </div>
     </div>
+
+    <script>
+      const inspector = document.getElementById('inspector');
+      const backdrop = document.getElementById('backdrop');
+      const close = document.getElementById('closeBtn');
+
+      const FOLDERS = {
+        'oyster-os': { name: 'oyster-os', path: '/Users/Matthew.Slight/Dev/oyster-os', tiles: 45, primary: true },
+        'oyster-crm': { name: 'oyster-crm', path: '/Users/Matthew.Slight/Dev/oyster-crm', tiles: 12, primary: false },
+        'oyster-sample-plugin': { name: 'oyster-sample-plugin', path: '/Users/Matthew.Slight/Dev/oyster-sample-plugin', tiles: 4, primary: false },
+        'oyster-community-plugins': { name: 'oyster-community-plugins', path: '/Users/Matthew.Slight/Dev/oyster-community-plugins', tiles: 2, primary: false },
+        'oyster-technology-www': { name: 'oyster-technology-www', path: '/Users/Matthew.Slight/Dev/oyster-technology-www', tiles: 1, primary: false },
+      };
+
+      function open(folderId) {
+        const f = FOLDERS[folderId];
+        if (!f) return;
+        document.getElementById('iName').textContent = f.name;
+        document.getElementById('iPath').textContent = f.path;
+        document.getElementById('iTiles').textContent = f.tiles;
+        document.getElementById('iPrimary').style.display = f.primary ? '' : 'none';
+        inspector.classList.add('open');
+        backdrop.classList.add('open');
+      }
+      function closeIt() {
+        inspector.classList.remove('open');
+        backdrop.classList.remove('open');
+      }
+
+      document.querySelectorAll('.h-chip-folder[data-folder]').forEach((chip) => {
+        chip.addEventListener('click', () => open(chip.getAttribute('data-folder')));
+      });
+      close.addEventListener('click', closeIt);
+      backdrop.addEventListener('click', closeIt);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeIt(); });
+    </script>
 
     <div class="notes">
       <strong>What this gives us, and what it doesn't:</strong>
