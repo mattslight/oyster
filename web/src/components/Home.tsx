@@ -443,10 +443,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               No memories yet — agents store them via <code>remember</code>.
             </div>
           ) : (
-            <div className="home-memories">
-              {scopedMemories.map((m) => (
-                <MemoryCard key={m.id} memory={m} spaces={spaces} showSpaceChip={isMetaView} />
-              ))}
+            <div className="home-memories-wrap">
+              <div className="home-memories">
+                {scopedMemories.map((m) => (
+                  <MemoryCard key={m.id} memory={m} spaces={spaces} showSpaceChip={isMetaView} />
+                ))}
+              </div>
             </div>
           )}
         </section>

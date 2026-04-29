@@ -687,31 +687,37 @@
 }
 
 /* ── Memories section ──
- * Text-heavy rows, max two-line content snippet, meta strip below with
- * space chip, tag chips and timestamp. Reuses the same width and gutter
- * envelope as the Sessions/Artefacts table view to keep the page rhythm.
+ * Text-heavy rows. Wrap + inner pattern mirrors .home-table-wrap /
+ * .home-table so the surface, gutter, and rounded-box weight match the
+ * Sessions table view. Row separators are border-bottom on each card,
+ * not a background-as-divider trick (which made the whole list read as
+ * an extra outlined box).
  */
-.home-memories {
+.home-memories-wrap {
   position: relative;
-  z-index: 1;
   max-width: 1100px;
   margin: 0 auto;
   padding: 0 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: var(--home-border);
-  border-radius: 8px;
+}
+.home-memories {
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  border-radius: 14px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
 }
 
 .home-memory {
-  background: var(--home-surface);
-  padding: 12px 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--home-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  transition: background 0.15s ease;
 }
+.home-memory:hover { background: rgba(124, 107, 255, 0.05); }
+.home-memory:last-child { border-bottom: none; }
 
 .home-memory-text {
   font-size: 13px;
