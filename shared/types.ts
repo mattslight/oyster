@@ -62,6 +62,15 @@ export type SessionAgent = "claude-code" | "opencode" | "codex";
 export interface Session {
   id: string;
   spaceId: string | null;
+  /** Source (project / linked folder) within the space, when the session's
+   * cwd matched a registered source. Null for sessions in unattached cwds
+   * and for native (non-source-backed) work. */
+  sourceId: string | null;
+  /** Display label of the source — `source.label ?? basename(source.path)`.
+   * Resolved server-side via a batched join so the Home active-projects
+   * tiles don't need a per-row lookup. Null when sourceId is null or
+   * (rare) when the source has been hard-deleted. */
+  sourceLabel: string | null;
   agent: SessionAgent;
   title: string | null;
   state: SessionState;

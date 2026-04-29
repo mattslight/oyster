@@ -1231,3 +1231,66 @@
   color: var(--home-red);
 }
 
+
+/* Active projects on Home — sub-projects inside spaces with at least
+   one non-done session. Sorted by recency. Click jumps to the parent
+   space (until #266 lands per-source filtering on a real-space view). */
+.home-active-projects-section {
+  margin-top: 32px;
+}
+.home-active-projects-grid {
+  position: relative;
+  z-index: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 32px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.home-active-project-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 12px 14px;
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.home-active-project-tile:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.home-active-project-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--home-accent-bright);
+  margin-bottom: 4px;
+}
+.home-active-project-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--home-text);
+  margin-bottom: 8px;
+}
+.home-active-project-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.home-active-project-counts .signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--home-text);
+}

@@ -229,6 +229,41 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total, lastActivityBySpace: lastActivity };
   }, [sessions]);
 
+  // Active projects on Home: collapse sessions by sourceId, count
+  // non-done states, drop projects with no live activity. Each entry
+  // becomes a tile in the "Active projects" section so the user can
+  // jump straight to the project that's currently in flight.
+  const activeProjects = useMemo(() => {
+    if (!isHomeView || showElsewhere) return [];
+    const map = new Map<string, {
+      sourceId: string;
+      spaceId: string;
+      label: string;
+      counts: { active: number; waiting: number; disconnected: number };
+      lastEventAt: number;
+    }>();
+    for (const s of sessions) {
+      if (!s.sourceId || !s.spaceId || s.state === "done") continue;
+      let entry = map.get(s.sourceId);
+      if (!entry) {
+        entry = {
+          sourceId: s.sourceId,
+          spaceId: s.spaceId,
+          label: s.sourceLabel ?? s.sourceId,
+          counts: { active: 0, waiting: 0, disconnected: 0 },
+          lastEventAt: 0,
+        };
+        map.set(s.sourceId, entry);
+      }
+      if (s.state === "active") entry.counts.active++;
+      else if (s.state === "waiting") entry.counts.waiting++;
+      else if (s.state === "disconnected") entry.counts.disconnected++;
+      const t = parseTimestamp(s.lastEventAt);
+      if (Number.isFinite(t) && t > entry.lastEventAt) entry.lastEventAt = t;
+    }
+    return [...map.values()].sort((a, b) => b.lastEventAt - a.lastEventAt);
+  }, [sessions, isHomeView, showElsewhere]);
+
   // Drop meta-spaces from the Spaces summary cards: the chat bar already
   // renders Home as its own pill, so a `home` row in the spaces table would
   // surface a redundant card. __all__ and __archived__ are similar.
@@ -457,6 +492,38 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             so a parallel content section was duplicate work. The
             home-space-card / home-spaces-section CSS is kept around in
             case the cards return as a settings or dashboard surface. */}
+
+        {isHomeView && !showElsewhere && activeProjects.length > 0 && (
+          <div className="home-section home-active-projects-section">
+            <div className="home-section-head">
+              <span className="home-section-label">Active projects</span>
+              <span className="home-artefacts-count">{activeProjects.length}</span>
+              <span className="home-section-rule" />
+            </div>
+            <div className="home-active-projects-grid">
+              {activeProjects.map((p) => {
+                const space = spaces.find((s) => s.id === p.spaceId);
+                return (
+                  <button
+                    type="button"
+                    key={p.sourceId}
+                    className="home-active-project-tile"
+                    onClick={() => onSpaceChange(p.spaceId)}
+                    title={`Jump to ${space?.displayName ?? p.spaceId}`}
+                  >
+                    <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
+                    <div className="home-active-project-name">{p.label}</div>
+                    <div className="home-active-project-counts">
+                      {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
+                      {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
+                      {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {sourcesSpaceId && (
           spaceSourcesError ? (

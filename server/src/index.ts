@@ -639,17 +639,34 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // session titles are derived from user prompts, which are private.
   if (url === "/api/sessions" && req.method === "GET") {
     if (rejectIfNonLocalOrigin()) return;
-    sendJson(sessionStore.getAll().map((row) => ({
-      id: row.id,
-      spaceId: row.space_id,
-      agent: row.agent,
-      title: row.title,
-      state: row.state,
-      startedAt: row.started_at,
-      endedAt: row.ended_at,
-      model: row.model,
-      lastEventAt: row.last_event_at,
-    })));
+    const rows = sessionStore.getAll();
+    // Join sources for sourceLabel — one batched IN-list query so the
+    // home feed can show "active project" tiles without a per-tile
+    // round trip. Sources are dedup'd because most sessions cluster
+    // around a small number of registered folders.
+    const sourceIds = [...new Set(rows.map((r) => r.source_id).filter((id): id is string => !!id))];
+    const sourcesById = new Map(
+      sourceIds.length > 0
+        ? spaceStore.getSourcesByIds(sourceIds).map((s) => [s.id, s])
+        : []
+    );
+    sendJson(rows.map((row) => {
+      const src = row.source_id ? sourcesById.get(row.source_id) : null;
+      const label = src ? (src.label ?? src.path.split("/").pop() ?? null) : null;
+      return {
+        id: row.id,
+        spaceId: row.space_id,
+        sourceId: row.source_id ?? null,
+        sourceLabel: label,
+        agent: row.agent,
+        title: row.title,
+        state: row.state,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        model: row.model,
+        lastEventAt: row.last_event_at,
+      };
+    }));
     return;
   }
 
@@ -664,9 +681,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         res.end(JSON.stringify({ error: "session not found" }));
         return;
       }
+      const src = row.source_id ? spaceStore.getSourceById(row.source_id) : undefined;
+      const sourceLabel = src ? (src.label ?? src.path.split("/").pop() ?? null) : null;
       sendJson({
         id: row.id,
         spaceId: row.space_id,
+        sourceId: row.source_id ?? null,
+        sourceLabel,
         agent: row.agent,
         title: row.title,
         state: row.state,
@@ -801,6 +822,8 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           session: {
             id: s.id,
             spaceId: s.space_id,
+            sourceId: s.source_id ?? null,
+            sourceLabel: null,
             agent: s.agent,
             title: s.title,
             state: s.state,
