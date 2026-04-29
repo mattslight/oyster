@@ -98,6 +98,14 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
   const onNotFoundRef = useRef(onNotFound);
   useEffect(() => { onNotFoundRef.current = onNotFound; }, [onNotFound]);
 
+  // Tracks whether the bootstrap fetch has finished. Live SSE refetches
+  // gate on this — without the gate, an SSE event arriving mid-bootstrap
+  // can race the bootstrap's 3-fetch promise: the (cheaper, 2-fetch) live
+  // path resolves first, sets session+events with reqId N+1, then the
+  // bootstrap resolves with reqId N and is dropped — leaving artefacts
+  // permanently null until tab switch or next SSE.
+  const [bootstrapDone, setBootstrapDone] = useState(false);
+
   useEffect(() => {
     const reqId = ++latestReqId.current;
     setError(null);
@@ -105,6 +113,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
     setEvents(null);
     setArtefacts(null);
     setTab("transcript");
+    setBootstrapDone(false);
     const ac = new AbortController();
     Promise.all([
       fetchSession(sessionId, ac.signal),
@@ -116,6 +125,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         setSession(s);
         setEvents(ev);
         setArtefacts(art);
+        setBootstrapDone(true);
       })
       .catch((err) => {
         if (reqId !== latestReqId.current || ac.signal.aborted) return;
@@ -129,6 +139,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
   }, [sessionId]);
 
   useEffect(() => {
+    if (!bootstrapDone) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let inflight: AbortController | null = null;
 
@@ -173,7 +184,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
       if (inflight) inflight.abort();
       unsubscribe();
     };
-  }, [sessionId]);
+  }, [sessionId, bootstrapDone]);
 
   if (error) {
     return (
@@ -181,7 +192,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         <header className="inspector-header">
           <div className="inspector-meta">
             <span>session</span>
-            <span className="close" onClick={onClose}>✕</span>
+            <button type="button" className="close" onClick={onClose} aria-label="Close inspector">✕</button>
           </div>
         </header>
         <div className="inspector-body">
@@ -197,7 +208,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         <header className="inspector-header">
           <div className="inspector-meta">
             <span>loading…</span>
-            <span className="close" onClick={onClose}>✕</span>
+            <button type="button" className="close" onClick={onClose} aria-label="Close inspector">✕</button>
           </div>
         </header>
         <div className="inspector-body" />
@@ -398,7 +409,7 @@ function Banner({ session }: { session: Session }) {
     return (
       <div className="inspector-banner disconnected">
         <div>
-          Last heartbeat <strong>{formatRel(session.lastEventAt)}</strong>. The agent process may have exited or the JSONL transcript stopped updating.
+          Quiet since <strong>{formatRel(session.lastEventAt)}</strong>. The agent looks like it's closed — copy the resume command above to pick it back up.
         </div>
       </div>
     );
@@ -407,7 +418,7 @@ function Banner({ session }: { session: Session }) {
     return (
       <div className="inspector-banner waiting">
         <div>
-          Agent is waiting — usually for tool approval. Resolve it inside the agent's TUI.
+          The agent is waiting on you — usually for tool approval. Open the terminal where it's running to respond.
         </div>
       </div>
     );

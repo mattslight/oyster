@@ -478,7 +478,15 @@ function SessionTile({ session, spaces, showSpaceChip, onOpen }: SessionTileProp
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const title = session.title ?? "(no title yet)";
   return (
-    <div className="home-tile" onClick={() => onOpen?.(session.id)} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined}>
+    <div
+      className="home-tile"
+      onClick={() => onOpen?.(session.id)}
+      onKeyDown={onOpen ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(session.id); }
+      } : undefined}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+    >
       <div className={`home-thumb ${AGENT_CLASS[session.agent]}`}>
         {showSpaceChip && spaceLabel && (
           <span className="home-space-chip">{spaceLabel}</span>
@@ -506,7 +514,15 @@ function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
     : rel;
   const title = session.title ?? "(no title yet)";
   return (
-    <div className="home-row" onClick={() => onOpen?.(session.id)} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined}>
+    <div
+      className="home-row"
+      onClick={() => onOpen?.(session.id)}
+      onKeyDown={onOpen ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(session.id); }
+      } : undefined}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+    >
       <span className={`home-row-status ${session.state}`} />
       <span className="home-row-space">{spaceLabel ?? "—"}</span>
       <span className="home-row-title" title={title}>{title}</span>

@@ -610,8 +610,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && req.method === "GET") {
       if (rejectIfNonLocalOrigin()) return;
       const eventId = Number(m[2]);
-      const all = sessionStore.getEventsBySession(m[1]);
-      const ev = all.find((e) => e.id === eventId);
+      const ev = sessionStore.getEventById(m[1], eventId);
       if (!ev) {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "event not found" }));
