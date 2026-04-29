@@ -350,17 +350,18 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
       <div className="home-grain" />
 
       <div className={`home-scroll${isHero ? " home-scroll--hero" : ""}`}>
-        {/* Compact space switcher — only visible on real-space views.
-            On Home, the rich space cards below cover this need. Inside a
-            space, this is the quick-move between top-level spaces so the
-            user isn't relying on the chat-bar pills alone for nav-up. */}
-        {scopedSpace && (realSpaces.length > 0 || orphanCounts.total > 0) && (
+        {/* Top space nav — stable on every screen. Pills carry numbered
+            badges for non-zero active/waiting/disconnected counts so the
+            at-a-glance dashboard info lives in the nav itself; no need
+            for a separate "Spaces" content section that would just
+            duplicate the same data. */}
+        {(realSpaces.length > 0 || orphanCounts.total > 0) && (
           <nav className="home-breadcrumb" aria-label="Spaces">
             <button
               type="button"
-              className={`home-breadcrumb-pill${isHomeView ? " selected" : ""}`}
-              onClick={() => onSpaceChange("home")}
-              title="Back to Home — across all spaces"
+              className={`home-breadcrumb-pill${isHomeView && !showElsewhere ? " selected" : ""}`}
+              onClick={() => { onSpaceChange("home"); setShowElsewhere(false); }}
+              title={`${totalCounts.active} active · ${totalCounts.waiting} waiting · ${totalCounts.disconnected} disconnected · ${totalCounts.done} done`}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6, verticalAlign: -1 }}>
                 <path d="M3 12l9-9 9 9" />
@@ -370,20 +371,27 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             </button>
             {realSpaces.map((space) => {
               const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
-              const liveCount = counts.active + counts.waiting + counts.disconnected;
-              const dot = counts.active > 0 ? "green"
-                : counts.waiting > 0 ? "amber"
-                : counts.disconnected > 0 ? "red"
-                : null;
+              const tip = [
+                counts.active > 0 && `${counts.active} active`,
+                counts.waiting > 0 && `${counts.waiting} waiting`,
+                counts.disconnected > 0 && `${counts.disconnected} disconnected`,
+                counts.done > 0 && `${counts.done} done`,
+              ].filter(Boolean).join(" · ") || "no sessions yet";
               return (
                 <button
                   key={space.id}
                   type="button"
                   className={`home-breadcrumb-pill${scopedSpace === space.id ? " selected" : ""}`}
                   onClick={() => onSpaceChange(space.id)}
-                  title={liveCount > 0 ? `${liveCount} live` : "no live sessions"}
+                  title={tip}
                 >
-                  {dot && <span className={`pip pip-${dot}`} />}
+                  {(counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
+                    <span className="home-breadcrumb-badges">
+                      {counts.active > 0 && <span className="home-breadcrumb-badge green">{counts.active}</span>}
+                      {counts.waiting > 0 && <span className="home-breadcrumb-badge amber">{counts.waiting}</span>}
+                      {counts.disconnected > 0 && <span className="home-breadcrumb-badge red">{counts.disconnected}</span>}
+                    </span>
+                  )}
                   {space.displayName}
                 </button>
               );
@@ -391,10 +399,22 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             {orphanCounts.total > 0 && (
               <button
                 type="button"
-                className="home-breadcrumb-pill home-breadcrumb-pill--elsewhere"
+                className={`home-breadcrumb-pill home-breadcrumb-pill--elsewhere${showElsewhere && isHomeView ? " selected" : ""}`}
                 onClick={() => { onSpaceChange("home"); setShowElsewhere(true); }}
-                title="Sessions outside any registered space"
+                title={[
+                  orphanCounts.active > 0 && `${orphanCounts.active} active`,
+                  orphanCounts.waiting > 0 && `${orphanCounts.waiting} waiting`,
+                  orphanCounts.disconnected > 0 && `${orphanCounts.disconnected} disconnected`,
+                  orphanCounts.done > 0 && `${orphanCounts.done} done`,
+                ].filter(Boolean).join(" · ") || "Sessions outside any registered space"}
               >
+                {(orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
+                  <span className="home-breadcrumb-badges">
+                    {orphanCounts.active > 0 && <span className="home-breadcrumb-badge green">{orphanCounts.active}</span>}
+                    {orphanCounts.waiting > 0 && <span className="home-breadcrumb-badge amber">{orphanCounts.waiting}</span>}
+                    {orphanCounts.disconnected > 0 && <span className="home-breadcrumb-badge red">{orphanCounts.disconnected}</span>}
+                  </span>
+                )}
                 Elsewhere
               </button>
             )}
@@ -407,80 +427,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
-        {/*
-          Cards always represent CHILDREN OF THE CURRENT SCOPE:
-            Home  → spaces        (this block — Home / each space / Elsewhere)
-            Space → projects      (the ProjectTileGrid below)
-          The chat-bar pills are the canonical inter-space navigation, so we
-          don't need to keep the rich space cards visible on a real-space
-          view — that just stacks two rows of similar-looking cards and
-          muddies which one is the active scope.
-        */}
-        {isHomeView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
-          <div className="home-spaces-section">
-            <div className="home-spaces-grid">
-              <button
-                className={`home-space-card home-space-card--home${isHomeView && !showElsewhere ? " selected" : ""}`}
-                onClick={() => {
-                  setShowElsewhere(false);
-                  onSpaceChange("home");
-                }}
-                title="Everything across all spaces"
-              >
-                <div className="home-space-card-name">Home</div>
-                <div className="home-space-card-counts">
-                  {totalCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{totalCounts.active} active</span>}
-                  {totalCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{totalCounts.waiting} waiting</span>}
-                  {totalCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{totalCounts.disconnected} disconnected</span>}
-                  {totalCounts.done > 0 && <span className="signal"><span className="pip pip-dim" />{totalCounts.done} done</span>}
-                  {totalCounts.total === 0 && <span className="signal signal-muted">no sessions yet</span>}
-                </div>
-              </button>
-              {realSpaces.map((space) => {
-                const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
-                const isActive = scopedSpace === space.id;
-                return (
-                  <button
-                    key={space.id}
-                    className={`home-space-card${isActive ? " selected" : ""}`}
-                    onClick={() => onSpaceChange(space.id)}
-                  >
-                    <div className="home-space-card-name">{space.displayName}</div>
-                    <div className="home-space-card-counts">
-                      {counts.active > 0 && <span className="signal"><span className="pip pip-green" />{counts.active} active</span>}
-                      {counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{counts.waiting} waiting</span>}
-                      {counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{counts.disconnected} disconnected</span>}
-                      {counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{counts.done} done</span>}
-                      {counts.total === 0 && <span className="signal signal-muted">no sessions yet</span>}
-                    </div>
-                  </button>
-                );
-              })}
-              {orphanCounts.total > 0 && (
-                <button
-                  className={`home-space-card home-space-card--elsewhere${isHomeView && showElsewhere ? " selected" : ""}`}
-                  onClick={() => {
-                    if (isHomeView) {
-                      setShowElsewhere((v) => !v);
-                    } else {
-                      setShowElsewhere(true);
-                      onSpaceChange("home");
-                    }
-                  }}
-                  title="Sessions outside any registered space"
-                >
-                  <div className="home-space-card-name">Elsewhere</div>
-                  <div className="home-space-card-counts">
-                    {orphanCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{orphanCounts.active} active</span>}
-                    {orphanCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{orphanCounts.waiting} waiting</span>}
-                    {orphanCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{orphanCounts.disconnected} disconnected</span>}
-                    {orphanCounts.done > 0 && <span className="signal"><span className="pip pip-dim" />{orphanCounts.done} done</span>}
-                  </div>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {/* The rich space-cards grid was removed — pills in the top
+            breadcrumb enumerate the spaces with numbered status badges,
+            so a parallel content section was duplicate work. The
+            home-space-card / home-spaces-section CSS is kept around in
+            case the cards return as a settings or dashboard surface. */}
 
         {sourcesSpaceId && (
           spaceSourcesError ? (

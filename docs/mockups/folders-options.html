@@ -114,24 +114,37 @@
     .pip.dim   { background: var(--text-muted); }
     @keyframes breathe { 50% { opacity: 0.45; } }
 
-    /* Numbered status badges — used on top-nav pills */
+    /* Numbered status badges — used on top-nav pills. Tinted background
+       + same-hue text reads as a chip/tag without screaming. Tight. */
     .topnav-pill .badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      border-radius: 9px;
+      min-width: 13px;
+      height: 13px;
+      padding: 0 3px;
+      border-radius: 7px;
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: 8px;
       font-weight: 700;
-      color: rgba(0, 0, 0, 0.82);
       letter-spacing: -0.02em;
+      border: 1px solid transparent;
     }
-    .topnav-pill .badge.green { background: var(--green); box-shadow: 0 0 6px rgba(74, 222, 128, 0.4); }
-    .topnav-pill .badge.amber { background: var(--amber); box-shadow: 0 0 6px rgba(251, 191, 36, 0.4); }
-    .topnav-pill .badge.red   { background: var(--red);   box-shadow: 0 0 6px rgba(248, 113, 113, 0.4); }
+    .topnav-pill .badge.green {
+      background: rgba(74, 222, 128, 0.16);
+      color: var(--green);
+      border-color: rgba(74, 222, 128, 0.3);
+    }
+    .topnav-pill .badge.amber {
+      background: rgba(251, 191, 36, 0.16);
+      color: var(--amber);
+      border-color: rgba(251, 191, 36, 0.3);
+    }
+    .topnav-pill .badge.red {
+      background: rgba(248, 113, 113, 0.16);
+      color: var(--red);
+      border-color: rgba(248, 113, 113, 0.3);
+    }
 
     /* Tooltip on pill hover */
     .topnav-pill[data-tip]:hover::after {
