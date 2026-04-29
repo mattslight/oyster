@@ -3,6 +3,7 @@ import {
   fetchSession,
   fetchSessionEvents,
   fetchSessionArtifacts,
+  fetchSessionEventRaw,
   SessionNotFoundError,
 } from "../data/sessions-api";
 import { subscribeUiEvents } from "../data/ui-events";
@@ -176,6 +177,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         events={events}
         artefacts={artefacts}
         onSwitchTo={onSwitchTo}
+        sessionId={sessionId}
       />
       <Footer session={session} />
     </>
@@ -191,12 +193,13 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
  * to read history, leave them there.
  */
 function TranscriptBody({
-  tab, events, artefacts, onSwitchTo,
+  tab, events, artefacts, onSwitchTo, sessionId,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
   artefacts: SessionArtifactJoined[] | null;
   onSwitchTo: (next: ActivePanel) => void;
+  sessionId: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const eventsLen = events?.length ?? 0;
@@ -223,7 +226,7 @@ function TranscriptBody({
 
   return (
     <div className="inspector-body" ref={ref}>
-      {tab === "transcript" && <Transcript events={events} />}
+      {tab === "transcript" && <Transcript events={events} sessionId={sessionId} />}
       {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
     </div>
   );
@@ -300,7 +303,7 @@ function Tabs({
   );
 }
 
-function Transcript({ events }: { events: SessionEvent[] | null }) {
+function Transcript({ events, sessionId }: { events: SessionEvent[] | null; sessionId: string }) {
   if (events === null) return <div className="inspector-empty">Loading transcript…</div>;
   if (events.length === 0) {
     return <div className="inspector-empty">No transcript yet. Live updates active.</div>;
@@ -308,15 +311,15 @@ function Transcript({ events }: { events: SessionEvent[] | null }) {
   return (
     <>
       {events.map((e) => (
-        <Turn key={e.id} event={e} />
+        <Turn key={e.id} event={e} sessionId={sessionId} />
       ))}
     </>
   );
 }
 
-function Turn({ event }: { event: SessionEvent }) {
+function Turn({ event, sessionId }: { event: SessionEvent; sessionId: string }) {
   if (event.role === "tool" || event.role === "tool_result") {
-    return <ToolTurn event={event} />;
+    return <ToolTurn event={event} sessionId={sessionId} />;
   }
   return (
     <div className={`turn ${event.role}`}>
@@ -326,17 +329,38 @@ function Turn({ event }: { event: SessionEvent }) {
   );
 }
 
-function ToolTurn({ event }: { event: SessionEvent }) {
+function ToolTurn({ event, sessionId }: { event: SessionEvent; sessionId: string }) {
   const [open, setOpen] = useState(false);
-  const summary = oneLineSummary(event);
-  const { display, truncated, totalBytes } = capRaw(event.raw ?? "");
+  // The list endpoint omits raw to keep payloads small. We lazy-fetch
+  // it the first time the user expands this turn, and cache it locally.
+  const [raw, setRaw] = useState<string | null>(event.raw);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawError, setRawError] = useState<string | null>(null);
+  const summary = oneLineSummary({ ...event, raw });
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && raw === null && !rawLoading) {
+      setRawLoading(true);
+      setRawError(null);
+      fetchSessionEventRaw(sessionId, event.id)
+        .then((r) => setRaw(r))
+        .catch((err) => setRawError(err instanceof Error ? err.message : String(err)))
+        .finally(() => setRawLoading(false));
+    }
+  }
+
+  const { display, truncated, totalBytes } = capRaw(raw ?? "");
   return (
     <div className={`turn ${event.role}`}>
       <div className="turn-role">{event.role}</div>
-      <div className="turn-tool-summary" onClick={() => setOpen((v) => !v)}>
+      <div className="turn-tool-summary" onClick={toggle}>
         {open ? "▾" : "▸"} {summary}
       </div>
-      {open && event.raw && (
+      {open && rawLoading && <div className="turn-tool-truncated">Loading…</div>}
+      {open && rawError && <div className="turn-tool-truncated">Couldn't load: {rawError}</div>}
+      {open && !rawLoading && !rawError && raw && (
         <>
           <pre className="turn-tool-raw">{display}</pre>
           {truncated && (
@@ -346,7 +370,7 @@ function ToolTurn({ event }: { event: SessionEvent }) {
           )}
         </>
       )}
-      {!event.raw && event.text && <div className="turn-text">{event.text}</div>}
+      {!raw && !rawLoading && event.text && <div className="turn-text">{event.text}</div>}
     </div>
   );
 }

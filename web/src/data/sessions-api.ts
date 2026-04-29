@@ -40,6 +40,24 @@ export async function fetchSessionArtifacts(id: string, signal?: AbortSignal): P
   return res.json();
 }
 
+// The list endpoint strips `raw` from every event to keep the payload
+// reasonable on long sessions (raw can be megabytes per tool result).
+// Use this to lazy-fetch one event's raw on-demand — e.g. when the user
+// clicks "expand" on a tool-call turn.
+export async function fetchSessionEventRaw(
+  sessionId: string,
+  eventId: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/events/${eventId}`,
+    { signal },
+  );
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
+  const ev = (await res.json()) as SessionEvent;
+  return ev.raw;
+}
+
 export class SessionNotFoundError extends Error {
   constructor(public sessionId: string) {
     super(`Session not found: ${sessionId}`);

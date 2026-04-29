@@ -444,6 +444,22 @@ export class ArtifactService {
     return this.rowToArtifact(this.store.getById(id)!);
   }
 
+  // Targeted lookup used by the session inspector (#253). Avoids the
+  // full enumeration + per-row fs-stat dance of getAllArtifacts(), which
+  // is wasteful when we only need ~10 known IDs (a session's touched
+  // artefact list). Missing rows are silently skipped — the caller
+  // already filters absent ones out of its response.
+  async getArtifactsByIds(ids: string[]): Promise<Artifact[]> {
+    if (ids.length === 0) return [];
+    const rows: ArtifactRow[] = [];
+    for (const id of ids) {
+      const row = this.store.getById(id);
+      if (row) rows.push(row);
+    }
+    const sourceLabels = this.buildSourceLabelMap(rows);
+    return Promise.all(rows.map((row) => this.rowToArtifact(row, sourceLabels)));
+  }
+
   // ── Archived-view helpers ──
 
   async getArchivedArtifacts(): Promise<Artifact[]> {

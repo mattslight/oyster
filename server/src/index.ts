@@ -575,20 +575,56 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     }
   }
 
-  // GET /api/sessions/:id/events — full transcript (oldest first)
+  // GET /api/sessions/:id/events — latest N transcript events (oldest first
+  // within the slice). The `raw` JSONL line is dropped from the list response
+  // because long sessions can ship 50+MB of raw blobs (tool outputs, file
+  // reads). Clients fetch the raw on-demand via /events/:eventId when the
+  // user expands a tool turn. ?limit=N overrides the default of 1000.
   {
     const m = url.match(/^\/api\/sessions\/([^/]+)\/events$/);
     if (m && req.method === "GET") {
       if (rejectIfNonLocalOrigin()) return;
-      const events = sessionStore.getEventsBySession(m[1]);
+      const parsed = new URL(req.url ?? "/", "http://localhost");
+      const limitParam = parsed.searchParams.get("limit");
+      const limit = limitParam && Number.isFinite(Number(limitParam))
+        ? Math.max(1, Math.min(10_000, Number(limitParam)))
+        : 1000;
+      const events = sessionStore.getEventsBySession(m[1], { limit });
       sendJson(events.map((e) => ({
         id: e.id,
         sessionId: e.session_id,
         role: e.role,
         text: e.text,
         ts: e.ts,
-        raw: e.raw,
+        raw: null as string | null,
       })));
+      return;
+    }
+  }
+
+  // GET /api/sessions/:id/events/:eventId — single event WITH raw JSONL.
+  // Exists so the inspector can lazily load the raw blob for tool-call
+  // expand without paying for it on every transcript fetch.
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/events\/(\d+)$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const eventId = Number(m[2]);
+      const all = sessionStore.getEventsBySession(m[1]);
+      const ev = all.find((e) => e.id === eventId);
+      if (!ev) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "event not found" }));
+        return;
+      }
+      sendJson({
+        id: ev.id,
+        sessionId: ev.session_id,
+        role: ev.role,
+        text: ev.text,
+        ts: ev.ts,
+        raw: ev.raw,
+      });
       return;
     }
   }
@@ -599,8 +635,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && req.method === "GET") {
       if (rejectIfNonLocalOrigin()) return;
       const touches = sessionStore.getArtifactsBySession(m[1]);
-      const allArtifacts = await artifactService.getAllArtifacts(() => {});
-      const byId = new Map(allArtifacts.map((a) => [a.id, a]));
+      const uniqueIds = Array.from(new Set(touches.map((t) => t.artifact_id)));
+      const artifacts = await artifactService.getArtifactsByIds(uniqueIds);
+      const byId = new Map(artifacts.map((a) => [a.id, a]));
       sendJson(touches.flatMap((t) => {
         const a = byId.get(t.artifact_id);
         if (!a) return [];
