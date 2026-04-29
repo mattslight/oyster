@@ -67,6 +67,45 @@ export interface Session {
   lastEventAt: string;
 }
 
+export type SessionEventRole =
+  | "user"
+  | "assistant"
+  | "tool"
+  | "tool_result"
+  | "system";
+
+export type SessionArtifactRole = "create" | "modify" | "read";
+
+/** A single transcript turn or tool call captured by the watcher. */
+export interface SessionEvent {
+  id: number;
+  sessionId: string;
+  role: SessionEventRole;
+  text: string;
+  ts: string;
+  /** Raw JSONL line as written by the agent. Populated when `text` alone is insufficient (tool calls, tool results). */
+  raw: string | null;
+}
+
+/** A session × artefact join row (M:N — sessions may touch many artefacts). */
+export interface SessionArtifact {
+  id: number;
+  sessionId: string;
+  artifactId: string;
+  role: SessionArtifactRole;
+  whenAt: string;
+}
+
+/** API response shape: a SessionArtifact joined with its Artifact row. */
+export interface SessionArtifactJoined extends SessionArtifact {
+  artifact: Artifact;
+}
+
+/** API response shape: a SessionArtifact joined with its Session row (used by /api/artifacts/:id/sessions). */
+export interface SessionJoinedForArtifact extends SessionArtifact {
+  session: Session;
+}
+
 export interface Space {
   id: string;
   displayName: string;

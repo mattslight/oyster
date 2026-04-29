@@ -549,6 +549,146 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // GET /api/sessions/:id — single session row (or 404)
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const row = sessionStore.getById(m[1]);
+      if (!row) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "session not found" }));
+        return;
+      }
+      sendJson({
+        id: row.id,
+        spaceId: row.space_id,
+        agent: row.agent,
+        title: row.title,
+        state: row.state,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        model: row.model,
+        lastEventAt: row.last_event_at,
+      });
+      return;
+    }
+  }
+
+  // GET /api/sessions/:id/events — latest N transcript events (oldest first
+  // within the slice). The `raw` JSONL line is dropped from the list response
+  // because long sessions can ship 50+MB of raw blobs (tool outputs, file
+  // reads). Clients fetch the raw on-demand via /events/:eventId when the
+  // user expands a tool turn. ?limit=N overrides the default of 1000.
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/events$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const parsed = new URL(req.url ?? "/", "http://localhost");
+      const limitParam = parsed.searchParams.get("limit");
+      const limit = limitParam && Number.isFinite(Number(limitParam))
+        ? Math.max(1, Math.min(10_000, Number(limitParam)))
+        : 1000;
+      const events = sessionStore.getEventsBySession(m[1], { limit });
+      sendJson(events.map((e) => ({
+        id: e.id,
+        sessionId: e.session_id,
+        role: e.role,
+        text: e.text,
+        ts: e.ts,
+        raw: null as string | null,
+      })));
+      return;
+    }
+  }
+
+  // GET /api/sessions/:id/events/:eventId — single event WITH raw JSONL.
+  // Exists so the inspector can lazily load the raw blob for tool-call
+  // expand without paying for it on every transcript fetch.
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/events\/(\d+)$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const eventId = Number(m[2]);
+      const ev = sessionStore.getEventById(m[1], eventId);
+      if (!ev) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "event not found" }));
+        return;
+      }
+      sendJson({
+        id: ev.id,
+        sessionId: ev.session_id,
+        role: ev.role,
+        text: ev.text,
+        ts: ev.ts,
+        raw: ev.raw,
+      });
+      return;
+    }
+  }
+
+  // GET /api/sessions/:id/artifacts — touched artefacts joined with artifact metadata
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/artifacts$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const touches = sessionStore.getArtifactsBySession(m[1]);
+      const uniqueIds = Array.from(new Set(touches.map((t) => t.artifact_id)));
+      const artifacts = await artifactService.getArtifactsByIds(uniqueIds);
+      const byId = new Map(artifacts.map((a) => [a.id, a]));
+      sendJson(touches.flatMap((t) => {
+        const a = byId.get(t.artifact_id);
+        if (!a) return [];
+        return [{
+          id: t.id,
+          sessionId: t.session_id,
+          artifactId: t.artifact_id,
+          role: t.role,
+          whenAt: t.when_at,
+          artifact: a,
+        }];
+      }));
+      return;
+    }
+  }
+
+  // GET /api/artifacts/:id/sessions — sessions that touched this artefact (M:N reverse).
+  // Must come BEFORE the generic /api/artifacts/:id PATCH handler so "/sessions"
+  // suffix is never interpreted as an artifact id.
+  {
+    const m = url.match(/^\/api\/artifacts\/([^/]+)\/sessions$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const touches = sessionStore.getSessionsByArtifact(m[1]);
+      const allSessions = sessionStore.getAll();
+      const byId = new Map(allSessions.map((s) => [s.id, s]));
+      sendJson(touches.flatMap((t) => {
+        const s = byId.get(t.session_id);
+        if (!s) return [];
+        return [{
+          id: t.id,
+          sessionId: t.session_id,
+          artifactId: t.artifact_id,
+          role: t.role,
+          whenAt: t.when_at,
+          session: {
+            id: s.id,
+            spaceId: s.space_id,
+            agent: s.agent,
+            title: s.title,
+            state: s.state,
+            startedAt: s.started_at,
+            endedAt: s.ended_at,
+            model: s.model,
+            lastEventAt: s.last_event_at,
+          },
+        }];
+      }));
+      return;
+    }
+  }
+
   if (url === "/api/artifacts") {
     if (rejectIfNonLocalOrigin()) return;
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));

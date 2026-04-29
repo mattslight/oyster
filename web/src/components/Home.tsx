@@ -4,6 +4,9 @@ import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
+import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
+import { SessionInspector } from "./SessionInspector";
+import { ArtefactInspector } from "./ArtefactInspector";
 import "./Home.css";
 
 interface Props {
@@ -83,6 +86,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
+  const [activePanel, setActivePanel] = useState<ActivePanel | null>(null);
 
   // Local "Elsewhere" scope: filters Sessions to those whose spaceId is null
   // (claude/codex sessions started in folders that aren't attached to any
@@ -178,6 +182,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     }
     return desktopProps;
   }, [showElsewhere, isHomeView, desktopProps, realSpaceIds]);
+
+  // Resolve the active artefact against the FULL artifact list, not the
+  // showElsewhere-filtered one. Cross-navigating from a session inspector
+  // to an artefact in a different scope (e.g. clicking a registered-space
+  // artefact while the user is in Elsewhere mode) shouldn't close the panel.
+  const activeArtefact = activePanel?.kind === "artefact"
+    ? desktopProps.artifacts.find((a) => a.id === activePanel.id)
+    : null;
+
+  // Close the panel if the active artefact disappears (e.g. archived from under the inspector)
+  useEffect(() => {
+    if (activePanel?.kind === "artefact" && !activeArtefact) {
+      setActivePanel(null);
+    }
+  }, [activePanel, activeArtefact]);
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
   const eyebrow = isHomeView ? (showElsewhere ? "Elsewhere" : "Home")
@@ -328,6 +347,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   session={session}
                   spaces={spaces}
                   showSpaceChip={isMetaView}
+                  onOpen={(id) => setActivePanel({ kind: "session", id })}
                 />
               ))}
             </div>
@@ -339,6 +359,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                     key={session.id}
                     session={session}
                     spaces={spaces}
+                    onOpen={(id) => setActivePanel({ kind: "session", id })}
                   />
                 ))}
               </div>
@@ -381,17 +402,46 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           </div>
           {artefactsView === "icons" ? (
             <div className="home-artefacts">
-              <Desktop {...effectiveDesktopProps} isHero={false} showMeta />
+              <Desktop
+                {...effectiveDesktopProps}
+                isHero={false}
+                showMeta
+                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+              />
             </div>
           ) : (
             <ArtefactTable
               artifacts={effectiveDesktopProps.artifacts}
               spaces={spaces}
-              onArtifactClick={effectiveDesktopProps.onArtifactClick}
+              onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
             />
           )}
         </section>
       </div>
+      <InspectorPanel active={activePanel} onClose={() => setActivePanel(null)}>
+        {activePanel?.kind === "session" && (
+          <SessionInspector
+            sessionId={activePanel.id}
+            onSwitchTo={setActivePanel}
+            onClose={() => setActivePanel(null)}
+            onNotFound={() => {
+              setActivePanel(null);
+              alert("Session no longer available");
+            }}
+          />
+        )}
+        {activePanel?.kind === "artefact" && activeArtefact && (
+          <ArtefactInspector
+            artifact={activeArtefact}
+            onSwitchTo={setActivePanel}
+            onClose={() => setActivePanel(null)}
+            onOpen={(a) => {
+              setActivePanel(null);
+              desktopProps.onArtifactClick(a);
+            }}
+          />
+        )}
+      </InspectorPanel>
     </div>
   );
 }
@@ -421,13 +471,22 @@ interface SessionTileProps {
   session: Session;
   spaces: Space[];
   showSpaceChip: boolean;
+  onOpen?: (id: string) => void;
 }
 
-function SessionTile({ session, spaces, showSpaceChip }: SessionTileProps) {
+function SessionTile({ session, spaces, showSpaceChip, onOpen }: SessionTileProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const title = session.title ?? "(no title yet)";
   return (
-    <div className="home-tile">
+    <div
+      className="home-tile"
+      onClick={() => onOpen?.(session.id)}
+      onKeyDown={onOpen ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(session.id); }
+      } : undefined}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+    >
       <div className={`home-thumb ${AGENT_CLASS[session.agent]}`}>
         {showSpaceChip && spaceLabel && (
           <span className="home-space-chip">{spaceLabel}</span>
@@ -444,9 +503,10 @@ function SessionTile({ session, spaces, showSpaceChip }: SessionTileProps) {
 interface SessionRowProps {
   session: Session;
   spaces: Space[];
+  onOpen?: (id: string) => void;
 }
 
-function SessionRow({ session, spaces }: SessionRowProps) {
+function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = session.state === "waiting" ? `waiting ${rel}`
@@ -454,7 +514,15 @@ function SessionRow({ session, spaces }: SessionRowProps) {
     : rel;
   const title = session.title ?? "(no title yet)";
   return (
-    <div className="home-row">
+    <div
+      className="home-row"
+      onClick={() => onOpen?.(session.id)}
+      onKeyDown={onOpen ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(session.id); }
+      } : undefined}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+    >
       <span className={`home-row-status ${session.state}`} />
       <span className="home-row-space">{spaceLabel ?? "—"}</span>
       <span className="home-row-title" title={title}>{title}</span>

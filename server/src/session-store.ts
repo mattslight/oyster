@@ -88,6 +88,7 @@ export interface SessionStore {
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
   getEventsBySession(sessionId: string, opts?: { limit?: number }): SessionEventRow[];
+  getEventById(sessionId: string, eventId: number): SessionEventRow | undefined;
   // session_artifacts
   insertArtifactTouch(row: InsertSessionArtifact): void;
   getArtifactsBySession(sessionId: string): SessionArtifactRow[];
@@ -106,6 +107,7 @@ export class SqliteSessionStore implements SessionStore {
     insertEvent: Database.Statement;
     getEventsBySession: Database.Statement;
     getEventsBySessionLimit: Database.Statement;
+    getEventById: Database.Statement;
     insertArtifactTouch: Database.Statement;
     getArtifactsBySession: Database.Statement;
     getSessionsByArtifact: Database.Statement;
@@ -164,6 +166,9 @@ export class SqliteSessionStore implements SessionStore {
       ),
       getEventsBySessionLimit: db.prepare(
         "SELECT * FROM session_events WHERE session_id = ? ORDER BY id DESC LIMIT ?"
+      ),
+      getEventById: db.prepare(
+        "SELECT * FROM session_events WHERE session_id = ? AND id = ? LIMIT 1"
       ),
       insertArtifactTouch: db.prepare(`
         INSERT INTO session_artifacts (session_id, artifact_id, role)
@@ -254,6 +259,10 @@ export class SqliteSessionStore implements SessionStore {
       return rows.reverse();
     }
     return this.stmts.getEventsBySession.all(sessionId) as SessionEventRow[];
+  }
+
+  getEventById(sessionId: string, eventId: number): SessionEventRow | undefined {
+    return this.stmts.getEventById.get(sessionId, eventId) as SessionEventRow | undefined;
   }
 
   insertArtifactTouch(row: InsertSessionArtifact): void {

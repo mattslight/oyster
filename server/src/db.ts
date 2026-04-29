@@ -240,8 +240,12 @@ export function initDb(userlandDir: string): Database.Database {
         ts         TEXT NOT NULL DEFAULT (datetime('now')),
         raw        TEXT
       );
+      -- ORDER BY id preserves chronological order. The new table assigns
+      -- fresh INTEGER PRIMARY KEY values; without the ORDER BY, the post-
+      -- migration getEventsBySession (which orders by id) could return
+      -- events out of order, scrambling the transcript.
       INSERT INTO _session_events_new (session_id, role, text, ts, raw)
-        SELECT session_id, role, text, ts, raw FROM session_events;
+        SELECT session_id, role, text, ts, raw FROM session_events ORDER BY id;
       DROP TABLE session_events;
       ALTER TABLE _session_events_new RENAME TO session_events;
       CREATE INDEX IF NOT EXISTS session_events_session_ts ON session_events(session_id, ts);
@@ -255,7 +259,7 @@ export function initDb(userlandDir: string): Database.Database {
         when_at     TEXT NOT NULL DEFAULT (datetime('now'))
       );
       INSERT INTO _session_artifacts_new (session_id, artifact_id, role, when_at)
-        SELECT session_id, artifact_id, role, when_at FROM session_artifacts;
+        SELECT session_id, artifact_id, role, when_at FROM session_artifacts ORDER BY when_at;
       DROP TABLE session_artifacts;
       ALTER TABLE _session_artifacts_new RENAME TO session_artifacts;
       CREATE INDEX IF NOT EXISTS session_artifacts_session ON session_artifacts(session_id, when_at);
