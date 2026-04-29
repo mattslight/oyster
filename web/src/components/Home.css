@@ -1149,6 +1149,7 @@
   padding-top: 24px;
 }
 .home-breadcrumb-pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1161,26 +1162,39 @@
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color 0.2s ease, background 0.2s ease;
   white-space: nowrap;
 }
 .home-breadcrumb-pill:hover {
-  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.home-breadcrumb-pill.selected:hover {
+  background: transparent;
 }
 .home-breadcrumb-pill.selected {
-  background: rgba(124, 107, 255, 0.32);
   color: #fff;
 }
 .home-breadcrumb-pill--home {
   padding: 5px 9px;
 }
-.home-breadcrumb-pill--home.selected {
-  background: var(--accent);
-  color: #fff;
-}
-.home-breadcrumb-pill--elsewhere {
+.home-breadcrumb-pill--elsewhere .home-breadcrumb-pill-label {
   font-style: italic;
+}
+/* Sliding selection background — animated by Framer Motion's
+   shared-layout (LayoutGroup + layoutId), mirrors the chat-bar
+   `space-pill-bg`. Sits behind the content. */
+.home-breadcrumb-pill-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--accent);
+  z-index: 0;
+}
+.home-breadcrumb-pill > .home-breadcrumb-badges,
+.home-breadcrumb-pill > .home-breadcrumb-pill-label {
+  position: relative;
+  z-index: 1;
 }
 
 /* Numbered status badges on breadcrumb pills — tinted background with

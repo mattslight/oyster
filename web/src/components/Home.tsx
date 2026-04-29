@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { LayoutGroup, motion } from "framer-motion";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -357,6 +358,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             duplicate the same data. */}
         {(realSpaces.length > 0 || orphanCounts.total > 0) && (
           <nav className="home-breadcrumb" aria-label="Spaces">
+            <LayoutGroup id="home-breadcrumb">
             <div className="home-breadcrumb-inner">
             <button
               type="button"
@@ -364,9 +366,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               onClick={() => { onSpaceChange("home"); setShowElsewhere(false); }}
               title={`${totalCounts.active} active · ${totalCounts.waiting} waiting · ${totalCounts.disconnected} disconnected · ${totalCounts.done} done`}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: -1 }}>
-                <path d="M3 12l9-9 9 9" />
-                <path d="M5 10v10h14V10" />
+              {isHomeView && !showElsewhere && (
+                <motion.span
+                  layoutId="home-breadcrumb-bg"
+                  className="home-breadcrumb-pill-bg"
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              )}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ position: "relative", zIndex: 1 }}>
+                <path d="M11.03 2.59a1.5 1.5 0 0 1 1.94 0l7.5 6.363A1.5 1.5 0 0 1 21 10.097V19.5a2.5 2.5 0 0 1-2.5 2.5H15v-4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v4H5.5A2.5 2.5 0 0 1 3 19.5v-9.403a1.5 1.5 0 0 1 .53-1.137l7.5-6.37Z"/>
               </svg>
             </button>
             {realSpaces.map((space) => {
@@ -377,14 +385,22 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 counts.disconnected > 0 && `${counts.disconnected} disconnected`,
                 counts.done > 0 && `${counts.done} done`,
               ].filter(Boolean).join(" · ") || "no sessions yet";
+              const isSelected = scopedSpace === space.id;
               return (
                 <button
                   key={space.id}
                   type="button"
-                  className={`home-breadcrumb-pill${scopedSpace === space.id ? " selected" : ""}`}
+                  className={`home-breadcrumb-pill${isSelected ? " selected" : ""}`}
                   onClick={() => onSpaceChange(space.id)}
                   title={tip}
                 >
+                  {isSelected && (
+                    <motion.span
+                      layoutId="home-breadcrumb-bg"
+                      className="home-breadcrumb-pill-bg"
+                      transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                    />
+                  )}
                   {(counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
                     <span className="home-breadcrumb-badges">
                       {counts.active > 0 && <span className="home-breadcrumb-badge green">{counts.active}</span>}
@@ -392,7 +408,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                       {counts.disconnected > 0 && <span className="home-breadcrumb-badge red">{counts.disconnected}</span>}
                     </span>
                   )}
-                  {space.displayName}
+                  <span className="home-breadcrumb-pill-label">{space.displayName}</span>
                 </button>
               );
             })}
@@ -408,6 +424,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   orphanCounts.done > 0 && `${orphanCounts.done} done`,
                 ].filter(Boolean).join(" · ") || "Sessions outside any registered space"}
               >
+                {showElsewhere && isHomeView && (
+                  <motion.span
+                    layoutId="home-breadcrumb-bg"
+                    className="home-breadcrumb-pill-bg"
+                    transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                  />
+                )}
                 {(orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
                   <span className="home-breadcrumb-badges">
                     {orphanCounts.active > 0 && <span className="home-breadcrumb-badge green">{orphanCounts.active}</span>}
@@ -415,10 +438,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                     {orphanCounts.disconnected > 0 && <span className="home-breadcrumb-badge red">{orphanCounts.disconnected}</span>}
                   </span>
                 )}
-                Elsewhere
+                <span className="home-breadcrumb-pill-label">Elsewhere</span>
               </button>
             )}
             </div>
+            </LayoutGroup>
           </nav>
         )}
 
