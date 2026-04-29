@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
@@ -60,16 +60,28 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   const [sessionsView, setSessionsView] = useState<ViewMode>("icons");
   const [artefactsView, setArtefactsView] = useState<ViewMode>("icons");
 
+  // Local "Elsewhere" scope: filters Sessions to those whose spaceId is null
+  // (claude/codex sessions started in folders that aren't attached to any
+  // registered space). Only applies in Home view; navigating to a real space
+  // resets it.
+  const [showElsewhere, setShowElsewhere] = useState(false);
+
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
   const isArchivedView = activeSpace === "__archived__";
   const isMetaView = isHomeView || isAllView || isArchivedView;
   const scopedSpace = !isMetaView ? activeSpace : null;
 
-  const scopedSessions = useMemo(
-    () => (scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions),
-    [sessions, scopedSpace],
-  );
+  // Reset Elsewhere scope when we navigate away from Home (e.g. user clicks
+  // a real space card or chat-bar pill).
+  useEffect(() => {
+    if (!isHomeView) setShowElsewhere(false);
+  }, [isHomeView]);
+
+  const scopedSessions = useMemo(() => {
+    if (showElsewhere && isHomeView) return sessions.filter((s) => s.spaceId === null);
+    return scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions;
+  }, [sessions, scopedSpace, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
     const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
@@ -92,23 +104,27 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     [spaces],
   );
 
-  // Per-space session counts in a single pass instead of N×4 filter calls per
-  // re-render. The Home component re-renders on every session_changed SSE,
-  // so the inner loop matters once you have many spaces and sessions.
-  const sessionCountsBySpace = useMemo(() => {
-    const acc: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
+  // Per-space session counts + a separate orphan tally (sessions with
+  // spaceId === null), all in one pass.
+  const { sessionCountsBySpace, orphanCounts } = useMemo(() => {
+    const bySpace: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
+    const orphans = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
     for (const s of sessions) {
-      if (!s.spaceId) continue;
-      const c = acc[s.spaceId] ?? { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
-      c.total++;
-      c[s.state]++;
-      acc[s.spaceId] = c;
+      if (s.spaceId) {
+        const c = bySpace[s.spaceId] ?? { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+        c.total++;
+        c[s.state]++;
+        bySpace[s.spaceId] = c;
+      } else {
+        orphans.total++;
+        orphans[s.state]++;
+      }
     }
-    return acc;
+    return { sessionCountsBySpace: bySpace, orphanCounts: orphans };
   }, [sessions]);
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
-  const eyebrow = isHomeView ? "Home"
+  const eyebrow = isHomeView ? (showElsewhere ? "Elsewhere" : "Home")
     : isAllView ? "All"
     : isArchivedView ? "Archived"
     : activeSpaceRow?.displayName ?? scopedSpace ?? "";
@@ -126,7 +142,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
-        {isHomeView && realSpaces.length > 0 && (
+        {isHomeView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
           <div className="home-spaces-section">
             <div className="home-spaces-grid">
               {realSpaces.map((space) => {
@@ -148,6 +164,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   </button>
                 );
               })}
+              {orphanCounts.total > 0 && (
+                <button
+                  className={`home-space-card home-space-card--elsewhere${showElsewhere ? " selected" : ""}`}
+                  onClick={() => setShowElsewhere((v) => !v)}
+                  title="Sessions outside any registered space"
+                >
+                  <div className="home-space-card-name">Elsewhere</div>
+                  <div className="home-space-card-counts">
+                    {orphanCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{orphanCounts.active} active</span>}
+                    {orphanCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{orphanCounts.waiting} waiting</span>}
+                    {orphanCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{orphanCounts.disconnected} disconnected</span>}
+                    {orphanCounts.done > 0 && <span className="signal"><span className="pip pip-dim" />{orphanCounts.done} done</span>}
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         )}
