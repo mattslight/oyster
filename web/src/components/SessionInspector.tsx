@@ -14,6 +14,7 @@ import type {
   SessionArtifactJoined,
   SessionState,
 } from "../data/sessions-api";
+import { Filter } from "lucide-react";
 import { KindThumb } from "./KindThumb";
 import type { ActivePanel } from "./InspectorPanel";
 
@@ -311,6 +312,9 @@ function TranscriptFilter({
   ];
   return (
     <div className="transcript-filter" role="group" aria-label="Filter transcript by role">
+      <span className="transcript-filter-icon" aria-hidden="true">
+        <Filter size={12} strokeWidth={1.8} />
+      </span>
       {labels.map(([cat, label]) => (
         <button
           key={cat}
