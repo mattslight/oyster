@@ -8,7 +8,7 @@ import type Database from "better-sqlite3";
 
 // ── Row types (mirror SQLite schema in db.ts) ──
 
-export type SessionState = "running" | "awaiting" | "disconnected" | "done";
+export type SessionState = "active" | "waiting" | "disconnected" | "done";
 export type SessionAgent = "claude-code" | "opencode" | "codex";
 export type SessionEventRole =
   | "user"

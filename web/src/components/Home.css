@@ -122,7 +122,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--home-accent-bright);
   margin-bottom: 8px;
 }
 
@@ -182,6 +182,13 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+}
+
+.stat-divider {
+  flex: 0 0 1px;
+  height: 16px;
+  background: var(--home-border);
+  margin: 0 4px;
 }
 
 .stat-btn {
@@ -259,15 +266,19 @@
   margin: 0 auto;
   padding: 0 32px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
 }
 .home-space-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   text-align: left;
-  padding: 16px 18px;
+  padding: 10px 14px;
   background: var(--home-surface);
   border: 1px solid var(--home-border);
-  border-radius: 14px;
+  border-radius: 12px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   cursor: pointer;
@@ -278,17 +289,22 @@
   border-color: var(--home-border-accent);
   background: rgba(124, 107, 255, 0.05);
 }
+.home-space-card.selected {
+  background: rgba(124, 107, 255, 0.14);
+  border-color: var(--home-border-accent);
+  box-shadow: 0 0 0 1px var(--home-border-accent) inset;
+}
 .home-space-card-name {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--home-accent-bright);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 .home-space-card-counts {
   display: flex;
-  gap: 14px;
+  gap: 10px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-dim);
 }
 .home-space-card-counts .signal {
@@ -302,6 +318,22 @@
 .home-space-card-counts .pip {
   width: 5px;
   height: 5px;
+}
+/* Elsewhere card: same shape, dashed border to read as a meta-bucket
+   rather than a real space. Selected state mirrors the chip-bar
+   stat-btn highlight. */
+.home-space-card--elsewhere {
+  border-style: dashed;
+}
+.home-space-card--elsewhere .home-space-card-name {
+  font-style: italic;
+}
+/* Elsewhere keeps its dashed border even when selected — the dashed
+   line is a "you're not in a real space" cue, distinct from the solid
+   space cards. Drop the inset ring used for solid cards; it clashes
+   with the dashes. */
+.home-space-card--elsewhere.selected {
+  box-shadow: none;
 }
 
 /* ── Sessions surface (icon view) ── */
@@ -408,12 +440,12 @@
   height: 10px;
   border-radius: 50%;
 }
-.home-status.running::before {
+.home-status.active::before {
   background: var(--home-green);
   box-shadow: 0 0 10px var(--home-green);
   animation: home-breathe 2.4s ease-in-out infinite;
 }
-.home-status.awaiting::before {
+.home-status.waiting::before {
   background: var(--home-amber);
   box-shadow: 0 0 10px var(--home-amber);
 }
@@ -483,7 +515,7 @@
 
 .home-row {
   display: grid;
-  grid-template-columns: 18px 130px 1fr 130px 100px;
+  grid-template-columns: 18px 130px 1fr 130px 130px;
   gap: 14px;
   align-items: center;
   padding: 12px 18px;
@@ -499,8 +531,8 @@
   height: 8px;
   border-radius: 50%;
 }
-.home-row-status.running { background: var(--home-green); box-shadow: 0 0 6px var(--home-green); animation: home-breathe 2.4s ease-in-out infinite; }
-.home-row-status.awaiting { background: var(--home-amber); box-shadow: 0 0 6px var(--home-amber); }
+.home-row-status.active { background: var(--home-green); box-shadow: 0 0 6px var(--home-green); animation: home-breathe 2.4s ease-in-out infinite; }
+.home-row-status.waiting { background: var(--home-amber); box-shadow: 0 0 6px var(--home-amber); }
 .home-row-status.disconnected { background: var(--home-red); box-shadow: 0 0 6px var(--home-red); }
 .home-row-status.done { background: rgba(255, 255, 255, 0.18); }
 
@@ -544,6 +576,7 @@
   font-size: 11px;
   color: var(--text-dim);
   text-align: right;
+  white-space: nowrap;
 }
 
 /* ── Artefacts table row (renders inside .home-table when toggled) ── */

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
@@ -15,15 +15,46 @@ interface Props {
 }
 
 type ViewMode = "icons" | "table";
-type StateFilter = SessionState | "all";
+type StateFilter = SessionState | "live" | "all";
 
-const FILTER_ORDER: StateFilter[] = ["running", "awaiting", "disconnected", "done", "all"];
+// Persists a view toggle (icons / table) to localStorage so it survives
+// reloads. Returns a useState-shaped pair so callsites stay one-liner.
+function useStickyView(key: string, defaultValue: ViewMode): [ViewMode, (v: ViewMode) => void] {
+  const [value, setValue] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return defaultValue;
+    try {
+      const stored = window.localStorage.getItem(key);
+      return stored === "icons" || stored === "table" ? stored : defaultValue;
+    } catch {
+      // Safari private browsing / storage disabled — fall through to default
+      return defaultValue;
+    }
+  });
+  const set = (v: ViewMode) => {
+    setValue(v);
+    try {
+      window.localStorage.setItem(key, v);
+    } catch {
+      // private browsing / disabled storage — fine, just lose persistence
+    }
+  };
+  return [value, set];
+}
 
-const EMPTY_COUNTS = { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
+// "live" is a preset bundling active+waiting+disconnected (everything that
+// isn't archived). It's the default because that's the common case — done
+// is review/history, not active inventory. The dot after "live" indicates
+// the live cluster ends; the per-state chips after it are for fine-grained
+// filtering.
+const FILTER_ORDER: StateFilter[] = ["live", "active", "waiting", "disconnected", "done", "all"];
+const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
+
+const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
 const FILTER_LABELS: Record<StateFilter, string> = {
-  running: "running",
-  awaiting: "awaiting you",
+  live: "live",
+  active: "active",
+  waiting: "waiting",
   disconnected: "disconnected",
   done: "done",
   all: "all",
@@ -49,9 +80,15 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
-  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
-  const [sessionsView, setSessionsView] = useState<ViewMode>("icons");
-  const [artefactsView, setArtefactsView] = useState<ViewMode>("icons");
+  const [stateFilter, setStateFilter] = useState<StateFilter>("live");
+  const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
+  const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
+
+  // Local "Elsewhere" scope: filters Sessions to those whose spaceId is null
+  // (claude/codex sessions started in folders that aren't attached to any
+  // registered space). Only applies in Home view; navigating to a real space
+  // resets it.
+  const [showElsewhere, setShowElsewhere] = useState(false);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -59,47 +96,91 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   const isMetaView = isHomeView || isAllView || isArchivedView;
   const scopedSpace = !isMetaView ? activeSpace : null;
 
-  const scopedSessions = useMemo(
-    () => (scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions),
-    [sessions, scopedSpace],
-  );
+  // Reset Elsewhere scope when we navigate away from Home (e.g. user clicks
+  // a real space card or chat-bar pill).
+  useEffect(() => {
+    if (!isHomeView) setShowElsewhere(false);
+  }, [isHomeView]);
+
+  const scopedSessions = useMemo(() => {
+    if (showElsewhere && isHomeView) return sessions.filter((s) => s.spaceId === null);
+    return scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions;
+  }, [sessions, scopedSpace, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { running: 0, awaiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
+    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
+    counts.live = counts.active + counts.waiting + counts.disconnected;
     return counts;
   }, [scopedSessions]);
 
-  const visibleSessions = useMemo(
-    () => (stateFilter === "all" ? scopedSessions : scopedSessions.filter((s) => s.state === stateFilter)),
-    [scopedSessions, stateFilter],
-  );
+  const visibleSessions = useMemo(() => {
+    if (stateFilter === "all") return scopedSessions;
+    if (stateFilter === "live") return scopedSessions.filter((s) => LIVE_STATES.includes(s.state));
+    return scopedSessions.filter((s) => s.state === stateFilter);
+  }, [scopedSessions, stateFilter]);
+
+  // Per-space session counts + a separate orphan tally (sessions with
+  // spaceId === null) + a grand total for the Home card, plus the most
+  // recent lastEventAt per space so we can sort the cards by activity.
+  const { sessionCountsBySpace, orphanCounts, totalCounts, lastActivityBySpace } = useMemo(() => {
+    const bySpace: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
+    const orphans = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const total = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const lastActivity: Record<string, number> = {};
+    for (const s of sessions) {
+      total.total++;
+      total[s.state]++;
+      if (s.spaceId) {
+        const c = bySpace[s.spaceId] ?? { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+        c.total++;
+        c[s.state]++;
+        bySpace[s.spaceId] = c;
+        const t = parseTimestamp(s.lastEventAt);
+        if (Number.isFinite(t) && t > (lastActivity[s.spaceId] ?? 0)) {
+          lastActivity[s.spaceId] = t;
+        }
+      } else {
+        orphans.total++;
+        orphans[s.state]++;
+      }
+    }
+    return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total, lastActivityBySpace: lastActivity };
+  }, [sessions]);
 
   // Drop meta-spaces from the Spaces summary cards: the chat bar already
   // renders Home as its own pill, so a `home` row in the spaces table would
   // surface a redundant card. __all__ and __archived__ are similar.
-  const realSpaces = useMemo(
-    () => spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__"),
-    [spaces],
-  );
+  // Sort by most recent session activity desc; spaces with no sessions
+  // fall to the bottom in their original (alphabetical) order. Home and
+  // Elsewhere cards are rendered around this list — always first / always
+  // last regardless of activity.
+  const realSpaces = useMemo(() => {
+    const filtered = spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__");
+    return [...filtered].sort((a, b) => {
+      const aT = lastActivityBySpace[a.id] ?? 0;
+      const bT = lastActivityBySpace[b.id] ?? 0;
+      return bT - aT;
+    });
+  }, [spaces, lastActivityBySpace]);
 
-  // Per-space session counts in a single pass instead of N×4 filter calls per
-  // re-render. The Home component re-renders on every session_changed SSE,
-  // so the inner loop matters once you have many spaces and sessions.
-  const sessionCountsBySpace = useMemo(() => {
-    const acc: Record<string, { total: number; running: number; awaiting: number; disconnected: number; done: number }> = {};
-    for (const s of sessions) {
-      if (!s.spaceId) continue;
-      const c = acc[s.spaceId] ?? { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
-      c.total++;
-      c[s.state]++;
-      acc[s.spaceId] = c;
+  // When scoped to Elsewhere, artefacts should mirror the sessions filter:
+  // anything not attributed to a known real space (null spaceId or a stale
+  // pointer to a deleted space). App.tsx hands us all artefacts on home —
+  // we narrow them locally so artefacts and sessions tell the same story.
+  const realSpaceIds = useMemo(() => new Set(realSpaces.map((s) => s.id)), [realSpaces]);
+  const effectiveDesktopProps = useMemo(() => {
+    if (showElsewhere && isHomeView) {
+      return {
+        ...desktopProps,
+        artifacts: desktopProps.artifacts.filter((a) => !a.spaceId || !realSpaceIds.has(a.spaceId)),
+      };
     }
-    return acc;
-  }, [sessions]);
+    return desktopProps;
+  }, [showElsewhere, isHomeView, desktopProps, realSpaceIds]);
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
-  const eyebrow = isHomeView ? "Home"
+  const eyebrow = isHomeView ? (showElsewhere ? "Elsewhere" : "Home")
     : isAllView ? "All"
     : isArchivedView ? "Archived"
     : activeSpaceRow?.displayName ?? scopedSpace ?? "";
@@ -113,25 +194,43 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
       <div className={`home-scroll${isHero ? " home-scroll--hero" : ""}`}>
         <header className="home-header">
           <div className="home-eyebrow">{eyebrow}</div>
-          <h1 className="home-title">{isHomeView ? "Today." : eyebrow}</h1>
+          <h1 className="home-title">{isHomeView ? (showElsewhere ? "Everything else." : "Everything.") : eyebrow}</h1>
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
-        {isHomeView && realSpaces.length > 0 && (
+        {!isAllView && !isArchivedView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
           <div className="home-spaces-section">
             <div className="home-spaces-grid">
+              <button
+                className={`home-space-card home-space-card--home${isHomeView && !showElsewhere ? " selected" : ""}`}
+                onClick={() => {
+                  setShowElsewhere(false);
+                  onSpaceChange("home");
+                }}
+                title="Everything across all spaces"
+              >
+                <div className="home-space-card-name">Home</div>
+                <div className="home-space-card-counts">
+                  {totalCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{totalCounts.active} active</span>}
+                  {totalCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{totalCounts.waiting} waiting</span>}
+                  {totalCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{totalCounts.disconnected} disconnected</span>}
+                  {totalCounts.done > 0 && <span className="signal"><span className="pip pip-dim" />{totalCounts.done} done</span>}
+                  {totalCounts.total === 0 && <span className="signal signal-muted">no sessions yet</span>}
+                </div>
+              </button>
               {realSpaces.map((space) => {
                 const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
+                const isActive = scopedSpace === space.id;
                 return (
                   <button
                     key={space.id}
-                    className="home-space-card"
+                    className={`home-space-card${isActive ? " selected" : ""}`}
                     onClick={() => onSpaceChange(space.id)}
                   >
                     <div className="home-space-card-name">{space.displayName}</div>
                     <div className="home-space-card-counts">
-                      {counts.running > 0 && <span className="signal"><span className="pip pip-green" />{counts.running} running</span>}
-                      {counts.awaiting > 0 && <span className="signal"><span className="pip pip-amber" />{counts.awaiting} awaiting</span>}
+                      {counts.active > 0 && <span className="signal"><span className="pip pip-green" />{counts.active} active</span>}
+                      {counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{counts.waiting} waiting</span>}
                       {counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{counts.disconnected} disconnected</span>}
                       {counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{counts.done} done</span>}
                       {counts.total === 0 && <span className="signal signal-muted">no sessions yet</span>}
@@ -139,6 +238,28 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   </button>
                 );
               })}
+              {orphanCounts.total > 0 && (
+                <button
+                  className={`home-space-card home-space-card--elsewhere${isHomeView && showElsewhere ? " selected" : ""}`}
+                  onClick={() => {
+                    if (isHomeView) {
+                      setShowElsewhere((v) => !v);
+                    } else {
+                      setShowElsewhere(true);
+                      onSpaceChange("home");
+                    }
+                  }}
+                  title="Sessions outside any registered space"
+                >
+                  <div className="home-space-card-name">Elsewhere</div>
+                  <div className="home-space-card-counts">
+                    {orphanCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{orphanCounts.active} active</span>}
+                    {orphanCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{orphanCounts.waiting} waiting</span>}
+                    {orphanCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{orphanCounts.disconnected} disconnected</span>}
+                    {orphanCounts.done > 0 && <span className="signal"><span className="pip pip-dim" />{orphanCounts.done} done</span>}
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -149,16 +270,19 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             <span className="home-section-stats">
               {FILTER_ORDER.map((f) => {
                 const count = stateCounts[f];
-                if (count === 0 && f !== "all") return null;
+                if (count === 0 && f !== "all" && f !== "live") return null;
+                const showPip = f !== "all" && f !== "live";
                 return (
-                  <button
-                    key={f}
-                    className={`stat-btn${stateFilter === f ? " active" : ""}`}
-                    onClick={() => setStateFilter(f)}
-                  >
-                    {f !== "all" && <span className={`pip pip-${stateColor(f)}`} />}
-                    {count} {FILTER_LABELS[f]}
-                  </button>
+                  <span key={f} style={{ display: "contents" }}>
+                    <button
+                      className={`stat-btn${stateFilter === f ? " active" : ""}`}
+                      onClick={() => setStateFilter(f)}
+                    >
+                      {showPip && <span className={`pip pip-${stateColor(f as SessionState)}`} />}
+                      {count} {FILTER_LABELS[f]}
+                    </button>
+                    {f === "live" && <span className="stat-divider" aria-hidden="true" />}
+                  </span>
                 );
               })}
             </span>
@@ -225,7 +349,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         <section className="home-section">
           <div className="home-section-head">
             <span className="home-section-label">Artefacts</span>
-            <span className="home-artefacts-count">{desktopProps.artifacts.length}</span>
+            <span className="home-artefacts-count">{effectiveDesktopProps.artifacts.length}</span>
             <span className="home-section-rule" />
             <div className="home-view-toggle">
               <button
@@ -257,13 +381,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           </div>
           {artefactsView === "icons" ? (
             <div className="home-artefacts">
-              <Desktop {...desktopProps} isHero={false} showMeta />
+              <Desktop {...effectiveDesktopProps} isHero={false} showMeta />
             </div>
           ) : (
             <ArtefactTable
-              artifacts={desktopProps.artifacts}
+              artifacts={effectiveDesktopProps.artifacts}
               spaces={spaces}
-              onArtifactClick={desktopProps.onArtifactClick}
+              onArtifactClick={effectiveDesktopProps.onArtifactClick}
             />
           )}
         </section>
@@ -274,8 +398,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
 
 function stateColor(state: SessionState): "green" | "amber" | "red" | "dim" {
   switch (state) {
-    case "running": return "green";
-    case "awaiting": return "amber";
+    case "active": return "green";
+    case "waiting": return "amber";
     case "disconnected": return "red";
     case "done": return "dim";
   }
@@ -287,9 +411,10 @@ function spaceLabelFor(spaceId: string | null, spaces: Space[]): string | null {
 }
 
 function metaForSession(session: Session): string {
-  if (session.state === "awaiting") return `${session.agent} · awaiting`;
-  if (session.state === "disconnected") return `${session.agent} · disconnected`;
-  return `${session.agent} · ${formatRelative(session.lastEventAt) ?? "—"}`;
+  const rel = formatRelative(session.lastEventAt) ?? "—";
+  if (session.state === "waiting") return `${session.agent} · waiting ${rel}`;
+  if (session.state === "disconnected") return `${session.agent} · disconnected ${rel}`;
+  return `${session.agent} · ${rel}`;
 }
 
 interface SessionTileProps {
@@ -323,9 +448,10 @@ interface SessionRowProps {
 
 function SessionRow({ session, spaces }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
-  const time = session.state === "awaiting" ? "awaiting"
-    : session.state === "disconnected" ? "disconnected"
-    : formatRelative(session.lastEventAt) ?? "—";
+  const rel = formatRelative(session.lastEventAt) ?? "—";
+  const time = session.state === "waiting" ? `waiting ${rel}`
+    : session.state === "disconnected" ? `disconnected ${rel}`
+    : rel;
   const title = session.title ?? "(no title yet)";
   return (
     <div className="home-row">
