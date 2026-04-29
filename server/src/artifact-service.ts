@@ -570,6 +570,7 @@ export class ArtifactService {
         createdAt: row.created_at,
         groupName: row.group_name || undefined,
         sourceLabel,
+        sourceOrigin: row.source_origin,
         ...this.resolveIcon(row),
       };
     }
@@ -594,6 +595,7 @@ export class ArtifactService {
       createdAt: row.created_at,
       groupName: row.group_name || undefined,
       sourceLabel,
+      sourceOrigin: row.source_origin,
       ...this.resolveIcon(row),
     };
   }

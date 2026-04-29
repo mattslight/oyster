@@ -39,6 +39,8 @@ export interface Artifact {
   pluginId?: string;
   /** Display label for the linked source folder (e.g. "oyster-os" — the leaf basename of the source path). Set when `artifacts.source_id` is non-null. Absolute paths intentionally stay server-side; full-path drilldown is a separate, locally-gated endpoint. Drives the "↗" provenance glyph and its tooltip. */
   sourceLabel?: string | null;
+  /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan / linked source. `ai_generated` — produced by an agent. Drives the source filter on Home. */
+  sourceOrigin?: "manual" | "discovered" | "ai_generated";
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";

@@ -22,6 +22,21 @@ interface Props {
 
 type ViewMode = "icons" | "table";
 type StateFilter = SessionState | "live" | "all";
+type ArtefactSource = "all" | "manual" | "ai_generated" | "discovered";
+
+const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered"];
+const ARTEFACT_SOURCE_LABELS: Record<ArtefactSource, string> = {
+  all: "all",
+  manual: "mine",
+  ai_generated: "from agents",
+  discovered: "linked",
+};
+
+// 3 rows × ~7 tiles in the default 1100px column ≈ 21. The grid is
+// responsive so the visible count varies by width — picking a fixed cap
+// keeps the truncation predictable, and the "Show all N" toggle is the
+// safety valve for narrow viewports where 21 fills less of the screen.
+const ARTEFACTS_PREVIEW = 21;
 
 // Persists a view toggle (icons / table) to localStorage so it survives
 // reloads. Returns a useState-shaped pair so callsites stay one-liner.
@@ -113,6 +128,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // space starts collapsed too.
   const [memoriesExpanded, setMemoriesExpanded] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
+  // Artefact source filter (#280) + 3-row collapse. Reset on scope change
+  // so each space starts compact and at "all".
+  const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
+  const [artefactsExpanded, setArtefactsExpanded] = useState(false);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -128,9 +147,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
 
   // Collapse memories whenever scope changes — switching from a long
   // 60-item Home view to a single-space view shouldn't carry over the
-  // "show all" state.
+  // "show all" state. Same logic for artefact source filter + collapse.
   useEffect(() => {
     setMemoriesExpanded(false);
+    setArtefactsExpanded(false);
+    setArtefactSource("all");
   }, [scopedSpace, showElsewhere, isHomeView]);
 
   const scopedSessions = useMemo(() => {
@@ -226,6 +247,33 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     }
     return desktopProps;
   }, [showElsewhere, isHomeView, desktopProps, realSpaceIds]);
+
+  // Source-origin counts over the scoped artefacts (so the chip totals
+  // reflect the current space pill, not the global pile).
+  const artefactSourceCounts = useMemo(() => {
+    const counts: Record<ArtefactSource, number> = { all: 0, manual: 0, ai_generated: 0, discovered: 0 };
+    counts.all = effectiveDesktopProps.artifacts.length;
+    for (const a of effectiveDesktopProps.artifacts) {
+      const o = a.sourceOrigin ?? "manual";
+      if (o === "manual" || o === "ai_generated" || o === "discovered") counts[o]++;
+    }
+    return counts;
+  }, [effectiveDesktopProps.artifacts]);
+
+  // Filter + collapse to a 3-row preview. The collapse only applies to
+  // the icon view; table view stays full-length because it's already
+  // linear and easy to scan.
+  const visibleArtefacts = useMemo(() => {
+    const filtered = artefactSource === "all"
+      ? effectiveDesktopProps.artifacts
+      : effectiveDesktopProps.artifacts.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
+    if (artefactsView === "table" || artefactsExpanded) return filtered;
+    return filtered.slice(0, ARTEFACTS_PREVIEW);
+  }, [effectiveDesktopProps.artifacts, artefactSource, artefactsView, artefactsExpanded]);
+  const visibleArtefactsTotal = useMemo(() => {
+    if (artefactSource === "all") return effectiveDesktopProps.artifacts.length;
+    return effectiveDesktopProps.artifacts.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource).length;
+  }, [effectiveDesktopProps.artifacts, artefactSource]);
 
   // Resolve the active artefact against the FULL artifact list, not the
   // showElsewhere-filtered one. Cross-navigating from a session inspector
@@ -414,7 +462,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         <section className="home-section">
           <div className="home-section-head">
             <span className="home-section-label">Artefacts</span>
-            <span className="home-artefacts-count">{effectiveDesktopProps.artifacts.length}</span>
+            <span className="home-section-stats">
+              {ARTEFACT_SOURCE_ORDER.map((src) => {
+                const count = artefactSourceCounts[src];
+                if (count === 0 && src !== "all") return null;
+                return (
+                  <button
+                    key={src}
+                    className={`stat-btn${artefactSource === src ? " active" : ""}`}
+                    onClick={() => setArtefactSource(src)}
+                  >
+                    {count} {ARTEFACT_SOURCE_LABELS[src]}
+                  </button>
+                );
+              })}
+            </span>
             <span className="home-section-rule" />
             <div className="home-view-toggle">
               <button
@@ -445,17 +507,31 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             </div>
           </div>
           {artefactsView === "icons" ? (
-            <div className="home-artefacts">
-              <Desktop
-                {...effectiveDesktopProps}
-                isHero={false}
-                showMeta
-                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
-              />
-            </div>
+            <>
+              <div className="home-artefacts">
+                <Desktop
+                  {...effectiveDesktopProps}
+                  artifacts={visibleArtefacts}
+                  isHero={false}
+                  showMeta
+                  onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+                />
+              </div>
+              {visibleArtefactsTotal > ARTEFACTS_PREVIEW && (
+                <button
+                  type="button"
+                  className="home-memories-toggle"
+                  onClick={() => setArtefactsExpanded((v) => !v)}
+                >
+                  {artefactsExpanded
+                    ? "Show fewer"
+                    : `Show all ${visibleArtefactsTotal}`}
+                </button>
+              )}
+            </>
           ) : (
             <ArtefactTable
-              artifacts={effectiveDesktopProps.artifacts}
+              artifacts={visibleArtefacts}
               spaces={spaces}
               onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
             />
