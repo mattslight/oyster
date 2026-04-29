@@ -1,5 +1,5 @@
-export type { Artifact, ArtifactKind, ArtifactStatus, IconStatus } from "../../../shared/types";
-import type { Artifact } from "../../../shared/types";
+export type { Artifact, ArtifactKind, ArtifactStatus, IconStatus, SessionJoinedForArtifact } from "../../../shared/types";
+import type { Artifact, SessionJoinedForArtifact } from "../../../shared/types";
 
 // Our mutation endpoints return `{error: "…"}` on failure. Surface that
 // message in thrown Error objects so UI alert()s show something actionable.
@@ -87,5 +87,14 @@ export async function archiveGroup(spaceId: string, name: string): Promise<{ arc
     body: JSON.stringify({ space_id: spaceId, name }),
   });
   if (!res.ok) await throwFromResponse(res);
+  return res.json();
+}
+
+export async function fetchSessionsForArtifact(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SessionJoinedForArtifact[]> {
+  const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}/sessions`, { signal });
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
   return res.json();
 }
