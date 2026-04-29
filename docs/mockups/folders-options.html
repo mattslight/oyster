@@ -328,10 +328,12 @@
   <div class="page">
     <div class="page-title">Folders — placement options</div>
     <div class="page-subtitle">
-      Spaces have linked folders feeding them. Where should the list live? Four candidates,
+      Spaces have linked folders feeding them. Where should the list live? Five candidates,
       same data in each. <strong style="color:var(--text);">Sessions sit on top in every variant</strong>
       — that's not the question. The question is where the Folders list sits relative to Artefacts
-      and how the primary folder reads.
+      and how the primary folder reads. <strong style="color:var(--accent-bright);">Option E</strong>
+      is the recommendation — combines the chip strip from C with the detail list from A behind a
+      disclosure.
     </div>
 
     <!-- ============ OPTION A: Folders as own section, BELOW ============ -->
@@ -445,10 +447,9 @@
     </div>
 
     <!-- ============ OPTION C: Chip strip above Artefacts ============ -->
-    <div class="option recommended">
+    <div class="option">
       <div class="option-tag">
         <span>Option C</span>
-        <span class="tag-badge">RECOMMENDED</span>
       </div>
       <div class="option-name">Compact chip strip above the Artefacts grid</div>
       <div class="option-desc">
@@ -555,19 +556,110 @@
       </div>
     </div>
 
+    <!-- ============ OPTION E: Chips + collapsible detail list ============ -->
+    <div class="option recommended">
+      <div class="option-tag">
+        <span>Option E</span>
+        <span class="tag-badge">RECOMMENDED — combines A + C</span>
+      </div>
+      <div class="option-name">Chip strip + collapsible detail list</div>
+      <div class="option-desc">
+        Best of both. <strong>Chip strip</strong> sits above the grid (default view) — gives the
+        at-a-glance source→output picture and works as a filter (click a chip → grid scopes to that
+        folder; click again to clear). <strong>"Show folder details"</strong> disclosure right
+        under the strip expands the full A-style list with paths, attach times, and Detach
+        buttons. Choice persists in localStorage so power users keep it open.
+      </div>
+      <div class="demo">
+        <div class="h-section">
+          <div class="h-section-head"><span class="h-section-label">Sessions</span><span class="h-section-count">3 live</span><span class="h-section-rule"></span></div>
+          <div class="h-grid sessions">
+            <div class="h-tile">cc · active</div>
+            <div class="h-tile">cc · waiting</div>
+            <div class="h-tile">oc · done</div>
+            <div class="h-tile">cc · done</div>
+            <div class="h-tile">cc · done</div>
+          </div>
+        </div>
+        <div class="h-section">
+          <div class="h-section-head"><span class="h-section-label">Artefacts</span><span class="h-section-count">all 64 · mine 0 · from agents 0 · linked 64</span><span class="h-section-rule"></span></div>
+
+          <!-- Chip strip — quick view + filter -->
+          <div class="h-folders-strip">
+            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-right: 4px;">Folders:</span>
+            <span class="h-chip-folder primary" title="Click to filter grid · click again to clear">★ OYSTER-OS · 45</span>
+            <span class="h-chip-folder">OYSTER-CRM · 12</span>
+            <span class="h-chip-folder">OYSTER-SAMPLE-PLUGIN · 4</span>
+            <span class="h-chip-folder">OYSTER-COMMUNITY-PLUGINS · 2</span>
+            <span class="h-chip-folder">OYSTER-TECHNOLOGY-WWW · 1</span>
+            <span class="h-chip-folder add">+ ATTACH</span>
+          </div>
+
+          <!-- Disclosure -->
+          <button style="background: transparent; border: none; color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; padding: 6px 0 14px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 9px;">▾</span> HIDE FOLDER DETAILS
+          </button>
+
+          <!-- Detail list (expanded) -->
+          <div class="h-folders-list" style="margin-bottom: 18px;">
+            <div class="h-folder-row">
+              <span class="h-chip-folder primary">★ OYSTER-OS</span>
+              <span class="h-folder-path">/Users/Matthew.Slight/Dev/oyster-os</span>
+              <span class="h-folder-time">attached 1d · 45 tiles</span>
+              <button class="h-folder-detach">Detach</button>
+            </div>
+            <div class="h-folder-row">
+              <span class="h-chip-folder">OYSTER-CRM</span>
+              <span class="h-folder-path">/Users/Matthew.Slight/Dev/oyster-crm</span>
+              <span class="h-folder-time">attached 1d · 12 tiles</span>
+              <button class="h-folder-detach">Detach</button>
+            </div>
+            <div class="h-folder-row">
+              <span class="h-chip-folder">OYSTER-SAMPLE-PLUGIN</span>
+              <span class="h-folder-path">/Users/Matthew.Slight/Dev/oyster-sample-plugin</span>
+              <span class="h-folder-time">attached 1d · 4 tiles</span>
+              <button class="h-folder-detach">Detach</button>
+            </div>
+          </div>
+
+          <div class="h-grid">
+            <div class="h-tile">notes</div><div class="h-tile">notes</div><div class="h-tile">notes</div>
+            <div class="h-tile">app</div><div class="h-tile">notes</div><div class="h-tile">notes</div>
+            <div class="h-tile">notes</div>
+          </div>
+        </div>
+        <div class="h-section">
+          <div class="h-section-head"><span class="h-section-label">Memories</span><span class="h-section-count">6</span><span class="h-section-rule"></span></div>
+          <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); padding: 8px 0;">[memory list…]</div>
+        </div>
+      </div>
+      <div class="tradeoff">
+        <div class="tradeoff-line"><span class="tradeoff-key">Pro</span><span class="tradeoff-val">Casual users get the chips (quick + filter) · power users open the disclosure for paths, attach times, Detach. Best of both. <strong>"Zero folders"</strong> empty state replaces both the strip AND disclosure with the red warning so it's still loud.</span></div>
+        <div class="tradeoff-line"><span class="tradeoff-key">Con</span><span class="tradeoff-val">One more piece of state (disclosure open/closed). Marginal — localStorage handles it.</span></div>
+        <div class="tradeoff-line"><span class="tradeoff-key">Primary</span><span class="tradeoff-val">Filled chip + ★ in BOTH places (strip and detail row). Reinforces the convention.</span></div>
+        <div class="tradeoff-line"><span class="tradeoff-key">Default</span><span class="tradeoff-val">Disclosure starts <em>collapsed</em>. Page stays compact for the common case; power users open once and it stays open across reloads.</span></div>
+        <div class="tradeoff-line"><span class="tradeoff-key">Filter</span><span class="tradeoff-val">Click chip → grid scopes to that folder · click again or click another chip to swap · separate "all" state when none selected. Detach lives only in the detail list, never on the chip — keeps the click gesture unambiguous.</span></div>
+      </div>
+    </div>
+
     <!-- Footer recommendation -->
     <div class="option" style="background: rgba(124, 107, 255, 0.04); border-color: rgba(124, 107, 255, 0.18);">
       <div class="option-tag">Recommendation</div>
       <div class="option-desc" style="margin-bottom: 0; max-width: none;">
-        Ship <strong>C</strong>. Chip strip is the right primitive — it answers "what's feeding this?"
-        in a single glance, keeps "zero folders" prominent, and stays out of the way otherwise.
-        The popover gives power users the audit detail they'd lose vs A.<br><br>
+        Ship <strong>E</strong> — chips for the casual at-a-glance + filter, collapsible
+        list for the power-user audit. Both inside the Artefacts section so the source→output
+        relationship is spatial. Detach lives only in the detail list, so a chip click is
+        unambiguously "filter the grid." Click count on a chip filters; click again clears.<br><br>
+
         <strong style="color:var(--text);">Primary:</strong> namesake match (<code style="font-family:var(--font-mono);font-size:11px;background:rgba(255,255,255,0.04);padding:1px 6px;border-radius:3px;">oyster-os</code> for the
         <code style="font-family:var(--font-mono);font-size:11px;background:rgba(255,255,255,0.04);padding:1px 6px;border-radius:3px;">oyster</code>
-        space) → fallback to oldest <code style="font-family:var(--font-mono);font-size:11px;background:rgba(255,255,255,0.04);padding:1px 6px;border-radius:3px;">added_at</code>. Marker is filled chip + ★. No behaviour change yet — purely visual; gives #270/#271 something to anchor when "primary" gains semantic meaning.<br><br>
-        D is tempting but adds gesture ambiguity (click = filter? or click = popover?). Worth filing
-        as a follow-up if folder-filter ever becomes a real ask. Start with C; promote to D later if
-        users explicitly want filter-by-folder.
+        space) → fallback to oldest <code style="font-family:var(--font-mono);font-size:11px;background:rgba(255,255,255,0.04);padding:1px 6px;border-radius:3px;">added_at</code>.
+        Marker is filled chip + ★ in both the strip AND the detail row. Purely visual for now;
+        gives #270/#271 (Summary / Files tabs) an anchor when "primary" gains semantic meaning
+        (e.g. new artefacts default to the primary's source).<br><br>
+
+        <strong style="color:var(--text);">Disclosure default:</strong> collapsed. Page stays
+        compact; power users open once and the choice persists in localStorage.
       </div>
     </div>
   </div>
