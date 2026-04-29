@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Folders — chip + inspector</title>
+  <title>Folders — chip = filter</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -27,34 +27,24 @@
       background: rgba(30, 31, 54, 1);
       min-height: 100vh;
       padding: 60px 0 120px;
-      position: relative;
-      overflow-x: hidden;
     }
-
     .glow {
       position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background: radial-gradient(ellipse 70% 45% at 50% 10%, rgba(124,107,255,0.08) 0%, transparent 60%);
     }
-
     .page {
       position: relative; z-index: 1;
       max-width: 1100px; margin: 0 auto;
       padding: 0 32px;
     }
     .page-title {
-      font-size: 28px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      margin-bottom: 6px;
+      font-size: 28px; font-weight: 700;
+      letter-spacing: -0.02em; margin-bottom: 6px;
     }
     .page-subtitle {
-      font-size: 14px;
-      color: var(--text-dim);
-      margin-bottom: 48px;
-      max-width: 720px;
-      line-height: 1.55;
+      font-size: 14px; color: var(--text-dim);
+      margin-bottom: 48px; max-width: 720px; line-height: 1.55;
     }
-
     .panel {
       padding: 38px 40px 44px;
       background: var(--surface);
@@ -76,8 +66,7 @@
     }
     .h-section-label { color: var(--text); }
     .h-section-count {
-      font-family: var(--font-mono);
-      font-size: 11px;
+      font-family: var(--font-mono); font-size: 11px;
       color: var(--text-muted);
     }
     .h-section-rule { flex: 1; height: 1px; background: var(--border); }
@@ -86,6 +75,7 @@
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       gap: 14px;
+      transition: opacity 0.15s ease;
     }
     .h-tile {
       aspect-ratio: 1;
@@ -93,10 +83,12 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
-      font-family: var(--font-mono);
-      font-size: 9px;
+      font-family: var(--font-mono); font-size: 9px;
       color: var(--text-muted);
+      transition: opacity 0.15s ease;
     }
+    .h-tile.hidden { display: none; }
+    .h-tile.dim { opacity: 0.18; }
     .h-grid.sessions { grid-template-columns: repeat(5, 1fr); }
     .h-grid.sessions .h-tile {
       aspect-ratio: 1.6;
@@ -111,6 +103,7 @@
       align-items: center;
     }
     .h-chip-folder {
+      position: relative;
       padding: 4px 12px;
       border-radius: 4px;
       background: rgba(124, 107, 255, 0.12);
@@ -120,8 +113,9 @@
       font-family: var(--font-mono);
       font-size: 11px;
       cursor: pointer;
-      transition: background 0.15s ease, border-color 0.15s ease;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
       border: 1px solid transparent;
+      display: inline-flex; align-items: center; gap: 6px;
     }
     .h-chip-folder:hover {
       background: rgba(124, 107, 255, 0.22);
@@ -130,6 +124,12 @@
       background: rgba(124, 107, 255, 0.32);
       border-color: rgba(124, 107, 255, 0.6);
       color: #fff;
+    }
+    .h-chip-folder.selected {
+      background: rgba(124, 107, 255, 0.45);
+      border-color: rgba(124, 107, 255, 0.8);
+      color: #fff;
+      box-shadow: 0 0 0 2px rgba(124, 107, 255, 0.15);
     }
     .h-chip-folder.add {
       background: transparent;
@@ -140,134 +140,119 @@
       background: rgba(124, 107, 255, 0.06);
       border-color: rgba(124, 107, 255, 0.5);
     }
+    .h-chip-folder .pip {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: breathe 2.4s ease-in-out infinite;
+    }
+    @keyframes breathe { 50% { opacity: 0.4; } }
 
-    /* Inspector panel — slides in from right, like the real app */
-    .inspector-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.4);
+    .h-chip-folder .detach-x {
+      position: absolute;
+      top: -6px; right: -6px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--red);
+      color: #fff;
+      font-size: 10px;
+      line-height: 16px;
+      text-align: center;
+      cursor: pointer;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.2s ease;
-      z-index: 10;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+      font-weight: 700;
     }
-    .inspector-backdrop.open {
+    .h-chip-folder:hover .detach-x {
       opacity: 1;
       pointer-events: auto;
     }
-    .inspector-preview {
-      position: fixed;
-      top: 0; right: 0; bottom: 0;
-      width: min(560px, 92vw);
-      background: rgba(20, 21, 40, 0.94);
-      border-left: 1px solid var(--border);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
-      z-index: 11;
-      transform: translateX(100%);
-      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      display: flex;
-      flex-direction: column;
+    .h-chip-folder .detach-x:hover {
+      transform: scale(1.15);
     }
-    .inspector-preview.open { transform: translateX(0); }
-    .inspector-meta {
-      padding: 22px 26px 14px;
-      display: flex; align-items: center; gap: 10px;
+
+    /* Source-origin filter chips (existing) */
+    .h-stat-chips {
+      display: inline-flex; gap: 4px;
+    }
+    .h-stat-btn {
+      padding: 3px 10px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-dim);
       font-family: var(--font-mono);
       font-size: 11px;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--text-dim);
+      cursor: pointer;
     }
-    .inspector-meta .space { color: var(--accent-bright); }
-    .inspector-meta .pip {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--accent-bright);
+
+    /* "Filtering by …" indicator */
+    .filter-bar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      background: rgba(124, 107, 255, 0.08);
+      border: 1px solid rgba(124, 107, 255, 0.24);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-bright);
     }
-    .inspector-meta .close {
+    .filter-bar.show { display: flex; }
+    .filter-bar .clear {
       margin-left: auto;
       cursor: pointer;
-      padding: 4px 10px;
       color: var(--text-dim);
-      font-size: 14px;
+      padding: 2px 8px;
       border-radius: 4px;
     }
-    .inspector-meta .close:hover {
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.08);
+    .filter-bar .clear:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+
+    /* Confirm modal */
+    .modal-bg {
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 100;
     }
-    .inspector-title-block {
-      padding: 0 26px 6px;
+    .modal-bg.open { display: flex; }
+    .modal {
+      max-width: 440px;
+      background: rgba(20, 21, 40, 0.98);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px 28px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
     }
-    .inspector-title {
-      font-size: 19px;
+    .modal h2 {
+      font-size: 16px;
       font-weight: 600;
-      color: var(--text);
-      display: flex; align-items: center; gap: 8px;
-      margin-bottom: 4px;
+      margin-bottom: 12px;
     }
-    .primary-badge {
-      font-family: var(--font-mono);
-      font-size: 9px;
-      letter-spacing: 0.1em;
-      padding: 2px 8px;
-      background: rgba(124, 107, 255, 0.32);
-      border: 1px solid rgba(124, 107, 255, 0.6);
-      border-radius: 9999px;
-      color: #fff;
-    }
-    .inspector-sub {
+    .modal .sub {
       font-family: var(--font-mono);
       font-size: 11px;
       color: var(--text-dim);
+      margin-bottom: 8px;
       word-break: break-all;
     }
-
-    .inspector-body {
-      padding: 22px 26px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-    .stat-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .stat-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px;
-    }
-    .stat-card .label {
-      font-family: var(--font-mono);
-      font-size: 9px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-    }
-    .stat-card .value {
-      font-size: 22px;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .stat-card .sub {
-      font-family: var(--font-mono);
-      font-size: 11px;
+    .modal .body {
+      font-size: 13px;
       color: var(--text-dim);
-      margin-top: 2px;
+      margin-bottom: 22px;
+      line-height: 1.5;
     }
-
-    .inspector-actions {
-      display: flex; gap: 8px;
-      padding: 16px 26px 22px;
-      border-top: 1px solid var(--border);
+    .modal .actions {
+      display: flex; gap: 8px; justify-content: flex-end;
     }
     .btn {
-      padding: 8px 14px;
+      padding: 8px 16px;
       font-size: 12px;
       font-family: inherit;
       border-radius: 6px;
@@ -278,17 +263,12 @@
     }
     .btn:hover { background: rgba(255, 255, 255, 0.08); }
     .btn.danger {
-      border-color: rgba(248, 113, 113, 0.3);
+      background: rgba(248, 113, 113, 0.16);
+      border-color: rgba(248, 113, 113, 0.32);
       color: var(--red);
     }
-    .btn.danger:hover { background: rgba(248, 113, 113, 0.08); }
-    .btn.primary {
-      background: rgba(124, 107, 255, 0.16);
-      border-color: rgba(124, 107, 255, 0.32);
-      color: var(--accent-bright);
-    }
+    .btn.danger:hover { background: rgba(248, 113, 113, 0.24); }
 
-    /* Notes block */
     .notes {
       margin: 32px 0 0;
       padding: 20px 22px;
@@ -307,42 +287,79 @@
 <body>
   <div class="glow"></div>
   <div class="page">
-    <div class="page-title">Folders — chip strip + inspector</div>
+    <div class="page-title">Folders — chip is the filter</div>
     <div class="page-subtitle">
-      One affordance, one place for detail. Chips above the Artefacts grid are the spatial
-      source→output signal. <strong style="color:var(--accent-bright);">Click any chip below
-      to see the inspector slide in</strong> — same chrome as sessions / artefacts / memories.
-      <strong style="color:var(--text);">Detach lives only in the inspector</strong> so a chip
-      click is unambiguously "show me this folder."
+      <strong style="color:var(--accent-bright);">Click a folder chip below</strong> — the
+      Artefacts grid scopes to just that folder. Click the same chip again (or "Clear")
+      to return to all. <strong style="color:var(--text);">Hover any chip</strong> for the
+      red <strong style="color:var(--red);">×</strong> in the corner — that's detach. Green
+      pip = a live claude session in that folder.
     </div>
 
-    <!-- Page mock -->
     <div class="panel">
       <div class="h-section">
         <div class="h-section-head"><span class="h-section-label">Sessions</span><span class="h-section-count">3 live</span><span class="h-section-rule"></span></div>
         <div class="h-grid sessions">
-          <div class="h-tile">cc · active</div>
-          <div class="h-tile">cc · waiting</div>
-          <div class="h-tile">oc · done</div>
-          <div class="h-tile">cc · done</div>
-          <div class="h-tile">cc · done</div>
+          <div class="h-tile">cc · oyster-os · active</div>
+          <div class="h-tile">cc · oyster-crm · waiting</div>
+          <div class="h-tile">oc · oyster-os · done</div>
+          <div class="h-tile">cc · oyster-os · done</div>
+          <div class="h-tile">cc · oyster-crm · done</div>
         </div>
       </div>
 
       <div class="h-section">
-        <div class="h-section-head"><span class="h-section-label">Artefacts</span><span class="h-section-count">all 64 · mine 0 · from agents 0 · linked 64</span><span class="h-section-rule"></span></div>
+        <div class="h-section-head">
+          <span class="h-section-label">Artefacts</span>
+          <span class="h-stat-chips">
+            <button class="h-stat-btn" style="background: rgba(124, 107, 255, 0.18); color: var(--accent-bright); border-color: rgba(124, 107, 255, 0.3);">all 64</button>
+            <button class="h-stat-btn">mine 0</button>
+            <button class="h-stat-btn">agents 0</button>
+            <button class="h-stat-btn">linked 64</button>
+          </span>
+          <span class="h-section-rule"></span>
+        </div>
+
         <div class="h-folders-strip">
-          <span class="h-chip-folder primary" data-folder="oyster-os" title="Click to inspect · primary folder">★ oyster-os · 45</span>
-          <span class="h-chip-folder" data-folder="oyster-crm">oyster-crm · 12</span>
-          <span class="h-chip-folder" data-folder="oyster-sample-plugin">oyster-sample-plugin · 4</span>
-          <span class="h-chip-folder" data-folder="oyster-community-plugins">oyster-community-plugins · 2</span>
-          <span class="h-chip-folder" data-folder="oyster-technology-www">oyster-technology-www · 1</span>
+          <span class="h-chip-folder primary" data-folder="oyster-os">
+            ★ oyster-os · 45
+            <span class="pip" title="Live session running here"></span>
+            <span class="detach-x" data-detach="oyster-os" title="Detach (will be confirmed)">✕</span>
+          </span>
+          <span class="h-chip-folder" data-folder="oyster-crm">
+            oyster-crm · 12
+            <span class="pip" title="Live session running here"></span>
+            <span class="detach-x" data-detach="oyster-crm">✕</span>
+          </span>
+          <span class="h-chip-folder" data-folder="oyster-sample-plugin">
+            oyster-sample-plugin · 4
+            <span class="detach-x" data-detach="oyster-sample-plugin">✕</span>
+          </span>
+          <span class="h-chip-folder" data-folder="oyster-community-plugins">
+            oyster-community-plugins · 2
+            <span class="detach-x" data-detach="oyster-community-plugins">✕</span>
+          </span>
+          <span class="h-chip-folder" data-folder="oyster-technology-www">
+            oyster-technology-www · 1
+            <span class="detach-x" data-detach="oyster-technology-www">✕</span>
+          </span>
           <span class="h-chip-folder add">+ attach</span>
         </div>
-        <div class="h-grid">
-          <div class="h-tile">notes</div><div class="h-tile">notes</div><div class="h-tile">notes</div>
-          <div class="h-tile">app</div><div class="h-tile">notes</div><div class="h-tile">notes</div>
-          <div class="h-tile">notes</div>
+
+        <div class="filter-bar" id="filterBar">
+          Showing artefacts from <strong id="filterFolder" style="color:#fff;"></strong>
+          <span class="clear" id="filterClear">Clear ✕</span>
+        </div>
+
+        <div class="h-grid" id="grid">
+          <!-- Each tile carries its origin folder so we can dim / hide it on filter -->
+          <div class="h-tile" data-from="oyster-os">README · oyster-os</div>
+          <div class="h-tile" data-from="oyster-os">CLAUDE · oyster-os</div>
+          <div class="h-tile" data-from="oyster-crm">README · oyster-crm</div>
+          <div class="h-tile" data-from="oyster-os">CHANGELOG · oyster-os</div>
+          <div class="h-tile" data-from="oyster-sample-plugin">app · oyster-sample-plugin</div>
+          <div class="h-tile" data-from="oyster-os">plans/sessions-arc</div>
+          <div class="h-tile" data-from="oyster-crm">app · oyster-crm</div>
         </div>
       </div>
 
@@ -352,103 +369,119 @@
       </div>
     </div>
 
-    <!-- Inspector — slides in when a chip is clicked. ESC or backdrop closes. -->
-    <div class="inspector-backdrop" id="backdrop"></div>
-    <div class="inspector-preview" id="inspector" aria-hidden="true">
-      <div class="inspector-meta">
-        <span class="space">oyster</span>
-        <span>·</span>
-        <span>folder</span>
-        <span>·</span>
-        <span class="pip"></span>
-        <span>linked</span>
-        <span class="close" id="closeBtn" title="Close (or press ESC)">✕</span>
-      </div>
-      <div class="inspector-title-block">
-        <div class="inspector-title">
-          <span id="iName">oyster-os</span>
-          <span class="primary-badge" id="iPrimary">★ primary</span>
-        </div>
-        <div class="inspector-sub" id="iPath">/Users/Matthew.Slight/Dev/oyster-os</div>
-      </div>
-      <div class="inspector-body">
-        <div class="stat-row">
-          <div class="stat-card">
-            <div class="label">Tiles</div>
-            <div class="value" id="iTiles">45</div>
-            <div class="sub">in this space</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">Attached</div>
-            <div class="value">1d</div>
-            <div class="sub">2026-04-28</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Last scan</div>
-          <div class="value" style="font-size: 14px; font-weight: 500;">3m ago</div>
-          <div class="sub">discovered 1, skipped 0, errors 0</div>
-        </div>
-      </div>
-      <div class="inspector-actions">
-        <button class="btn primary">Reveal in Finder</button>
-        <button class="btn">Re-scan</button>
-        <button class="btn danger" style="margin-left: auto;">Detach</button>
-      </div>
-    </div>
-
-    <script>
-      const inspector = document.getElementById('inspector');
-      const backdrop = document.getElementById('backdrop');
-      const close = document.getElementById('closeBtn');
-
-      const FOLDERS = {
-        'oyster-os': { name: 'oyster-os', path: '/Users/Matthew.Slight/Dev/oyster-os', tiles: 45, primary: true },
-        'oyster-crm': { name: 'oyster-crm', path: '/Users/Matthew.Slight/Dev/oyster-crm', tiles: 12, primary: false },
-        'oyster-sample-plugin': { name: 'oyster-sample-plugin', path: '/Users/Matthew.Slight/Dev/oyster-sample-plugin', tiles: 4, primary: false },
-        'oyster-community-plugins': { name: 'oyster-community-plugins', path: '/Users/Matthew.Slight/Dev/oyster-community-plugins', tiles: 2, primary: false },
-        'oyster-technology-www': { name: 'oyster-technology-www', path: '/Users/Matthew.Slight/Dev/oyster-technology-www', tiles: 1, primary: false },
-      };
-
-      function open(folderId) {
-        const f = FOLDERS[folderId];
-        if (!f) return;
-        document.getElementById('iName').textContent = f.name;
-        document.getElementById('iPath').textContent = f.path;
-        document.getElementById('iTiles').textContent = f.tiles;
-        document.getElementById('iPrimary').style.display = f.primary ? '' : 'none';
-        inspector.classList.add('open');
-        backdrop.classList.add('open');
-      }
-      function closeIt() {
-        inspector.classList.remove('open');
-        backdrop.classList.remove('open');
-      }
-
-      document.querySelectorAll('.h-chip-folder[data-folder]').forEach((chip) => {
-        chip.addEventListener('click', () => open(chip.getAttribute('data-folder')));
-      });
-      close.addEventListener('click', closeIt);
-      backdrop.addEventListener('click', closeIt);
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeIt(); });
-    </script>
-
     <div class="notes">
-      <strong>What this gives us, and what it doesn't:</strong>
+      <strong>Folder chip behaviour</strong>
       <ul>
-        <li><strong>One pattern.</strong> Click anything that looks tile-shaped or chip-shaped → slide-panel inspector. Sessions, artefacts, memories, folders all behave the same.</li>
-        <li><strong>Chip is unambiguous.</strong> Click = inspect. No filter, no popover, no disclosure. The source-origin filter (mine / agents / linked) lives where it always did, on the section heading.</li>
-        <li><strong>Detach + Re-scan + Reveal</strong> are inspector actions, not row actions. Less click-target competition on the chip.</li>
-        <li><strong>Empty state</strong> still replaces the strip with the red "no folders attached" warning when zero — that detection job is preserved.</li>
-        <li><strong>Primary marker</strong> is filled chip + ★ on the strip; primary badge in the inspector title. Visual only for now; #270/#271 can later promote it to "default folder for new artefacts."</li>
-      </ul>
-      <strong style="display:block; margin-top:14px;">What we drop from earlier sketches:</strong>
-      <ul>
-        <li>The "Show folder details" disclosure (kitchen-sink — adds state without adding clarity).</li>
-        <li>Click-chip-to-filter (overloads click; the source-origin filter already covers most filtering needs).</li>
-        <li>Hover popover for path (inspector handles it; tooltip stays as a minimal hint).</li>
+        <li><strong>Click chip</strong> → grid scopes to that folder. Tiles from other folders dim out (or hide; toggle below).</li>
+        <li><strong>Click selected chip again</strong> → clear. Or click <strong>Clear ✕</strong> in the filter bar above the grid.</li>
+        <li><strong>Hover chip</strong> → red ✕ appears top-right. Click → confirm modal → soft-delete the source + its artefacts. Reattach restores everything.</li>
+        <li><strong>Green pip</strong> on a chip = a live (active or waiting) claude session in that folder's cwd. The "we care because claude is operating on it" signal, no extra click needed.</li>
+        <li><strong>★</strong> = primary (namesake match → fallback to oldest attached). Filled chip styling reinforces it.</li>
+        <li><strong>+ attach</strong> chip → inline form same as today.</li>
       </ul>
     </div>
   </div>
+
+  <!-- Confirm modal -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h2 id="modalTitle">Detach folder?</h2>
+      <div class="sub" id="modalPath"></div>
+      <div class="body">
+        Its artefacts will be hidden. Reattach the same path to restore them.
+      </div>
+      <div class="actions">
+        <button class="btn" id="modalCancel">Cancel</button>
+        <button class="btn danger" id="modalConfirm">Detach</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const FOLDERS = {
+      'oyster-os': '/Users/Matthew.Slight/Dev/oyster-os',
+      'oyster-crm': '/Users/Matthew.Slight/Dev/oyster-crm',
+      'oyster-sample-plugin': '/Users/Matthew.Slight/Dev/oyster-sample-plugin',
+      'oyster-community-plugins': '/Users/Matthew.Slight/Dev/oyster-community-plugins',
+      'oyster-technology-www': '/Users/Matthew.Slight/Dev/oyster-technology-www',
+    };
+    let activeFilter = null;
+
+    const filterBar = document.getElementById('filterBar');
+    const filterLabel = document.getElementById('filterFolder');
+    const grid = document.getElementById('grid');
+
+    function applyFilter() {
+      grid.querySelectorAll('.h-tile').forEach((t) => {
+        const from = t.getAttribute('data-from');
+        if (!activeFilter) {
+          t.classList.remove('dim');
+        } else {
+          t.classList.toggle('dim', from !== activeFilter);
+        }
+      });
+      document.querySelectorAll('.h-chip-folder[data-folder]').forEach((c) => {
+        c.classList.toggle('selected', c.getAttribute('data-folder') === activeFilter);
+      });
+      if (activeFilter) {
+        filterLabel.textContent = activeFilter;
+        filterBar.classList.add('show');
+      } else {
+        filterBar.classList.remove('show');
+      }
+    }
+
+    document.querySelectorAll('.h-chip-folder[data-folder]').forEach((chip) => {
+      chip.addEventListener('click', (e) => {
+        // Don't fire filter when the click was on the detach ✕
+        if (e.target && e.target.classList.contains('detach-x')) return;
+        const folder = chip.getAttribute('data-folder');
+        activeFilter = activeFilter === folder ? null : folder;
+        applyFilter();
+      });
+    });
+    document.getElementById('filterClear').addEventListener('click', () => {
+      activeFilter = null;
+      applyFilter();
+    });
+
+    // Detach confirmation
+    const modalBg = document.getElementById('modalBg');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalPath = document.getElementById('modalPath');
+    let pendingDetach = null;
+
+    document.querySelectorAll('.detach-x').forEach((x) => {
+      x.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const folder = x.getAttribute('data-detach');
+        pendingDetach = folder;
+        modalTitle.textContent = `Detach "${folder}"?`;
+        modalPath.textContent = FOLDERS[folder] || folder;
+        modalBg.classList.add('open');
+      });
+    });
+    document.getElementById('modalCancel').addEventListener('click', () => {
+      modalBg.classList.remove('open');
+      pendingDetach = null;
+    });
+    document.getElementById('modalConfirm').addEventListener('click', () => {
+      // Mock: just close. Real impl calls DELETE.
+      modalBg.classList.remove('open');
+      pendingDetach = null;
+    });
+    modalBg.addEventListener('click', (e) => {
+      if (e.target === modalBg) {
+        modalBg.classList.remove('open');
+        pendingDetach = null;
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modalBg.classList.contains('open')) {
+        modalBg.classList.remove('open');
+        pendingDetach = null;
+      }
+    });
+  </script>
 </body>
 </html>
