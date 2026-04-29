@@ -759,12 +759,23 @@ export function renderEvent(ev: Record<string, any>): RenderedEvent | null {
     case "assistant": {
       const blocks = ev.message?.content;
       if (!Array.isArray(blocks)) return null;
+      const hasText = blocks.some(
+        (b: any) => b?.type === "text" && typeof b.text === "string" && b.text.trim() !== "",
+      );
+      const toolNames = blocks
+        .filter((b: any) => b?.type === "tool_use" && typeof b.name === "string")
+        .map((b: any) => b.name as string);
+      // Pure tool-call turns (no text blocks, only tool_use) are tool calls
+      // semantically — the "ASSISTANT [Bash]" rendering was misleading. Mark
+      // them as `tool` so the inspector renders them as collapsible tool
+      // turns, matching tool_result on the other side.
+      if (!hasText && toolNames.length > 0) {
+        return { role: "tool", text: toolNames.map((n) => `[${n}]`).join(" ") };
+      }
       const text = blocks
         .map((b: any) => {
           if (b?.type === "text" && typeof b.text === "string") return b.text;
-          if (b?.type === "tool_use" && typeof b.name === "string") {
-            return `[${b.name}]`;
-          }
+          if (b?.type === "tool_use" && typeof b.name === "string") return `[${b.name}]`;
           return "";
         })
         .filter(Boolean)

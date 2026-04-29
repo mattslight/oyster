@@ -9,6 +9,7 @@ import {
 import { subscribeUiEvents } from "../data/ui-events";
 import type {
   Session,
+  SessionAgent,
   SessionEvent,
   SessionArtifactJoined,
   SessionState,
@@ -178,6 +179,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         artefacts={artefacts}
         onSwitchTo={onSwitchTo}
         sessionId={sessionId}
+        agent={session.agent}
       />
       <Footer session={session} />
     </>
@@ -193,13 +195,14 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
  * to read history, leave them there.
  */
 function TranscriptBody({
-  tab, events, artefacts, onSwitchTo, sessionId,
+  tab, events, artefacts, onSwitchTo, sessionId, agent,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
   artefacts: SessionArtifactJoined[] | null;
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
+  agent: SessionAgent;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const eventsLen = events?.length ?? 0;
@@ -226,7 +229,7 @@ function TranscriptBody({
 
   return (
     <div className="inspector-body" ref={ref}>
-      {tab === "transcript" && <Transcript events={events} sessionId={sessionId} />}
+      {tab === "transcript" && <Transcript events={events} sessionId={sessionId} agent={agent} />}
       {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
     </div>
   );
@@ -303,7 +306,9 @@ function Tabs({
   );
 }
 
-function Transcript({ events, sessionId }: { events: SessionEvent[] | null; sessionId: string }) {
+function Transcript({
+  events, sessionId, agent,
+}: { events: SessionEvent[] | null; sessionId: string; agent: SessionAgent }) {
   if (events === null) return <div className="inspector-empty">Loading transcript…</div>;
   if (events.length === 0) {
     return <div className="inspector-empty">No transcript yet. Live updates active.</div>;
@@ -311,19 +316,32 @@ function Transcript({ events, sessionId }: { events: SessionEvent[] | null; sess
   return (
     <>
       {events.map((e) => (
-        <Turn key={e.id} event={e} sessionId={sessionId} />
+        <Turn key={e.id} event={e} sessionId={sessionId} agent={agent} />
       ))}
     </>
   );
 }
 
-function Turn({ event, sessionId }: { event: SessionEvent; sessionId: string }) {
-  if (event.role === "tool" || event.role === "tool_result") {
+// Backfill heuristic for sessions written by older watchers: assistant events
+// whose text is a single `[ToolName]` token (or whitespace-separated tokens)
+// were really pure tool calls. New events use role:"tool" directly; this
+// catches the historical rows so they render as collapsible tool turns.
+const TOOL_ONLY_RE = /^(\[[A-Za-z][A-Za-z0-9_-]*\]\s*)+$/;
+
+function Turn({
+  event, sessionId, agent,
+}: { event: SessionEvent; sessionId: string; agent: SessionAgent }) {
+  const isToolish =
+    event.role === "tool"
+    || event.role === "tool_result"
+    || (event.role === "assistant" && TOOL_ONLY_RE.test(event.text.trim()));
+  if (isToolish) {
     return <ToolTurn event={event} sessionId={sessionId} />;
   }
+  const label = event.role === "assistant" ? agent.toUpperCase() : event.role.toUpperCase();
   return (
     <div className={`turn ${event.role}`}>
-      <div className="turn-role">{event.role}</div>
+      <div className="turn-role">{label}</div>
       <div className="turn-text">{event.text || "(empty)"}</div>
     </div>
   );
