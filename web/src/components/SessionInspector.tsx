@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   fetchSession,
   fetchSessionEvents,
@@ -39,6 +39,9 @@ const STATE_LABEL: Record<SessionState, string> = {
 };
 
 const RAW_CAP_BYTES = 4096;
+// Matches the server default. If a fetch returns exactly this many events,
+// assume there are more upstream and surface the "1000+" affordance.
+const PAGE_SIZE = 1000;
 
 type Tab = "transcript" | "artefacts";
 
@@ -90,6 +93,11 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("transcript");
+  // True if the bootstrap fetch returned a full page — i.e. there are older
+  // events still on the server. Drives the "1000+" badge and the scroll-up
+  // load. Flips to false once an older fetch returns less than a full page.
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const latestReqId = useRef(0);
   // Capture onNotFound by ref so the effects don't re-run when the caller
   // passes a fresh inline lambda each render. Without this, a parent
@@ -113,11 +121,13 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
     setEvents(null);
     setArtefacts(null);
     setTab("transcript");
+    setHasMoreOlder(false);
+    setLoadingOlder(false);
     setBootstrapDone(false);
     const ac = new AbortController();
     Promise.all([
       fetchSession(sessionId, ac.signal),
-      fetchSessionEvents(sessionId, ac.signal),
+      fetchSessionEvents(sessionId, { signal: ac.signal }),
       fetchSessionArtifacts(sessionId, ac.signal),
     ])
       .then(([s, ev, art]) => {
@@ -125,6 +135,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         setSession(s);
         setEvents(ev);
         setArtefacts(art);
+        setHasMoreOlder(ev.length >= PAGE_SIZE);
         setBootstrapDone(true);
       })
       .catch((err) => {
@@ -150,14 +161,29 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         const reqId = ++latestReqId.current;
         if (inflight) inflight.abort();
         inflight = new AbortController();
+        // Fetch session metadata fresh, but only NEW events past the last
+        // cursor. Replacing the whole events array would clobber any older
+        // events the user has scrolled up to load.
+        const lastEventId = (() => {
+          // Read the freshest events without putting events in deps —
+          // adding events as a dep would re-subscribe to SSE on every
+          // append, which is wasteful and risks dropping ticks.
+          const arr = eventsRef.current;
+          return arr && arr.length > 0 ? arr[arr.length - 1].id : undefined;
+        })();
         Promise.all([
           fetchSession(sessionId, inflight.signal),
-          fetchSessionEvents(sessionId, inflight.signal),
+          fetchSessionEvents(sessionId, {
+            after: lastEventId,
+            signal: inflight.signal,
+          }),
         ])
-          .then(([s, ev]) => {
+          .then(([s, newEvents]) => {
             if (reqId !== latestReqId.current) return;
             setSession(s);
-            setEvents(ev);
+            if (newEvents.length > 0) {
+              setEvents((prev) => (prev ? [...prev, ...newEvents] : newEvents));
+            }
           })
           .catch((err) => {
             if (inflight?.signal.aborted) return;
@@ -185,6 +211,37 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
       unsubscribe();
     };
   }, [sessionId, bootstrapDone]);
+
+  // Mirror events into a ref so live SSE fetches can read the freshest
+  // last-id without re-running their effect on every append.
+  const eventsRef = useRef<SessionEvent[] | null>(null);
+  useEffect(() => { eventsRef.current = events; }, [events]);
+
+  // Load-older handler: triggered by the transcript scroll listener.
+  // Returns a flag indicating whether the caller should preserve scroll
+  // position (true if a fetch was actually issued and resolved with rows).
+  const loadOlderRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  loadOlderRef.current = async () => {
+    if (loadingOlder || !hasMoreOlder) return;
+    const arr = eventsRef.current;
+    if (!arr || arr.length === 0) return;
+    const cursor = arr[0].id;
+    setLoadingOlder(true);
+    try {
+      const older = await fetchSessionEvents(sessionId, { before: cursor });
+      // Drop overlap defensively (id < cursor server-side guarantees this,
+      // but if a future change introduces ≤ semantics we'd dupe rows).
+      const fresh = older.filter((e) => e.id < cursor);
+      if (fresh.length > 0) {
+        setEvents((prev) => (prev ? [...fresh, ...prev] : fresh));
+      }
+      setHasMoreOlder(older.length >= PAGE_SIZE);
+    } catch (err) {
+      console.warn("[SessionInspector] load older failed:", err);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   if (error) {
     return (
@@ -224,6 +281,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         tab={tab}
         setTab={setTab}
         eventsCount={events?.length ?? 0}
+        hasMoreOlder={hasMoreOlder}
         artefactsCount={artefacts ? new Set(artefacts.map((a) => a.artifact.id)).size : 0}
       />
       <TranscriptBody
@@ -233,6 +291,9 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         onSwitchTo={onSwitchTo}
         sessionId={sessionId}
         agent={session.agent}
+        hasMoreOlder={hasMoreOlder}
+        loadingOlder={loadingOlder}
+        onLoadOlder={() => loadOlderRef.current()}
       />
     </>
   );
@@ -248,6 +309,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
  */
 function TranscriptBody({
   tab, events, artefacts, onSwitchTo, sessionId, agent,
+  hasMoreOlder, loadingOlder, onLoadOlder,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
@@ -255,10 +317,25 @@ function TranscriptBody({
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
   agent: SessionAgent;
+  hasMoreOlder: boolean;
+  loadingOlder: boolean;
+  onLoadOlder: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
   const [visible, setVisible] = useState<Set<RoleCategory>>(loadVisibleCategories);
+  // When set to a number (saved scrollHeight), the layout effect below
+  // restores the user's scroll position after a load-older prepend. Cleared
+  // after restore so live appends continue to behave normally.
+  const restoreFromBottomRef = useRef<number | null>(null);
+  const onLoadOlderRef = useRef(onLoadOlder);
+  useEffect(() => { onLoadOlderRef.current = onLoadOlder; }, [onLoadOlder]);
+  // Latest values for the scroll handler — keeping them in refs avoids
+  // re-attaching the listener on every state tick.
+  const hasMoreOlderRef = useRef(hasMoreOlder);
+  useEffect(() => { hasMoreOlderRef.current = hasMoreOlder; }, [hasMoreOlder]);
+  const loadingOlderRef = useRef(loadingOlder);
+  useEffect(() => { loadingOlderRef.current = loadingOlder; }, [loadingOlder]);
 
   function toggleCategory(cat: RoleCategory) {
     setVisible((prev) => {
@@ -278,14 +355,39 @@ function TranscriptBody({
     const onScroll = () => {
       const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       wasNearBottomRef.current = fromBottom < 80;
+      // Trigger load-older when within 200px of the top. Take the
+      // loading lock synchronously so a flurry of scroll events doesn't
+      // queue duplicate fetches before React commits the state change.
+      // The prop-mirroring useEffect catches up afterwards.
+      if (
+        el.scrollTop < 200
+        && hasMoreOlderRef.current
+        && !loadingOlderRef.current
+      ) {
+        loadingOlderRef.current = true;
+        // Capture distance-from-bottom *before* the prepend so we can
+        // restore it after React re-renders. scrollTop alone is fragile —
+        // it grows by N pixels on prepend and the user appears to "jump
+        // back" to where they were; pinning to bottom-distance keeps the
+        // visible turn at the same screen position.
+        restoreFromBottomRef.current = el.scrollHeight - el.scrollTop;
+        onLoadOlderRef.current();
+      }
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => {
+  // Run BEFORE paint so the scroll restore is invisible to the user. A
+  // post-paint useEffect would briefly show the jumped position.
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el || tab !== "transcript") return;
+    if (restoreFromBottomRef.current != null) {
+      el.scrollTop = el.scrollHeight - restoreFromBottomRef.current;
+      restoreFromBottomRef.current = null;
+      return;
+    }
     if (wasNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
@@ -298,7 +400,14 @@ function TranscriptBody({
       )}
       <div className="inspector-body" ref={ref}>
         {tab === "transcript" && (
-          <Transcript events={filteredEvents} sessionId={sessionId} agent={agent} />
+          <>
+            {loadingOlder && (
+              <div className="inspector-empty" style={{ textAlign: "center", padding: "8px 0" }}>
+                Loading older…
+              </div>
+            )}
+            <Transcript events={filteredEvents} sessionId={sessionId} agent={agent} />
+          </>
         )}
         {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
       </div>
@@ -427,13 +536,18 @@ function Banner({ session }: { session: Session }) {
 }
 
 function Tabs({
-  tab, setTab, eventsCount, artefactsCount,
+  tab, setTab, eventsCount, hasMoreOlder, artefactsCount,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
   eventsCount: number;
+  hasMoreOlder: boolean;
   artefactsCount: number;
 }) {
+  // While older events haven't all been loaded, clamp the badge to "1000+"
+  // — the loaded count grows as the user scrolls, but the user wants the
+  // single "more than a thousand" signal, not an interim 2000+/3000+/…
+  const transcriptLabel = hasMoreOlder ? "1000+" : String(eventsCount);
   return (
     <div className="inspector-tabs">
       <button
@@ -441,7 +555,7 @@ function Tabs({
         className={`inspector-tab${tab === "transcript" ? " active" : ""}`}
         onClick={() => setTab("transcript")}
       >
-        Transcript <span className="badge">{eventsCount}</span>
+        Transcript <span className="badge">{transcriptLabel}</span>
       </button>
       <button
         type="button"

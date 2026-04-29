@@ -28,8 +28,27 @@ export async function fetchSession(id: string, signal?: AbortSignal): Promise<Se
   return res.json();
 }
 
-export async function fetchSessionEvents(id: string, signal?: AbortSignal): Promise<SessionEvent[]> {
-  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/events`, { signal });
+export interface FetchSessionEventsOpts {
+  // Cursor pagination. Pass `before` to load older events; `after` to fetch
+  // only events newer than the cursor (live append). Mutually exclusive.
+  before?: number;
+  after?: number;
+  // Server caps at 1000 default; pass to override (max 10_000).
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+export async function fetchSessionEvents(
+  id: string,
+  opts: FetchSessionEventsOpts = {},
+): Promise<SessionEvent[]> {
+  const params = new URLSearchParams();
+  if (opts.before !== undefined) params.set("before", String(opts.before));
+  if (opts.after !== undefined) params.set("after", String(opts.after));
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const url = `/api/sessions/${encodeURIComponent(id)}/events${qs ? `?${qs}` : ""}`;
+  const res = await fetch(url, { signal: opts.signal });
   if (!res.ok) throw new Error(`Server returned ${res.status}`);
   return res.json();
 }
