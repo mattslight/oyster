@@ -1230,6 +1230,21 @@
   background: rgba(248, 113, 113, 0.16);
   color: var(--home-red);
 }
+/* Selected pill has a saturated purple background; the tinted badges
+   wash out against it. Switch to fully opaque colour + dark numerals
+   so the dots punch through and stay readable. */
+.home-breadcrumb-pill.selected .home-breadcrumb-badge.green {
+  background: var(--home-green);
+  color: rgba(0, 0, 0, 0.82);
+}
+.home-breadcrumb-pill.selected .home-breadcrumb-badge.amber {
+  background: var(--home-amber);
+  color: rgba(0, 0, 0, 0.82);
+}
+.home-breadcrumb-pill.selected .home-breadcrumb-badge.red {
+  background: var(--home-red);
+  color: rgba(0, 0, 0, 0.82);
+}
 
 
 /* Active projects on Home — sub-projects inside spaces with at least
