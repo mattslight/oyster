@@ -270,6 +270,10 @@
   gap: 10px;
 }
 .home-space-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   text-align: left;
   padding: 10px 14px;
   background: var(--home-surface);
