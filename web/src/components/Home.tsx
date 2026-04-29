@@ -15,13 +15,20 @@ interface Props {
 }
 
 type ViewMode = "icons" | "table";
-type StateFilter = SessionState | "all";
+type StateFilter = SessionState | "live" | "all";
 
-const FILTER_ORDER: StateFilter[] = ["active", "waiting", "disconnected", "done", "all"];
+// "live" is a preset bundling active+waiting+disconnected (everything that
+// isn't archived). It's the default because that's the common case — done
+// is review/history, not active inventory. The dot after "live" indicates
+// the live cluster ends; the per-state chips after it are for fine-grained
+// filtering.
+const FILTER_ORDER: StateFilter[] = ["live", "active", "waiting", "disconnected", "done", "all"];
+const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
 
 const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
 const FILTER_LABELS: Record<StateFilter, string> = {
+  live: "live",
   active: "active",
   waiting: "waiting",
   disconnected: "disconnected",
@@ -49,7 +56,7 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
-  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
+  const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useState<ViewMode>("icons");
   const [artefactsView, setArtefactsView] = useState<ViewMode>("icons");
 
@@ -65,15 +72,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   );
 
   const stateCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
+    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
+    counts.live = counts.active + counts.waiting + counts.disconnected;
     return counts;
   }, [scopedSessions]);
 
-  const visibleSessions = useMemo(
-    () => (stateFilter === "all" ? scopedSessions : scopedSessions.filter((s) => s.state === stateFilter)),
-    [scopedSessions, stateFilter],
-  );
+  const visibleSessions = useMemo(() => {
+    if (stateFilter === "all") return scopedSessions;
+    if (stateFilter === "live") return scopedSessions.filter((s) => LIVE_STATES.includes(s.state));
+    return scopedSessions.filter((s) => s.state === stateFilter);
+  }, [scopedSessions, stateFilter]);
 
   // Drop meta-spaces from the Spaces summary cards: the chat bar already
   // renders Home as its own pill, so a `home` row in the spaces table would
@@ -149,16 +158,19 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             <span className="home-section-stats">
               {FILTER_ORDER.map((f) => {
                 const count = stateCounts[f];
-                if (count === 0 && f !== "all") return null;
+                if (count === 0 && f !== "all" && f !== "live") return null;
+                const showPip = f !== "all" && f !== "live";
                 return (
-                  <button
-                    key={f}
-                    className={`stat-btn${stateFilter === f ? " active" : ""}`}
-                    onClick={() => setStateFilter(f)}
-                  >
-                    {f !== "all" && <span className={`pip pip-${stateColor(f)}`} />}
-                    {count} {FILTER_LABELS[f]}
-                  </button>
+                  <span key={f} style={{ display: "contents" }}>
+                    <button
+                      className={`stat-btn${stateFilter === f ? " active" : ""}`}
+                      onClick={() => setStateFilter(f)}
+                    >
+                      {showPip && <span className={`pip pip-${stateColor(f as SessionState)}`} />}
+                      {count} {FILTER_LABELS[f]}
+                    </button>
+                    {f === "live" && <span className="stat-divider" aria-hidden="true" />}
+                  </span>
                 );
               })}
             </span>

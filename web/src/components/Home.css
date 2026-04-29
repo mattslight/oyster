@@ -184,6 +184,13 @@
   align-items: center;
 }
 
+.stat-divider {
+  flex: 0 0 1px;
+  height: 16px;
+  background: var(--home-border);
+  margin: 0 4px;
+}
+
 .stat-btn {
   display: inline-flex;
   align-items: center;
