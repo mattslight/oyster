@@ -357,17 +357,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             duplicate the same data. */}
         {(realSpaces.length > 0 || orphanCounts.total > 0) && (
           <nav className="home-breadcrumb" aria-label="Spaces">
+            <div className="home-breadcrumb-inner">
             <button
               type="button"
-              className={`home-breadcrumb-pill${isHomeView && !showElsewhere ? " selected" : ""}`}
+              className={`home-breadcrumb-pill home-breadcrumb-pill--home${isHomeView && !showElsewhere ? " selected" : ""}`}
               onClick={() => { onSpaceChange("home"); setShowElsewhere(false); }}
               title={`${totalCounts.active} active · ${totalCounts.waiting} waiting · ${totalCounts.disconnected} disconnected · ${totalCounts.done} done`}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6, verticalAlign: -1 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: -1 }}>
                 <path d="M3 12l9-9 9 9" />
                 <path d="M5 10v10h14V10" />
               </svg>
-              Home
             </button>
             {realSpaces.map((space) => {
               const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
@@ -418,6 +418,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 Elsewhere
               </button>
             )}
+            </div>
           </nav>
         )}
 

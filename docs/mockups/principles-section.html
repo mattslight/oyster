@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oyster — principles section, two treatments</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; }
+    body { font-family: 'Inter', -apple-system, sans-serif; }
+
+    .compare-bar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #1a1b30;
+      color: #f0f0f5;
+      padding: 14px 24px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .compare-bar a { color: #a597ff; text-decoration: none; }
+    .compare-bar a:hover { text-decoration: underline; }
+    .compare-bar .sep { opacity: 0.3; }
+
+    /* ============================================================ */
+    /*  VARIANT A — Oyster Quick Start visual language               */
+    /* ============================================================ */
+    .variant-a {
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      background: rgba(30, 31, 54, 1);
+      color: #f0f0f5;
+      padding: 120px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .variant-a .glow {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,107,255,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 80% 90%, rgba(165,151,255,0.04) 0%, transparent 50%);
+    }
+    .variant-a .container {
+      max-width: 720px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    .variant-a .eyebrow {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      color: #7c6bff;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .variant-a .heading {
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .variant-a .subhead {
+      font-size: 15px;
+      color: rgba(232,233,240,0.45);
+      margin-bottom: 48px;
+    }
+    .variant-a .principles {
+      background: rgba(12,13,28,0.85);
+      border: 1px solid rgba(124,107,255,0.15);
+      border-radius: 16px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 8px 24px;
+    }
+    .variant-a .row {
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+      padding: 20px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .variant-a .row:last-child { border-bottom: none; }
+    .variant-a .num {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: rgba(232,233,240,0.3);
+      min-width: 24px;
+      flex-shrink: 0;
+    }
+    .variant-a .label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 14px;
+      font-weight: 500;
+      color: #a597ff;
+      min-width: 140px;
+      flex-shrink: 0;
+    }
+    .variant-a .desc {
+      font-size: 14px;
+      color: rgba(232,233,240,0.7);
+      line-height: 1.55;
+    }
+    @media (max-width: 640px) {
+      .variant-a .row { flex-direction: column; gap: 4px; }
+      .variant-a .label { min-width: 0; }
+    }
+
+    /* ============================================================ */
+    /*  VARIANT B — AgentsOS monumental black                        */
+    /* ============================================================ */
+    .variant-b {
+      background: #000;
+      color: #fff;
+      padding: 180px 64px;
+      position: relative;
+      font-family: 'Inter', -apple-system, sans-serif;
+      overflow: hidden;
+    }
+    .variant-b::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
+      background-size: 32px 32px;
+      pointer-events: none;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black, transparent 80%);
+    }
+    .variant-b .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 48px;
+    }
+    .variant-b .eyebrow {
+      font-family: 'Inter', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      padding-top: 8px;
+    }
+    .variant-b .principles {
+      display: flex;
+      flex-direction: column;
+    }
+    .variant-b .row {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      align-items: baseline;
+      gap: 32px;
+      padding: 36px 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .variant-b .row:last-child { border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .variant-b .num {
+      font-family: 'Inter', monospace;
+      font-feature-settings: "tnum";
+      font-size: 13px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.1em;
+    }
+    .variant-b .body {
+      display: flex;
+      align-items: baseline;
+      gap: 32px;
+    }
+    .variant-b .label {
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .variant-b .desc {
+      font-size: 16px;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.5;
+      padding-bottom: 6px;
+    }
+    @media (max-width: 900px) {
+      .variant-b { padding: 100px 24px; }
+      .variant-b .container { grid-template-columns: 1fr; gap: 24px; }
+      .variant-b .row { grid-template-columns: 48px 1fr; gap: 16px; padding: 28px 0; }
+      .variant-b .body { flex-direction: column; gap: 8px; }
+    }
+
+    /* ============================================================ */
+    /*  VARIANT C — hybrid: Oyster palette, AgentsOS rhythm          */
+    /* ============================================================ */
+    .variant-c {
+      background: rgba(20, 21, 40, 1);
+      color: #f0f0f5;
+      padding: 160px 64px;
+      position: relative;
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      overflow: hidden;
+    }
+    .variant-c::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 60% 40% at 50% 0%, rgba(124,107,255,0.10) 0%, transparent 70%);
+    }
+    .variant-c .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 48px;
+    }
+    .variant-c .eyebrow {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      color: #7c6bff;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding-top: 12px;
+    }
+    .variant-c .principles {
+      display: flex;
+      flex-direction: column;
+    }
+    .variant-c .row {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      align-items: baseline;
+      gap: 24px;
+      padding: 32px 0;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .variant-c .row:last-child { border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .variant-c .num {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      color: rgba(232,233,240,0.3);
+      letter-spacing: 0.1em;
+    }
+    .variant-c .body {
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+    }
+    .variant-c .label {
+      font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .variant-c .desc {
+      font-size: 15px;
+      color: rgba(232,233,240,0.55);
+      line-height: 1.55;
+      padding-bottom: 4px;
+    }
+    @media (max-width: 900px) {
+      .variant-c { padding: 100px 24px; }
+      .variant-c .container { grid-template-columns: 1fr; gap: 16px; }
+      .variant-c .row { grid-template-columns: 40px 1fr; gap: 12px; padding: 24px 0; }
+      .variant-c .body { flex-direction: column; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="compare-bar">
+    <strong>Oyster · principles section · 3 treatments</strong>
+    <span class="sep">|</span>
+    <a href="#a">A — Quick Start (current)</a>
+    <a href="#b">B — AgentsOS monumental</a>
+    <a href="#c">C — hybrid</a>
+  </div>
+
+  <!-- VARIANT A -->
+  <section id="a" class="variant-a">
+    <div class="glow"></div>
+    <div class="container">
+      <div class="eyebrow">A — Oyster Quick Start language</div>
+      <h2 class="heading">Three primitives.</h2>
+      <p class="subhead">Everything else is built from these.</p>
+
+      <div class="principles">
+        <div class="row">
+          <span class="num">01</span>
+          <span class="label">Spaces</span>
+          <span class="desc">One pill per project, client, or topic. Switch with <code>#name</code> or <code>/s name</code>.</span>
+        </div>
+        <div class="row">
+          <span class="num">02</span>
+          <span class="label">Artefacts</span>
+          <span class="desc">Notes, decks, diagrams, apps, tables, wireframes — typed outputs that live as tiles you can rearrange.</span>
+        </div>
+        <div class="row">
+          <span class="num">03</span>
+          <span class="label">Prompt</span>
+          <span class="desc">The chat bar is the control surface. Type to create, slash to navigate, drag a folder to import.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VARIANT B -->
+  <section id="b" class="variant-b">
+    <div class="container">
+      <div class="eyebrow">PRINCIPLES</div>
+      <div class="principles">
+        <div class="row">
+          <span class="num">01</span>
+          <div class="body">
+            <span class="label">Spaces</span>
+            <span class="desc">One pill per project, client, or topic. Switch with #name or /s.</span>
+          </div>
+        </div>
+        <div class="row">
+          <span class="num">02</span>
+          <div class="body">
+            <span class="label">Artefacts</span>
+            <span class="desc">Typed outputs live as tiles on the surface. Rearrange, link, export.</span>
+          </div>
+        </div>
+        <div class="row">
+          <span class="num">03</span>
+          <div class="body">
+            <span class="label">Prompt</span>
+            <span class="desc">The chat bar is the control surface. Any AI can drive it via MCP.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VARIANT C -->
+  <section id="c" class="variant-c">
+    <div class="container">
+      <div class="eyebrow">Principles</div>
+      <div class="principles">
+        <div class="row">
+          <span class="num">01</span>
+          <div class="body">
+            <span class="label">Spaces</span>
+            <span class="desc">One pill per project, client, or topic. Switch with <code style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#a597ff;background:rgba(124,107,255,0.1);padding:2px 6px;border-radius:4px;">#name</code> or <code style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#a597ff;background:rgba(124,107,255,0.1);padding:2px 6px;border-radius:4px;">/s</code>.</span>
+          </div>
+        </div>
+        <div class="row">
+          <span class="num">02</span>
+          <div class="body">
+            <span class="label">Artefacts</span>
+            <span class="desc">Typed outputs — notes, decks, diagrams, apps — live as tiles you can rearrange.</span>
+          </div>
+        </div>
+        <div class="row">
+          <span class="num">03</span>
+          <div class="body">
+            <span class="label">Prompt</span>
+            <span class="desc">The chat bar is the control surface. Any AI can drive it through MCP.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

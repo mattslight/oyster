@@ -1,0 +1,2369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oyster Brain — interactive prototype</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #7c6bff;
+      --accent-bright: #a597ff;
+      --green: #4ade80;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --text: #f0f0f5;
+      --text-dim: rgba(232, 233, 240, 0.55);
+      --text-muted: rgba(232, 233, 240, 0.3);
+      --surface: rgba(12, 13, 28, 0.6);
+      --surface-strong: rgba(12, 13, 28, 0.85);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-accent: rgba(124, 107, 255, 0.18);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      padding-bottom: 220px;
+    }
+
+    /* Soft fade so content behind the chat bar dissolves into the bg, not collides with pills */
+    .chatbar-fade {
+      position: fixed;
+      left: 0; right: 0;
+      bottom: 0;
+      height: 320px;
+      z-index: 4;
+      pointer-events: none;
+      background: linear-gradient(
+        to top,
+        rgba(30, 31, 54, 1) 0%,
+        rgba(30, 31, 54, 1) 30%,
+        rgba(30, 31, 54, 0.85) 55%,
+        rgba(30, 31, 54, 0.4) 80%,
+        rgba(30, 31, 54, 0) 100%
+      );
+    }
+
+    .glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 45% at 50% 10%, rgba(124,107,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 85% 90%, rgba(165,151,255,0.05) 0%, transparent 50%),
+        radial-gradient(ellipse 40% 30% at 15% 75%, rgba(74,222,128,0.03) 0%, transparent 50%);
+    }
+    .orb {
+      position: fixed;
+      width: 480px; height: 480px;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.13;
+      pointer-events: none;
+      z-index: 0;
+      background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+      animation: drift 28s ease-in-out infinite;
+    }
+    @keyframes drift {
+      0%,100% { transform: translate(20%, -10%); }
+      50%     { transform: translate(60%, 20%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .orb, .tile, .panel-content { animation: none !important; }
+    }
+
+    .route { display: none; }
+    .route.active { display: block; }
+
+    /* Header */
+    .header {
+      position: relative; z-index: 2;
+      max-width: 1100px; margin: 0 auto;
+      padding: 56px 32px 8px;
+    }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+      opacity: 0.85;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* Back link — its own row above the eyebrow (own row, not crumb) */
+    .back-bar {
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+    }
+    .back-bar .back {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px 4px 6px;
+      border-radius: 6px;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+    .back-bar .back:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+    }
+    .back-bar .back svg {
+      width: 12px; height: 12px;
+    }
+    h1 {
+      font-size: clamp(2rem, 4vw, 2.6rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .header-line {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 14px;
+      color: var(--text-dim);
+      flex-wrap: wrap;
+    }
+    .header-line .signal {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+    .header-line .signal.muted { color: var(--text-dim); }
+
+    /* Inline container for stat chips inside the Sessions section head */
+    .section-stats {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+    }
+
+    /* Clickable stats — each acts as a filter for the Sessions section */
+    .stat-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      padding: 3px 10px;
+      border-radius: 9999px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+    .stat-btn:hover { background: rgba(255, 255, 255, 0.04); }
+    .stat-btn.active {
+      background: rgba(124, 107, 255, 0.18);
+      border-color: rgba(124, 107, 255, 0.3);
+      color: var(--accent-bright);
+    }
+    .stat-btn .pip { width: 6px; height: 6px; border-radius: 50%; }
+
+    /* Clickable space names inside the whisper */
+    .whisper .space-link {
+      color: var(--accent-bright);
+      cursor: pointer;
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.15s ease;
+    }
+    .whisper .space-link:hover { border-bottom-color: var(--accent-bright); }
+    .header-line .pip {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .pip.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .pip.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .pip.red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+    .pip.dim   { background: var(--text-muted); }
+    .header-line .sep { color: var(--text-muted); }
+
+    .whisper {
+      position: relative; z-index: 2;
+      max-width: 1100px; margin: 0 auto;
+      padding: 18px 32px 32px;
+      font-size: 13px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .whisper svg {
+      width: 14px; height: 14px;
+      color: var(--accent-bright);
+      opacity: 0.7;
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+    .whisper em { color: var(--accent-bright); font-style: normal; }
+    /* Softer variant — quieter than the urgency stats above it */
+    .whisper.softer {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .whisper.softer svg { opacity: 0.4; color: var(--text-muted); }
+    .whisper.softer em { color: var(--text-dim); }
+
+    /* Subtitle variant — sits between H1 and stats, anchored to the header column.
+       Drops the standalone container styles since it now lives inside .header. */
+    .whisper.subtitle {
+      position: static;
+      max-width: none;
+      margin: 4px 0 20px;
+      padding: 0;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .whisper.subtitle svg { color: var(--accent-bright); opacity: 0.6; }
+    .whisper.subtitle em { color: var(--accent-bright); }
+
+    /* Topics (space view) */
+    .topics {
+      position: relative; z-index: 2;
+      max-width: 1100px; margin: 0 auto;
+      padding: 8px 32px 32px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .topic {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .topic:hover { color: var(--text); border-color: var(--border-accent); }
+    .topic.active {
+      background: rgba(124,107,255,0.18);
+      border-color: rgba(124,107,255,0.3);
+      color: var(--accent-bright);
+    }
+    .topic .count {
+      font-size: 11px;
+      opacity: 0.65;
+    }
+
+    /* Surface — tile grid */
+    .surface {
+      position: relative; z-index: 1;
+      max-width: 1100px; margin: 0 auto;
+      padding: 0 32px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 36px 24px;
+    }
+
+    .tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 4px 4px;
+      cursor: pointer;
+      animation: fadeUp 0.5s cubic-bezier(0.16,1,0.3,1) backwards;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .thumb {
+      width: 92px; height: 92px;
+      border-radius: 22px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.32);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s ease;
+    }
+    .tile:hover .thumb { transform: translateY(-2px); }
+    .tile:hover .thumb::after { opacity: 1; }
+    .thumb::after {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: 23px;
+      box-shadow: 0 0 0 1px rgba(124,107,255,0.4), 0 0 20px rgba(124,107,255,0.22);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+    }
+
+    .thumb.agent-cc    { background: linear-gradient(135deg, #4a2a1f, #5e3927); }
+    .thumb.agent-codex { background: linear-gradient(135deg, #143a2c, #1c4f3b); }
+    .thumb.agent-oc    { background: linear-gradient(135deg, #2a2470, #353089); }
+    .thumb.notes       { background: linear-gradient(135deg, #1e3a2f, #243f34); }
+    .thumb.deck        { background: linear-gradient(135deg, #2d2f52, #353764); }
+    .thumb.diagram     { background: linear-gradient(135deg, #3a2d1e, #4a3a24); }
+    .thumb.table       { background: linear-gradient(135deg, #1e3a3a, #244a4a); }
+    .thumb.wireframe   { background: linear-gradient(135deg, #2d2f52, #353764); }
+
+    .agent-mark {
+      font-family: var(--font-mono);
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      opacity: 0.85;
+    }
+    .thumb.agent-cc .agent-mark    { color: #ff9b7a; }
+    .thumb.agent-codex .agent-mark { color: #6ee7a8; }
+    .thumb.agent-oc .agent-mark    { color: #b3a8ff; }
+
+    .thumb svg.kind { width: 26px; height: 26px; opacity: 0.9; }
+    .thumb.notes svg.kind     { stroke: #4ade80; }
+    .thumb.deck svg.kind      { stroke: #a78bfa; }
+    .thumb.diagram svg.kind   { stroke: #fbbf24; }
+    .thumb.table svg.kind     { stroke: #22d3ee; }
+    .thumb.wireframe svg.kind { stroke: #818cf8; }
+
+    .ext {
+      position: absolute;
+      bottom: 6px; right: 8px;
+      font-family: var(--font-mono);
+      font-size: 8px;
+      letter-spacing: 0.02em;
+      color: rgba(255,255,255,0.5);
+      text-transform: uppercase;
+    }
+
+    .topic-chip, .space-chip {
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      padding: 3px 8px;
+      border-radius: 7px;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.02em;
+      max-width: 96px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .topic-chip { color: var(--text-dim); font-size: 9px; text-transform: uppercase; }
+    .space-chip { color: var(--accent-bright); }
+
+    .status {
+      position: absolute;
+      bottom: -3px;
+      right: -3px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: rgba(30, 31, 54, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .status::before {
+      content: "";
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .status.running::before {
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green);
+      animation: breathe 2.4s ease-in-out infinite;
+    }
+    .status.awaiting::before {
+      background: var(--amber);
+      box-shadow: 0 0 10px var(--amber);
+    }
+    .status.disconnected::before {
+      background: var(--red);
+      box-shadow: 0 0 10px var(--red);
+    }
+    .status.disconnected {
+      animation: pulse-red 2.4s ease-in-out infinite;
+    }
+    .status.done::before { background: rgba(255,255,255,0.18); }
+    @keyframes breathe {
+      0%,100% { opacity: 0.85; transform: scale(1); }
+      50%     { opacity: 1;    transform: scale(1.1); }
+    }
+    @keyframes pulse-red {
+      0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,0.4); }
+      50%     { box-shadow: 0 0 0 4px rgba(248,113,113,0); }
+    }
+
+    .label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      text-align: center;
+      line-height: 1.35;
+      max-width: 170px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.02em;
+      text-align: center;
+    }
+
+    .btn {
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .btn:hover { background: rgba(255,255,255,0.07); }
+    .btn.primary {
+      background: rgba(124,107,255,0.18);
+      border-color: rgba(124,107,255,0.3);
+      color: var(--accent-bright);
+    }
+    .btn.primary:hover { background: rgba(124,107,255,0.28); }
+
+    /* Generic section header (used by Home + Space) */
+    .section-head {
+      position: relative; z-index: 1;
+      max-width: 1100px; margin: 0 auto;
+      padding: 0 32px 14px;
+      display: flex; align-items: center; gap: 12px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .section-head .label { color: var(--text); }
+    .section-head .rule { flex: 1; height: 1px; background: var(--border); }
+
+    /* Inline section filter chips (Active / Done / All) */
+    .section-filter {
+      display: inline-flex;
+      gap: 4px;
+    }
+    .section-filter-chip {
+      padding: 3px 10px;
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    .section-filter-chip:hover { color: var(--text); }
+    .section-filter-chip.active {
+      background: rgba(124,107,255,0.18);
+      border-color: rgba(124,107,255,0.3);
+      color: var(--accent-bright);
+    }
+    .section-filter-chip .filter-count {
+      opacity: 0.55;
+      margin-left: 5px;
+      font-weight: 400;
+    }
+    .section-filter-chip.active .filter-count { opacity: 0.7; }
+
+    /* Spaces section (Home only) — wrapper provides vertical spacing,
+       children handle their own max-width + horizontal padding so the section-head
+       lines up with sibling sections at 32px from the edge. */
+    .spaces-section {
+      position: relative; z-index: 1;
+      margin-top: 8px;
+      margin-bottom: 12px;
+    }
+    .spaces-head {
+      display: flex; align-items: center; gap: 12px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      margin-bottom: 22px;
+    }
+    .spaces-rule { flex: 1; height: 1px; background: var(--border); }
+    .spaces-grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .space-card {
+      padding: 16px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .space-card:hover {
+      border-color: var(--border-accent);
+      background: rgba(124, 107, 255, 0.05);
+    }
+    .space-card-name {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--accent-bright);
+      margin-bottom: 8px;
+    }
+    .space-card-counts {
+      display: flex; gap: 14px;
+      font-size: 12px;
+      color: var(--text-dim);
+      flex-wrap: wrap;
+    }
+    .space-card-counts .signal {
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .space-card-counts .pip {
+      width: 5px; height: 5px; border-radius: 50%;
+    }
+
+    /* Recent strip */
+    .recent-section {
+      position: relative; z-index: 1;
+      max-width: 1100px; margin: 0 auto;
+      padding: 64px 32px 12px;
+    }
+    .recent-head {
+      display: flex; align-items: center; gap: 12px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      margin-bottom: 22px;
+    }
+    .recent-rule { flex: 1; height: 1px; background: var(--border); }
+    .recent-strip {
+      display: flex;
+      gap: 24px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scroll-snap-type: x mandatory;
+    }
+    .recent-strip::-webkit-scrollbar { height: 4px; }
+    .recent-strip::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+    }
+    .recent-strip .tile {
+      opacity: 0.7;
+      flex: 0 0 auto;
+      scroll-snap-align: start;
+      width: 170px;
+    }
+    .recent-strip .tile:hover { opacity: 1; }
+
+    /* View modes — per-section, scoped by .section[data-section] */
+    .section .view-table-content { display: none; }
+    .section.view-table .view-icons-content { display: none; }
+    .section.view-table .view-table-content { display: block; }
+
+    /* View toggle (icons / table) */
+    .view-toggle {
+      position: relative; z-index: 1;
+      max-width: 1100px; margin: 0 auto;
+      padding: 0 32px 14px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+    .view-toggle button {
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    .view-toggle button:hover { color: var(--text); }
+    .view-toggle button.active {
+      background: rgba(124,107,255,0.18);
+      border-color: rgba(124,107,255,0.3);
+      color: var(--accent-bright);
+    }
+    .view-toggle svg { width: 14px; height: 14px; }
+
+    /* Table view (sessions or artefacts) */
+    .data-table {
+      position: relative; z-index: 1;
+      max-width: 1036px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      overflow: hidden;
+    }
+    .data-table-wrap {
+      position: relative;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+    .session-row {
+      display: grid;
+      grid-template-columns: 18px 130px 1fr 110px 80px;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .session-row:hover { background: rgba(124,107,255,0.05); }
+    .session-row:last-child { border-bottom: none; }
+    .artefact-row {
+      display: grid;
+      grid-template-columns: 16px 1fr 100px 110px 100px;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .artefact-row:hover { background: rgba(124,107,255,0.05); }
+    .artefact-row:last-child { border-bottom: none; }
+    .artefact-row .row-kind-icon {
+      width: 14px; height: 14px;
+      stroke: var(--text-dim);
+      stroke-width: 1.6;
+      fill: none;
+    }
+    .artefact-row .row-title {
+      font-size: 13px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .artefact-row .row-topic {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .artefact-row .row-kind {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .artefact-row .row-modified {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: right;
+    }
+    .session-row .row-status {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+    }
+    .row-status.running { background: var(--green); box-shadow: 0 0 6px var(--green); animation: breathe 2.4s ease-in-out infinite; }
+    .row-status.awaiting { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .row-status.disconnected { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .row-status.done { background: rgba(255,255,255,0.18); }
+    .session-row .row-space {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-bright);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .session-row .row-title {
+      font-size: 13px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .session-row .row-agent {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .session-row .row-agent .agent-pip {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .session-row .row-agent.cc .agent-pip    { background: #ff9b7a; }
+    .session-row .row-agent.codex .agent-pip { background: #6ee7a8; }
+    .session-row .row-agent.oc .agent-pip    { background: #b3a8ff; }
+    .session-row .row-time {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: right;
+    }
+    @media (max-width: 720px) {
+      .session-row {
+        grid-template-columns: 14px 1fr auto;
+        grid-template-areas: "s sp tm" "s tt tt" "s ag ag";
+        gap: 4px 12px;
+        padding: 12px 14px;
+      }
+      .session-row .row-status { grid-area: s; align-self: start; margin-top: 6px; }
+      .session-row .row-space { grid-area: sp; }
+      .session-row .row-title { grid-area: tt; }
+      .session-row .row-agent { grid-area: ag; }
+      .session-row .row-time { grid-area: tm; }
+    }
+
+    /* Memory route */
+    .mem-section {
+      position: relative; z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 32px 12px;
+    }
+    .mem-tools {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .mem-search {
+      flex: 1;
+      min-width: 240px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+    }
+    .mem-search::placeholder { color: var(--text-muted); }
+    .mem-filter-pill {
+      padding: 6px 12px;
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .mem-filter-pill.active {
+      background: rgba(124,107,255,0.18);
+      border-color: rgba(124,107,255,0.3);
+      color: var(--accent-bright);
+    }
+    .mem-block-head {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 28px 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .mem-block-rule { flex: 1; height: 1px; background: var(--border); }
+    .mem-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mem-entry {
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .mem-entry:hover {
+      border-color: var(--border-accent);
+      background: rgba(124,107,255,0.04);
+    }
+    .mem-entry-text {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .mem-entry-meta {
+      display: flex;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .mem-entry-meta .src-space { color: var(--accent-bright); }
+    .mem-entry-meta .src-author {}
+    .mem-entry-meta .recall-badge {
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(124,107,255,0.12);
+      color: var(--accent-bright);
+    }
+    .mem-entry-meta .pin {
+      color: var(--amber);
+    }
+
+    /* Chat bar */
+    .chatbar {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      width: min(820px, calc(100vw - 48px));
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
+    .chatbar-input {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .chatbar-bolt {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: rgba(124,107,255,0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-bright);
+    }
+    .chatbar-bolt svg { width: 14px; height: 14px; }
+    .chatbar-input input {
+      flex: 1;
+      background: transparent;
+      border: none; outline: none;
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+    }
+    .chatbar-input input::placeholder { color: var(--text-muted); }
+    .chatbar-pills {
+      display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    }
+    .pill {
+      padding: 5px 12px;
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .pill.active {
+      background: rgba(124,107,255,0.18);
+      border-color: rgba(124,107,255,0.3);
+      color: var(--accent-bright);
+    }
+    .pill:hover { color: var(--text); }
+    .pill-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      align-self: center;
+      margin: 0 6px;
+    }
+    .pill.home {
+      color: var(--accent-bright);
+      background: rgba(255,255,255,0.02);
+      border-color: rgba(124,107,255,0.2);
+    }
+    .pill.home.active { background: rgba(124,107,255,0.18); }
+    .pill.home .dot {
+      display: inline-block;
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      margin-right: 5px;
+      vertical-align: 2px;
+    }
+    .pill.memory {
+      color: var(--accent-bright);
+      background: rgba(255,255,255,0.02);
+      border-color: rgba(124,107,255,0.2);
+    }
+    .pill.memory.active { background: rgba(124,107,255,0.18); }
+
+    /* ================== Slide panel (used by session AND artefact inspector) ================== */
+    .panel-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 50;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .panel-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(640px, 92vw);
+      background: rgba(20, 21, 40, 0.94);
+      border-left: 1px solid var(--border);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      z-index: 51;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -20px 0 60px rgba(0,0,0,0.4);
+    }
+    .panel.open { transform: translateX(0); }
+    .panel-header {
+      padding: 24px 28px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-meta {
+      display: flex; align-items: center; gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .panel-meta .space { color: var(--accent-bright); }
+    .panel-meta .agent { color: var(--text); }
+    .panel-meta .pip { width: 6px; height: 6px; border-radius: 50%; }
+    .panel-meta .close {
+      margin-left: auto;
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      color: var(--text-dim);
+    }
+    .panel-meta .close:hover { color: var(--text); background: rgba(255,255,255,0.07); }
+    .panel-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+      line-height: 1.35;
+    }
+    .panel-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .watcher-note {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .watcher-note::before {
+      content: "✱";
+      color: var(--accent-bright);
+    }
+
+    .panel-banner {
+      margin: 12px 28px 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .panel-banner.disconnected {
+      background: rgba(248,113,113,0.08);
+      border: 1px solid rgba(248,113,113,0.25);
+      color: #ffb0b0;
+    }
+    .panel-banner.awaiting {
+      background: rgba(251,191,36,0.08);
+      border: 1px solid rgba(251,191,36,0.25);
+      color: #ffd97a;
+    }
+    .panel-banner svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; }
+    .panel-banner .banner-body { flex: 1; line-height: 1.45; }
+    .panel-banner .banner-body code {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.3);
+      color: inherit;
+    }
+    .panel-banner .banner-actions { display: flex; gap: 6px; margin-top: 10px; }
+
+    .panel-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 24px;
+      margin-top: 16px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .panel-tab {
+      padding: 10px 12px;
+      font-family: var(--font-body);
+      font-size: 13px;
+      color: var(--text-dim);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      margin-bottom: -1px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .panel-tab:hover { color: var(--text); }
+    .panel-tab.active {
+      color: var(--accent-bright);
+      border-bottom-color: var(--accent);
+    }
+    .panel-tab .badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.06);
+      color: var(--text-dim);
+    }
+    .panel-tab.active .badge { background: rgba(124,107,255,0.2); color: var(--accent-bright); }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 28px 24px;
+    }
+    .panel-body::-webkit-scrollbar { width: 6px; }
+    .panel-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    .turn { margin-bottom: 16px; font-size: 13px; line-height: 1.55; }
+    .turn-role {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      opacity: 0.7;
+    }
+    .turn.user .turn-role { color: var(--accent-bright); }
+    .turn.assistant .turn-role { color: var(--green); }
+    .turn.tool .turn-role { color: var(--text-muted); }
+    .turn-text { color: var(--text); }
+    .turn.tool .turn-text {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.25);
+      border-radius: 8px;
+      border-left: 2px solid var(--accent);
+    }
+
+    .summary-block {
+      padding: 16px 18px;
+      background: rgba(124,107,255,0.06);
+      border: 1px solid rgba(124,107,255,0.15);
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .summary-block p {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .summary-block p:last-child { margin-bottom: 0; }
+
+    .resume-options { display: flex; flex-direction: column; gap: 10px; }
+    .resume-option {
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .resume-option:hover {
+      border-color: var(--border-accent);
+      background: rgba(124,107,255,0.06);
+    }
+    .resume-option.recommended {
+      border-color: rgba(74,222,128,0.3);
+      background: rgba(74,222,128,0.05);
+    }
+    .resume-option-body { flex: 1; }
+    .resume-option-title {
+      font-size: 13px; color: var(--text);
+      margin-bottom: 2px; font-weight: 500;
+    }
+    .resume-option-meta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .resume-option-meta .save { color: #6ee7a8; }
+    .resume-option .arrow {
+      color: var(--text-dim);
+      font-size: 18px;
+    }
+
+    .file-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .file-row:last-child { border-bottom: none; }
+    .file-row .name {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-row .diff {
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .file-row .diff .add { color: var(--green); }
+    .file-row .diff .rm  { color: var(--red); }
+
+    /* Linked items list (used in Sessions tab of artefact panel + Artefacts tab of session) */
+    .link-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .link-row:hover {
+      border-color: var(--border-accent);
+      background: rgba(124,107,255,0.05);
+    }
+    .link-thumb {
+      width: 36px; height: 36px;
+      border-radius: 9px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .link-thumb .agent-mark { font-size: 13px; }
+    .link-thumb svg.kind { width: 16px; height: 16px; }
+    .link-thumb .status {
+      width: 10px; height: 10px;
+      bottom: -2px; right: -2px;
+    }
+    .link-thumb .status::before { width: 6px; height: 6px; }
+    .link-body { flex: 1; min-width: 0; }
+    .link-title {
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .link-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .role-chip {
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .role-chip.create { background: rgba(74,222,128,0.12); color: #6ee7a8; }
+    .role-chip.modify { background: rgba(251,191,36,0.12); color: var(--amber); }
+    .role-chip.read   { background: rgba(124,107,255,0.12); color: var(--accent-bright); }
+
+    /* Artefact preview */
+    .preview {
+      padding: 20px 22px;
+      background: rgba(0,0,0,0.18);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .preview-notes-line {
+      height: 8px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .preview-notes-line.short { width: 65%; }
+    .preview-notes-line.heading { width: 40%; height: 12px; background: rgba(124,107,255,0.25); }
+    .preview-deck-page {
+      aspect-ratio: 16/9;
+      background: linear-gradient(135deg, #2d2f52, #353764);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+    }
+    .preview-table {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .preview-table div {
+      padding: 8px;
+      background: rgba(0,0,0,0.18);
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+    .preview-table div.head { color: var(--accent-bright); background: rgba(0,0,0,0.3); }
+
+    .panel-footer {
+      padding: 14px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      background: rgba(0,0,0,0.2);
+    }
+    .panel-footer .btn { padding: 8px 14px; font-size: 12px; }
+
+    .artefact-tile { position: relative; }
+    .artefact-tile .session-hint {
+      position: absolute;
+      bottom: -22px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      white-space: nowrap;
+    }
+    .artefact-tile:hover .session-hint { opacity: 1; }
+
+    .toast {
+      position: fixed;
+      bottom: 120px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 60;
+      padding: 10px 16px;
+      background: rgba(20, 21, 40, 0.95);
+      border: 1px solid var(--border-accent);
+      border-radius: 9999px;
+      font-size: 13px;
+      color: var(--text);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      opacity: 0;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-4px);
+    }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="orb"></div>
+  <div class="chatbar-fade"></div>
+
+  <!-- ============== Main route — Home AND Space (filter-controlled) ============== -->
+  <div id="route-main" class="route">
+    <div class="header">
+      <div class="back-bar" id="main-back-bar" style="display: none;">
+        <a class="back" onclick="setSpace(null)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Back
+        </a>
+      </div>
+      <div class="eyebrow"><span id="main-eyebrow">Home</span></div>
+      <h1 id="main-title">Today.</h1>
+      <div class="whisper subtitle" id="main-whisper"></div>
+    </div>
+    <div class="topics" id="main-topics" style="display: none;"></div>
+
+    <!-- Spaces summary cards (only when no space selected) -->
+    <div class="spaces-section" id="main-spaces-section">
+      <div class="spaces-grid" id="main-spaces-grid"></div>
+    </div>
+
+    <!-- Sessions section -->
+    <div class="section" data-section="main-sessions" style="margin-top: 56px;">
+      <div class="section-head">
+        <span class="label">Sessions</span>
+        <span class="section-stats" id="main-stats"></span>
+        <span class="rule"></span>
+        <div class="view-toggle" style="padding: 0;">
+          <button class="view-btn active" data-view="icons" onclick="setView('icons', 'main-sessions')" title="Icon view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </button>
+          <button class="view-btn" data-view="table" onclick="setView('table', 'main-sessions')" title="Table view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="surface view-icons-content" id="main-sessions-grid"></div>
+      <div class="data-table-wrap view-table-content"><div class="data-table" id="main-sessions-table"></div></div>
+    </div>
+
+    <!-- Artefacts section -->
+    <div class="section" data-section="main-artefacts" style="margin-top: 56px;">
+      <div class="section-head">
+        <span class="label">Artefacts</span>
+        <span class="filter-count" id="main-artefacts-count" style="color: var(--text-dim); font-family: var(--font-mono); font-size: 11px;">0</span>
+        <span class="rule"></span>
+        <div class="view-toggle" style="padding: 0;">
+          <button class="view-btn active" data-view="icons" onclick="setView('icons', 'main-artefacts')" title="Icon view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </button>
+          <button class="view-btn" data-view="table" onclick="setView('table', 'main-artefacts')" title="Table view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="surface view-icons-content" id="main-artefacts-grid"></div>
+      <div class="data-table-wrap view-table-content"><div class="data-table" id="main-artefacts-table"></div></div>
+    </div>
+
+    <!-- Memories section -->
+    <div id="main-memories-section" style="margin-top: 56px; max-width: 1100px; margin-left: auto; margin-right: auto; padding: 0 32px;">
+      <div class="section-head" style="padding: 0 0 14px;">
+        <span class="label">Memories</span>
+        <span id="main-memories-filter"></span>
+        <span class="rule"></span>
+      </div>
+      <div id="main-memories-list"></div>
+    </div>
+  </div>
+
+
+  <!-- ============== Chat bar ============== -->
+  <div class="chatbar">
+    <div class="chatbar-pills" id="chat-pills"></div>
+    <div class="chatbar-input">
+      <span class="chatbar-bolt">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+      </span>
+      <input id="chat-input" placeholder="Ask anything…" />
+    </div>
+  </div>
+
+  <!-- ============== Slide panel (session OR artefact OR memory entry) ============== -->
+  <div class="panel-backdrop" id="panel-backdrop"></div>
+  <div class="panel" id="panel">
+    <div class="panel-header" id="p-header"></div>
+    <div id="p-banner"></div>
+    <div class="panel-tabs" id="p-tabs"></div>
+    <div class="panel-body" id="p-body"></div>
+    <div class="panel-footer" id="p-footer"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ================== DATA ==================
+    const SPACES = [
+      { id: 'tokinvest',    title: 'Token investment thesis & launch.' },
+      { id: 'kps', title: 'KPS website redesign.' },
+      { id: 'blunderfixer', title: 'Blunderfixer.' },
+      { id: 'oyster-os',    title: 'Oyster OS.' },
+    ];
+
+    // Sessions = conversations with agents (ephemeral or persistent)
+    // touched = [{ artefactId, role: 'create' | 'modify' | 'read' }]
+    const SESSIONS = [
+      {
+        id: 's-001', space: 'kps', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc',
+        title: 'Refactor auth middleware to use new session API',
+        state: 'running', startedAgo: '12m', model: 'claude-opus-4-7',
+        watcher: 'claude-code session log',
+        summary: "Switching the auth middleware from cookie-based sessions to the new session API. Read 4 files, edited 2 so far. Plan: update middleware → update route handlers → patch test fixtures → run e2e. Currently in step 3, working through the test file.",
+        transcript: [
+          { role: 'user', text: 'Refactor the auth middleware to use the new session API. Run tests after.' },
+          { role: 'assistant', text: 'I\'ll start by reading the existing middleware and the new session API contract.' },
+          { role: 'tool', text: 'read_file: server/src/middleware/auth.ts (143 lines)' },
+          { role: 'tool', text: 'read_file: shared/types/session.ts (62 lines)' },
+          { role: 'assistant', text: 'The middleware currently parses a cookie and does a DB lookup. The new API exposes a `getSession(req)` helper. Switching the middleware to call that.' },
+          { role: 'tool', text: 'edit_file: server/src/middleware/auth.ts (+22 -38)' },
+          { role: 'assistant', text: 'Updated. Now I need to patch the test fixtures.' },
+          { role: 'tool', text: 'read_file: server/test/fixtures/auth.ts' },
+        ],
+        files: [
+          { name: 'server/src/middleware/auth.ts', add: 22, rm: 38 },
+          { name: 'server/src/routes/me.ts', add: 4, rm: 4 },
+          { name: 'server/test/fixtures/auth.ts', add: 12, rm: 0 },
+        ],
+        touched: [
+          { artefactId: 'a-acme-1', role: 'create' },
+        ],
+        memoryPulled: [
+          { from: 'oyster-os', text: 'Project uses feature branches — never commit to main directly.' },
+          { from: 'blunderfixer', text: 'Always run e2e on iOS Safari before merging UI changes.' },
+        ],
+        memoryWritten: [
+          { text: 'kps session API requires explicit opt-in via X-Session-Mode header.' }
+        ]
+      },
+      {
+        id: 's-002', space: 'tokinvest', agent: 'opencode', mark: 'oc', agentClass: 'agent-oc',
+        title: 'Rewrite hero copy — three variations',
+        state: 'running', startedAgo: '4m', model: 'gpt-5',
+        watcher: 'opencode session events',
+        summary: 'Rewriting the tokinvest homepage hero in three voices: utility, bold, warm. Read existing copy and benchmark notes. Currently drafting variation 2.',
+        transcript: [
+          { role: 'user', text: 'Write three variations of the homepage hero — utility, bold, warm.' },
+          { role: 'assistant', text: 'Reading the current hero and the benchmark notes.' },
+          { role: 'tool', text: 'read_artefact: Hero copy audit — current vs benchmarks' },
+          { role: 'tool', text: 'read_artefact: Competitor positioning matrix' },
+          { role: 'assistant', text: 'Variation 1 (utility): "The fastest way to invest in tokens." Sub: "Buy, stake, and track in one place."' },
+          { role: 'assistant', text: 'Variation 2 (bold): drafting now…' },
+        ],
+        files: [],
+        touched: [
+          { artefactId: 'a-tk-5', role: 'read' },
+          { artefactId: 'a-tk-1', role: 'read' },
+          { artefactId: 'a-tk-2', role: 'read' },
+        ],
+        memoryPulled: [
+          { from: 'tokinvest', text: 'Brand voice principles: confident, never hyperbolic. Avoid "revolutionary".' },
+        ],
+        memoryWritten: []
+      },
+      {
+        id: 's-003', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc',
+        title: 'Q3 strategy memo — wants to publish',
+        state: 'awaiting', startedAgo: 'awaiting · 4m', model: 'claude-opus-4-7',
+        watcher: 'claude-code session log',
+        pendingApproval: { type: 'file write', target: 'memos/q3-strategy.md', detail: '+412 lines' },
+        summary: 'Drafted a Q3 strategy memo covering market sizing, pricing positioning vs Coinbase/FTX, three launch scenarios, team capacity. Memo is ready and the agent is waiting on the user to confirm publishing.',
+        transcript: [
+          { role: 'user', text: 'Draft a Q3 strategy memo. Pull from the competitor analysis and market sizing.' },
+          { role: 'assistant', text: 'Reading inputs.' },
+          { role: 'tool', text: 'read_artefact: Market sizing model' },
+          { role: 'tool', text: 'read_artefact: Coinbase pricing teardown' },
+          { role: 'tool', text: 'read_artefact: FTX vs Binance feature grid' },
+          { role: 'assistant', text: 'Drafted the memo (412 lines, five sections). Awaiting approval to write to memos/q3-strategy.md.' },
+        ],
+        files: [],
+        touched: [
+          { artefactId: 'a-tk-7', role: 'read' },
+          { artefactId: 'a-tk-2', role: 'read' },
+          { artefactId: 'a-tk-3', role: 'read' },
+        ],
+        memoryPulled: [
+          { from: 'tokinvest', text: 'Memos go in memos/, not the surface. Surface is for shareable artefacts.' },
+        ],
+        memoryWritten: []
+      },
+      {
+        id: 's-004', space: 'blunderfixer', agent: 'codex', mark: 'cx', agentClass: 'agent-codex',
+        title: 'Fix mobile nav overflow on iOS Safari',
+        state: 'disconnected', startedAgo: '14m ago', model: 'gpt-5',
+        lastHeartbeat: '14m ago',
+        watcher: 'codex log file',
+        disconnectNote: 'Likely your laptop slept — heartbeat lost mid-edit.',
+        summary: 'Investigating mobile nav overflow on iOS Safari. Identified that 100vh in nav containers gets ignored — needs 100dvh fallback. Was mid-way through editing nav.css when the connection dropped.',
+        transcript: [
+          { role: 'user', text: 'Fix the mobile nav — overflows on iOS Safari.' },
+          { role: 'assistant', text: 'Reading the nav component.' },
+          { role: 'tool', text: 'read_file: components/Nav.tsx' },
+          { role: 'tool', text: 'read_file: components/nav.css' },
+          { role: 'assistant', text: 'iOS Safari treats `min-height: 100vh` as the *full* viewport, causing overflow. Need `100dvh` with a fallback.' },
+          { role: 'tool', text: 'edit_file: components/nav.css (in progress)' },
+          { role: 'tool', text: '[connection lost — last heartbeat 14m ago]' },
+        ],
+        files: [
+          { name: 'components/nav.css', add: 0, rm: 0, note: 'edit started but not committed' },
+        ],
+        touched: [],
+        memoryPulled: [],
+        memoryWritten: []
+      },
+      // Done sessions (endedHoursAgo drives the Today/Week/All time filter)
+      { id: 's-101', space: 'oyster-os', agent: 'opencode', mark: 'oc', agentClass: 'agent-oc', title: 'Ship 0.4.0-beta.7', state: 'done', startedAgo: '3h ago', endedHoursAgo: 3, model: 'gpt-5', watcher: 'opencode session events', summary: 'Shipped 0.4.0-beta.7. Backfilled the changelog, fixed [Unreleased] link, ran release:beta.', transcript: [{ role: 'user', text: 'Cut beta.7.' }, { role: 'assistant', text: 'Will sync main, promote [Unreleased], tag, push.' }, { role: 'tool', text: 'run: git checkout main && git pull --ff-only origin main' }, { role: 'tool', text: 'edit_file: CHANGELOG.md' }, { role: 'tool', text: 'run: npm run release:beta' }], files: [{ name: 'CHANGELOG.md', add: 4, rm: 1 }, { name: 'package.json', add: 1, rm: 1 }], touched: [], memoryPulled: [], memoryWritten: [] },
+      { id: 's-102', space: 'kps', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Brief template for stakeholder meeting', state: 'done', startedAgo: '5h ago', endedHoursAgo: 5, model: 'claude-opus-4-7', watcher: 'claude-code session log', summary: 'Drafted a stakeholder brief template covering goals, constraints, success metrics, decisions needed.', transcript: [], files: [], touched: [], memoryPulled: [], memoryWritten: [] },
+      { id: 's-103', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Coinbase pricing teardown', state: 'done', startedAgo: '2 days ago', endedHoursAgo: 48, model: 'claude-opus-4-7', summary: 'Analysed Coinbase pricing across spot, advanced trade, staking. Aggressive on retail, weak on institutional.', transcript: [], files: [], touched: [], memoryPulled: [], memoryWritten: [] },
+      { id: 's-104', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Competitor positioning matrix', state: 'done', startedAgo: '3 days ago', endedHoursAgo: 72, summary: '', transcript: [], files: [], touched: [], memoryPulled: [], memoryWritten: [] },
+      { id: 's-107', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Hero copy audit — current vs benchmarks', state: 'done', startedAgo: 'yesterday', endedHoursAgo: 26, summary: '', transcript: [], files: [], touched: [], memoryPulled: [], memoryWritten: [] },
+      { id: 's-110', space: 'tokinvest', agent: 'opencode', mark: 'oc', agentClass: 'agent-oc', title: 'Pitch deck v2', state: 'done', startedAgo: '2 weeks ago', endedHoursAgo: 336, summary: '', transcript: [], files: [], touched: [], memoryPulled: [], memoryWritten: [] },
+    ];
+
+    // Artefacts = persistent outputs in a space
+    // touchedBy = [{ sessionId, role, when }]
+    const ARTEFACTS = [
+      { id: 'a-acme-1', space: 'kps', kind: 'notes', title: 'Auth refactor plan', topic: null, lastModified: '12m ago',
+        touchedBy: [{ sessionId: 's-001', role: 'create', when: '12m ago' }] },
+
+      // tokinvest
+      { id: 'a-tk-1', space: 'tokinvest', kind: 'deck', title: 'Competitor positioning matrix', topic: 'Competitor', lastModified: '3 days ago',
+        touchedBy: [{ sessionId: 's-104', role: 'create', when: '3 days ago' }, { sessionId: 's-002', role: 'read', when: '4m ago' }] },
+      { id: 'a-tk-2', space: 'tokinvest', kind: 'notes', title: 'Coinbase pricing teardown', topic: 'Competitor', lastModified: '2 days ago',
+        touchedBy: [{ sessionId: 's-103', role: 'create', when: '2 days ago' }, { sessionId: 's-003', role: 'read', when: '4m ago' }] },
+      { id: 'a-tk-3', space: 'tokinvest', kind: 'table', title: 'FTX vs Binance feature grid', topic: 'Competitor', lastModified: '5 days ago',
+        touchedBy: [{ sessionId: 's-105', role: 'create', when: '5 days ago' }, { sessionId: 's-003', role: 'read', when: '4m ago' }] },
+      { id: 'a-tk-4', space: 'tokinvest', kind: 'diagram', title: 'Logo collection — top 12 exchanges', topic: 'Competitor', lastModified: 'a week ago',
+        touchedBy: [{ sessionId: 's-106', role: 'create', when: 'a week ago' }] },
+      { id: 'a-tk-5', space: 'tokinvest', kind: 'notes', title: 'Hero copy audit — current vs benchmarks', topic: 'Homepage', lastModified: 'yesterday',
+        touchedBy: [{ sessionId: 's-107', role: 'create', when: 'yesterday' }, { sessionId: 's-002', role: 'read', when: '4m ago' }] },
+      { id: 'a-tk-6', space: 'tokinvest', kind: 'wireframe', title: 'Homepage redesign v3', topic: 'Homepage', lastModified: '3 days ago',
+        touchedBy: [{ sessionId: 's-108', role: 'create', when: '3 days ago' }] },
+      { id: 'a-tk-7', space: 'tokinvest', kind: 'table', title: 'Market sizing model', topic: 'Strategy', lastModified: 'a week ago',
+        touchedBy: [{ sessionId: 's-109', role: 'create', when: 'a week ago' }, { sessionId: 's-003', role: 'read', when: '4m ago' }] },
+      { id: 'a-tk-8', space: 'tokinvest', kind: 'deck', title: 'Pitch deck v2', topic: 'Brand', lastModified: '2 weeks ago',
+        touchedBy: [{ sessionId: 's-110', role: 'create', when: '2 weeks ago' }, { sessionId: 's-110b', role: 'modify', when: '5 days ago' }] },
+      { id: 'a-tk-9', space: 'tokinvest', kind: 'diagram', title: 'Colour palette exploration', topic: 'Brand', lastModified: '2 weeks ago',
+        touchedBy: [{ sessionId: 's-111', role: 'create', when: '2 weeks ago' }] },
+      { id: 'a-tk-10', space: 'tokinvest', kind: 'notes', title: 'Brand voice principles', topic: 'Brand', lastModified: '3 weeks ago',
+        touchedBy: [{ sessionId: 's-112', role: 'create', when: '3 weeks ago' }] },
+    ];
+
+    // Stub creator-sessions (so Sessions tab on artefact panel can reference them by name)
+    const ARTEFACT_CREATOR_SESSIONS = {
+      's-103': { id: 's-103', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Coinbase pricing teardown', state: 'done', startedAgo: '2 days ago' },
+      's-104': { id: 's-104', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Competitor positioning matrix', state: 'done', startedAgo: '3 days ago' },
+      's-105': { id: 's-105', space: 'tokinvest', agent: 'opencode',    mark: 'oc', agentClass: 'agent-oc', title: 'FTX vs Binance feature grid', state: 'done', startedAgo: '5 days ago' },
+      's-106': { id: 's-106', space: 'tokinvest', agent: 'codex',       mark: 'cx', agentClass: 'agent-codex', title: 'Logo collection — top 12 exchanges', state: 'done', startedAgo: 'a week ago' },
+      's-107': { id: 's-107', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Hero copy audit — current vs benchmarks', state: 'done', startedAgo: 'yesterday' },
+      's-108': { id: 's-108', space: 'tokinvest', agent: 'opencode',    mark: 'oc', agentClass: 'agent-oc', title: 'Homepage redesign v3', state: 'done', startedAgo: '3 days ago' },
+      's-109': { id: 's-109', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Market sizing model', state: 'done', startedAgo: 'a week ago' },
+      's-110': { id: 's-110', space: 'tokinvest', agent: 'opencode',    mark: 'oc', agentClass: 'agent-oc', title: 'Pitch deck v2 (initial)', state: 'done', startedAgo: '2 weeks ago' },
+      's-110b': { id: 's-110b', space: 'tokinvest', agent: 'opencode',  mark: 'oc', agentClass: 'agent-oc', title: 'Pitch deck v2 (revisions)', state: 'done', startedAgo: '5 days ago' },
+      's-111': { id: 's-111', space: 'tokinvest', agent: 'codex',       mark: 'cx', agentClass: 'agent-codex', title: 'Colour palette exploration', state: 'done', startedAgo: '2 weeks ago' },
+      's-112': { id: 's-112', space: 'tokinvest', agent: 'claude-code', mark: 'cc', agentClass: 'agent-cc', title: 'Brand voice principles', state: 'done', startedAgo: '3 weeks ago' },
+    };
+
+    function getSession(id) {
+      return SESSIONS.find(s => s.id === id) || ARTEFACT_CREATOR_SESSIONS[id];
+    }
+
+    // Memory store
+    const MEMORY = [
+      { id: 'm-1', text: 'Project uses feature branches — never commit to main directly.', source: 'oyster-os', author: 'me', when: '2 months ago', pinned: true, recallCount: 14 },
+      { id: 'm-2', text: 'iOS Safari ignores 100vh in nav containers — use 100dvh with fallback.', source: 'blunderfixer', author: 'codex', when: '4 days ago', pinned: true, recallCount: 6 },
+      { id: 'm-3', text: 'Brand voice: confident, never hyperbolic. Avoid "revolutionary".', source: 'tokinvest', author: 'me', when: '3 weeks ago', pinned: true, recallCount: 9 },
+      { id: 'm-4', text: 'kps session API requires explicit opt-in via X-Session-Mode header.', source: 'kps', author: 'claude-code', when: '12m ago', pinned: false, recallCount: 0 },
+      { id: 'm-5', text: 'Memos go in memos/, not on the surface. Surface is for shareable artefacts.', source: 'tokinvest', author: 'me', when: 'a week ago', pinned: false, recallCount: 3 },
+      { id: 'm-6', text: 'Coinbase pricing is aggressive on retail, weak on institutional.', source: 'tokinvest', author: 'claude-code', when: '2 days ago', pinned: false, recallCount: 1 },
+      { id: 'm-7', text: 'Always run e2e on iOS Safari before merging UI changes.', source: 'blunderfixer', author: 'me', when: '2 weeks ago', pinned: false, recallCount: 4 },
+      { id: 'm-8', text: 'tokinvest homepage hero is the highest-leverage edit — driving 70% of trial signups.', source: 'tokinvest', author: 'me', when: '5 days ago', pinned: false, recallCount: 2 },
+    ];
+
+    const TOPICS = ['All', 'Competitor analysis', 'Homepage audit', 'Strategy', 'Brand'];
+    const TOPIC_MAP = {
+      'Competitor analysis': 'Competitor',
+      'Homepage audit': 'Homepage',
+      'Strategy': 'Strategy',
+      'Brand': 'Brand',
+    };
+
+    const KIND_SVG = {
+      notes:     '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8"/>',
+      deck:      '<path d="M2 3h20v14H2zM8 21h8M12 17v4"/>',
+      diagram:   '<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/>',
+      table:     '<path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>',
+      wireframe: '<path d="M3 3h18v18H3zM3 9h18M9 21V9"/>',
+    };
+
+    // ================== TILE RENDERERS ==================
+    function tileForSession(s, opts = {}) {
+      const showSpaceChip = opts.showSpaceChip ?? false;
+      const inner = `<span class="agent-mark">${s.mark}</span>`;
+      const status = `<span class="status ${s.state}"></span>`;
+      const chip = showSpaceChip ? `<span class="space-chip">${s.space}</span>` : '';
+      const meta = s.state === 'awaiting' ? `${s.agent} · awaiting`
+                 : s.state === 'disconnected' ? `${s.agent} · disconnected`
+                 : `${s.agent} · ${s.startedAgo}`;
+      return `
+        <div class="tile" onclick="openSession('${s.id}')">
+          <div class="thumb ${s.agentClass}">
+            ${chip}
+            ${inner}
+            ${status}
+          </div>
+          <div class="label">${s.title}</div>
+          <div class="meta">${meta}</div>
+        </div>`;
+    }
+
+    function tileForArtefact(a, opts = {}) {
+      const showSpaceChip = opts.showSpaceChip ?? false;
+      const showTopicChip = opts.showTopicChip ?? false;
+      const inner = `<svg class="kind" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${KIND_SVG[a.kind] || KIND_SVG.notes}</svg><span class="ext">${a.kind}</span>`;
+      const chip =
+        showSpaceChip ? `<span class="space-chip">${a.space}</span>` :
+        (showTopicChip && a.topic) ? `<span class="topic-chip">${a.topic}</span>` :
+        '';
+      const lastTouch = a.touchedBy[a.touchedBy.length - 1];
+      const lastSession = lastTouch ? getSession(lastTouch.sessionId) : null;
+      const sessionMark = lastSession ? lastSession.mark : '';
+      const hint = sessionMark ? `<span class="session-hint">made by ${sessionMark} · ${a.lastModified}</span>` : '';
+      return `
+        <div class="tile artefact-tile" onclick="openArtefact('${a.id}')">
+          <div class="thumb ${a.kind}">
+            ${chip}
+            ${inner}
+          </div>
+          <div class="label">${a.title}</div>
+          <div class="meta">${a.lastModified}</div>
+          ${hint}
+        </div>`;
+    }
+
+    // Table row helpers
+    function sessionRowHTML(s, opts = {}) {
+      const showSpace = opts.showSpace ?? true;
+      const time = s.state === 'awaiting' ? 'awaiting'
+                 : s.state === 'disconnected' ? 'disconnected'
+                 : s.startedAgo;
+      const secondCol = showSpace
+        ? `<span class="row-space">${s.space}</span>`
+        : `<span class="row-space" style="color: var(--text-dim);">${s.topic || '—'}</span>`;
+      return `
+        <div class="session-row" onclick="openSession('${s.id}')">
+          <span class="row-status ${s.state}"></span>
+          ${secondCol}
+          <span class="row-title">${s.title}</span>
+          <span class="row-agent ${s.mark}"><span class="agent-pip"></span>${s.agent}</span>
+          <span class="row-time">${time}</span>
+        </div>`;
+    }
+    function artefactRowHTML(a, opts = {}) {
+      const showSpace = opts.showSpace ?? false;
+      const middleCol = showSpace
+        ? `<span class="row-space" style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-bright);">${a.space}</span>`
+        : `<span class="row-topic">${a.topic || '—'}</span>`;
+      return `
+        <div class="artefact-row" onclick="openArtefact('${a.id}')">
+          <svg class="row-kind-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">${KIND_SVG[a.kind] || KIND_SVG.notes}</svg>
+          <span class="row-title">${a.title}</span>
+          ${middleCol}
+          <span class="row-kind">${a.kind}</span>
+          <span class="row-modified">${a.lastModified}</span>
+        </div>`;
+    }
+
+    // Smaller "link row" for cross-references inside the panel
+    function linkRowForArtefact(a, role, when) {
+      const inner = `<svg class="kind" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${KIND_SVG[a.kind] || KIND_SVG.notes}</svg>`;
+      return `
+        <div class="link-row" onclick="closePanel(); setTimeout(() => openArtefact('${a.id}'), 320)">
+          <div class="link-thumb ${a.kind}">${inner}</div>
+          <div class="link-body">
+            <div class="link-title">${a.title}</div>
+            <div class="link-meta">
+              <span class="role-chip ${role}">${role}</span>
+              <span>${when}</span>
+              <span>${a.kind}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+    function linkRowForSession(s, role, when) {
+      const inner = `<span class="agent-mark">${s.mark}</span>`;
+      const status = s.state && s.state !== 'done' ? `<span class="status ${s.state}"></span>` : '';
+      return `
+        <div class="link-row" onclick="closePanel(); setTimeout(() => openSession('${s.id}'), 320)">
+          <div class="link-thumb ${s.agentClass}">${inner}${status}</div>
+          <div class="link-body">
+            <div class="link-title">${s.title}</div>
+            <div class="link-meta">
+              <span class="role-chip ${role}">${role}</span>
+              <span>${when}</span>
+              <span>${s.agent}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ================== ROUTING ==================
+    let currentRoute = '#/home';
+    let currentTopic = 'All';
+    let memFilter = 'all';
+
+    function setView(v, section) {
+      const target = document.querySelector(`.section[data-section="${section}"]`);
+      if (!target) return;
+      target.classList.toggle('view-table', v === 'table');
+      target.querySelectorAll('.view-toggle .view-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.view === v);
+      });
+    }
+
+    // Filter for Sessions — driven by clicking header stats.
+    // 'active' is the default (running + awaiting + disconnected). Specific states
+    // narrow further. Clicking the active filter again returns to default.
+    let sessionFilter = 'active'; // 'active' | 'running' | 'awaiting' | 'disconnected' | 'done'
+    function setSessionFilter(f) {
+      sessionFilter = (sessionFilter === f) ? 'active' : f;
+      renderMain();
+    }
+    function isActiveState(s) { return ['running', 'awaiting', 'disconnected'].includes(s.state); }
+    function applySessionFilter(sessions) {
+      if (sessionFilter === 'active') return sessions.filter(isActiveState);
+      if (sessionFilter === 'done')   return sessions.filter(s => s.state === 'done');
+      if (sessionFilter === 'all')    return sessions;
+      return sessions.filter(s => s.state === sessionFilter);
+    }
+
+    function navigate(hash) { window.location.hash = hash; }
+    function setSpace(spaceId) {
+      window.location.hash = spaceId ? '#/space/' + spaceId : '#/home';
+    }
+    function setTopic(t) { currentTopic = t; renderMain(); }
+    function handleRoute() {
+      const hash = window.location.hash || '#/home';
+      currentRoute = hash;
+      document.querySelectorAll('.route').forEach(r => r.classList.remove('active'));
+      if (hash.startsWith('#/space/')) {
+        selectedSpace = hash.replace('#/space/', '');
+        renderMain();
+        document.getElementById('route-main').classList.add('active');
+      } else {
+        selectedSpace = null;
+        currentTopic = 'All';
+        renderMain();
+        document.getElementById('route-main').classList.add('active');
+      }
+      renderChatPills();
+      window.scrollTo(0, 0);
+    }
+    window.addEventListener('hashchange', handleRoute);
+
+    // ================== UNIFIED RENDER (Home + Space) ==================
+    // Selecting a space narrows everything to that scope. Without a space, we see
+    // sessions + artefacts across all spaces, plus a Spaces summary section.
+    function renderMain() {
+      const space = selectedSpace ? SPACES.find(p => p.id === selectedSpace) : null;
+      const isSpace = !!space;
+      const allSessions = isSpace ? SESSIONS.filter(s => s.space === selectedSpace) : SESSIONS;
+      const allArtefacts = isSpace ? ARTEFACTS.filter(a => a.space === selectedSpace) : ARTEFACTS;
+
+      // Header — back button only when scoped to a space
+      document.getElementById('main-back-bar').style.display = isSpace ? '' : 'none';
+      document.getElementById('main-eyebrow').textContent = isSpace ? selectedSpace : 'Home';
+      document.getElementById('main-title').textContent = isSpace ? space.title : 'Today.';
+
+      // Stats: urgency tier (running / awaiting / disconnected) — primary, no separators
+      // Reference tier (done · artefacts) — muted, smaller, on its own line
+      const running = allSessions.filter(s => s.state === 'running').length;
+      const awaiting = allSessions.filter(s => s.state === 'awaiting').length;
+      const disconnected = allSessions.filter(s => s.state === 'disconnected').length;
+      const done = allSessions.filter(s => s.state === 'done').length;
+      const stats = [];
+      const statBtn = (key, count, label, pipClass) =>
+        `<button class="stat-btn ${sessionFilter === key ? 'active' : ''}" onclick="setSessionFilter('${key}')">${pipClass ? `<span class="pip ${pipClass}"></span>` : ''}${count} ${label}</button>`;
+      if (running) stats.push(statBtn('running', running, 'running', 'green'));
+      if (awaiting) stats.push(statBtn('awaiting', awaiting, 'awaiting you', 'amber'));
+      if (disconnected) stats.push(statBtn('disconnected', disconnected, 'disconnected', 'red'));
+      stats.push(statBtn('done', done, 'done', null));
+      stats.push(statBtn('all', allSessions.length, 'all', null));
+      document.getElementById('main-stats').innerHTML = stats.join('');
+
+      // Whisper — different per context. Space references are clickable links.
+      const sLink = id => `<a class="space-link" onclick="setSpace('${id}')">${id}</a>`;
+      let whisperText = '';
+      if (selectedSpace === 'tokinvest') {
+        whisperText = `Today: <em>opencode</em> rewriting hero copy, <em>claude-code</em> waiting on your call to publish the Q3 memo.`;
+      } else if (selectedSpace === 'kps') {
+        whisperText = `Today: <em>claude-code</em> deep into the auth refactor (12m so far).`;
+      } else if (selectedSpace === 'blunderfixer') {
+        whisperText = `<span style="color: var(--red);">codex session disconnected 14m ago.</span> Likely your laptop slept.`;
+      } else if (!isSpace) {
+        whisperText = `Most of today's work was on ${sLink('tokinvest')}'s homepage. ${sLink('kps')}'s auth refactor is mid-flight. ${sLink('blunderfixer')} went silent 14 minutes in.`;
+      }
+      document.getElementById('main-whisper').innerHTML = whisperText
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.5 10.5 L21 12 L13.5 13.5 L12 21 L10.5 13.5 L3 12 L10.5 10.5 Z"/></svg><span>${whisperText}</span>`
+        : '';
+
+      // Topics — only render for spaces that have them (tokinvest in the demo)
+      const topicsEl = document.getElementById('main-topics');
+      if (selectedSpace === 'tokinvest') {
+        topicsEl.style.display = '';
+        topicsEl.innerHTML = TOPICS.map(t => {
+          let count;
+          if (t === 'All') count = allArtefacts.length;
+          else count = allArtefacts.filter(a => a.topic === TOPIC_MAP[t]).length;
+          return `<span class="topic ${t === currentTopic ? 'active' : ''}" onclick="setTopic('${t}')">${t} <span class="count">${count}</span></span>`;
+        }).join('') + '<span class="topic" onclick="toast(\'Add topic dialog (mock)\')">+</span>';
+      } else {
+        topicsEl.style.display = 'none';
+        currentTopic = 'All';
+      }
+
+      // Topic narrowing (only on tokinvest)
+      let scopedSessions = allSessions;
+      let scopedArtefacts = allArtefacts;
+      if (selectedSpace === 'tokinvest' && currentTopic !== 'All') {
+        const topicValue = TOPIC_MAP[currentTopic];
+        scopedArtefacts = allArtefacts.filter(a => a.topic === topicValue);
+        scopedSessions = allSessions.filter(s => s.touched?.some(tt => {
+          const art = ARTEFACTS.find(x => x.id === tt.artefactId);
+          return art && art.topic === topicValue;
+        }));
+      }
+
+      // Sessions section — state filter, then sort: active states first, done by recency
+      const filteredSessions = applySessionFilter(scopedSessions);
+      const order = { running: 0, awaiting: 1, disconnected: 2, done: 3 };
+      filteredSessions.sort((a, b) => {
+        const oa = order[a.state] ?? 9;
+        const ob = order[b.state] ?? 9;
+        if (oa !== ob) return oa - ob;
+        if (a.state === 'done') return (a.endedHoursAgo || 0) - (b.endedHoursAgo || 0);
+        return 0;
+      });
+      if (filteredSessions.length > 0) {
+        document.getElementById('main-sessions-grid').innerHTML = filteredSessions.map(s => tileForSession(s, { showSpaceChip: !isSpace })).join('');
+        document.getElementById('main-sessions-table').innerHTML = filteredSessions.map(s => sessionRowHTML(s, { showSpace: !isSpace })).join('');
+      } else {
+        document.getElementById('main-sessions-grid').innerHTML = `<p style="color: var(--text-muted); font-size: 13px; padding: 0 4px;">No sessions match this filter.</p>`;
+        document.getElementById('main-sessions-table').innerHTML = `<div style="padding: 16px 18px; color: var(--text-muted); font-size: 12px;">No sessions match this filter.</div>`;
+      }
+
+      // Spaces summary cards — only when no space is selected
+      const spacesSection = document.getElementById('main-spaces-section');
+      if (isSpace) {
+        spacesSection.style.display = 'none';
+      } else {
+        spacesSection.style.display = '';
+        document.getElementById('main-spaces-grid').innerHTML = SPACES.map(p => {
+          const ses = SESSIONS.filter(s => s.space === p.id);
+          const r = ses.filter(s => s.state === 'running').length;
+          const a = ses.filter(s => s.state === 'awaiting').length;
+          const d = ses.filter(s => s.state === 'disconnected').length;
+          const arts = ARTEFACTS.filter(art => art.space === p.id).length;
+          return `
+            <div class="space-card" onclick="setSpace('${p.id}')">
+              <div class="space-card-name">${p.id}</div>
+              <div class="space-card-counts">
+                ${r ? `<span class="signal"><span class="pip green"></span>${r} running</span>` : ''}
+                ${a ? `<span class="signal"><span class="pip amber"></span>${a} awaiting</span>` : ''}
+                ${d ? `<span class="signal"><span class="pip red"></span>${d} disconnected</span>` : ''}
+                <span class="signal"><span class="pip dim"></span>${arts} artefacts</span>
+              </div>
+            </div>`;
+        }).join('');
+      }
+
+      // Artefacts section — sorted by recency (using lastModifiedHours when present, else 0)
+      const artefactsSorted = [...scopedArtefacts]; // data already roughly chronological
+      document.getElementById('main-artefacts-count').textContent = artefactsSorted.length;
+      if (artefactsSorted.length > 0) {
+        document.getElementById('main-artefacts-grid').innerHTML = artefactsSorted.map(a =>
+          tileForArtefact(a, { showSpaceChip: !isSpace, showTopicChip: selectedSpace === 'tokinvest' })
+        ).join('');
+        document.getElementById('main-artefacts-table').innerHTML = artefactsSorted.map(a =>
+          artefactRowHTML(a, { showSpace: !isSpace })
+        ).join('');
+      } else {
+        document.getElementById('main-artefacts-grid').innerHTML = `<p style="color: var(--text-muted); font-size: 13px; padding: 0 4px;">No artefacts.</p>`;
+        document.getElementById('main-artefacts-table').innerHTML = `<div style="padding: 16px 18px; color: var(--text-muted); font-size: 12px;">No artefacts.</div>`;
+      }
+
+      // Memories section — same scoping (all memories, or memories sourced from this space)
+      const scopedMemories = isSpace ? MEMORY.filter(m => m.source === selectedSpace) : MEMORY;
+      const memFiltered = scopedMemories.filter(m => {
+        if (memFilter === 'all') return true;
+        if (memFilter === 'pinned') return m.pinned;
+        if (memFilter === 'agents') return m.author !== 'me';
+        if (memFilter === 'me') return m.author === 'me';
+        return true;
+      });
+      document.getElementById('main-memories-filter').innerHTML = memoryFilterChipsHTML(scopedMemories);
+      const pinned = memFiltered.filter(m => m.pinned);
+      const recent = memFiltered.filter(m => !m.pinned);
+      let memoryHTML = '';
+      if (pinned.length) {
+        memoryHTML += `<div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin: 8px 0 10px;">Pinned</div>`;
+        memoryHTML += `<div class="mem-list">${pinned.map(memEntryHTML).join('')}</div>`;
+      }
+      if (recent.length) {
+        memoryHTML += `<div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin: 18px 0 10px;">Recent</div>`;
+        memoryHTML += `<div class="mem-list">${recent.map(memEntryHTML).join('')}</div>`;
+      }
+      if (!pinned.length && !recent.length) {
+        memoryHTML = `<p style="color: var(--text-muted); font-size: 13px;">No memories match this filter.</p>`;
+      }
+      document.getElementById('main-memories-list').innerHTML = memoryHTML;
+    }
+
+    // Memory filter chips (lives next to section header)
+    function memoryFilterChipsHTML(memories) {
+      const counts = {
+        all:     memories.length,
+        pinned:  memories.filter(m => m.pinned).length,
+        agents:  memories.filter(m => m.author !== 'me').length,
+        me:      memories.filter(m => m.author === 'me').length,
+      };
+      const chip = (key, label) =>
+        `<span class="section-filter-chip ${memFilter === key ? 'active' : ''}" onclick="setMemFilter('${key}')">${label}<span class="filter-count">${counts[key]}</span></span>`;
+      return `<span class="section-filter">${chip('all','All')}${chip('pinned','Pinned')}${chip('agents','From agents')}${chip('me','From me')}</span>`;
+    }
+    function setMemFilter(f) {
+      memFilter = f;
+      renderMain();
+    }
+
+    // ================== MEMORY ENTRY HTML (used inside the Memories section) ==================
+    function memEntryHTML(m) {
+      const recall = m.recallCount > 0 ? `<span class="recall-badge">recalled ${m.recallCount}×</span>` : '';
+      const pin = m.pinned ? `<span class="pin">★ pinned</span>` : '';
+      return `
+        <div class="mem-entry" onclick="openMemory('${m.id}')">
+          <div class="mem-entry-text">${m.text}</div>
+          <div class="mem-entry-meta">
+            <span class="src-space">${m.source}</span>
+            <span>·</span>
+            <span class="src-author">by ${m.author}</span>
+            <span>·</span>
+            <span>${m.when}</span>
+            ${recall}
+            ${pin}
+          </div>
+        </div>`;
+    }
+    // ================== CHAT BAR ==================
+    function renderChatPills() {
+      const isHome = (currentRoute === '#/home' || currentRoute === '') && !selectedSpace;
+      const pills = [
+        `<span class="pill home ${isHome ? 'active' : ''}" onclick="setSpace(null)"><span class="dot"></span>Home</span>`,
+        ...SPACES.map(p => `<span class="pill ${selectedSpace === p.id ? 'active' : ''}" onclick="setSpace('${p.id}')">${p.id}</span>`),
+        `<span class="pill" onclick="toast('Add space dialog (mock)')">+</span>`
+      ];
+      document.getElementById('chat-pills').innerHTML = pills.join('');
+      const input = document.getElementById('chat-input');
+      input.placeholder = isHome ? 'Ask across all spaces…' : 'What should run in this space?';
+    }
+
+    function scrollToMemories() {
+      const el = document.getElementById('main-memories-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ================== INSPECTOR (session OR artefact OR memory) ==================
+    let panelKind = null; // 'session' | 'artefact' | 'memory'
+    let panelId = null;
+    let currentTab = null;
+
+    function openSession(id)   { panelKind = 'session';  panelId = id; currentTab = 'transcript'; renderPanel(); openPanel(); }
+    function openArtefact(id)  { panelKind = 'artefact'; panelId = id; currentTab = 'preview';    renderPanel(); openPanel(); }
+    function openMemory(id)    { panelKind = 'memory';   panelId = id; currentTab = 'detail';     renderPanel(); openPanel(); }
+    function openPanel() {
+      document.getElementById('panel').classList.add('open');
+      document.getElementById('panel-backdrop').classList.add('open');
+    }
+    function closePanel() {
+      document.getElementById('panel').classList.remove('open');
+      document.getElementById('panel-backdrop').classList.remove('open');
+    }
+    document.getElementById('panel-backdrop').addEventListener('click', closePanel);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+    function renderPanel() {
+      if (panelKind === 'session') return renderSessionPanel();
+      if (panelKind === 'artefact') return renderArtefactPanel();
+      if (panelKind === 'memory') return renderMemoryPanel();
+    }
+
+    // ---------- Session inspector ----------
+    function renderSessionPanel() {
+      const s = getSession(panelId);
+      if (!s) return;
+      const stateLabel = { running: 'running', awaiting: 'awaiting you', disconnected: 'disconnected', done: 'done' }[s.state] || s.state;
+      const pipClass = { running: 'green', awaiting: 'amber', disconnected: 'red', done: 'dim' }[s.state];
+
+      document.getElementById('p-header').innerHTML = `
+        <div class="panel-meta">
+          <span class="space">${s.space}</span>
+          <span class="sep">·</span>
+          <span class="agent">${s.agent}</span>
+          <span class="sep">·</span>
+          <span class="pip ${pipClass}"></span>
+          <span>${stateLabel}</span>
+          <span class="close" onclick="closePanel()">✕</span>
+        </div>
+        <div class="panel-title">${s.title}</div>
+        <div class="panel-sub">${s.id} · ${s.startedAgo}${s.model ? ' · ' + s.model : ''}</div>
+        ${s.watcher ? `<div class="watcher-note">Watching transcript: ${s.watcher}</div>` : ''}
+      `;
+
+      // Banners (passive — Oyster doesn't act on these)
+      let banner = '';
+      if (s.state === 'disconnected') {
+        banner = `<div class="panel-banner disconnected">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div class="banner-body">
+            Last heartbeat <strong>${s.lastHeartbeat}</strong>. ${s.disconnectNote || ''}
+            <div class="banner-actions">
+              <button class="btn primary" onclick="toast('Opened claude-code with --resume ' + '${s.id}')">Open in TUI</button>
+              <button class="btn" onclick="toast('Session marked closed in Oyster (agent untouched)')">Mark closed</button>
+            </div>
+          </div>
+        </div>`;
+      } else if (s.state === 'awaiting' && s.pendingApproval) {
+        banner = `<div class="panel-banner awaiting">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div class="banner-body">
+            Agent is waiting on a <strong>${s.pendingApproval.type}</strong> for <code>${s.pendingApproval.target}</code> (${s.pendingApproval.detail}). Resolve it inside the agent's TUI.
+            <div class="banner-actions">
+              <button class="btn primary" onclick="toast('Opened claude-code with --resume ' + '${s.id}')">Open in TUI</button>
+              <button class="btn" onclick="navigator.clipboard?.writeText('${s.id}'); toast('Session ID copied: ${s.id}')">Copy session ID</button>
+            </div>
+          </div>
+        </div>`;
+      }
+      document.getElementById('p-banner').innerHTML = banner;
+
+      // Tabs
+      const touchedCount = (s.touched || []).length;
+      document.getElementById('p-tabs').innerHTML = `
+        <button class="panel-tab active" data-tab="transcript">Transcript <span class="badge">${s.transcript.length || 0}</span></button>
+        <button class="panel-tab" data-tab="summary">Summary</button>
+        <button class="panel-tab" data-tab="files">Files <span class="badge">${(s.files || []).length}</span></button>
+        <button class="panel-tab" data-tab="artefacts">Artefacts <span class="badge">${touchedCount}</span></button>
+        <button class="panel-tab" data-tab="memory">Memory</button>
+      `;
+      attachTabHandlers();
+
+      // Tab content
+      const transcript = s.transcript.length
+        ? s.transcript.map(t => `<div class="turn ${t.role}"><div class="turn-role">${t.role}</div><div class="turn-text">${t.text}</div></div>`).join('')
+        : `<p style="color: var(--text-muted); font-size: 13px;">No transcript yet.</p>`;
+
+      const transcriptTokens = s.transcript.length * 800;
+      const summaryTokens = s.summary ? Math.max(120, Math.ceil(s.summary.length / 3)) : 0;
+      const summary = s.summary ? `
+        <div class="summary-block"><p>${s.summary}</p></div>
+        <div style="margin-top: 22px; margin-bottom: 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);">Resume in TUI with…</div>
+        <div class="resume-options">
+          <div class="resume-option recommended" onclick="toast('Launched claude-code --resume ${s.id} --context summary — saved ' + (${transcriptTokens} - ${summaryTokens}) + ' tokens')">
+            <div class="resume-option-body">
+              <div class="resume-option-title">Summary as context</div>
+              <div class="resume-option-meta">~${summaryTokens} tokens · <span class="save">saves ~${transcriptTokens - summaryTokens} tokens vs full transcript</span></div>
+            </div>
+            <span class="arrow">→</span>
+          </div>
+          <div class="resume-option" onclick="toast('Launched claude-code --resume ${s.id} — full transcript loaded')">
+            <div class="resume-option-body">
+              <div class="resume-option-title">Full transcript</div>
+              <div class="resume-option-meta">~${transcriptTokens} tokens · full context</div>
+            </div>
+            <span class="arrow">→</span>
+          </div>
+        </div>
+      ` : `<p style="color: var(--text-muted); font-size: 13px;">No summary yet.</p>`;
+
+      const files = (s.files || []).length
+        ? s.files.map(f => `
+            <div class="file-row">
+              <span class="name">${f.name}</span>
+              <span class="diff">
+                ${f.add ? `<span class="add">+${f.add}</span>` : ''}
+                ${f.rm ? ` <span class="rm">−${f.rm}</span>` : ''}
+                ${f.note ? `<span style="color: var(--text-muted);">${f.note}</span>` : ''}
+              </span>
+            </div>`).join('')
+        : `<p style="color: var(--text-muted); font-size: 13px;">No files touched yet.</p>`;
+
+      const touchedHTML = (s.touched || []).length
+        ? s.touched.map(t => {
+            const a = ARTEFACTS.find(x => x.id === t.artefactId);
+            if (!a) return '';
+            return linkRowForArtefact(a, t.role, '');
+          }).join('')
+        : `<p style="color: var(--text-muted); font-size: 13px;">No artefacts touched.</p>`;
+
+      const pulledHTML = (s.memoryPulled || []).length
+        ? s.memoryPulled.map(m => `
+            <div class="link-row">
+              <div class="link-thumb" style="background: rgba(124,107,255,0.12); color: var(--accent-bright);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+              </div>
+              <div class="link-body">
+                <div class="link-title">${m.text}</div>
+                <div class="link-meta">
+                  <span class="role-chip read">pulled</span>
+                  <span>from ${m.from}</span>
+                </div>
+              </div>
+            </div>`).join('')
+        : `<p style="color: var(--text-muted); font-size: 12px;">Nothing pulled into context.</p>`;
+      const writtenHTML = (s.memoryWritten || []).length
+        ? s.memoryWritten.map(m => `
+            <div class="link-row">
+              <div class="link-thumb" style="background: rgba(74,222,128,0.12); color: #6ee7a8;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M12 5v14M5 12h14"/></svg>
+              </div>
+              <div class="link-body">
+                <div class="link-title">${m.text}</div>
+                <div class="link-meta"><span class="role-chip create">wrote</span></div>
+              </div>
+            </div>`).join('')
+        : `<p style="color: var(--text-muted); font-size: 12px;">Nothing written.</p>`;
+
+      const body = `
+        <div class="tab-content active" data-tab="transcript">${transcript}</div>
+        <div class="tab-content" data-tab="summary">${summary}</div>
+        <div class="tab-content" data-tab="files">${files}</div>
+        <div class="tab-content" data-tab="artefacts">${touchedHTML}</div>
+        <div class="tab-content" data-tab="memory">
+          <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px;">Pulled into this session</div>
+          ${pulledHTML}
+          <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin: 18px 0 10px;">Written by this session</div>
+          ${writtenHTML}
+        </div>
+      `;
+      document.getElementById('p-body').innerHTML = body;
+
+      // Footer (no Allow/Deny — Oyster is a reader)
+      const footer = s.state === 'done'
+        ? `<button class="btn primary" onclick="toast('Launched claude-code --resume ${s.id}')">Resume in TUI</button>
+           <button class="btn" onclick="toast('Branched into new session in TUI')">Branch in TUI</button>
+           <button class="btn" onclick="navigator.clipboard?.writeText('${s.id}'); toast('Copied: ${s.id}')">Copy session ID</button>
+           <button class="btn" onclick="toast('Transcript exported')">Export transcript</button>`
+        : s.state === 'running'
+        ? `<button class="btn primary" onclick="toast('Opened claude-code TUI watching ${s.id}')">Open in TUI</button>
+           <button class="btn" onclick="navigator.clipboard?.writeText('${s.id}'); toast('Copied: ${s.id}')">Copy session ID</button>`
+        : s.state === 'disconnected'
+        ? `<button class="btn primary" onclick="toast('Launched claude-code --resume ${s.id} (agent shim takes over)')">Open in TUI</button>
+           <button class="btn" onclick="toast('Session marked closed in Oyster')">Mark closed</button>`
+        : `<button class="btn primary" onclick="toast('Opened claude-code TUI for ${s.id}')">Open in TUI</button>
+           <button class="btn" onclick="navigator.clipboard?.writeText('${s.id}'); toast('Copied: ${s.id}')">Copy session ID</button>`;
+      document.getElementById('p-footer').innerHTML = footer;
+    }
+
+    // ---------- Artefact inspector ----------
+    function renderArtefactPanel() {
+      const a = ARTEFACTS.find(x => x.id === panelId);
+      if (!a) return;
+
+      document.getElementById('p-header').innerHTML = `
+        <div class="panel-meta">
+          <span class="space">${a.space}</span>
+          ${a.topic ? `<span class="sep">·</span><span>${a.topic}</span>` : ''}
+          <span class="sep">·</span>
+          <span>${a.kind}</span>
+          <span class="close" onclick="closePanel()">✕</span>
+        </div>
+        <div class="panel-title">${a.title}</div>
+        <div class="panel-sub">${a.id} · last modified ${a.lastModified}</div>
+      `;
+      document.getElementById('p-banner').innerHTML = '';
+
+      const sessionsCount = a.touchedBy.length;
+      document.getElementById('p-tabs').innerHTML = `
+        <button class="panel-tab active" data-tab="preview">Preview</button>
+        <button class="panel-tab" data-tab="sessions">Sessions <span class="badge">${sessionsCount}</span></button>
+      `;
+      attachTabHandlers();
+
+      // Mock preview by kind
+      let preview = '';
+      if (a.kind === 'notes') {
+        preview = `
+          <div class="preview">
+            <div class="preview-notes-line heading"></div>
+            <div class="preview-notes-line"></div>
+            <div class="preview-notes-line"></div>
+            <div class="preview-notes-line short"></div>
+            <div class="preview-notes-line heading" style="margin-top: 14px;"></div>
+            <div class="preview-notes-line"></div>
+            <div class="preview-notes-line short"></div>
+          </div>`;
+      } else if (a.kind === 'deck') {
+        preview = `
+          <div class="preview">
+            <div class="preview-deck-page">deck preview · ${a.title}</div>
+          </div>`;
+      } else if (a.kind === 'table') {
+        preview = `
+          <div class="preview">
+            <div class="preview-table">
+              <div class="head">name</div><div class="head">price</div><div class="head">vol</div><div class="head">notes</div>
+              <div>—</div><div>—</div><div>—</div><div>—</div>
+              <div>—</div><div>—</div><div>—</div><div>—</div>
+              <div>—</div><div>—</div><div>—</div><div>—</div>
+            </div>
+          </div>`;
+      } else if (a.kind === 'diagram' || a.kind === 'wireframe') {
+        preview = `
+          <div class="preview" style="height: 200px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px;">
+            ${a.kind} preview · ${a.title}
+          </div>`;
+      }
+
+      // Sessions tab — list of sessions that touched this artefact
+      const sessionsHTML = a.touchedBy.map(t => {
+        const s = getSession(t.sessionId);
+        if (!s) return '';
+        return linkRowForSession(s, t.role, t.when);
+      }).join('');
+
+      document.getElementById('p-body').innerHTML = `
+        <div class="tab-content active" data-tab="preview">${preview}<p style="color: var(--text-muted); font-size: 12px; margin-top: 12px;">Click "Open" below to view the full artefact.</p></div>
+        <div class="tab-content" data-tab="sessions">
+          <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 14px;">${sessionsCount} session${sessionsCount === 1 ? '' : 's'} touched this artefact.</p>
+          ${sessionsHTML}
+        </div>
+      `;
+
+      document.getElementById('p-footer').innerHTML = `
+        <button class="btn primary" onclick="toast('Opened ${a.title}')">Open</button>
+        <button class="btn" onclick="toast('Launched claude-code --new --context-artefact=${a.id}')">Revise in TUI</button>
+        <button class="btn" onclick="navigator.clipboard?.writeText('${a.id}'); toast('Copied: ${a.id}')">Copy artefact ID</button>
+      `;
+    }
+
+    // ---------- Memory entry inspector ----------
+    function renderMemoryPanel() {
+      const m = MEMORY.find(x => x.id === panelId);
+      if (!m) return;
+      document.getElementById('p-header').innerHTML = `
+        <div class="panel-meta">
+          <span class="space">${m.source}</span>
+          <span class="sep">·</span>
+          <span>by ${m.author}</span>
+          <span class="sep">·</span>
+          <span>${m.when}</span>
+          ${m.pinned ? `<span style="color: var(--amber); margin-left: 6px;">★ pinned</span>` : ''}
+          <span class="close" onclick="closePanel()">✕</span>
+        </div>
+        <div class="panel-title">Memory entry</div>
+        <div class="panel-sub">${m.id} · recalled ${m.recallCount}× across sessions</div>
+      `;
+      document.getElementById('p-banner').innerHTML = '';
+      document.getElementById('p-tabs').innerHTML = '';
+      document.getElementById('p-body').innerHTML = `
+        <div class="summary-block"><p>${m.text}</p></div>
+        <div style="margin-top: 22px; margin-bottom: 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);">Recall trail</div>
+        <p style="color: var(--text-dim); font-size: 13px;">${m.recallCount > 0 ? `Pulled into context by ${m.recallCount} session${m.recallCount === 1 ? '' : 's'} since it was written.` : 'Not yet recalled by any session.'}</p>
+      `;
+      document.getElementById('p-footer').innerHTML = `
+        <button class="btn primary" onclick="toast('${m.pinned ? 'Unpinned' : 'Pinned'}'); ">${m.pinned ? 'Unpin' : 'Pin'}</button>
+        <button class="btn" onclick="toast('Edit memory dialog (mock)')">Edit</button>
+        <button class="btn" onclick="toast('Memory deleted'); closePanel();">Delete</button>
+      `;
+    }
+
+    function attachTabHandlers() {
+      document.querySelectorAll('#p-tabs .panel-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab;
+          document.querySelectorAll('#p-tabs .panel-tab').forEach(b => b.classList.toggle('active', b === btn));
+          document.querySelectorAll('#p-body .tab-content').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+        });
+      });
+    }
+
+    // ================== TOAST ==================
+    let toastTimer;
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    // ================== INIT ==================
+    handleRoute();
+  </script>
+</body>
+</html>
