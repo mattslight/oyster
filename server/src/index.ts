@@ -530,20 +530,63 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // GET /api/spaces/:id/sources — active sources (linked folders) for a
+  // /api/spaces/:id/sources — active sources (linked folders) for a
   // space. Local-origin only: paths leak the user's home directory.
-  // Surfaces #266 — without this you can't see at a glance whether a
-  // space has zero attached folders, which silently sends every claude
-  // session into orphan-land.
+  // Surfaces #266 plus attach/detach from the Folders section.
   {
-    const m = url.split("?")[0].match(/^\/api\/spaces\/([^/]+)\/sources$/);
+    const sourcesPath = url.split("?")[0];
+    const m = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources$/);
     if (m && req.method === "GET") {
       if (rejectIfNonLocalOrigin()) return;
       try {
-        const sources = spaceService.getSources(m[1]);
-        sendJson(sources);
+        sendJson(spaceService.getSources(m[1]));
       } catch (err) {
         sendError(err, 500);
+      }
+      return;
+    }
+    // POST /api/spaces/:id/sources — { path } attaches a folder. Mirrors
+    // the chat-bar `onboard_space` flow: addSource then scan so artefacts
+    // surface in the same round-trip.
+    if (m && req.method === "POST") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        const body = await readJsonBody();
+        const path = typeof body.path === "string" ? body.path.trim() : "";
+        if (!path) {
+          sendJson({ error: "path is required" }, 400);
+          return;
+        }
+        const source = spaceService.addSource(m[1], path);
+        // Fire scan but don't block the response — tiles surface via SSE
+        // as the watcher / scanner picks them up. A long scan would
+        // otherwise hang the Folders UI for many seconds on a big repo.
+        spaceService.scanSpace(m[1]).catch((err) => {
+          console.warn("[attach-source] scan failed:", err instanceof Error ? err.message : err);
+        });
+        sendJson(source, 201);
+      } catch (err) {
+        sendError(err);
+      }
+      return;
+    }
+    // DELETE /api/spaces/:id/sources/:source_id — detach a folder.
+    // Soft-deletes the source row AND every artifact that came from it.
+    const dm = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources\/([^/]+)$/);
+    if (dm && req.method === "DELETE") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        const [, spaceId, sourceId] = dm;
+        const source = spaceService.getSourceById(sourceId);
+        if (!source || source.space_id !== spaceId) {
+          sendJson({ error: "source not found in this space" }, 404);
+          return;
+        }
+        spaceService.removeSource(sourceId);
+        res.writeHead(204);
+        res.end();
+      } catch (err) {
+        sendError(err);
       }
       return;
     }

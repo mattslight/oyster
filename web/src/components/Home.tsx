@@ -7,6 +7,7 @@ import { useSessions } from "../hooks/useSessions";
 import { useMemories } from "../hooks/useMemories";
 import { useSpaceSources } from "../hooks/useSpaceSources";
 import type { SpaceSource } from "../data/spaces-api";
+import { addSpaceSource, removeSpaceSource } from "../data/spaces-api";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
 import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
@@ -124,7 +125,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     sources: spaceSources,
     loading: spaceSourcesLoading,
     error: spaceSourcesError,
+    refresh: refreshSpaceSources,
   } = useSpaceSources(sourcesSpaceId);
+  const [showAttachForm, setShowAttachForm] = useState(false);
+  // Reset the attach form whenever scope changes so it doesn't carry
+  // across spaces.
+  useEffect(() => { setShowAttachForm(false); }, [sourcesSpaceId]);
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
@@ -391,7 +397,25 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               <span className="home-section-label">Folders</span>
               <span className="home-artefacts-count">{spaceSources.length}</span>
               <span className="home-section-rule" />
+              <button
+                type="button"
+                className="home-memories-add-btn"
+                onClick={() => setShowAttachForm((v) => !v)}
+                aria-expanded={showAttachForm}
+              >
+                {showAttachForm ? "Cancel" : "+ Attach folder"}
+              </button>
             </div>
+            {showAttachForm && (
+              <AttachFolderForm
+                spaceId={sourcesSpaceId}
+                onAttached={() => {
+                  setShowAttachForm(false);
+                  refreshSpaceSources();
+                }}
+                onCancel={() => setShowAttachForm(false)}
+              />
+            )}
             {spaceSourcesError ? (
               <div className="home-empty">
                 Couldn't load folders: {spaceSourcesError.message}
@@ -404,14 +428,26 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 Sessions started in unattached folders land in Elsewhere,
                 and tile discovery relies on these.{" "}
                 <span className="home-folders-empty-hint">
-                  Use <code>/attach &lt;path&gt;</code> from the chat bar.
+                  Click <em>+ Attach folder</em> above, or use{" "}
+                  <code>/attach &lt;path&gt;</code> from the chat bar.
                 </span>
               </div>
             ) : (
               <div className="home-memories-wrap">
                 <div className="home-memories">
                   {spaceSources.map((s) => (
-                    <FolderRow key={s.id} source={s} />
+                    <FolderRow
+                      key={s.id}
+                      source={s}
+                      onDetach={async () => {
+                        try {
+                          await removeSpaceSource(s.space_id, s.id);
+                          refreshSpaceSources();
+                        } catch (err) {
+                          alert(`Couldn't detach: ${err instanceof Error ? err.message : String(err)}`);
+                        }
+                      }}
+                    />
                   ))}
                 </div>
               </div>
@@ -904,16 +940,98 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
   );
 }
 
-function FolderRow({ source }: { source: SpaceSource }) {
+function FolderRow({
+  source, onDetach,
+}: {
+  source: SpaceSource;
+  onDetach: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
   const basename = source.path.split("/").filter(Boolean).pop() ?? source.path;
+  async function detach() {
+    if (busy) return;
+    if (!window.confirm(
+      `Detach "${basename}" from this space?\n\n${source.path}\n\nIts artefacts will be hidden. Reattach the same path to restore them.`,
+    )) return;
+    setBusy(true);
+    try { await onDetach(); } finally { setBusy(false); }
+  }
   return (
     <div className="home-memory home-folder" title={source.path}>
       <div className="home-folder-row">
         <span className="home-memory-space">{basename}</span>
         <span className="home-folder-path">{source.path}</span>
         <span className="home-memory-time">attached {formatRelative(source.added_at) ?? "—"}</span>
+        <button
+          type="button"
+          className="home-folder-detach"
+          onClick={detach}
+          disabled={busy}
+          aria-label={`Detach ${basename}`}
+          title="Detach this folder"
+        >
+          {busy ? "…" : "Detach"}
+        </button>
       </div>
     </div>
+  );
+}
+
+function AttachFolderForm({
+  spaceId, onAttached, onCancel,
+}: {
+  spaceId: string;
+  onAttached: () => void;
+  onCancel: () => void;
+}) {
+  const [path, setPath] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!path.trim() || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await addSpaceSource(spaceId, path.trim());
+      onAttached();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="home-memories-add" onSubmit={submit}>
+      <input
+        className="home-memories-add-text"
+        style={{ minHeight: 0 }}
+        placeholder="/absolute/path/to/folder (or ~/path)"
+        value={path}
+        onChange={(e) => setPath(e.target.value)}
+        autoFocus
+      />
+      <div className="home-memories-add-row">
+        <span className="home-memories-add-error" style={{ flex: 1, color: "var(--text-dim)" }}>
+          The folder will be scanned in the background.
+        </span>
+        <div className="home-memories-add-actions">
+          <button type="button" className="home-memories-add-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="home-memories-add-save"
+            disabled={!path.trim() || submitting}
+          >
+            {submitting ? "Attaching…" : "Attach"}
+          </button>
+        </div>
+      </div>
+      {error && <div className="home-memories-add-error">Couldn't attach: {error}</div>}
+    </form>
   );
 }
 
