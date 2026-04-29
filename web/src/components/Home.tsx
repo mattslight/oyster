@@ -5,6 +5,7 @@ import { useSessions } from "../hooks/useSessions";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
 import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
+import { SessionInspector } from "./SessionInspector";
 import "./Home.css";
 
 interface Props {
@@ -342,6 +343,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                     key={session.id}
                     session={session}
                     spaces={spaces}
+                    onOpen={(id) => setActivePanel({ kind: "session", id })}
                   />
                 ))}
               </div>
@@ -396,9 +398,20 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         </section>
       </div>
       <InspectorPanel active={activePanel} onClose={() => setActivePanel(null)}>
-        <div style={{ padding: 24, color: "white" }}>
-          {activePanel?.kind === "session" ? `Session ${activePanel.id}` : `Artefact ${activePanel?.id}`}
-        </div>
+        {activePanel?.kind === "session" && (
+          <SessionInspector
+            sessionId={activePanel.id}
+            onSwitchTo={setActivePanel}
+            onClose={() => setActivePanel(null)}
+            onNotFound={() => {
+              setActivePanel(null);
+              alert("Session no longer available");
+            }}
+          />
+        )}
+        {activePanel?.kind === "artefact" && (
+          <div style={{ padding: 24, color: "white" }}>Artefact panel — Task 7</div>
+        )}
       </InspectorPanel>
     </div>
   );
@@ -453,9 +466,10 @@ function SessionTile({ session, spaces, showSpaceChip, onOpen }: SessionTileProp
 interface SessionRowProps {
   session: Session;
   spaces: Space[];
+  onOpen?: (id: string) => void;
 }
 
-function SessionRow({ session, spaces }: SessionRowProps) {
+function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = session.state === "waiting" ? `waiting ${rel}`
@@ -463,7 +477,7 @@ function SessionRow({ session, spaces }: SessionRowProps) {
     : rel;
   const title = session.title ?? "(no title yet)";
   return (
-    <div className="home-row">
+    <div className="home-row" onClick={() => onOpen?.(session.id)} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined}>
       <span className={`home-row-status ${session.state}`} />
       <span className="home-row-space">{spaceLabel ?? "—"}</span>
       <span className="home-row-title" title={title}>{title}</span>
