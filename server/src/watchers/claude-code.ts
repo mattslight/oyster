@@ -33,17 +33,25 @@ const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 // some claude at this cwd?" devolves into heuristics with edge cases.
 //
 //   ageMs < ACTIVE_WINDOW_MS                                → active
-//   ageMs < WAITING_WINDOW_MS    + claude at this cwd       → waiting
+//   ageMs < WAITING_WINDOW_MS    + signal != "absent"       → waiting
 //   ageMs < DONE_THRESHOLD_MS                               → disconnected
 //   otherwise                                               → done
 //
-// The 30-min waiting window is the honest cap: if a JSONL hasn't been
-// touched in 30 minutes we treat the session as disconnected regardless
-// of whether a claude process is at the cwd. That means an old transcript
-// at a cwd where the user is currently working doesn't get falsely
-// elevated to waiting. False negative case: a claude tab idle for >30min
-// reads as disconnected even though the process is live — that flips
-// back to active the moment the user types and JSONL streams.
+// `signal` is tri-state to handle Windows / probe-unavailable gracefully:
+//   "alive"   — probe ran, found a claude process at this cwd
+//   "absent"  — probe ran, found no claude at this cwd (terminal closed)
+//   "unknown" — probe couldn't run at all (no pgrep). Treat as benefit-
+//               of-doubt: a recent session reads as waiting, not
+//               disconnected. Otherwise Windows would force every idle
+//               session to disconnected, worse than the pre-probe state.
+//
+// The 30-min waiting window is the honest cap: a JSONL untouched for
+// 30 min reads as disconnected regardless of probe. That means an old
+// transcript at a cwd where the user is currently working doesn't get
+// falsely elevated to waiting. False negative: a claude tab idle for
+// >30min on POSIX reads as disconnected even if the process is live —
+// flips back to active the moment the user types.
+export type ProbeSignal = "alive" | "absent" | "unknown";
 const ACTIVE_WINDOW_MS = 60_000;
 const WAITING_WINDOW_MS = 30 * 60 * 1000;
 const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
@@ -191,7 +199,7 @@ export class ClaudeCodeWatcher {
   // (see deriveState), so a session whose claude process is still running
   // comes back as 'active'/'waiting' even after a server restart.
   private async bootScan(): Promise<void> {
-    const cwdCounts = await activeClaudeCwdCounts();
+    const probe = await activeClaudeCwdCounts();
     let projectDirs: string[];
     try {
       projectDirs = await fs.readdir(this.root);
@@ -219,12 +227,12 @@ export class ClaudeCodeWatcher {
       for (const entry of entries) {
         if (!entry.endsWith(".jsonl")) continue;
         const filePath = join(dirPath, entry);
-        await this.reconcileExistingFile(filePath, cwdCounts).catch(this.logError);
+        await this.reconcileExistingFile(filePath, probe).catch(this.logError);
       }
     }
   }
 
-  private async reconcileExistingFile(filePath: string, cwdCounts: Map<string, number>): Promise<void> {
+  private async reconcileExistingFile(filePath: string, probe: { counts: Map<string, number>; available: boolean }): Promise<void> {
     let stat;
     try {
       stat = await fs.stat(filePath);
@@ -236,11 +244,10 @@ export class ClaudeCodeWatcher {
     if (!meta) return;
 
     const ageMs = this.now().getTime() - stat.mtime.getTime();
-    // Coarse seed: if there's any claude at this cwd, assume this session
-    // *might* be live. The immediate heartbeatSweep at the end of start()
-    // refines this to the top-K freshest per cwd.
-    const processAlive = meta.cwd ? (cwdCounts.get(meta.cwd) ?? 0) > 0 : false;
-    const state = deriveState(ageMs, processAlive);
+    const signal: ProbeSignal = !probe.available
+      ? "unknown"
+      : meta.cwd && (probe.counts.get(meta.cwd) ?? 0) > 0 ? "alive" : "absent";
+    const state = deriveState(ageMs, signal);
 
     // Always pass ISO-8601 timestamps. If the JSONL didn't have a usable
     // event timestamp in the first 32KB, fall back to the file's birth time
@@ -628,7 +635,7 @@ export class ClaudeCodeWatcher {
   }
 
   private async runHeartbeatSweep(): Promise<void> {
-    const cwdCounts = await activeClaudeCwdCounts();
+    const probe = await activeClaudeCwdCounts();
     const now = this.now().getTime();
 
     // sessionId → cwd, from in-memory trackers seeded by bootScan + watch.
@@ -644,8 +651,10 @@ export class ClaudeCodeWatcher {
       const ageMs = now - last;
 
       const cwd = sessionCwds.get(session.id);
-      const cwdHasLiveProcess = cwd ? (cwdCounts.get(cwd) ?? 0) > 0 : false;
-      const next = deriveState(ageMs, cwdHasLiveProcess);
+      const signal: ProbeSignal = !probe.available
+        ? "unknown"
+        : cwd && (probe.counts.get(cwd) ?? 0) > 0 ? "alive" : "absent";
+      const next = deriveState(ageMs, signal);
 
       if (next !== session.state) {
         this.deps.sessionStore.updateSessionState(session.id, next, session.last_event_at);
@@ -672,10 +681,12 @@ export class ClaudeCodeWatcher {
 
 // ── Pure helpers (exported for tests) ─────────────────────────────────────
 
-export function deriveState(ageMs: number, processAtCwd: boolean): SessionState {
+export function deriveState(ageMs: number, signal: ProbeSignal): SessionState {
   if (ageMs < ACTIVE_WINDOW_MS) return "active";
-  if (ageMs < WAITING_WINDOW_MS && processAtCwd) return "waiting";
   if (ageMs > DONE_THRESHOLD_MS) return "done";
+  if (ageMs < WAITING_WINDOW_MS) {
+    return signal === "absent" ? "disconnected" : "waiting";
+  }
   return "disconnected";
 }
 

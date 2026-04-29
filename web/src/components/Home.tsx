@@ -22,8 +22,13 @@ type StateFilter = SessionState | "live" | "all";
 function useStickyView(key: string, defaultValue: ViewMode): [ViewMode, (v: ViewMode) => void] {
   const [value, setValue] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return defaultValue;
-    const stored = window.localStorage.getItem(key);
-    return stored === "icons" || stored === "table" ? stored : defaultValue;
+    try {
+      const stored = window.localStorage.getItem(key);
+      return stored === "icons" || stored === "table" ? stored : defaultValue;
+    } catch {
+      // Safari private browsing / storage disabled — fall through to default
+      return defaultValue;
+    }
   });
   const set = (v: ViewMode) => {
     setValue(v);

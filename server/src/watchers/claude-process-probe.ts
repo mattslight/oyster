@@ -15,25 +15,34 @@ const execP = promisify(exec);
 // on the watcher heartbeat (every 15s), so a few hundred ms/min of subprocess
 // time at the high end. Fine.
 //
-// Cross-platform note: pgrep + lsof are POSIX-only. On Windows this returns
-// an empty map, and the watcher falls back to JSONL-recency-only state
-// derivation. Tracked separately — see issue #268.
+// Cross-platform note: pgrep + lsof are POSIX-only. On Windows (or any
+// system without pgrep), `available: false` is returned and the watcher
+// falls back to JSONL-recency-only state derivation. Tracked separately —
+// see issue #268.
 //
-// Returns a count per cwd (not a set) because two claude processes can be
-// running at the same cwd — worktrees, pair-programming workflows, parallel
-// investigations. Counts let the heartbeat pick the top-K most-recently-
-// streamed sessions per cwd as live, instead of either marking only one
-// (false negative) or marking every past transcript at that cwd (false
-// positive).
-export async function activeClaudeCwdCounts(): Promise<Map<string, number>> {
+// `counts` is per-cwd because two claude processes can share a cwd
+// (worktrees, pair-programming, parallel investigations). The heartbeat
+// uses count > 0 today; the per-cwd structure leaves room for a finer
+// matching strategy later if we revisit per-PID identity.
+export interface ClaudeProbeResult {
+  counts: Map<string, number>;
+  available: boolean;
+}
+
+export async function activeClaudeCwdCounts(): Promise<ClaudeProbeResult> {
   let pidsOut: string;
   try {
     const result = await execP("pgrep -x claude", { timeout: 2000 });
     pidsOut = result.stdout;
-  } catch {
-    // pgrep returns exit 1 when no matches; also covers Windows / missing
-    // pgrep. Empty map is the right answer in all those cases.
-    return new Map();
+  } catch (err) {
+    // pgrep exits 1 when no matches — probe DID run, just no claude
+    // around. Anything else (ENOENT, shell "command not found" 127,
+    // Windows) means we couldn't probe at all; report unavailable so the
+    // watcher can fall back to JSONL recency rather than treating every
+    // session as "no process".
+    const code = (err as { code?: number | string } | null)?.code;
+    if (code === 1) return { counts: new Map(), available: true };
+    return { counts: new Map(), available: false };
   }
 
   const pids = pidsOut
@@ -41,7 +50,7 @@ export async function activeClaudeCwdCounts(): Promise<Map<string, number>> {
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && /^\d+$/.test(s));
 
-  if (pids.length === 0) return new Map();
+  if (pids.length === 0) return { counts: new Map(), available: true };
 
   const counts = new Map<string, number>();
   await Promise.all(
@@ -63,5 +72,5 @@ export async function activeClaudeCwdCounts(): Promise<Map<string, number>> {
       }
     }),
   );
-  return counts;
+  return { counts, available: true };
 }

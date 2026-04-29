@@ -322,12 +322,12 @@
   </nav>
 
   <main class="entries">
-<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
+<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
 <h3>Changed</h3>
 <ul>
-<li><strong>Session states are now process-aware.</strong> Oyster looks at the running <code>claude</code> processes on your machine to tell whether a session is still alive — not just whether the JSONL file has been quiet. New states: <strong>active</strong> (green, &quot;updated recently&quot;), <strong>waiting</strong> (amber, &quot;process still open&quot;), <strong>disconnected</strong> (red, &quot;no running process found&quot;), and <strong>done</strong> (grey, &quot;inactive for 24h&quot;). Long thinking turns no longer flicker into red, and a finished session correctly drops to disconnected within seconds of you closing the terminal.</li>
+<li><strong>Session states are now process-aware.</strong> Oyster looks at the running <code>claude</code> processes on your machine to tell whether a session is still alive — not just whether the JSONL file has been quiet. New states: <strong>active</strong> (green, &quot;updated recently&quot;), <strong>waiting</strong> (amber, &quot;process still open&quot;), <strong>disconnected</strong> (red, &quot;no running process found&quot;), and <strong>done</strong> (grey, &quot;inactive for 24h&quot;). Long thinking turns no longer flicker into red, and a finished session converges to disconnected within a minute or so of you closing the terminal (active window plus the next heartbeat tick).</li>
 </ul>
-<h2 id="v-0-5-0-beta-0"><span class="release-version">0.5.0-beta.0</span><span class="release-date"> — 2026-04-28</span></h2>
+<h2 id="v-0-5-0-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.0</span></a><span class="release-date"> — 2026-04-28</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Oyster sees your claude-code sessions.</strong> When you run <code>claude</code> in any folder mapped to a space, Oyster now picks the session up automatically — no setup, no MCP wiring. The session shows as <em>running</em> / <em>disconnected</em> on the home feed, with title pulled from your first prompt and tracked file reads/edits attributed back to their tiles. Sessions started in unregistered folders land as orphans rather than being dropped. (<a href="https://github.com/mattslight/oyster/issues/251" rel="noopener noreferrer">#251</a>)</li>
