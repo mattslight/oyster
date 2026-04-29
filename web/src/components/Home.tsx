@@ -13,6 +13,7 @@ import { Desktop } from "./Desktop";
 import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
 import { SessionInspector } from "./SessionInspector";
 import { ArtefactInspector } from "./ArtefactInspector";
+import { ConfirmModal } from "./ConfirmModal";
 import "./Home.css";
 
 interface Props {
@@ -947,33 +948,55 @@ function FolderRow({
   onDetach: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const basename = source.path.split("/").filter(Boolean).pop() ?? source.path;
-  async function detach() {
-    if (busy) return;
-    if (!window.confirm(
-      `Detach "${basename}" from this space?\n\n${source.path}\n\nIts artefacts will be hidden. Reattach the same path to restore them.`,
-    )) return;
+
+  async function performDetach() {
     setBusy(true);
-    try { await onDetach(); } finally { setBusy(false); }
+    try {
+      await onDetach();
+      setConfirmOpen(false);
+    } finally {
+      setBusy(false);
+    }
   }
+
   return (
-    <div className="home-memory home-folder" title={source.path}>
-      <div className="home-folder-row">
-        <span className="home-memory-space">{basename}</span>
-        <span className="home-folder-path">{source.path}</span>
-        <span className="home-memory-time">attached {formatRelative(source.added_at) ?? "—"}</span>
-        <button
-          type="button"
-          className="home-folder-detach"
-          onClick={detach}
-          disabled={busy}
-          aria-label={`Detach ${basename}`}
-          title="Detach this folder"
-        >
-          {busy ? "…" : "Detach"}
-        </button>
+    <>
+      <div className="home-memory home-folder" title={source.path}>
+        <div className="home-folder-row">
+          <span className="home-memory-space">{basename}</span>
+          <span className="home-folder-path">{source.path}</span>
+          <span className="home-memory-time">attached {formatRelative(source.added_at) ?? "—"}</span>
+          <button
+            type="button"
+            className="home-folder-detach"
+            onClick={() => !busy && setConfirmOpen(true)}
+            disabled={busy}
+            aria-label={`Detach ${basename}`}
+            title="Detach this folder"
+          >
+            {busy ? "…" : "Detach"}
+          </button>
+        </div>
       </div>
-    </div>
+      <ConfirmModal
+        open={confirmOpen}
+        title={`Detach "${basename}"?`}
+        body={
+          <>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>
+              {source.path}
+            </div>
+            Its artefacts will be hidden. Reattach the same path to restore them.
+          </>
+        }
+        confirmLabel="Detach"
+        destructive
+        onConfirm={performDetach}
+        onCancel={() => !busy && setConfirmOpen(false)}
+      />
+    </>
   );
 }
 
