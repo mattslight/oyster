@@ -530,6 +530,27 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // GET /api/memories — list memories, optionally scoped to a space.
+  // Local-origin only: memory contents are private user notes. Strip the
+  // query string before path-matching (same trap the events route had —
+  // `$`-anchored regex would silently reject `?space_id=…`).
+  {
+    const memoriesPath = url.split("?")[0];
+    if (memoriesPath === "/api/memories" && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const parsed = new URL(req.url ?? "/", "http://localhost");
+      const spaceId = parsed.searchParams.get("space_id");
+      try {
+        const memories = await memoryProvider.list(spaceId ?? undefined);
+        sendJson(memories);
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      }
+      return;
+    }
+  }
+
   // GET /api/sessions — agent sessions captured by the watchers (#251).
   // Read-only for 0.5.0; the home feed renders these. Local-origin only —
   // session titles are derived from user prompts, which are private.

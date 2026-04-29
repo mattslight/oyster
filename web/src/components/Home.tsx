@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
+import type { Memory } from "../data/memories-api";
 import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
+import { useMemories } from "../hooks/useMemories";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
 import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
@@ -83,6 +85,7 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
+  const { memories } = useMemories();
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
@@ -167,6 +170,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
       return bT - aT;
     });
   }, [spaces, lastActivityBySpace]);
+
+  // Memories scope follows the same rules as sessions/artefacts: a real
+  // space narrows by space_id, Elsewhere narrows to memories not bound to a
+  // currently-known space, otherwise show all.
+  const scopedMemories = useMemo(() => {
+    if (showElsewhere && isHomeView) {
+      const real = new Set(spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").map((s) => s.id));
+      return memories.filter((m) => !m.space_id || !real.has(m.space_id));
+    }
+    return scopedSpace ? memories.filter((m) => m.space_id === scopedSpace) : memories;
+  }, [memories, scopedSpace, showElsewhere, isHomeView, spaces]);
 
   // When scoped to Elsewhere, artefacts should mirror the sessions filter:
   // anything not attributed to a known real space (null spaceId or a stale
@@ -417,6 +431,25 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             />
           )}
         </section>
+
+        <section className="home-section">
+          <div className="home-section-head">
+            <span className="home-section-label">Memories</span>
+            <span className="home-artefacts-count">{scopedMemories.length}</span>
+            <span className="home-section-rule" />
+          </div>
+          {scopedMemories.length === 0 ? (
+            <div className="home-empty">
+              No memories yet — agents store them via <code>remember</code>.
+            </div>
+          ) : (
+            <div className="home-memories">
+              {scopedMemories.map((m) => (
+                <MemoryCard key={m.id} memory={m} spaces={spaces} showSpaceChip={isMetaView} />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
       <InspectorPanel active={activePanel} onClose={() => setActivePanel(null)}>
         {activePanel?.kind === "session" && (
@@ -576,6 +609,33 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+interface MemoryCardProps {
+  memory: Memory;
+  spaces: Space[];
+  showSpaceChip: boolean;
+}
+
+function MemoryCard({ memory, spaces, showSpaceChip }: MemoryCardProps) {
+  const spaceLabel = spaceLabelFor(memory.space_id, spaces);
+  const rel = formatRelative(memory.created_at) ?? "—";
+  return (
+    <div className="home-memory">
+      <div className="home-memory-text">{memory.content}</div>
+      <div className="home-memory-meta">
+        {showSpaceChip && spaceLabel && <span className="home-memory-space">{spaceLabel}</span>}
+        {memory.tags.length > 0 && (
+          <span className="home-memory-tags">
+            {memory.tags.map((t) => (
+              <span key={t} className="home-memory-tag">{t}</span>
+            ))}
+          </span>
+        )}
+        <span className="home-memory-time">{rel}</span>
       </div>
     </div>
   );

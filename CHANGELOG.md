@@ -6,6 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Added
 
+- **Memories on Home.** Your agents' `remember` notes now show up as a section on Home alongside Sessions and Artefacts. The space pills scope all three together — pick *tokinvest* and you see what each agent learned about that project, not the global pile. Orphan memories (no space attached) live under *Elsewhere*. ([#254](https://github.com/mattslight/oyster/issues/254))
 - **Scroll up to load older transcript turns.** The session inspector loads the latest 1000 turns by default and shows a `1000+` badge when there's more behind them. Scroll near the top of the transcript and the next 1000 older turns prepend in place — your scroll position stays pinned to the same turn so you don't lose your place. Live updates still append to the bottom as the agent works. ([#274](https://github.com/mattslight/oyster/issues/274))
 
 ### Fixed
