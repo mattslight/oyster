@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Two-level nav — space ↔ project</title>
+  <title>Option C — enriched pills, no Spaces section</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -17,7 +17,6 @@
       --text-muted: rgba(232, 233, 240, 0.3);
       --surface: rgba(12, 13, 28, 0.6);
       --border: rgba(255, 255, 255, 0.06);
-      --border-accent: rgba(124, 107, 255, 0.3);
       --font-body: 'Space Grotesk', -apple-system, sans-serif;
       --font-mono: 'IBM Plex Mono', monospace;
     }
@@ -56,7 +55,7 @@
       margin-bottom: 32px;
     }
 
-    /* TOP NAV — STABLE on every view. Same pills, only the highlight moves. */
+    /* TOP NAV — enriched pills carry the at-a-glance state info */
     .topnav {
       display: flex;
       flex-wrap: wrap;
@@ -64,11 +63,13 @@
       padding-bottom: 24px;
       border-bottom: 1px dashed var(--border);
       margin-bottom: 26px;
+      align-items: center;
     }
     .topnav-pill {
+      position: relative;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       padding: 6px 14px;
       border-radius: 9999px;
       border: 1px solid var(--border);
@@ -87,22 +88,49 @@
       background: rgba(124, 107, 255, 0.18);
       border-color: rgba(124, 107, 255, 0.5);
       color: var(--accent-bright);
-      box-shadow: 0 0 0 1px rgba(124, 107, 255, 0.18);
     }
     .topnav-pill.elsewhere {
       border-style: dashed;
       font-style: italic;
     }
-    .topnav-pill .pip {
-      width: 5px; height: 5px;
-      border-radius: 50%;
+    .topnav-pill.add {
+      border-style: dashed;
+      border-color: rgba(124, 107, 255, 0.32);
+      color: var(--accent);
     }
-    .pip.green { background: var(--green); box-shadow: 0 0 4px var(--green); }
+    .topnav-pill .pip-cluster {
+      display: inline-flex;
+      gap: 3px;
+      align-items: center;
+    }
+    .topnav-pill .pip {
+      width: 5px; height: 5px; border-radius: 50%;
+    }
+    .pip.green { background: var(--green); box-shadow: 0 0 4px var(--green); animation: breathe 2.4s ease-in-out infinite; }
     .pip.amber { background: var(--amber); box-shadow: 0 0 4px var(--amber); }
     .pip.red   { background: var(--red);   box-shadow: 0 0 4px var(--red); }
     .pip.dim   { background: var(--text-muted); }
+    @keyframes breathe { 50% { opacity: 0.45; } }
 
-    /* Eyebrow + title */
+    /* Tooltip on pill hover */
+    .topnav-pill[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 10px;
+      background: rgba(20, 21, 40, 0.98);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--text);
+      white-space: nowrap;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+      z-index: 10;
+    }
+
     .eyebrow {
       font-family: var(--font-mono);
       font-size: 11px;
@@ -119,11 +147,8 @@
       color: var(--text);
     }
 
-    /* Content section heading */
     .section-head {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+      display: flex; align-items: center; gap: 12px;
       padding-bottom: 12px;
       margin-bottom: 14px;
       color: var(--text-dim);
@@ -134,7 +159,7 @@
     .section-head .count { font-size: 11px; color: var(--text-muted); }
     .section-head .rule { flex: 1; height: 1px; background: var(--border); }
 
-    /* TILE GRID — used for both Spaces (on Home) and Projects (on a space). */
+    /* Project tile grid */
     .tile-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -199,12 +224,7 @@
       font-size: 12px;
       align-items: flex-start;
     }
-    .tile.add:hover {
-      background: rgba(124, 107, 255, 0.04);
-      border-color: rgba(124, 107, 255, 0.5);
-    }
 
-    /* Mock content grids (sessions / artefacts) */
     .h-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
@@ -243,41 +263,50 @@
     .notes ul { margin: 8px 0 0 18px; }
     .notes li { margin-bottom: 4px; }
 
-    /* hide / show by data-view */
     [data-show] { display: none; }
   </style>
 </head>
 <body>
   <div class="glow"></div>
   <div class="page">
-    <div class="page-title">Two-level nav — space ↔ project</div>
+    <div class="page-title">Option C — enriched pills, no Spaces section</div>
     <div class="page-subtitle">
-      <strong style="color:var(--text);">Top nav is stable</strong> — pills for spaces sit in the
-      same place on every screen, only the highlight moves. <strong style="color:var(--text);">Content
-      adapts</strong> — its first section is always the children of the current scope: rich
-      space-cards on Home, project tiles on a space. Click a pill below to switch views.
+      Top pills carry the at-a-glance state info that the rich cards used to provide
+      (multiple pips per space, tooltip on hover). The "Spaces" content section is gone —
+      the pills enumerate the spaces, no point doing it twice. On a real-space view, the
+      first content section is <em>Projects</em> (children of that scope).
     </div>
-    <div class="pick-hint">▼ click a top-nav pill to flip between Home and a real-space view</div>
+    <div class="pick-hint">▼ click a pill to flip views · hover for full counts</div>
 
-    <!-- The page mock -->
     <div class="panel">
-      <!-- Top nav — stable -->
       <nav class="topnav" id="topnav">
-        <button class="topnav-pill selected" data-view="home">
+        <button class="topnav-pill selected" data-view="home" data-tip="2 active · 1 waiting · 2 disconnected · 49 done">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 12l9-9 9 9" />
             <path d="M5 10v10h14V10" />
           </svg>
           Home
         </button>
-        <button class="topnav-pill" data-view="oyster">
-          <span class="pip green"></span> Oyster
+        <button class="topnav-pill" data-view="oyster" data-tip="1 active · 1 waiting · 1 disconnected · 18 done">
+          <span class="pip-cluster">
+            <span class="pip green"></span><span class="pip amber"></span><span class="pip red"></span>
+          </span>
+          Oyster
         </button>
-        <button class="topnav-pill" data-view="tokinvest">
-          <span class="pip red"></span> Tokinvest
+        <button class="topnav-pill" data-view="tokinvest" data-tip="1 disconnected · 8 done">
+          <span class="pip-cluster">
+            <span class="pip red"></span>
+          </span>
+          Tokinvest
         </button>
-        <button class="topnav-pill elsewhere" data-view="elsewhere">
+        <button class="topnav-pill elsewhere" data-view="elsewhere" data-tip="1 disconnected · 15 done">
+          <span class="pip-cluster">
+            <span class="pip red"></span>
+          </span>
           Elsewhere
+        </button>
+        <button class="topnav-pill add" data-tip="Create a new top-level workspace">
+          + create space
         </button>
       </nav>
 
@@ -285,36 +314,6 @@
       <div data-show="home" style="display: block;">
         <div class="eyebrow">Home</div>
         <div class="h1">Everything.</div>
-
-        <div class="section-head">
-          <span class="label">Spaces</span>
-          <span class="count">2</span>
-          <span class="rule"></span>
-        </div>
-        <div class="tile-grid">
-          <button class="tile">
-            <span class="tile-name">Oyster</span>
-            <span class="tile-counts">
-              <span class="signal"><span class="pip green"></span>1 active</span>
-              <span class="signal"><span class="pip amber"></span>1 waiting</span>
-              <span class="signal"><span class="pip red"></span>1 disconnected</span>
-              <span class="signal"><span class="pip dim"></span>18 done</span>
-            </span>
-          </button>
-          <button class="tile">
-            <span class="tile-name">Tokinvest</span>
-            <span class="tile-counts">
-              <span class="signal"><span class="pip red"></span>1 disconnected</span>
-              <span class="signal"><span class="pip dim"></span>8 done</span>
-            </span>
-          </button>
-          <button class="tile add">
-            <span class="tile-name">+ Create space</span>
-            <span class="tile-counts">
-              <span class="signal signal-muted">a new top-level workspace</span>
-            </span>
-          </button>
-        </div>
 
         <div class="section-head">
           <span class="label">Sessions</span>
@@ -331,17 +330,28 @@
 
         <div class="section-head">
           <span class="label">Artefacts</span>
-          <span class="count">all 71 · across all spaces</span>
+          <span class="count">71 · across all spaces</span>
           <span class="rule"></span>
         </div>
         <div class="h-grid">
-          <div class="h-tile">notes</div><div class="h-tile">notes</div><div class="h-tile">app</div>
-          <div class="h-tile">notes</div><div class="h-tile">notes</div><div class="h-tile">app</div>
-          <div class="h-tile">notes</div>
+          <div class="h-tile">notes · oyster</div>
+          <div class="h-tile">notes · oyster</div>
+          <div class="h-tile">app · oyster</div>
+          <div class="h-tile">notes · tokinvest</div>
+          <div class="h-tile">notes · oyster</div>
+          <div class="h-tile">app · tokinvest</div>
+          <div class="h-tile">notes · oyster</div>
         </div>
+
+        <div class="section-head">
+          <span class="label">Memories</span>
+          <span class="count">6 · across all spaces</span>
+          <span class="rule"></span>
+        </div>
+        <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); padding: 8px 0;">[memory list — aggregated]</div>
       </div>
 
-      <!-- ────── OYSTER view ────── -->
+      <!-- ────── OYSTER ────── -->
       <div data-show="oyster">
         <div class="eyebrow">Oyster</div>
         <div class="h1">Everything in this space.</div>
@@ -434,7 +444,7 @@
         </div>
       </div>
 
-      <!-- ────── TOKINVEST view ────── -->
+      <!-- ────── TOKINVEST ────── -->
       <div data-show="tokinvest">
         <div class="eyebrow">Tokinvest</div>
         <div class="h1">Everything in this space.</div>
@@ -491,13 +501,13 @@
         </div>
       </div>
 
-      <!-- ────── ELSEWHERE view ────── -->
+      <!-- ────── ELSEWHERE ────── -->
       <div data-show="elsewhere">
         <div class="eyebrow">Elsewhere</div>
         <div class="h1">Everything else.</div>
         <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); padding: 8px 0 28px;">
           Sessions started in folders that aren't attached to any space.<br>
-          (No projects section here — Elsewhere isn't a space, just a meta-bucket.)
+          (No Projects section here — Elsewhere isn't a space, just a meta-bucket.)
         </div>
         <div class="section-head">
           <span class="label">Sessions</span>
@@ -513,21 +523,19 @@
     </div>
 
     <div class="notes">
-      <strong>Why this lands:</strong>
+      <strong>What changed vs. the previous mock:</strong>
       <ul>
-        <li><strong>Top nav never moves.</strong> Same pills, same position, every screen. Only the highlight changes.</li>
-        <li><strong>Content always shows children-of-current-scope</strong> as its first section. Home → <em>Spaces</em>. A space → <em>Projects</em>. Same primitive (tile grid) at every level — different children.</li>
-        <li><strong>Naming is honest.</strong> Tiles say <em>Projects</em>, not <em>Folders</em>, because a project IS the unit of scope (which happens to be backed by a linked folder OR the userland scratchpad).</li>
-        <li><strong>Quick-move preserved.</strong> Top pills give one-click jump to any space. No more "I have no way back."</li>
-        <li><strong>Chat-bar pills</strong> at the bottom keep doing their job (typing-context scope) but they're no longer the only nav surface — top is the canonical one for orientation.</li>
+        <li><strong>No "Spaces" content section on Home.</strong> Pills enumerate the spaces; doing it twice was redundant.</li>
+        <li><strong>Pills carry multiple pips</strong> — one per non-zero <em>active / waiting / disconnected</em> count. Done is omitted (resting state, would always show). Hover any pill for the full count breakdown.</li>
+        <li><strong>+ create space</strong> moves to the end of the top nav. Mirrors how the chat-bar pills work.</li>
+        <li><strong>On a real-space view</strong>, Projects is the first content section — children of the current scope.</li>
       </ul>
 
-      <strong style="display:block; margin-top:14px;">What changes vs. now:</strong>
+      <strong style="display:block; margin-top:14px;">Questions to gut-check:</strong>
       <ul>
-        <li>Breadcrumb pills become the universal top nav — render on Home too (with Home highlighted).</li>
-        <li>Home's existing space-cards grid stays, but framed as a content section called <em>Spaces</em> — not as "the nav."</li>
-        <li>Home/Elsewhere only appear in the top pills, not as content cards — they're nav-level concepts, not real-space children.</li>
-        <li>Project tiles section gets the heading <em>Projects</em> on a space (instead of nothing).</li>
+        <li>Are three pips on Oyster's pill too busy? Could clamp to one (most-active) and put the rest in the tooltip.</li>
+        <li>Is "+ create space" useful enough on the top nav, or does it belong in a settings-y place?</li>
+        <li>Does Home losing its rich cards feel like a downgrade, or like the page got cleaner?</li>
       </ul>
     </div>
   </div>
@@ -536,7 +544,7 @@
     const nav = document.getElementById('topnav');
     const views = document.querySelectorAll('[data-show]');
     nav.addEventListener('click', (e) => {
-      const btn = e.target.closest('.topnav-pill');
+      const btn = e.target.closest('.topnav-pill[data-view]');
       if (!btn) return;
       const view = btn.getAttribute('data-view');
       nav.querySelectorAll('.topnav-pill').forEach((p) => p.classList.toggle('selected', p === btn));
