@@ -316,15 +316,14 @@ export class ClaudeCodeWatcher {
       await fh.close();
     }
 
-    // Boot scan reads complete files, but a non-zero `fromOffset` means we
-    // may start mid-line (partial line landed before the previous stop).
-    // Drop the leading fragment in that case; if it ever had a complete
-    // event we'd have ingested it last time.
+    // The persisted offset always lands on a \n boundary (consumeOnce
+    // strips trailing partial bytes before persisting), so the chunk
+    // begins at a complete line.
     const text = chunk.toString("utf8");
     const lines = text.split("\n");
-    if (fromOffset > 0) lines.shift();
-    // Trailing empty (clean newline boundary) or partial line. The watcher
-    // will pick up any partial via consumeOnce on the next append.
+    // Trailing empty on a clean newline boundary, or partial line if the
+    // file is mid-write. consumeOnce will pick up the rest on the next
+    // append.
     if (lines.length > 0) lines.pop();
 
     const spaceId = this.resolveSpaceId(cwd);
@@ -684,10 +683,12 @@ export class ClaudeCodeWatcher {
     }
 
     if (tracker.sessionId) {
-      // Persist the new offset so a restart picks up exactly where we
-      // stopped. Without this, every restart would re-seed at EOF and drop
-      // anything appended between offset persistence and shutdown.
-      this.deps.sessionStore.setLastOffset(tracker.sessionId, stat.size);
+      // Persist the *fully-ingested* offset — bytes through the last
+      // complete \n. The trailing partial line is buffered in memory only;
+      // on restart it'd be lost, so we mustn't include it in the persisted
+      // offset or backfill would skip the rest of that line on next boot.
+      const persistedOffset = stat.size - Buffer.byteLength(tracker.partial, "utf8");
+      this.deps.sessionStore.setLastOffset(tracker.sessionId, persistedOffset);
 
       // Bytes just landed → JSONL is fresh by definition, so this session is
       // 'active'. Even if the heartbeat had previously demoted it to
