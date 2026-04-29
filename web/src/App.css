@@ -7,7 +7,9 @@
   --window-chrome: rgba(35, 36, 64, 0.75);
   --window-body: rgba(30, 31, 54, 0.85);
   --accent: #7c6bff;
+  --accent-bright: #a597ff;
   --accent-glow: rgba(124, 107, 255, 0.15);
+  --border: rgba(255, 255, 255, 0.08);
   --text: #e8e9f0;
   --text-dim: rgba(232, 233, 240, 0.5);
   --icon-hover: rgba(124, 107, 255, 0.08);
