@@ -56,6 +56,12 @@ const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
 
 const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
+// Memory list shows this many rows by default; user clicks "Show all N"
+// to expand. Five is small enough to fit alongside Sessions and Artefacts
+// without scroll-thrash, large enough that single-space views (typically
+// <5 memories) stay fully visible.
+const MEMORIES_PREVIEW = 5;
+
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
   active: "active",
@@ -96,6 +102,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // registered space). Only applies in Home view; navigating to a real space
   // resets it.
   const [showElsewhere, setShowElsewhere] = useState(false);
+  // Memories collapse: long lists are noisy on Home. Default to 5 rows;
+  // "Show all" expands. Resets when the user changes scope so a different
+  // space starts collapsed too.
+  const [memoriesExpanded, setMemoriesExpanded] = useState(false);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -108,6 +118,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   useEffect(() => {
     if (!isHomeView) setShowElsewhere(false);
   }, [isHomeView]);
+
+  // Collapse memories whenever scope changes — switching from a long
+  // 60-item Home view to a single-space view shouldn't carry over the
+  // "show all" state.
+  useEffect(() => {
+    setMemoriesExpanded(false);
+  }, [scopedSpace, showElsewhere, isHomeView]);
 
   const scopedSessions = useMemo(() => {
     if (showElsewhere && isHomeView) return sessions.filter((s) => s.spaceId === null);
@@ -445,10 +462,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           ) : (
             <div className="home-memories-wrap">
               <div className="home-memories">
-                {scopedMemories.map((m) => (
+                {(memoriesExpanded ? scopedMemories : scopedMemories.slice(0, MEMORIES_PREVIEW)).map((m) => (
                   <MemoryCard key={m.id} memory={m} spaces={spaces} showSpaceChip={isMetaView} />
                 ))}
               </div>
+              {scopedMemories.length > MEMORIES_PREVIEW && (
+                <button
+                  type="button"
+                  className="home-memories-toggle"
+                  onClick={() => setMemoriesExpanded((v) => !v)}
+                >
+                  {memoriesExpanded
+                    ? "Show fewer"
+                    : `Show all ${scopedMemories.length}`}
+                </button>
+              )}
             </div>
           )}
         </section>
