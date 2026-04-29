@@ -515,7 +515,7 @@
 
 .home-row {
   display: grid;
-  grid-template-columns: 18px 130px 1fr 130px 100px;
+  grid-template-columns: 18px 130px 1fr 130px 130px;
   gap: 14px;
   align-items: center;
   padding: 12px 18px;
@@ -576,6 +576,7 @@
   font-size: 11px;
   color: var(--text-dim);
   text-align: right;
+  white-space: nowrap;
 }
 
 /* ── Artefacts table row (renders inside .home-table when toggled) ── */
