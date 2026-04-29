@@ -324,9 +324,9 @@
 .home-space-card--elsewhere .home-space-card-name {
   font-style: italic;
 }
-.home-space-card--elsewhere.selected {
-  border-style: solid;
-}
+/* Elsewhere keeps its dashed border even when selected — the dashed
+   line is a "you're not in a real space" cue, distinct from the solid
+   space cards. */
 
 /* ── Sessions surface (icon view) ── */
 .home-surface {
