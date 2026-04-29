@@ -32,7 +32,6 @@
 
 .inspector-header {
   padding: 24px 28px 20px;
-  background: rgba(12, 13, 28, 0.6);
 }
 .inspector-meta {
   display: flex;
@@ -108,7 +107,6 @@
   display: flex;
   gap: 0;
   padding: 0 28px;
-  background: rgba(12, 13, 28, 0.6);
 }
 .inspector-tab {
   background: transparent;
@@ -145,7 +143,6 @@
   gap: 6px;
   padding: 10px 28px;
   flex-wrap: wrap;
-  background: rgba(12, 13, 28, 0.6);
 }
 .transcript-filter-icon {
   display: inline-flex;
@@ -204,6 +201,7 @@ button.link-row:focus-visible {
   flex: 1;
   overflow-y: auto;
   padding: 22px 28px;
+  background: rgba(12, 13, 28, 0.6);
 }
 .inspector-body::-webkit-scrollbar { width: 6px; }
 .inspector-body::-webkit-scrollbar-thumb {
