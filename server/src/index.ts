@@ -544,8 +544,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         const memories = await memoryProvider.list(spaceId ?? undefined);
         sendJson(memories);
       } catch (err) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        sendError(err, 500);
       }
       return;
     }

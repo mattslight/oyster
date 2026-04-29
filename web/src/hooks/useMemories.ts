@@ -3,10 +3,10 @@ import { fetchMemories } from "../data/memories-api";
 import type { Memory } from "../data/memories-api";
 import { subscribeUiEvents } from "../data/ui-events";
 
-// Mirror of useSessions / useArtifacts. Memories list rarely changes during
-// a session — they're written by an agent calling `remember`, infrequent —
-// so a single fetch on mount + on `memory_changed` SSE is plenty. We don't
-// scope the fetch by space client-side filtering is cheap.
+// Mirror of useSessions. Memories list rarely changes during a session —
+// they're written by an agent calling `remember`, infrequent — so a single
+// fetch on mount + on `memory_changed` SSE is plenty. We don't scope the
+// fetch by space; client-side filtering is cheap.
 //
 // `memory_changed` isn't emitted yet (server doesn't push memory updates
 // over SSE today). Subscribing now keeps the hook future-proof: when the

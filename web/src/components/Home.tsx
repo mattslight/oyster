@@ -92,7 +92,12 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
-  const { memories, refresh: refreshMemories } = useMemories();
+  const {
+    memories,
+    loading: memoriesLoading,
+    error: memoriesError,
+    refresh: refreshMemories,
+  } = useMemories();
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
@@ -190,15 +195,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     });
   }, [spaces, lastActivityBySpace]);
 
-  // Memories scope follows the same rules as sessions/artefacts: a real
-  // space narrows by space_id, Elsewhere narrows to memories not bound to a
-  // currently-known space, otherwise show all.
+  // Memories scope mirrors the server `list(space_id)` semantics: a real
+  // space includes both memories explicitly tagged with that space AND
+  // global memories (no space_id) — globals are meant to apply everywhere,
+  // and the agent's `recall(query, space_id)` already returns scope+global,
+  // so the human-browsing surface should match.
+  // Elsewhere narrows to memories not bound to any currently-known space
+  // (orphans + memories pointing at deleted spaces).
   const scopedMemories = useMemo(() => {
     if (showElsewhere && isHomeView) {
       const real = new Set(spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").map((s) => s.id));
       return memories.filter((m) => !m.space_id || !real.has(m.space_id));
     }
-    return scopedSpace ? memories.filter((m) => m.space_id === scopedSpace) : memories;
+    return scopedSpace
+      ? memories.filter((m) => !m.space_id || m.space_id === scopedSpace)
+      : memories;
   }, [memories, scopedSpace, showElsewhere, isHomeView, spaces]);
 
   // When scoped to Elsewhere, artefacts should mirror the sessions filter:
@@ -476,7 +487,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               onCancel={() => setShowAddMemory(false)}
             />
           )}
-          {scopedMemories.length === 0 ? (
+          {memoriesError ? (
+            <div className="home-empty">
+              Couldn't load memories: {memoriesError.message}
+            </div>
+          ) : memoriesLoading && memories.length === 0 ? (
+            <div className="home-empty">Loading memories…</div>
+          ) : scopedMemories.length === 0 ? (
             <div className="home-empty">
               No memories yet — agents store them via <code>remember</code>.
             </div>
