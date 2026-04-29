@@ -150,6 +150,11 @@ export class ClaudeCodeWatcher {
       watcher.once("ready", () => resolve());
     });
 
+    // Run an immediate sweep so state reflects current process reality
+    // straight away rather than waiting up to HEARTBEAT_INTERVAL_MS for
+    // the first scheduled tick.
+    await this.heartbeatSweep().catch(this.logError);
+
     this.heartbeat = setInterval(() => {
       this.heartbeatSweep().catch(this.logError);
     }, HEARTBEAT_INTERVAL_MS);
@@ -593,8 +598,12 @@ export class ClaudeCodeWatcher {
 
   // ── Heartbeat ───────────────────────────────────────────────────────────
   // Probe every running `claude` process for its cwd. Cross-reference each
-  // claude-code session's recorded cwd against that set. Recompute state
-  // and update any rows whose state has shifted.
+  // session's recorded cwd against that set, then narrow further: among
+  // multiple sessions that share a cwd (e.g. you've run claude in the same
+  // repo a hundred times), only the freshest JSONL — the one currently
+  // being appended to — is "the live session". The others are old
+  // transcripts that finished. Without this, a single live claude process
+  // marks every past session at that cwd as `waiting`.
   private async heartbeatSweep(): Promise<void> {
     const activeCwds = await activeClaudeCwds();
     const now = this.now().getTime();
@@ -605,14 +614,30 @@ export class ClaudeCodeWatcher {
       if (t.sessionId && t.cwd) sessionCwds.set(t.sessionId, t.cwd);
     }
 
-    for (const session of this.deps.sessionStore.getAll()) {
-      if (session.agent !== "claude-code") continue;
+    const allSessions = this.deps.sessionStore.getAll().filter(
+      (s) => s.agent === "claude-code",
+    );
+
+    // cwd → sessionId of the freshest claude-code session in that cwd.
+    // Sort desc by last_event_at and pick the first occurrence per cwd.
+    const freshestPerCwd = new Map<string, string>();
+    const sortedDesc = [...allSessions].sort(
+      (a, b) => Date.parse(b.last_event_at) - Date.parse(a.last_event_at),
+    );
+    for (const s of sortedDesc) {
+      const cwd = sessionCwds.get(s.id);
+      if (cwd && !freshestPerCwd.has(cwd)) freshestPerCwd.set(cwd, s.id);
+    }
+
+    for (const session of allSessions) {
       const last = Date.parse(session.last_event_at);
       if (!Number.isFinite(last)) continue;
       const ageMs = now - last;
 
       const cwd = sessionCwds.get(session.id);
-      const processAlive = cwd ? activeCwds.has(cwd) : false;
+      const cwdHasLiveProcess = cwd ? activeCwds.has(cwd) : false;
+      const isFreshestInCwd = cwd ? freshestPerCwd.get(cwd) === session.id : false;
+      const processAlive = cwdHasLiveProcess && isFreshestInCwd;
       const next = deriveState(ageMs, processAlive);
 
       if (next !== session.state) {
