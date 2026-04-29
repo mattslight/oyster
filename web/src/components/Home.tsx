@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
+import type { Memory } from "../data/memories-api";
+import { createMemory } from "../data/memories-api";
 import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
+import { useMemories } from "../hooks/useMemories";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
 import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
@@ -19,6 +22,21 @@ interface Props {
 
 type ViewMode = "icons" | "table";
 type StateFilter = SessionState | "live" | "all";
+type ArtefactSource = "all" | "manual" | "ai_generated" | "discovered";
+
+const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered"];
+const ARTEFACT_SOURCE_LABELS: Record<ArtefactSource, string> = {
+  all: "all",
+  manual: "mine",
+  ai_generated: "from agents",
+  discovered: "linked",
+};
+
+// 3 rows × ~7 tiles in the default 1100px column ≈ 21. The grid is
+// responsive so the visible count varies by width — picking a fixed cap
+// keeps the truncation predictable, and the "Show all N" toggle is the
+// safety valve for narrow viewports where 21 fills less of the screen.
+const ARTEFACTS_PREVIEW = 21;
 
 // Persists a view toggle (icons / table) to localStorage so it survives
 // reloads. Returns a useState-shaped pair so callsites stay one-liner.
@@ -54,6 +72,12 @@ const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
 
 const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
+// Memory list shows this many rows by default; user clicks "Show all N"
+// to expand. Five is small enough to fit alongside Sessions and Artefacts
+// without scroll-thrash, large enough that single-space views (typically
+// <5 memories) stay fully visible.
+const MEMORIES_PREVIEW = 5;
+
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
   active: "active",
@@ -83,6 +107,12 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
+  const {
+    memories,
+    loading: memoriesLoading,
+    error: memoriesError,
+    refresh: refreshMemories,
+  } = useMemories();
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
@@ -93,6 +123,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // registered space). Only applies in Home view; navigating to a real space
   // resets it.
   const [showElsewhere, setShowElsewhere] = useState(false);
+  // Memories collapse: long lists are noisy on Home. Default to 5 rows;
+  // "Show all" expands. Resets when the user changes scope so a different
+  // space starts collapsed too.
+  const [memoriesLimit, setMemoriesLimit] = useState(MEMORIES_PREVIEW);
+  const [showAddMemory, setShowAddMemory] = useState(false);
+  // Artefact source filter (#280) + 3-row collapse. Reset on scope change
+  // so each space starts compact and at "all".
+  const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
+  const [artefactsLimit, setArtefactsLimit] = useState(ARTEFACTS_PREVIEW);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -105,6 +144,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   useEffect(() => {
     if (!isHomeView) setShowElsewhere(false);
   }, [isHomeView]);
+
+  // Collapse limits + filter reset on scope change — switching from a
+  // 60-item Home view to a single-space view shouldn't carry over either
+  // the "show more" depth or the source filter.
+  useEffect(() => {
+    setMemoriesLimit(MEMORIES_PREVIEW);
+    setArtefactsLimit(ARTEFACTS_PREVIEW);
+    setArtefactSource("all");
+  }, [scopedSpace, showElsewhere, isHomeView]);
 
   const scopedSessions = useMemo(() => {
     if (showElsewhere && isHomeView) return sessions.filter((s) => s.spaceId === null);
@@ -168,6 +216,23 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     });
   }, [spaces, lastActivityBySpace]);
 
+  // Memories scope mirrors the server `list(space_id)` semantics: a real
+  // space includes both memories explicitly tagged with that space AND
+  // global memories (no space_id) — globals are meant to apply everywhere,
+  // and the agent's `recall(query, space_id)` already returns scope+global,
+  // so the human-browsing surface should match.
+  // Elsewhere narrows to memories not bound to any currently-known space
+  // (orphans + memories pointing at deleted spaces).
+  const scopedMemories = useMemo(() => {
+    if (showElsewhere && isHomeView) {
+      const real = new Set(spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").map((s) => s.id));
+      return memories.filter((m) => !m.space_id || !real.has(m.space_id));
+    }
+    return scopedSpace
+      ? memories.filter((m) => !m.space_id || m.space_id === scopedSpace)
+      : memories;
+  }, [memories, scopedSpace, showElsewhere, isHomeView, spaces]);
+
   // When scoped to Elsewhere, artefacts should mirror the sessions filter:
   // anything not attributed to a known real space (null spaceId or a stale
   // pointer to a deleted space). App.tsx hands us all artefacts on home —
@@ -182,6 +247,31 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     }
     return desktopProps;
   }, [showElsewhere, isHomeView, desktopProps, realSpaceIds]);
+
+  // Source-origin counts over the scoped artefacts (so the chip totals
+  // reflect the current space pill, not the global pile).
+  const artefactSourceCounts = useMemo(() => {
+    const counts: Record<ArtefactSource, number> = { all: 0, manual: 0, ai_generated: 0, discovered: 0 };
+    counts.all = effectiveDesktopProps.artifacts.length;
+    for (const a of effectiveDesktopProps.artifacts) {
+      const o = a.sourceOrigin ?? "manual";
+      if (o === "manual" || o === "ai_generated" || o === "discovered") counts[o]++;
+    }
+    return counts;
+  }, [effectiveDesktopProps.artifacts]);
+
+  // Filter + collapse to an incremental preview. Each "Show more" click
+  // grows artefactsLimit by ARTEFACTS_PREVIEW; the table view bypasses
+  // the cap because it's already linear and easy to scan.
+  const filteredArtefacts = useMemo(() => {
+    if (artefactSource === "all") return effectiveDesktopProps.artifacts;
+    return effectiveDesktopProps.artifacts.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
+  }, [effectiveDesktopProps.artifacts, artefactSource]);
+  const visibleArtefacts = useMemo(() => {
+    if (artefactsView === "table") return filteredArtefacts;
+    return filteredArtefacts.slice(0, artefactsLimit);
+  }, [filteredArtefacts, artefactsView, artefactsLimit]);
+  const filteredArtefactsTotal = filteredArtefacts.length;
 
   // Resolve the active artefact against the FULL artifact list, not the
   // showElsewhere-filtered one. Cross-navigating from a session inspector
@@ -370,7 +460,21 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         <section className="home-section">
           <div className="home-section-head">
             <span className="home-section-label">Artefacts</span>
-            <span className="home-artefacts-count">{effectiveDesktopProps.artifacts.length}</span>
+            <span className="home-section-stats">
+              {ARTEFACT_SOURCE_ORDER.map((src) => {
+                const count = artefactSourceCounts[src];
+                if (count === 0 && src !== "all") return null;
+                return (
+                  <button
+                    key={src}
+                    className={`stat-btn${artefactSource === src ? " active" : ""}`}
+                    onClick={() => setArtefactSource(src)}
+                  >
+                    {count} {ARTEFACT_SOURCE_LABELS[src]}
+                  </button>
+                );
+              })}
+            </span>
             <span className="home-section-rule" />
             <div className="home-view-toggle">
               <button
@@ -401,20 +505,82 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             </div>
           </div>
           {artefactsView === "icons" ? (
-            <div className="home-artefacts">
-              <Desktop
-                {...effectiveDesktopProps}
-                isHero={false}
-                showMeta
-                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
-              />
-            </div>
+            <>
+              <div className="home-artefacts">
+                <Desktop
+                  {...effectiveDesktopProps}
+                  artifacts={visibleArtefacts}
+                  isHero={false}
+                  showMeta
+                  onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+                />
+              </div>
+              {artefactsLimit < filteredArtefactsTotal && (
+                <ShowMore
+                  onClick={() => setArtefactsLimit((n) => n + ARTEFACTS_PREVIEW)}
+                  remaining={filteredArtefactsTotal - artefactsLimit}
+                  searchHint
+                />
+              )}
+            </>
           ) : (
             <ArtefactTable
-              artifacts={effectiveDesktopProps.artifacts}
+              artifacts={visibleArtefacts}
               spaces={spaces}
               onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
             />
+          )}
+        </section>
+
+        <section className="home-section">
+          <div className="home-section-head">
+            <span className="home-section-label">Memories</span>
+            <span className="home-artefacts-count">{scopedMemories.length}</span>
+            <span className="home-section-rule" />
+            <button
+              type="button"
+              className="home-memories-add-btn"
+              onClick={() => setShowAddMemory((v) => !v)}
+              aria-expanded={showAddMemory}
+            >
+              {showAddMemory ? "Cancel" : "+ Add memory"}
+            </button>
+          </div>
+          {showAddMemory && (
+            <AddMemoryForm
+              defaultSpaceId={scopedSpace}
+              spaces={spaces}
+              onSaved={() => {
+                setShowAddMemory(false);
+                refreshMemories();
+              }}
+              onCancel={() => setShowAddMemory(false)}
+            />
+          )}
+          {memoriesError ? (
+            <div className="home-empty">
+              Couldn't load memories: {memoriesError.message}
+            </div>
+          ) : memoriesLoading && memories.length === 0 ? (
+            <div className="home-empty">Loading memories…</div>
+          ) : scopedMemories.length === 0 ? (
+            <div className="home-empty">
+              No memories yet — agents store them via <code>remember</code>.
+            </div>
+          ) : (
+            <div className="home-memories-wrap">
+              <div className="home-memories">
+                {scopedMemories.slice(0, memoriesLimit).map((m) => (
+                  <MemoryCard key={m.id} memory={m} spaces={spaces} showSpaceChip={isMetaView} />
+                ))}
+              </div>
+              {memoriesLimit < scopedMemories.length && (
+                <ShowMore
+                  onClick={() => setMemoriesLimit((n) => n + MEMORIES_PREVIEW)}
+                  remaining={scopedMemories.length - memoriesLimit}
+                />
+              )}
+            </div>
           )}
         </section>
       </div>
@@ -576,6 +742,144 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Reused under both the Memories and Artefacts sections. "Show more"
+// loads another preview-sized batch (5 memories, 21 artefacts). The
+// optional ⌘K hint only renders where Spotlight actually searches —
+// artifacts today, eventually memories + sessions when #264 ships.
+function ShowMore({
+  onClick, remaining, searchHint = false,
+}: { onClick: () => void; remaining: number; searchHint?: boolean }) {
+  return (
+    <div className="home-show-more">
+      <button type="button" className="home-memories-toggle" onClick={onClick}>
+        Show more
+      </button>
+      <span className="home-show-more-hint">
+        {remaining} more
+        {searchHint && (
+          <>
+            {" · "}<kbd>⌘K</kbd> to search
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+interface AddMemoryFormProps {
+  defaultSpaceId: string | null;
+  spaces: Space[];
+  onSaved: () => void;
+  onCancel: () => void;
+}
+
+function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryFormProps) {
+  const [content, setContent] = useState("");
+  const [spaceId, setSpaceId] = useState<string>(defaultSpaceId ?? "");
+  const [tagsInput, setTagsInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const realSpaces = useMemo(
+    () => spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__"),
+    [spaces],
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim() || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const tags = tagsInput
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      await createMemory({
+        content: content.trim(),
+        space_id: spaceId || undefined,
+        tags: tags.length ? tags : undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="home-memories-add" onSubmit={submit}>
+      <textarea
+        className="home-memories-add-text"
+        placeholder="What should I remember?"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={3}
+        autoFocus
+      />
+      <div className="home-memories-add-row">
+        <select
+          className="home-memories-add-select"
+          value={spaceId}
+          onChange={(e) => setSpaceId(e.target.value)}
+        >
+          <option value="">No space (global)</option>
+          {realSpaces.map((s) => (
+            <option key={s.id} value={s.id}>{s.displayName}</option>
+          ))}
+        </select>
+        <input
+          className="home-memories-add-tags"
+          placeholder="tags, comma-separated"
+          value={tagsInput}
+          onChange={(e) => setTagsInput(e.target.value)}
+        />
+        <div className="home-memories-add-actions">
+          <button type="button" className="home-memories-add-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="home-memories-add-save"
+            disabled={!content.trim() || submitting}
+          >
+            {submitting ? "Saving…" : "Save memory"}
+          </button>
+        </div>
+      </div>
+      {error && <div className="home-memories-add-error">Couldn't save: {error}</div>}
+    </form>
+  );
+}
+
+interface MemoryCardProps {
+  memory: Memory;
+  spaces: Space[];
+  showSpaceChip: boolean;
+}
+
+function MemoryCard({ memory, spaces, showSpaceChip }: MemoryCardProps) {
+  const spaceLabel = spaceLabelFor(memory.space_id, spaces);
+  const rel = formatRelative(memory.created_at) ?? "—";
+  return (
+    <div className="home-memory">
+      <div className="home-memory-text">{memory.content}</div>
+      <div className="home-memory-meta">
+        {showSpaceChip && spaceLabel && <span className="home-memory-space">{spaceLabel}</span>}
+        {memory.tags.length > 0 && (
+          <span className="home-memory-tags">
+            {memory.tags.map((t) => (
+              <span key={t} className="home-memory-tag">{t}</span>
+            ))}
+          </span>
+        )}
+        <span className="home-memory-time">{rel}</span>
       </div>
     </div>
   );

@@ -685,3 +685,250 @@
 .home-artefacts .version-badge {
   display: none;
 }
+
+/* ── Memories section ──
+ * Text-heavy rows. Wrap + inner pattern mirrors .home-table-wrap /
+ * .home-table so the surface, gutter, and rounded-box weight match the
+ * Sessions table view. Row separators are border-bottom on each card,
+ * not a background-as-divider trick (which made the whole list read as
+ * an extra outlined box).
+ */
+.home-memories-wrap {
+  position: relative;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.home-memories {
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  border-radius: 14px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+.home-memory {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--home-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.15s ease;
+}
+.home-memory:hover { background: rgba(124, 107, 255, 0.05); }
+.home-memory:last-child { border-bottom: none; }
+
+.home-memories-toggle {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--home-border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.home-memories-toggle:hover {
+  background: rgba(124, 107, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(124, 107, 255, 0.32);
+}
+
+.home-memory-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.home-memory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.home-memory-space {
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: rgba(124, 107, 255, 0.12);
+  color: var(--accent-bright);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.home-memory-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.home-memory-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.home-memory-time {
+  margin-left: auto;
+  color: var(--home-text-muted);
+  font-size: 11px;
+}
+
+/* ── Add-memory form ── */
+.home-memories-add-btn {
+  background: transparent;
+  border: 1px solid var(--home-border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.home-memories-add-btn:hover {
+  background: rgba(124, 107, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(124, 107, 255, 0.32);
+}
+.home-memories-add-btn[aria-expanded="true"] {
+  background: rgba(124, 107, 255, 0.16);
+  color: var(--accent-bright);
+  border-color: rgba(124, 107, 255, 0.4);
+}
+
+.home-memories-add {
+  position: relative;
+  max-width: 1100px;
+  margin: 0 auto 16px;
+  padding: 14px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-memories-add-text {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 14px;
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.home-memories-add-text:focus {
+  border-color: rgba(124, 107, 255, 0.5);
+}
+
+.home-memories-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.home-memories-add-select,
+.home-memories-add-tags {
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 10px;
+  outline: none;
+}
+.home-memories-add-select:focus,
+.home-memories-add-tags:focus {
+  border-color: rgba(124, 107, 255, 0.5);
+}
+.home-memories-add-select { min-width: 160px; }
+.home-memories-add-tags { flex: 1; min-width: 180px; }
+
+.home-memories-add-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.home-memories-add-cancel,
+.home-memories-add-save {
+  background: transparent;
+  border: 1px solid var(--home-border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.home-memories-add-cancel:hover {
+  color: var(--text);
+}
+.home-memories-add-save {
+  background: rgba(124, 107, 255, 0.18);
+  border-color: rgba(124, 107, 255, 0.4);
+  color: var(--accent-bright);
+}
+.home-memories-add-save:hover:not(:disabled) {
+  background: rgba(124, 107, 255, 0.28);
+}
+.home-memories-add-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.home-memories-add-error {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #f87171;
+}
+
+/* ── Show more (memories + artefacts) ── */
+.home-show-more {
+  max-width: 1100px;
+  margin: 12px auto 0;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.home-show-more-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--home-text-muted);
+}
+
+.home-show-more-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--home-border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: 0 1px;
+}

@@ -530,6 +530,48 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // GET /api/memories — list memories, optionally scoped to a space.
+  // Local-origin only: memory contents are private user notes. Strip the
+  // query string before path-matching (same trap the events route had —
+  // `$`-anchored regex would silently reject `?space_id=…`).
+  {
+    const memoriesPath = url.split("?")[0];
+    if (memoriesPath === "/api/memories" && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const parsed = new URL(req.url ?? "/", "http://localhost");
+      const spaceId = parsed.searchParams.get("space_id");
+      try {
+        const memories = await memoryProvider.list(spaceId ?? undefined);
+        sendJson(memories);
+      } catch (err) {
+        sendError(err, 500);
+      }
+      return;
+    }
+    // POST /api/memories — user-authored memory. Mirrors the MCP `remember`
+    // tool: empty content rejected, exact-content dedupe, space optional.
+    if (memoriesPath === "/api/memories" && req.method === "POST") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        const body = await readJsonBody();
+        const content = typeof body.content === "string" ? body.content.trim() : "";
+        if (!content) {
+          sendJson({ error: "content is required" }, 400);
+          return;
+        }
+        const space_id = typeof body.space_id === "string" && body.space_id ? body.space_id : undefined;
+        const tags = Array.isArray(body.tags)
+          ? body.tags.filter((t): t is string => typeof t === "string" && t.length > 0)
+          : undefined;
+        const memory = await memoryProvider.remember({ content, space_id, tags });
+        sendJson(memory, 201);
+      } catch (err) {
+        sendError(err);
+      }
+      return;
+    }
+  }
+
   // GET /api/sessions — agent sessions captured by the watchers (#251).
   // Read-only for 0.5.0; the home feed renders these. Local-origin only —
   // session titles are derived from user prompts, which are private.
