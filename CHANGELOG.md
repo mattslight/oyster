@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Session inspector.** Click a session tile (or row) and a slide-panel opens with the live transcript, the artefacts the agent touched, and a *Copy resume command* button — paste it in your terminal to pick the conversation back up. Disconnected sessions show a banner with the last heartbeat. Click any artefact to see which sessions touched it, then jump back into one. The transcript updates live as the agent works. ([#253](https://github.com/mattslight/oyster/issues/253))
+
 ### Changed
 
 - **Session states are now process-aware.** Oyster looks at the running `claude` processes on your machine to tell whether a session is still alive — not just whether the JSONL file has been quiet. New states: **active** (green, "updated recently"), **waiting** (amber, "process still open"), **disconnected** (red, "no running process found"), and **done** (grey, "inactive for 24h"). Long thinking turns no longer flicker into red, and a finished session converges to disconnected within a minute or so of you closing the terminal (active window plus the next heartbeat tick).
