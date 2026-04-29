@@ -17,3 +17,31 @@ export async function fetchMemories(spaceId?: string | null, signal?: AbortSigna
   if (!res.ok) throw new Error(`Server returned ${res.status}`);
   return res.json();
 }
+
+export interface CreateMemoryInput {
+  content: string;
+  space_id?: string | null;
+  tags?: string[];
+}
+
+export async function createMemory(input: CreateMemoryInput): Promise<Memory> {
+  const res = await fetch("/api/memories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content: input.content,
+      space_id: input.space_id || undefined,
+      tags: input.tags?.length ? input.tags : undefined,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = `Server returned ${res.status}`;
+    try {
+      const err = JSON.parse(text);
+      if (typeof err.error === "string") message = err.error;
+    } catch { /* not JSON */ }
+    throw new Error(message);
+  }
+  return res.json();
+}

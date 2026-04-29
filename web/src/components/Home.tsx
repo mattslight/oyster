@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
+import { createMemory } from "../data/memories-api";
 import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
 import { useMemories } from "../hooks/useMemories";
@@ -91,7 +92,7 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
-  const { memories } = useMemories();
+  const { memories, refresh: refreshMemories } = useMemories();
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
@@ -106,6 +107,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // "Show all" expands. Resets when the user changes scope so a different
   // space starts collapsed too.
   const [memoriesExpanded, setMemoriesExpanded] = useState(false);
+  const [showAddMemory, setShowAddMemory] = useState(false);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -454,7 +456,26 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             <span className="home-section-label">Memories</span>
             <span className="home-artefacts-count">{scopedMemories.length}</span>
             <span className="home-section-rule" />
+            <button
+              type="button"
+              className="home-memories-add-btn"
+              onClick={() => setShowAddMemory((v) => !v)}
+              aria-expanded={showAddMemory}
+            >
+              {showAddMemory ? "Cancel" : "+ Add memory"}
+            </button>
           </div>
+          {showAddMemory && (
+            <AddMemoryForm
+              defaultSpaceId={scopedSpace}
+              spaces={spaces}
+              onSaved={() => {
+                setShowAddMemory(false);
+                refreshMemories();
+              }}
+              onCancel={() => setShowAddMemory(false)}
+            />
+          )}
           {scopedMemories.length === 0 ? (
             <div className="home-empty">
               No memories yet — agents store them via <code>remember</code>.
@@ -641,6 +662,93 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
         })}
       </div>
     </div>
+  );
+}
+
+interface AddMemoryFormProps {
+  defaultSpaceId: string | null;
+  spaces: Space[];
+  onSaved: () => void;
+  onCancel: () => void;
+}
+
+function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryFormProps) {
+  const [content, setContent] = useState("");
+  const [spaceId, setSpaceId] = useState<string>(defaultSpaceId ?? "");
+  const [tagsInput, setTagsInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const realSpaces = useMemo(
+    () => spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__"),
+    [spaces],
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim() || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const tags = tagsInput
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      await createMemory({
+        content: content.trim(),
+        space_id: spaceId || undefined,
+        tags: tags.length ? tags : undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="home-memories-add" onSubmit={submit}>
+      <textarea
+        className="home-memories-add-text"
+        placeholder="What should I remember?"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={3}
+        autoFocus
+      />
+      <div className="home-memories-add-row">
+        <select
+          className="home-memories-add-select"
+          value={spaceId}
+          onChange={(e) => setSpaceId(e.target.value)}
+        >
+          <option value="">No space (global)</option>
+          {realSpaces.map((s) => (
+            <option key={s.id} value={s.id}>{s.displayName}</option>
+          ))}
+        </select>
+        <input
+          className="home-memories-add-tags"
+          placeholder="tags, comma-separated"
+          value={tagsInput}
+          onChange={(e) => setTagsInput(e.target.value)}
+        />
+        <div className="home-memories-add-actions">
+          <button type="button" className="home-memories-add-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="home-memories-add-save"
+            disabled={!content.trim() || submitting}
+          >
+            {submitting ? "Saving…" : "Save memory"}
+          </button>
+        </div>
+      </div>
+      {error && <div className="home-memories-add-error">Couldn't save: {error}</div>}
+    </form>
   );
 }
 
