@@ -519,6 +519,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 <ShowMore
                   onClick={() => setArtefactsLimit((n) => n + ARTEFACTS_PREVIEW)}
                   remaining={filteredArtefactsTotal - artefactsLimit}
+                  searchHint
                 />
               )}
             </>
@@ -747,18 +748,24 @@ function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProp
 }
 
 // Reused under both the Memories and Artefacts sections. "Show more"
-// loads another preview-sized batch (5 memories, 21 artefacts). Right of
-// the button is a subtle ⌘K hint — the existing artifact Spotlight
-// already binds the shortcut, and #264 will broaden it to a unified
-// search across sessions / artefacts / memories.
-function ShowMore({ onClick, remaining }: { onClick: () => void; remaining: number }) {
+// loads another preview-sized batch (5 memories, 21 artefacts). The
+// optional ⌘K hint only renders where Spotlight actually searches —
+// artifacts today, eventually memories + sessions when #264 ships.
+function ShowMore({
+  onClick, remaining, searchHint = false,
+}: { onClick: () => void; remaining: number; searchHint?: boolean }) {
   return (
     <div className="home-show-more">
       <button type="button" className="home-memories-toggle" onClick={onClick}>
         Show more
       </button>
       <span className="home-show-more-hint">
-        {remaining} more · <kbd>⌘K</kbd> to search
+        {remaining} more
+        {searchHint && (
+          <>
+            {" · "}<kbd>⌘K</kbd> to search
+          </>
+        )}
       </span>
     </div>
   );
