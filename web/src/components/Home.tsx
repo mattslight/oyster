@@ -145,6 +145,19 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         {!isAllView && !isArchivedView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
           <div className="home-spaces-section">
             <div className="home-spaces-grid">
+              <button
+                className={`home-space-card home-space-card--home${isHomeView && !showElsewhere ? " selected" : ""}`}
+                onClick={() => {
+                  setShowElsewhere(false);
+                  onSpaceChange("home");
+                }}
+                title="Everything across all spaces"
+              >
+                <div className="home-space-card-name">Home</div>
+                <div className="home-space-card-counts">
+                  <span className="signal signal-muted">all spaces</span>
+                </div>
+              </button>
               {realSpaces.map((space) => {
                 const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
                 const isActive = scopedSpace === space.id;
