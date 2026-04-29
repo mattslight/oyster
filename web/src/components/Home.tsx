@@ -17,6 +17,25 @@ interface Props {
 type ViewMode = "icons" | "table";
 type StateFilter = SessionState | "live" | "all";
 
+// Persists a view toggle (icons / table) to localStorage so it survives
+// reloads. Returns a useState-shaped pair so callsites stay one-liner.
+function useStickyView(key: string, defaultValue: ViewMode): [ViewMode, (v: ViewMode) => void] {
+  const [value, setValue] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return defaultValue;
+    const stored = window.localStorage.getItem(key);
+    return stored === "icons" || stored === "table" ? stored : defaultValue;
+  });
+  const set = (v: ViewMode) => {
+    setValue(v);
+    try {
+      window.localStorage.setItem(key, v);
+    } catch {
+      // private browsing / disabled storage — fine, just lose persistence
+    }
+  };
+  return [value, set];
+}
+
 // "live" is a preset bundling active+waiting+disconnected (everything that
 // isn't archived). It's the default because that's the common case — done
 // is review/history, not active inventory. The dot after "live" indicates
@@ -57,8 +76,8 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
-  const [sessionsView, setSessionsView] = useState<ViewMode>("icons");
-  const [artefactsView, setArtefactsView] = useState<ViewMode>("icons");
+  const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
+  const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
 
   // Local "Elsewhere" scope: filters Sessions to those whose spaceId is null
   // (claude/codex sessions started in folders that aren't attached to any
