@@ -4,6 +4,7 @@ import type { Space } from "../../../shared/types";
 import { useSessions } from "../hooks/useSessions";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { Desktop } from "./Desktop";
+import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
 import "./Home.css";
 
 interface Props {
@@ -83,6 +84,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   const [stateFilter, setStateFilter] = useState<StateFilter>("live");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
+  const [activePanel, setActivePanel] = useState<ActivePanel | null>(null);
 
   // Local "Elsewhere" scope: filters Sessions to those whose spaceId is null
   // (claude/codex sessions started in folders that aren't attached to any
@@ -328,6 +330,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   session={session}
                   spaces={spaces}
                   showSpaceChip={isMetaView}
+                  onOpen={(id) => setActivePanel({ kind: "session", id })}
                 />
               ))}
             </div>
@@ -392,6 +395,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           )}
         </section>
       </div>
+      <InspectorPanel active={activePanel} onClose={() => setActivePanel(null)}>
+        <div style={{ padding: 24, color: "white" }}>
+          {activePanel?.kind === "session" ? `Session ${activePanel.id}` : `Artefact ${activePanel?.id}`}
+        </div>
+      </InspectorPanel>
     </div>
   );
 }
@@ -421,13 +429,14 @@ interface SessionTileProps {
   session: Session;
   spaces: Space[];
   showSpaceChip: boolean;
+  onOpen?: (id: string) => void;
 }
 
-function SessionTile({ session, spaces, showSpaceChip }: SessionTileProps) {
+function SessionTile({ session, spaces, showSpaceChip, onOpen }: SessionTileProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const title = session.title ?? "(no title yet)";
   return (
-    <div className="home-tile">
+    <div className="home-tile" onClick={() => onOpen?.(session.id)} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined}>
       <div className={`home-thumb ${AGENT_CLASS[session.agent]}`}>
         {showSpaceChip && spaceLabel && (
           <span className="home-space-chip">{spaceLabel}</span>
