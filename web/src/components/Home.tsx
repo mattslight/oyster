@@ -142,15 +142,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
-        {isHomeView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
+        {!isAllView && !isArchivedView && (realSpaces.length > 0 || orphanCounts.total > 0) && (
           <div className="home-spaces-section">
             <div className="home-spaces-grid">
               {realSpaces.map((space) => {
                 const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
+                const isActive = scopedSpace === space.id;
                 return (
                   <button
                     key={space.id}
-                    className="home-space-card"
+                    className={`home-space-card${isActive ? " selected" : ""}`}
                     onClick={() => onSpaceChange(space.id)}
                   >
                     <div className="home-space-card-name">{space.displayName}</div>
@@ -166,8 +167,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               })}
               {orphanCounts.total > 0 && (
                 <button
-                  className={`home-space-card home-space-card--elsewhere${showElsewhere ? " selected" : ""}`}
-                  onClick={() => setShowElsewhere((v) => !v)}
+                  className={`home-space-card home-space-card--elsewhere${isHomeView && showElsewhere ? " selected" : ""}`}
+                  onClick={() => {
+                    if (isHomeView) {
+                      setShowElsewhere((v) => !v);
+                    } else {
+                      setShowElsewhere(true);
+                      onSpaceChange("home");
+                    }
+                  }}
                   title="Sessions outside any registered space"
                 >
                   <div className="home-space-card-name">Elsewhere</div>
