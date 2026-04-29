@@ -266,15 +266,15 @@
   margin: 0 auto;
   padding: 0 32px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
 }
 .home-space-card {
   text-align: left;
-  padding: 16px 18px;
+  padding: 10px 14px;
   background: var(--home-surface);
   border: 1px solid var(--home-border);
-  border-radius: 14px;
+  border-radius: 12px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   cursor: pointer;
@@ -292,15 +292,15 @@
 }
 .home-space-card-name {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--home-accent-bright);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 .home-space-card-counts {
   display: flex;
-  gap: 14px;
+  gap: 10px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-dim);
 }
 .home-space-card-counts .signal {

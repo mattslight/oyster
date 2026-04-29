@@ -118,17 +118,27 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // Drop meta-spaces from the Spaces summary cards: the chat bar already
   // renders Home as its own pill, so a `home` row in the spaces table would
   // surface a redundant card. __all__ and __archived__ are similar.
-  const realSpaces = useMemo(
-    () => spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__"),
-    [spaces],
-  );
+  // Sort by most recent session activity desc; spaces with no sessions
+  // fall to the bottom in their original (alphabetical) order. Home and
+  // Elsewhere cards are rendered around this list — always first / always
+  // last regardless of activity.
+  const realSpaces = useMemo(() => {
+    const filtered = spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__");
+    return [...filtered].sort((a, b) => {
+      const aT = lastActivityBySpace[a.id] ?? 0;
+      const bT = lastActivityBySpace[b.id] ?? 0;
+      return bT - aT;
+    });
+  }, [spaces, lastActivityBySpace]);
 
   // Per-space session counts + a separate orphan tally (sessions with
-  // spaceId === null) + a grand total for the Home card, all in one pass.
-  const { sessionCountsBySpace, orphanCounts, totalCounts } = useMemo(() => {
+  // spaceId === null) + a grand total for the Home card, plus the most
+  // recent lastEventAt per space so we can sort the cards by activity.
+  const { sessionCountsBySpace, orphanCounts, totalCounts, lastActivityBySpace } = useMemo(() => {
     const bySpace: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
     const orphans = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
     const total = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const lastActivity: Record<string, number> = {};
     for (const s of sessions) {
       total.total++;
       total[s.state]++;
@@ -137,12 +147,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         c.total++;
         c[s.state]++;
         bySpace[s.spaceId] = c;
+        const t = parseTimestamp(s.lastEventAt);
+        if (Number.isFinite(t) && t > (lastActivity[s.spaceId] ?? 0)) {
+          lastActivity[s.spaceId] = t;
+        }
       } else {
         orphans.total++;
         orphans[s.state]++;
       }
     }
-    return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total };
+    return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total, lastActivityBySpace: lastActivity };
   }, [sessions]);
 
   // When scoped to Elsewhere, artefacts should mirror the sessions filter:
