@@ -115,22 +115,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return scopedSessions.filter((s) => s.state === stateFilter);
   }, [scopedSessions, stateFilter]);
 
-  // Drop meta-spaces from the Spaces summary cards: the chat bar already
-  // renders Home as its own pill, so a `home` row in the spaces table would
-  // surface a redundant card. __all__ and __archived__ are similar.
-  // Sort by most recent session activity desc; spaces with no sessions
-  // fall to the bottom in their original (alphabetical) order. Home and
-  // Elsewhere cards are rendered around this list — always first / always
-  // last regardless of activity.
-  const realSpaces = useMemo(() => {
-    const filtered = spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__");
-    return [...filtered].sort((a, b) => {
-      const aT = lastActivityBySpace[a.id] ?? 0;
-      const bT = lastActivityBySpace[b.id] ?? 0;
-      return bT - aT;
-    });
-  }, [spaces, lastActivityBySpace]);
-
   // Per-space session counts + a separate orphan tally (sessions with
   // spaceId === null) + a grand total for the Home card, plus the most
   // recent lastEventAt per space so we can sort the cards by activity.
@@ -158,6 +142,22 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     }
     return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total, lastActivityBySpace: lastActivity };
   }, [sessions]);
+
+  // Drop meta-spaces from the Spaces summary cards: the chat bar already
+  // renders Home as its own pill, so a `home` row in the spaces table would
+  // surface a redundant card. __all__ and __archived__ are similar.
+  // Sort by most recent session activity desc; spaces with no sessions
+  // fall to the bottom in their original (alphabetical) order. Home and
+  // Elsewhere cards are rendered around this list — always first / always
+  // last regardless of activity.
+  const realSpaces = useMemo(() => {
+    const filtered = spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__");
+    return [...filtered].sort((a, b) => {
+      const aT = lastActivityBySpace[a.id] ?? 0;
+      const bT = lastActivityBySpace[b.id] ?? 0;
+      return bT - aT;
+    });
+  }, [spaces, lastActivityBySpace]);
 
   // When scoped to Elsewhere, artefacts should mirror the sessions filter:
   // anything not attributed to a known real space (null spaceId or a stale
