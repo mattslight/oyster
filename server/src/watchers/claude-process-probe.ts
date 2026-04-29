@@ -16,17 +16,24 @@ const execP = promisify(exec);
 // time at the high end. Fine.
 //
 // Cross-platform note: pgrep + lsof are POSIX-only. On Windows this returns
-// an empty set, and the watcher falls back to JSONL-recency-only state
+// an empty map, and the watcher falls back to JSONL-recency-only state
 // derivation. Tracked separately — see issue #268.
-export async function activeClaudeCwds(): Promise<Set<string>> {
+//
+// Returns a count per cwd (not a set) because two claude processes can be
+// running at the same cwd — worktrees, pair-programming workflows, parallel
+// investigations. Counts let the heartbeat pick the top-K most-recently-
+// streamed sessions per cwd as live, instead of either marking only one
+// (false negative) or marking every past transcript at that cwd (false
+// positive).
+export async function activeClaudeCwdCounts(): Promise<Map<string, number>> {
   let pidsOut: string;
   try {
     const result = await execP("pgrep -x claude", { timeout: 2000 });
     pidsOut = result.stdout;
   } catch {
     // pgrep returns exit 1 when no matches; also covers Windows / missing
-    // pgrep. Empty set is the right answer in all those cases.
-    return new Set();
+    // pgrep. Empty map is the right answer in all those cases.
+    return new Map();
   }
 
   const pids = pidsOut
@@ -34,9 +41,9 @@ export async function activeClaudeCwds(): Promise<Set<string>> {
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && /^\d+$/.test(s));
 
-  if (pids.length === 0) return new Set();
+  if (pids.length === 0) return new Map();
 
-  const cwds = new Set<string>();
+  const counts = new Map<string, number>();
   await Promise.all(
     pids.map(async (pid) => {
       try {
@@ -46,12 +53,15 @@ export async function activeClaudeCwds(): Promise<Set<string>> {
         );
         // lsof -F n format: lines starting with 'n' have the path.
         for (const line of stdout.split("\n")) {
-          if (line.startsWith("n/")) cwds.add(line.slice(1));
+          if (line.startsWith("n/")) {
+            const cwd = line.slice(1);
+            counts.set(cwd, (counts.get(cwd) ?? 0) + 1);
+          }
         }
       } catch {
         // Process exited between pgrep and lsof; ignore.
       }
     }),
   );
-  return cwds;
+  return counts;
 }

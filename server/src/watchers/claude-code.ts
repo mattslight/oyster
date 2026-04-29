@@ -11,7 +11,7 @@ import type {
   SessionState,
   SessionStore,
 } from "../session-store.js";
-import { activeClaudeCwds } from "./claude-process-probe.js";
+import { activeClaudeCwdCounts } from "./claude-process-probe.js";
 
 // claude-code session log watcher (Sprint 2 of the 0.5.0 sessions arc).
 // See docs/plans/sessions-arc.md.
@@ -25,21 +25,27 @@ import { activeClaudeCwds } from "./claude-process-probe.js";
 
 const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 
-// State derivation, two observable signals:
-//   1. Process probe: is there a `claude` process whose cwd matches this
-//      session's recorded cwd? (See claude-process-probe.ts.)
-//   2. JSONL recency: how recently was the file appended to?
+// State derivation: JSONL recency is the source of truth, process probe
+// only gates whether a recent-but-not-fresh session reads as `waiting`
+// vs `disconnected`. We can't externally identify *which* claude process
+// is driving *which* session — there's no PID in the JSONL and the file
+// isn't held open between turns. Anything more ambitious than "is there
+// some claude at this cwd?" devolves into heuristics with edge cases.
 //
-//   process alive + JSONL fresh   → active        ("Updated recently")
-//   process alive + JSONL idle    → waiting       ("Process still open")
-//   process gone  + JSONL recent  → disconnected  ("No running process found")
-//   process gone  + JSONL >24h    → done          ("Inactive for 24h")
+//   ageMs < ACTIVE_WINDOW_MS                                → active
+//   ageMs < WAITING_WINDOW_MS    + claude at this cwd       → waiting
+//   ageMs < DONE_THRESHOLD_MS                               → disconnected
+//   otherwise                                               → done
 //
-// "active" is bounded by JSONL recency so a session that's been streaming
-// in the last few seconds shows as bright-green; once the model finishes
-// generating and claude is just sitting at the prompt, it drops to waiting.
-// Both states still mean "live process you can return to".
+// The 30-min waiting window is the honest cap: if a JSONL hasn't been
+// touched in 30 minutes we treat the session as disconnected regardless
+// of whether a claude process is at the cwd. That means an old transcript
+// at a cwd where the user is currently working doesn't get falsely
+// elevated to waiting. False negative case: a claude tab idle for >30min
+// reads as disconnected even though the process is live — that flips
+// back to active the moment the user types and JSONL streams.
 const ACTIVE_WINDOW_MS = 30_000;
+const WAITING_WINDOW_MS = 30 * 60 * 1000;
 const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 // How often the heartbeat sweep runs. Each tick probes processes (~40ms on
@@ -180,7 +186,7 @@ export class ClaudeCodeWatcher {
   // (see deriveState), so a session whose claude process is still running
   // comes back as 'active'/'waiting' even after a server restart.
   private async bootScan(): Promise<void> {
-    const activeCwds = await activeClaudeCwds();
+    const cwdCounts = await activeClaudeCwdCounts();
     let projectDirs: string[];
     try {
       projectDirs = await fs.readdir(this.root);
@@ -208,12 +214,12 @@ export class ClaudeCodeWatcher {
       for (const entry of entries) {
         if (!entry.endsWith(".jsonl")) continue;
         const filePath = join(dirPath, entry);
-        await this.reconcileExistingFile(filePath, activeCwds).catch(this.logError);
+        await this.reconcileExistingFile(filePath, cwdCounts).catch(this.logError);
       }
     }
   }
 
-  private async reconcileExistingFile(filePath: string, activeCwds: Set<string>): Promise<void> {
+  private async reconcileExistingFile(filePath: string, cwdCounts: Map<string, number>): Promise<void> {
     let stat;
     try {
       stat = await fs.stat(filePath);
@@ -225,7 +231,10 @@ export class ClaudeCodeWatcher {
     if (!meta) return;
 
     const ageMs = this.now().getTime() - stat.mtime.getTime();
-    const processAlive = meta.cwd ? activeCwds.has(meta.cwd) : false;
+    // Coarse seed: if there's any claude at this cwd, assume this session
+    // *might* be live. The immediate heartbeatSweep at the end of start()
+    // refines this to the top-K freshest per cwd.
+    const processAlive = meta.cwd ? (cwdCounts.get(meta.cwd) ?? 0) > 0 : false;
     const state = deriveState(ageMs, processAlive);
 
     // Always pass ISO-8601 timestamps. If the JSONL didn't have a usable
@@ -597,15 +606,14 @@ export class ClaudeCodeWatcher {
   }
 
   // ── Heartbeat ───────────────────────────────────────────────────────────
-  // Probe every running `claude` process for its cwd. Cross-reference each
-  // session's recorded cwd against that set, then narrow further: among
-  // multiple sessions that share a cwd (e.g. you've run claude in the same
-  // repo a hundred times), only the freshest JSONL — the one currently
-  // being appended to — is "the live session". The others are old
-  // transcripts that finished. Without this, a single live claude process
-  // marks every past session at that cwd as `waiting`.
+  // Probe every running `claude` process for its cwd. The probe answers
+  // "does any claude process have this cwd open?" — coarser than per-session
+  // identity, but it's the strongest signal we can observe externally
+  // (claude doesn't log its PID in the JSONL, and the file isn't held open
+  // between turns). The recency cap in deriveState handles the one-live-
+  // claude-many-old-transcripts case cleanly.
   private async heartbeatSweep(): Promise<void> {
-    const activeCwds = await activeClaudeCwds();
+    const cwdCounts = await activeClaudeCwdCounts();
     const now = this.now().getTime();
 
     // sessionId → cwd, from in-memory trackers seeded by bootScan + watch.
@@ -614,31 +622,15 @@ export class ClaudeCodeWatcher {
       if (t.sessionId && t.cwd) sessionCwds.set(t.sessionId, t.cwd);
     }
 
-    const allSessions = this.deps.sessionStore.getAll().filter(
-      (s) => s.agent === "claude-code",
-    );
-
-    // cwd → sessionId of the freshest claude-code session in that cwd.
-    // Sort desc by last_event_at and pick the first occurrence per cwd.
-    const freshestPerCwd = new Map<string, string>();
-    const sortedDesc = [...allSessions].sort(
-      (a, b) => Date.parse(b.last_event_at) - Date.parse(a.last_event_at),
-    );
-    for (const s of sortedDesc) {
-      const cwd = sessionCwds.get(s.id);
-      if (cwd && !freshestPerCwd.has(cwd)) freshestPerCwd.set(cwd, s.id);
-    }
-
-    for (const session of allSessions) {
+    for (const session of this.deps.sessionStore.getAll()) {
+      if (session.agent !== "claude-code") continue;
       const last = Date.parse(session.last_event_at);
       if (!Number.isFinite(last)) continue;
       const ageMs = now - last;
 
       const cwd = sessionCwds.get(session.id);
-      const cwdHasLiveProcess = cwd ? activeCwds.has(cwd) : false;
-      const isFreshestInCwd = cwd ? freshestPerCwd.get(cwd) === session.id : false;
-      const processAlive = cwdHasLiveProcess && isFreshestInCwd;
-      const next = deriveState(ageMs, processAlive);
+      const cwdHasLiveProcess = cwd ? (cwdCounts.get(cwd) ?? 0) > 0 : false;
+      const next = deriveState(ageMs, cwdHasLiveProcess);
 
       if (next !== session.state) {
         this.deps.sessionStore.updateSessionState(session.id, next, session.last_event_at);
@@ -665,9 +657,11 @@ export class ClaudeCodeWatcher {
 
 // ── Pure helpers (exported for tests) ─────────────────────────────────────
 
-export function deriveState(ageMs: number, processAlive: boolean): SessionState {
-  if (processAlive) return ageMs < ACTIVE_WINDOW_MS ? "active" : "waiting";
-  return ageMs > DONE_THRESHOLD_MS ? "done" : "disconnected";
+export function deriveState(ageMs: number, processAtCwd: boolean): SessionState {
+  if (ageMs < ACTIVE_WINDOW_MS) return "active";
+  if (ageMs < WAITING_WINDOW_MS && processAtCwd) return "waiting";
+  if (ageMs > DONE_THRESHOLD_MS) return "done";
+  return "disconnected";
 }
 
 // Pull a usable title out of a `type:"user"` event's content, or return null.
