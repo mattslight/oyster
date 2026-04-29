@@ -175,7 +175,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
       <div className={`home-scroll${isHero ? " home-scroll--hero" : ""}`}>
         <header className="home-header">
           <div className="home-eyebrow">{eyebrow}</div>
-          <h1 className="home-title">{isHomeView ? "Today." : eyebrow}</h1>
+          <h1 className="home-title">{isHomeView ? (showElsewhere ? "Elsewhere." : "Everything.") : eyebrow}</h1>
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
