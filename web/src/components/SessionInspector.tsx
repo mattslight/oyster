@@ -5,6 +5,7 @@ import {
   fetchSessionArtifacts,
   SessionNotFoundError,
 } from "../data/sessions-api";
+import { subscribeUiEvents } from "../data/ui-events";
 import type {
   Session,
   SessionEvent,
@@ -75,6 +76,53 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         setError(err instanceof Error ? err.message : String(err));
       });
     return () => ac.abort();
+  }, [sessionId, onNotFound]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inflight: AbortController | null = null;
+
+    function refetchLive() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        const reqId = ++latestReqId.current;
+        if (inflight) inflight.abort();
+        inflight = new AbortController();
+        Promise.all([
+          fetchSession(sessionId, inflight.signal),
+          fetchSessionEvents(sessionId, inflight.signal),
+        ])
+          .then(([s, ev]) => {
+            if (reqId !== latestReqId.current) return;
+            setSession(s);
+            setEvents(ev);
+          })
+          .catch((err) => {
+            if (inflight?.signal.aborted) return;
+            if (err instanceof SessionNotFoundError) {
+              onNotFound();
+              return;
+            }
+            console.warn("[SessionInspector] live refresh failed:", err);
+          });
+      }, 200);
+    }
+
+    const unsubscribe = subscribeUiEvents((event) => {
+      if (
+        event.command === "session_changed"
+        && (event.payload as { id?: string } | null)?.id === sessionId
+      ) {
+        refetchLive();
+      }
+    });
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (inflight) inflight.abort();
+      unsubscribe();
+    };
   }, [sessionId, onNotFound]);
 
   if (error) {
