@@ -12,8 +12,8 @@ Sessions appear as tiles on Home but clicking them does nothing. Users can see "
 
 A right-anchored slide-panel inspector, used for both sessions and artefacts, that opens on tile click and provides:
 
-- **Session inspector:** state-conditional banner (disconnected/waiting), tabs for Transcript and Artefacts, footer with copy-resume-link and copy-session-id actions
-- **Artefact inspector:** tabs for Preview and Sessions (M:N reverse), footer with Open and copy-id
+- **Session inspector:** state-conditional banner (disconnected/waiting), tabs for Transcript and Artefacts, footer with copy-resume-command and copy-session-id actions
+- **Artefact inspector:** lightweight metadata header (icon, title, kind, path/source) + linked Sessions list + Open/copy-id footer. **No content preview** — full rendering remains the existing artefact viewer's job.
 
 Live updates over SSE so an open inspector reflects the current state of an active session as new turns stream in.
 
@@ -29,8 +29,8 @@ Also deferred:
 
 - **URL routing** — open-panel state is client-only (`activePanel` in Home). URL sync (`?session=<id>`) is a follow-up.
 - **Mark closed action** — watcher's heartbeat detects state transitions; manual override is marginal.
-- **Tool-call rich rendering** — transcript renders `session_events.text` with role styling; tool calls show `raw` JSON in a preformatted block when `text` is empty.
-- **Branch in TUI / Export transcript** — footer simplifies to copy-link + copy-id for v1.
+- **Tool-call rich rendering** — transcript renders `session_events.text` with role styling; tool calls show a one-line summary with click-to-expand `raw` JSON (capped at 4KB).
+- **Branch in TUI / Export transcript** — footer simplifies to copy-command + copy-id for v1.
 
 ## Architecture
 
@@ -57,6 +57,13 @@ Portal target: `document.body` so the panel escapes any parent stacking context 
 - `/api/sessions/:id` (header refresh — state pip, last activity)
 - `/api/sessions/:id/events` (append-only; cheap)
 
+**Race protection** (the watcher can fire many `session_changed` events in a burst when the agent writes several JSONL lines):
+
+- **AbortController per session ID** — when `activePanel.id` changes, abort the in-flight fetch for the previous session before starting the new one
+- **Stale-response guard** — each fetch captures the current `id` in closure; on resolve, ignore the response if `id !== activePanel.id`
+- **Debounce** — coalesce `session_changed` bursts with a trailing-edge 200ms debounce so a burst of 5 JSONL lines fires one refetch, not five
+- **Single subscription** — Home owns the EventSource (already does, for the grid). The inspector subscribes via a callback prop or context — no second EventSource per inspector mount
+
 Artefacts don't transition, so `<ArtefactInspector>` is snapshot-at-open with no SSE wiring.
 
 ### Cross-navigation
@@ -72,7 +79,7 @@ A row in the Session inspector's Artefacts tab calls `setActivePanel({ kind: 'ar
 | `web/src/components/InspectorPanel.tsx` | Chrome shell (backdrop, slide container, escape handler, portal); receives `activePanel` and renders the right inspector inside |
 | `web/src/components/InspectorPanel.css` | Panel styles — adapted from prototype `.panel*` rules (lines 951–1320) |
 | `web/src/components/SessionInspector.tsx` | Header + state banner + tabs (Transcript, Artefacts) + footer |
-| `web/src/components/ArtefactInspector.tsx` | Header + tabs (Preview, Sessions) + footer |
+| `web/src/components/ArtefactInspector.tsx` | Metadata header (icon, title, kind, path/source) + linked Sessions list + footer |
 
 ### Modified files
 
@@ -115,15 +122,17 @@ All four endpoints are thin wrappers over existing store methods. No new SQL.
 2. Same chrome; `<ArtefactInspector>` mounts → fetches artifact metadata + reverse session list
 3. No SSE — artefacts don't transition
 
-### Preview tab content (v1)
+### Artefact panel content (v1)
 
-The prototype's kind-specific mocks (notes lines, deck card, table grid) were placeholders for unrendered data. For real artefacts we have actual content. v1 renders, by `artifact.kind`:
+The artefact inspector is deliberately shallow in #253. The inspector should prove the navigation model and session provenance first; rich artefact rendering remains the responsibility of the existing artefact viewer.
 
-- **`notes`** — first 800 chars of content (read once at panel open from `/api/artifacts/:id/content` if not already cached) in a monospace `<pre>` block, with "Open" footer button to view full
-- **`app` / `bundle`** — the existing artifact thumbnail (large `ArtifactIcon` at 96px) + meta line "Open the app to view contents"
-- **All other kinds** — large `ArtifactIcon` at 96px, no body content, "Open" footer
+Layout:
 
-No iframe embedding, no rich rendering, no edit-in-place. Preview is a quick "is this the right thing?" glance. "Open" button does what the existing tile click does today.
+- **Header** — icon (large `ArtifactIcon`), title, sub-line "kind · path-or-source · last modified"
+- **Body** — single section: "Sessions that touched this" (the linked sessions list with role chips). No tabs — there's only one section.
+- **Footer** — "Open" (delegates to existing artefact open behaviour), "Copy artefact ID"
+
+No content preview, no iframe, no notes-content fetch. That means the design needs zero new artefact endpoints: the existing artefact metadata route already serves what the header needs.
 
 ## Error handling
 
@@ -134,7 +143,7 @@ No iframe embedding, no rich rendering, no edit-in-place. Preview is a quick "is
 | Empty transcript (active session, watcher pre-ingest) | "No transcript yet. Live updates active." with a small pulse indicator |
 | Empty artefacts list | "No artefacts touched yet." |
 | Empty sessions list (artefact tab) | "No sessions have touched this artefact." |
-| Tool-call event with empty `text` | Render `raw` JSON in `<pre>` block under tool/tool_result role styling |
+| Tool-call event with empty `text` | Render a one-line summary ("Tool call: `<tool_name>`") + click-to-expand showing the `raw` JSON. Cap expanded JSON at 4KB; if over, show first 4KB with `…truncated, N more bytes` footer. |
 | Clipboard API unavailable (HTTP, no permission) | Toast falls back to "Copy failed — resume command: `claude-code --resume <id>`" with the command shown inline |
 
 ## Testing
@@ -148,10 +157,10 @@ Per project convention (CLAUDE.md: test UI in a browser before reporting done), 
 **Browser verification (golden + edge):**
 - Open a `done` session — full transcript renders
 - Open an `active` session; kick a turn from a real `claude` instance in a registered space — new turn streams in within ~1s
-- Open a `disconnected` session — banner shows last-heartbeat; "Copy resume link" copies `claude-code --resume <session-id>`; toast confirms
+- Open a `disconnected` session — banner shows last-heartbeat; "Copy resume command" copies `claude-code --resume <session-id>`; toast confirms
 - Open a session with touched artefacts — Artefacts tab shows them with role chips
 - Click a row in Artefacts tab — panel swaps to artefact inspector with same artefact selected
-- Click a row in Sessions tab of artefact inspector — panel swaps back to session inspector
+- Click a row in the artefact's Sessions list — panel swaps back to session inspector
 - Press Escape, click backdrop, click `✕` — all three close the panel
 - Open inspector on Tokinvest space tile (scoped) — only Tokinvest sessions are clickable in the Sessions section behind the panel
 
@@ -164,4 +173,5 @@ Captured here so reviewers know what's deliberately not in this PR:
 - URL routing for inspector state (`?session=<id>` for shareable deep links)
 - Manual "Mark closed" action on disconnected banner
 - Branch session / Export transcript footer actions
-- Rich tool-call rendering (parsed `tool_use` args, expandable `tool_result` blocks)
+- Rich tool-call rendering (parsed `tool_use` args, structured `tool_result` blocks beyond raw JSON expand)
+- Artefact content preview inside the inspector (notes excerpts, deck pages, table grids) — full content rendering stays with the existing artefact viewer
