@@ -154,7 +154,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     if (showElsewhere && isHomeView) {
       return {
         ...desktopProps,
-        artifacts: effectiveDesktopProps.artifacts.filter((a) => !a.spaceId || !realSpaceIds.has(a.spaceId)),
+        artifacts: desktopProps.artifacts.filter((a) => !a.spaceId || !realSpaceIds.has(a.spaceId)),
       };
     }
     return desktopProps;
