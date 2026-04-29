@@ -575,13 +575,22 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     }
   }
 
-  // GET /api/sessions/:id/events — latest N transcript events (oldest first
-  // within the slice). The `raw` JSONL line is dropped from the list response
-  // because long sessions can ship 50+MB of raw blobs (tool outputs, file
-  // reads). Clients fetch the raw on-demand via /events/:eventId when the
-  // user expands a tool turn. ?limit=N overrides the default of 1000.
+  // GET /api/sessions/:id/events — transcript events (oldest first within
+  // the returned slice). The `raw` JSONL line is dropped because long
+  // sessions can ship 50+MB of raw blobs; clients lazy-fetch raw via
+  // /events/:eventId when they expand a tool turn.
+  //
+  // Cursors:
+  //   ?before=<id> — events with id < before, latest N (load older on scroll up)
+  //   ?after=<id>  — events with id > after, oldest N (live append)
+  //   neither     — latest N (bootstrap)
+  // ?limit=N defaults to 1000.
   {
-    const m = url.match(/^\/api\/sessions\/([^/]+)\/events$/);
+    // Strip the query string before path matching — the `$` anchor in the
+    // regex would otherwise reject any URL with `?...`. Pre-existing bug:
+    // `?limit=N` was always silently ignored before this fix.
+    const eventsPath = url.split("?")[0];
+    const m = eventsPath.match(/^\/api\/sessions\/([^/]+)\/events$/);
     if (m && req.method === "GET") {
       if (rejectIfNonLocalOrigin()) return;
       const parsed = new URL(req.url ?? "/", "http://localhost");
@@ -589,7 +598,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       const limit = limitParam && Number.isFinite(Number(limitParam))
         ? Math.max(1, Math.min(10_000, Number(limitParam)))
         : 1000;
-      const events = sessionStore.getEventsBySession(m[1], { limit });
+      const beforeParam = parsed.searchParams.get("before");
+      const afterParam = parsed.searchParams.get("after");
+      const before = beforeParam && Number.isFinite(Number(beforeParam))
+        ? Number(beforeParam) : null;
+      const after = afterParam && Number.isFinite(Number(afterParam))
+        ? Number(afterParam) : null;
+      let events;
+      if (before !== null) {
+        events = sessionStore.getEventsBeforeBySession(m[1], before, limit);
+      } else if (after !== null) {
+        events = sessionStore.getEventsAfterBySession(m[1], after, limit);
+      } else {
+        events = sessionStore.getEventsBySession(m[1], { limit });
+      }
       sendJson(events.map((e) => ({
         id: e.id,
         sessionId: e.session_id,
