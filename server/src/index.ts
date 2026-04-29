@@ -549,6 +549,110 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // GET /api/sessions/:id — single session row (or 404)
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const row = sessionStore.getById(m[1]);
+      if (!row) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "session not found" }));
+        return;
+      }
+      sendJson({
+        id: row.id,
+        spaceId: row.space_id,
+        agent: row.agent,
+        title: row.title,
+        state: row.state,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        model: row.model,
+        lastEventAt: row.last_event_at,
+      });
+      return;
+    }
+  }
+
+  // GET /api/sessions/:id/events — full transcript (oldest first)
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/events$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const events = sessionStore.getEventsBySession(m[1]);
+      sendJson(events.map((e) => ({
+        id: e.id,
+        sessionId: e.session_id,
+        role: e.role,
+        text: e.text,
+        ts: e.ts,
+        raw: e.raw,
+      })));
+      return;
+    }
+  }
+
+  // GET /api/sessions/:id/artifacts — touched artefacts joined with artifact metadata
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/artifacts$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const touches = sessionStore.getArtifactsBySession(m[1]);
+      const allArtifacts = await artifactService.getAllArtifacts(() => {});
+      const byId = new Map(allArtifacts.map((a) => [a.id, a]));
+      sendJson(touches.flatMap((t) => {
+        const a = byId.get(t.artifact_id);
+        if (!a) return [];
+        return [{
+          id: t.id,
+          sessionId: t.session_id,
+          artifactId: t.artifact_id,
+          role: t.role,
+          whenAt: t.when_at,
+          artifact: a,
+        }];
+      }));
+      return;
+    }
+  }
+
+  // GET /api/artifacts/:id/sessions — sessions that touched this artefact (M:N reverse).
+  // Must come BEFORE the generic /api/artifacts/:id PATCH handler so "/sessions"
+  // suffix is never interpreted as an artifact id.
+  {
+    const m = url.match(/^\/api\/artifacts\/([^/]+)\/sessions$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const touches = sessionStore.getSessionsByArtifact(m[1]);
+      const allSessions = sessionStore.getAll();
+      const byId = new Map(allSessions.map((s) => [s.id, s]));
+      sendJson(touches.flatMap((t) => {
+        const s = byId.get(t.session_id);
+        if (!s) return [];
+        return [{
+          id: t.id,
+          sessionId: t.session_id,
+          artifactId: t.artifact_id,
+          role: t.role,
+          whenAt: t.when_at,
+          session: {
+            id: s.id,
+            spaceId: s.space_id,
+            agent: s.agent,
+            title: s.title,
+            state: s.state,
+            startedAt: s.started_at,
+            endedAt: s.ended_at,
+            model: s.model,
+            lastEventAt: s.last_event_at,
+          },
+        }];
+      }));
+      return;
+    }
+  }
+
   if (url === "/api/artifacts") {
     if (rejectIfNonLocalOrigin()) return;
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
