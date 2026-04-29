@@ -159,6 +159,26 @@
 .inspector-footer .btn {
   padding: 8px 14px;
   font-size: 12px;
+  font-family: inherit;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.inspector-footer .btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.inspector-footer .btn.primary {
+  background: rgba(124, 107, 255, 0.16);
+  border-color: rgba(124, 107, 255, 0.32);
+  color: var(--accent-bright);
+}
+.inspector-footer .btn.primary:hover {
+  background: rgba(124, 107, 255, 0.24);
+  border-color: rgba(124, 107, 255, 0.5);
 }
 
 .inspector-error {

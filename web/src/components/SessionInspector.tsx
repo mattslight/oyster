@@ -166,12 +166,61 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
       <Header session={session} onClose={onClose} />
       <Banner session={session} />
       <Tabs tab={tab} setTab={setTab} eventsCount={events?.length ?? 0} artefactsCount={artefacts?.length ?? 0} />
-      <div className="inspector-body">
-        {tab === "transcript" && <Transcript events={events} />}
-        {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
-      </div>
+      <TranscriptBody
+        tab={tab}
+        events={events}
+        artefacts={artefacts}
+        onSwitchTo={onSwitchTo}
+      />
       <Footer session={session} />
     </>
+  );
+}
+
+/**
+ * Scroll-to-bottom container for the transcript.
+ *
+ * Default behaviour: scroll to the latest turn on initial load and on
+ * subsequent live updates — but only if the user was already within
+ * 80px of the bottom (i.e. "following along"). If they've scrolled up
+ * to read history, leave them there.
+ */
+function TranscriptBody({
+  tab, events, artefacts, onSwitchTo,
+}: {
+  tab: Tab;
+  events: SessionEvent[] | null;
+  artefacts: SessionArtifactJoined[] | null;
+  onSwitchTo: (next: ActivePanel) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const eventsLen = events?.length ?? 0;
+  const wasNearBottomRef = useRef(true);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onScroll = () => {
+      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      wasNearBottomRef.current = fromBottom < 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || tab !== "transcript") return;
+    if (wasNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [eventsLen, tab]);
+
+  return (
+    <div className="inspector-body" ref={ref}>
+      {tab === "transcript" && <Transcript events={events} />}
+      {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
+    </div>
   );
 }
 
