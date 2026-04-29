@@ -408,12 +408,12 @@
   height: 10px;
   border-radius: 50%;
 }
-.home-status.running::before {
+.home-status.active::before {
   background: var(--home-green);
   box-shadow: 0 0 10px var(--home-green);
   animation: home-breathe 2.4s ease-in-out infinite;
 }
-.home-status.awaiting::before {
+.home-status.waiting::before {
   background: var(--home-amber);
   box-shadow: 0 0 10px var(--home-amber);
 }
@@ -499,8 +499,8 @@
   height: 8px;
   border-radius: 50%;
 }
-.home-row-status.running { background: var(--home-green); box-shadow: 0 0 6px var(--home-green); animation: home-breathe 2.4s ease-in-out infinite; }
-.home-row-status.awaiting { background: var(--home-amber); box-shadow: 0 0 6px var(--home-amber); }
+.home-row-status.active { background: var(--home-green); box-shadow: 0 0 6px var(--home-green); animation: home-breathe 2.4s ease-in-out infinite; }
+.home-row-status.waiting { background: var(--home-amber); box-shadow: 0 0 6px var(--home-amber); }
 .home-row-status.disconnected { background: var(--home-red); box-shadow: 0 0 6px var(--home-red); }
 .home-row-status.done { background: rgba(255, 255, 255, 0.18); }
 

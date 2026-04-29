@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Session states are now process-aware.** Oyster looks at the running `claude` processes on your machine to tell whether a session is still alive — not just whether the JSONL file has been quiet. New states: **active** (green, "updated recently"), **waiting** (amber, "process still open"), **disconnected** (red, "no running process found"), and **done** (grey, "inactive for 24h"). Long thinking turns no longer flicker into red, and a finished session correctly drops to disconnected within seconds of you closing the terminal.
+
 ## [0.5.0-beta.0] - 2026-04-28
 
 ### Added

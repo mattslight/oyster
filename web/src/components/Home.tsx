@@ -17,13 +17,13 @@ interface Props {
 type ViewMode = "icons" | "table";
 type StateFilter = SessionState | "all";
 
-const FILTER_ORDER: StateFilter[] = ["running", "awaiting", "disconnected", "done", "all"];
+const FILTER_ORDER: StateFilter[] = ["active", "waiting", "disconnected", "done", "all"];
 
-const EMPTY_COUNTS = { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
+const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
 const FILTER_LABELS: Record<StateFilter, string> = {
-  running: "running",
-  awaiting: "awaiting you",
+  active: "active",
+  waiting: "waiting",
   disconnected: "disconnected",
   done: "done",
   all: "all",
@@ -65,7 +65,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   );
 
   const stateCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { running: 0, awaiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
+    const counts: Record<StateFilter, number> = { active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
     return counts;
   }, [scopedSessions]);
@@ -87,10 +87,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // re-render. The Home component re-renders on every session_changed SSE,
   // so the inner loop matters once you have many spaces and sessions.
   const sessionCountsBySpace = useMemo(() => {
-    const acc: Record<string, { total: number; running: number; awaiting: number; disconnected: number; done: number }> = {};
+    const acc: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
     for (const s of sessions) {
       if (!s.spaceId) continue;
-      const c = acc[s.spaceId] ?? { total: 0, running: 0, awaiting: 0, disconnected: 0, done: 0 };
+      const c = acc[s.spaceId] ?? { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
       c.total++;
       c[s.state]++;
       acc[s.spaceId] = c;
@@ -130,8 +130,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   >
                     <div className="home-space-card-name">{space.displayName}</div>
                     <div className="home-space-card-counts">
-                      {counts.running > 0 && <span className="signal"><span className="pip pip-green" />{counts.running} running</span>}
-                      {counts.awaiting > 0 && <span className="signal"><span className="pip pip-amber" />{counts.awaiting} awaiting</span>}
+                      {counts.active > 0 && <span className="signal"><span className="pip pip-green" />{counts.active} active</span>}
+                      {counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{counts.waiting} waiting</span>}
                       {counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{counts.disconnected} disconnected</span>}
                       {counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{counts.done} done</span>}
                       {counts.total === 0 && <span className="signal signal-muted">no sessions yet</span>}
@@ -274,8 +274,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
 
 function stateColor(state: SessionState): "green" | "amber" | "red" | "dim" {
   switch (state) {
-    case "running": return "green";
-    case "awaiting": return "amber";
+    case "active": return "green";
+    case "waiting": return "amber";
     case "disconnected": return "red";
     case "done": return "dim";
   }
@@ -287,7 +287,7 @@ function spaceLabelFor(spaceId: string | null, spaces: Space[]): string | null {
 }
 
 function metaForSession(session: Session): string {
-  if (session.state === "awaiting") return `${session.agent} · awaiting`;
+  if (session.state === "waiting") return `${session.agent} · waiting`;
   if (session.state === "disconnected") return `${session.agent} · disconnected`;
   return `${session.agent} · ${formatRelative(session.lastEventAt) ?? "—"}`;
 }
@@ -323,7 +323,7 @@ interface SessionRowProps {
 
 function SessionRow({ session, spaces }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
-  const time = session.state === "awaiting" ? "awaiting"
+  const time = session.state === "waiting" ? "waiting"
     : session.state === "disconnected" ? "disconnected"
     : formatRelative(session.lastEventAt) ?? "—";
   const title = session.title ?? "(no title yet)";

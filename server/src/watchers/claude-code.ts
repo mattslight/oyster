@@ -11,6 +11,7 @@ import type {
   SessionState,
   SessionStore,
 } from "../session-store.js";
+import { activeClaudeCwds } from "./claude-process-probe.js";
 
 // claude-code session log watcher (Sprint 2 of the 0.5.0 sessions arc).
 // See docs/plans/sessions-arc.md.
@@ -24,22 +25,27 @@ import type {
 
 const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 
-// State transition thresholds. claude-code emits no explicit end marker, so
-// "done" is heuristic — anything that's been quiet for a full day is treated
-// as concluded. Hooks or MCP-push registration would give a real signal;
-// follow-up tickets.
+// State derivation, two observable signals:
+//   1. Process probe: is there a `claude` process whose cwd matches this
+//      session's recorded cwd? (See claude-process-probe.ts.)
+//   2. JSONL recency: how recently was the file appended to?
 //
-// running       --(quiet > 5 min)-->       disconnected
-// disconnected  --(quiet > 24h)-->         done
-// done          --(any new event)-->       running   (consumeAppended path)
+//   process alive + JSONL fresh   → active        ("Updated recently")
+//   process alive + JSONL idle    → waiting       ("Process still open")
+//   process gone  + JSONL recent  → disconnected  ("No running process found")
+//   process gone  + JSONL >24h    → done          ("Inactive for 24h")
 //
-// 5 minutes is generous enough to ride out long Anthropic-side stalls during
-// extended-thinking turns (which routinely run 3-4 min on Opus). Tighter
-// thresholds caused false-positive disconnections in real use.
-const DISCONNECT_THRESHOLD_MS = 5 * 60 * 1000;
+// "active" is bounded by JSONL recency so a session that's been streaming
+// in the last few seconds shows as bright-green; once the model finishes
+// generating and claude is just sitting at the prompt, it drops to waiting.
+// Both states still mean "live process you can return to".
+const ACTIVE_WINDOW_MS = 30_000;
 const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
-// How often the heartbeat sweep runs. Cheap query; this can be aggressive.
+// How often the heartbeat sweep runs. Each tick probes processes (~40ms on
+// macOS for a few claude PIDs) and recomputes state for every claude-code
+// session. 15s is the longest a freshly-closed claude can linger as
+// "active"/"waiting" before flipping to "disconnected". Tighten if needed.
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
 // Truncation budgets for transcript text. We store the raw JSONL in `raw`
@@ -144,7 +150,9 @@ export class ClaudeCodeWatcher {
       watcher.once("ready", () => resolve());
     });
 
-    this.heartbeat = setInterval(() => this.heartbeatSweep(), HEARTBEAT_INTERVAL_MS);
+    this.heartbeat = setInterval(() => {
+      this.heartbeatSweep().catch(this.logError);
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   async stop(): Promise<void> {
@@ -163,12 +171,11 @@ export class ClaudeCodeWatcher {
   // ── Boot reconciliation ─────────────────────────────────────────────────
   // Walk every .jsonl already on disk, upsert a session row for it, and seed
   // the offset tracker with the current file size so we don't replay history
-  // into session_events on every restart. State is set conservatively:
-  // - file modified within DISCONNECT_THRESHOLD_MS → 'running' (will get
-  //   bumped to 'disconnected' by the heartbeat if no events arrive)
-  // - older → 'disconnected'
-  // We never set 'done' on boot because claude-code emits no end marker.
+  // into session_events on every restart. State derives from probe+recency
+  // (see deriveState), so a session whose claude process is still running
+  // comes back as 'active'/'waiting' even after a server restart.
   private async bootScan(): Promise<void> {
+    const activeCwds = await activeClaudeCwds();
     let projectDirs: string[];
     try {
       projectDirs = await fs.readdir(this.root);
@@ -196,12 +203,12 @@ export class ClaudeCodeWatcher {
       for (const entry of entries) {
         if (!entry.endsWith(".jsonl")) continue;
         const filePath = join(dirPath, entry);
-        await this.reconcileExistingFile(filePath).catch(this.logError);
+        await this.reconcileExistingFile(filePath, activeCwds).catch(this.logError);
       }
     }
   }
 
-  private async reconcileExistingFile(filePath: string): Promise<void> {
+  private async reconcileExistingFile(filePath: string, activeCwds: Set<string>): Promise<void> {
     let stat;
     try {
       stat = await fs.stat(filePath);
@@ -213,9 +220,8 @@ export class ClaudeCodeWatcher {
     if (!meta) return;
 
     const ageMs = this.now().getTime() - stat.mtime.getTime();
-    const state: SessionState = ageMs > DONE_THRESHOLD_MS ? "done"
-      : ageMs > DISCONNECT_THRESHOLD_MS ? "disconnected"
-      : "running";
+    const processAlive = meta.cwd ? activeCwds.has(meta.cwd) : false;
+    const state = deriveState(ageMs, processAlive);
 
     // Always pass ISO-8601 timestamps. If the JSONL didn't have a usable
     // event timestamp in the first 32KB, fall back to the file's birth time
@@ -512,7 +518,7 @@ export class ClaudeCodeWatcher {
           space_id: this.resolveSpaceId(tracker.cwd),
           agent: "claude-code",
           title: effectiveTitle(tracker),
-          state: "running",
+          state: "active",
           // Always pass ISO. Falling through to SQL's datetime('now')
           // produces the naive `YYYY-MM-DD HH:MM:SS` form which Date.parse()
           // is allowed to reject in some browsers — kept the wire contract
@@ -566,46 +572,50 @@ export class ClaudeCodeWatcher {
     }
 
     if (tracker.sessionId) {
-      // Bump the session's last_event_at + state to running. If the session
-      // was previously 'disconnected' (heartbeat fired during a quiet turn),
-      // this brings it back to 'running'. If a title we couldn't derive on
-      // the first pass (e.g. opening event was a caveat) is now available,
-      // patch it through here in the same write.
+      // Bytes just landed → JSONL is fresh by definition, so this session is
+      // 'active'. Even if the heartbeat had previously demoted it to
+      // 'waiting'/'disconnected', a new event resurrects it. If a title we
+      // couldn't derive on the first pass (e.g. opening event was a caveat)
+      // is now available, patch it through here in the same write.
       const ts = latestTimestamp ?? this.now().toISOString();
       if (titleChanged) {
         this.deps.sessionStore.updateSession(tracker.sessionId, {
-          state: "running",
+          state: "active",
           last_event_at: ts,
           title: effectiveTitle(tracker),
         });
       } else {
-        this.deps.sessionStore.updateSessionState(tracker.sessionId, "running", ts);
+        this.deps.sessionStore.updateSessionState(tracker.sessionId, "active", ts);
       }
       this.deps.emitSessionChanged?.(tracker.sessionId);
     }
   }
 
   // ── Heartbeat ───────────────────────────────────────────────────────────
-  // running → disconnected after DISCONNECT_THRESHOLD_MS of quiet.
-  // disconnected → done after DONE_THRESHOLD_MS — i.e. a session that's been
-  // idle for a full day is treated as concluded. Any new file event in
-  // consumeAppended below resurrects it back to 'running'.
-  private heartbeatSweep(): void {
+  // Probe every running `claude` process for its cwd. Cross-reference each
+  // claude-code session's recorded cwd against that set. Recompute state
+  // and update any rows whose state has shifted.
+  private async heartbeatSweep(): Promise<void> {
+    const activeCwds = await activeClaudeCwds();
     const now = this.now().getTime();
+
+    // sessionId → cwd, from in-memory trackers seeded by bootScan + watch.
+    const sessionCwds = new Map<string, string>();
+    for (const t of this.trackers.values()) {
+      if (t.sessionId && t.cwd) sessionCwds.set(t.sessionId, t.cwd);
+    }
+
     for (const session of this.deps.sessionStore.getAll()) {
       if (session.agent !== "claude-code") continue;
-      if (session.state === "done") continue;
       const last = Date.parse(session.last_event_at);
       if (!Number.isFinite(last)) continue;
       const ageMs = now - last;
 
-      let next: SessionState | null = null;
-      if (ageMs > DONE_THRESHOLD_MS) next = "done";
-      else if (session.state === "running" && ageMs > DISCONNECT_THRESHOLD_MS) {
-        next = "disconnected";
-      }
+      const cwd = sessionCwds.get(session.id);
+      const processAlive = cwd ? activeCwds.has(cwd) : false;
+      const next = deriveState(ageMs, processAlive);
 
-      if (next && next !== session.state) {
+      if (next !== session.state) {
         this.deps.sessionStore.updateSessionState(session.id, next, session.last_event_at);
         this.deps.emitSessionChanged?.(session.id);
       }
@@ -629,6 +639,11 @@ export class ClaudeCodeWatcher {
 }
 
 // ── Pure helpers (exported for tests) ─────────────────────────────────────
+
+export function deriveState(ageMs: number, processAlive: boolean): SessionState {
+  if (processAlive) return ageMs < ACTIVE_WINDOW_MS ? "active" : "waiting";
+  return ageMs > DONE_THRESHOLD_MS ? "done" : "disconnected";
+}
 
 // Pull a usable title out of a `type:"user"` event's content, or return null.
 // claude-code wraps slash-command machinery (/compact, /clear, etc.) in

@@ -117,7 +117,7 @@ async function run() {
   assert.equal(session.space_id, "test-space", "cwd should resolve to test-space");
   assert.equal(session.agent, "claude-code");
   assert.equal(session.title, "fix the README typo");
-  assert.equal(session.state, "running");
+  assert.equal(session.state, "active");
   console.log("[smoke] phase 1 ok — session row created with title + space");
 
   // ── Phase 2: assistant turn with text + tool_use(Read) on tracked file ──

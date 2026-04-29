@@ -145,7 +145,7 @@ export function initDb(userlandDir: string): Database.Database {
       space_id      TEXT REFERENCES spaces(id) ON DELETE SET NULL,
       agent         TEXT NOT NULL CHECK (agent IN ('claude-code','opencode','codex')),
       title         TEXT,
-      state         TEXT NOT NULL CHECK (state IN ('running','awaiting','disconnected','done')),
+      state         TEXT NOT NULL CHECK (state IN ('active','waiting','disconnected','done')),
       started_at    TEXT NOT NULL DEFAULT (datetime('now')),
       ended_at      TEXT,
       model         TEXT,
@@ -178,6 +178,43 @@ export function initDb(userlandDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS session_artifacts_artifact
       ON session_artifacts(artifact_id);
   `);
+
+  // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
+  // SQLite can't ALTER a CHECK constraint. Detect the old constraint by
+  // looking at the table's defining SQL; if it still names 'running', do the
+  // 12-step rename-rebuild. Idempotent — subsequent boots find the new SQL
+  // and skip.
+  const sessionsSql = (db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'",
+  ).get() as { sql: string } | undefined)?.sql ?? "";
+  if (sessionsSql.includes("'running'")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN TRANSACTION;
+      ALTER TABLE sessions RENAME TO sessions_old;
+      CREATE TABLE sessions (
+        id            TEXT PRIMARY KEY,
+        space_id      TEXT REFERENCES spaces(id) ON DELETE SET NULL,
+        agent         TEXT NOT NULL CHECK (agent IN ('claude-code','opencode','codex')),
+        title         TEXT,
+        state         TEXT NOT NULL CHECK (state IN ('active','waiting','disconnected','done')),
+        started_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        ended_at      TEXT,
+        model         TEXT,
+        last_event_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO sessions (id, space_id, agent, title, state, started_at, ended_at, model, last_event_at)
+        SELECT id, space_id, agent, title,
+          CASE state WHEN 'running' THEN 'active' WHEN 'awaiting' THEN 'waiting' ELSE state END,
+          started_at, ended_at, model, last_event_at
+        FROM sessions_old;
+      DROP TABLE sessions_old;
+      CREATE INDEX IF NOT EXISTS sessions_space_id ON sessions(space_id);
+      CREATE INDEX IF NOT EXISTS sessions_state_last_event ON sessions(state, last_event_at);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
 
   // One-time seed: populate spaces from artifact space_ids only if the table is empty.
   // Using INSERT OR IGNORE on an existing table would resurrect deleted spaces on restart.
