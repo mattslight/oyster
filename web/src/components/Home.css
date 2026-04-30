@@ -1607,6 +1607,11 @@
   background: var(--home-border);
 }
 .home-vault-contents-total {
+  display: block;
+  text-align: right;
+  padding: 0 4px 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
   color: var(--home-text-muted);
 }
 .home-vault-contents-list {

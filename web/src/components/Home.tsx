@@ -1842,8 +1842,8 @@ function VaultContents() {
         <span className="home-vault-contents-label">In your vault</span>
         <span className="home-vault-contents-path">{inv.root}</span>
         <span className="home-vault-section-rule" />
-        <span className="home-vault-contents-total">{formatBytes(inv.totalSize)}</span>
       </div>
+      <div className="home-vault-contents-total">{formatBytes(inv.totalSize)}</div>
       <ul className="home-vault-contents-list">
         {inv.entries.map((e) => (
           <li key={e.name} className={`home-vault-row${!e.exists ? " home-vault-row--missing" : ""}`}>
