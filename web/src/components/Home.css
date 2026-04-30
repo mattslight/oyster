@@ -1258,7 +1258,7 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--home-accent-bright);
+  color: rgba(232, 233, 240, 0.55);
   margin-bottom: 4px;
 }
 .home-active-project-name {
