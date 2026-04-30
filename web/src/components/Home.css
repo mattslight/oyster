@@ -1197,53 +1197,24 @@
   z-index: 1;
 }
 
-/* Numbered status badges on breadcrumb pills — tinted background with
-   same-hue text reads as a chip/tag, not a status alert. */
+/* Status counts on breadcrumb pills — glow dots stacked horizontally
+   (1–3, capped). Colour carries state, count is encoded by the stack
+   length, matching the Active-projects tile treatment. */
 .home-breadcrumb-badges {
   display: inline-flex;
-  gap: 2px;
+  gap: 8px;
   align-items: center;
-  margin-right: 2px;
+  margin-right: 4px;
 }
-.home-breadcrumb-badge {
+/* Shared stack — slight horizontal overlap so multiple dots read as
+   one cluster rather than three loose pips. Used on breadcrumb pills
+   and Active-projects tile signals. */
+.dot-stack {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 13px;
-  height: 13px;
-  padding: 0 3px;
-  border-radius: 7px;
-  font-family: var(--font-mono);
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
 }
-.home-breadcrumb-badge.green {
-  background: rgba(74, 222, 128, 0.16);
-  color: var(--home-green);
-}
-.home-breadcrumb-badge.amber {
-  background: rgba(251, 191, 36, 0.16);
-  color: var(--home-amber);
-}
-.home-breadcrumb-badge.red {
-  background: rgba(248, 113, 113, 0.16);
-  color: var(--home-red);
-}
-/* Selected pill has a saturated purple background; the tinted badges
-   wash out against it. Switch to fully opaque colour + dark numerals
-   so the dots punch through and stay readable. */
-.home-breadcrumb-pill.selected .home-breadcrumb-badge.green {
-  background: var(--home-green);
-  color: rgba(0, 0, 0, 0.82);
-}
-.home-breadcrumb-pill.selected .home-breadcrumb-badge.amber {
-  background: var(--home-amber);
-  color: rgba(0, 0, 0, 0.82);
-}
-.home-breadcrumb-pill.selected .home-breadcrumb-badge.red {
-  background: var(--home-red);
-  color: rgba(0, 0, 0, 0.82);
+.dot-stack .pip + .pip {
+  margin-left: -2px;
 }
 
 

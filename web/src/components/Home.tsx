@@ -114,6 +114,20 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
   codex: "codex",
 };
 
+// State-count visualised as 1–3 horizontally overlapping glow dots.
+// Caps at 3 — any larger count still reads as "several". The colour
+// itself carries the state, so no numeral is needed.
+function renderDots(n: number, color: "green" | "amber" | "red") {
+  const visible = Math.min(n, 3);
+  return (
+    <span className="dot-stack" aria-label={`${n}`}>
+      {Array.from({ length: visible }, (_, i) => (
+        <span key={i} className={`pip pip-${color}`} />
+      ))}
+    </span>
+  );
+}
+
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
   const {
@@ -438,9 +452,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   )}
                   {(counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
                     <span className="home-breadcrumb-badges">
-                      {counts.active > 0 && <span className="home-breadcrumb-badge green">{counts.active}</span>}
-                      {counts.waiting > 0 && <span className="home-breadcrumb-badge amber">{counts.waiting}</span>}
-                      {counts.disconnected > 0 && <span className="home-breadcrumb-badge red">{counts.disconnected}</span>}
+                      {counts.active > 0 && renderDots(counts.active, "green")}
+                      {counts.waiting > 0 && renderDots(counts.waiting, "amber")}
+                      {counts.disconnected > 0 && renderDots(counts.disconnected, "red")}
                     </span>
                   )}
                   <span className="home-breadcrumb-pill-label">{space.displayName}</span>
@@ -468,9 +482,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 )}
                 {(orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
                   <span className="home-breadcrumb-badges">
-                    {orphanCounts.active > 0 && <span className="home-breadcrumb-badge green">{orphanCounts.active}</span>}
-                    {orphanCounts.waiting > 0 && <span className="home-breadcrumb-badge amber">{orphanCounts.waiting}</span>}
-                    {orphanCounts.disconnected > 0 && <span className="home-breadcrumb-badge red">{orphanCounts.disconnected}</span>}
+                    {orphanCounts.active > 0 && renderDots(orphanCounts.active, "green")}
+                    {orphanCounts.waiting > 0 && renderDots(orphanCounts.waiting, "amber")}
+                    {orphanCounts.disconnected > 0 && renderDots(orphanCounts.disconnected, "red")}
                   </span>
                 )}
                 <span className="home-breadcrumb-pill-label">Elsewhere</span>
@@ -511,9 +525,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                     <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
                     <div className="home-active-project-name">{p.label}</div>
                     <div className="home-active-project-counts">
-                      {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
-                      {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
-                      {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
+                      {p.counts.active > 0 && <span className="signal">{renderDots(p.counts.active, "green")} active</span>}
+                      {p.counts.waiting > 0 && <span className="signal">{renderDots(p.counts.waiting, "amber")} waiting</span>}
+                      {p.counts.disconnected > 0 && <span className="signal">{renderDots(p.counts.disconnected, "red")} disconnected</span>}
                     </div>
                   </button>
                 );
