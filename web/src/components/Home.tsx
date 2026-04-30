@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
-import { ArrowUpRight, Brain, Folder, FolderPlus, Lock, RefreshCw, Shield, TabletSmartphone } from "lucide-react";
+import { ArrowUpRight, Brain, Folder, FolderPlus, Globe, Lock, RefreshCw, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -1739,20 +1739,20 @@ function VaultInfo() {
           </p>
           <div className="home-vault-hero-chips">
             <span className="home-vault-chip">
-              <TabletSmartphone size={12} strokeWidth={2} aria-hidden="true" />
-              Any device
+              <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />
+              Sync
             </span>
             <span className="home-vault-chip">
               <Brain size={12} strokeWidth={2} aria-hidden="true" />
-              Universal memory
+              Memory
+            </span>
+            <span className="home-vault-chip">
+              <Globe size={12} strokeWidth={2} aria-hidden="true" />
+              Publish
             </span>
             <span className="home-vault-chip">
               <Lock size={12} strokeWidth={2} aria-hidden="true" />
               End-to-end Encrypted
-            </span>
-            <span className="home-vault-chip">
-              <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />
-              Auto Sync
             </span>
           </div>
           <div className="home-vault-hero-cta">
