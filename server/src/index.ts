@@ -691,6 +691,17 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       sendJson({ error: "Forbidden origin" }, 403);
       return true;
     }
+    if (!origin) {
+      const remote = req.socket.remoteAddress || "";
+      const isLoopback =
+        remote === "127.0.0.1" ||
+        remote === "::1" ||
+        remote === "::ffff:127.0.0.1";
+      if (!isLoopback) {
+        sendJson({ error: "Forbidden — non-local origin" }, 403);
+        return true;
+      }
+    }
     if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
     return false;
   };
@@ -1999,7 +2010,7 @@ writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
 
-httpServer.listen(port, () => {
+httpServer.listen(port, "127.0.0.1", () => {
   console.log(`Oyster server listening on http://localhost:${port}`);
   console.log(`  WebSocket: ws://localhost:${port}`);
   console.log(`  API:       http://localhost:${port}/api/artifacts`);

@@ -335,6 +335,10 @@
 <li><strong>Memories on Home.</strong> Your agents&#39; <code>remember</code> notes now show up as a section on Home alongside Sessions and Artefacts. The space pills scope all three together — pick <em>tokinvest</em> and you see what each agent learned about that project, not the global pile. Orphan memories (no space attached) live under <em>Elsewhere</em>. (<a href="https://github.com/mattslight/oyster/issues/254" rel="noopener noreferrer">#254</a>)</li>
 <li><strong>Scroll up to load older transcript turns.</strong> The session inspector loads the latest 1000 turns by default and shows a <code>1000+</code> badge when there&#39;s more behind them. Scroll near the top of the transcript and the next 1000 older turns prepend in place — your scroll position stays pinned to the same turn so you don&#39;t lose your place. Live updates still append to the bottom as the agent works. (<a href="https://github.com/mattslight/oyster/issues/274" rel="noopener noreferrer">#274</a>)</li>
 </ul>
+<h3>Security</h3>
+<ul>
+<li><strong>Local-only endpoints now refuse non-loopback callers.</strong> The Oyster server used to listen on every network interface and rely on the HTTP <code>Origin</code> header alone to gate access — fine against a browser tab on <code>evil.com</code>, but a non-browser client on the same WiFi could omit <code>Origin</code> and pull <code>/api/vault/inventory</code>, <code>/api/memories</code>, etc. The server now binds to <code>127.0.0.1</code> <em>and</em> the Origin guard rejects requests with no Origin from non-loopback addresses (belt and braces). (<a href="https://github.com/mattslight/oyster/issues/289" rel="noopener noreferrer">#289</a>)</li>
+</ul>
 <h3>Fixed</h3>
 <ul>
 <li><strong><code>?limit=N</code> on the events endpoint was silently ignored.</strong> The route regex <code>$</code>-anchored before the query string so the parameter never reached the handler — the inspector always got the default 1000. Fixed as part of #274.</li>
