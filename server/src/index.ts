@@ -1169,7 +1169,18 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       Connection: "keep-alive",
     });
     uiClients.add(res);
-    req.on("close", () => uiClients.delete(res));
+    // SSE comment-line heartbeat every 25s. Browsers / proxies / dev
+    // servers can silently close idle connections after ~30-60s of no
+    // bytes; the heartbeat keeps the pipe warm so session_changed events
+    // arrive promptly without the client having to refresh manually.
+    const heartbeat = setInterval(() => {
+      try { res.write(": heartbeat\n\n"); }
+      catch { /* socket gone — close handler will clean up */ }
+    }, 25_000);
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      uiClients.delete(res);
+    });
     return;
   }
 
