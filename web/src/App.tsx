@@ -17,7 +17,7 @@ import {
 } from "./data/artifacts-api";
 import { subscribeUiEvents } from "./data/ui-events";
 import { shouldOpenFullscreen } from "../../shared/types";
-import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace } from "./data/spaces-api";
+import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace, promoteFolderToSpace } from "./data/spaces-api";
 import type { Space } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
@@ -261,6 +261,18 @@ export default function App() {
     }
   }, [activeSpace, handleSpaceChange]);
 
+  const handlePromoteFolderToSpace = useCallback(async (path: string): Promise<Space | null> => {
+    try {
+      const newSpace = await promoteFolderToSpace(path);
+      setSpaces((prev) => prev.some(s => s.id === newSpace.id) ? prev : [...prev, newSpace]);
+      handleSpaceChange(newSpace.id);
+      return newSpace;
+    } catch (err) {
+      console.error("[space] promote folder failed:", err);
+      return null;
+    }
+  }, [handleSpaceChange]);
+
   // Hero mode = chat bar centred + large. Reserved for the truly empty Home
   // (no spaces, no work yet). The moment a user has real spaces, the chat
   // bar drops to its compact bottom position even on the Home pill —
@@ -368,6 +380,9 @@ export default function App() {
         spaces={spaces}
         isHero={isHero}
         onSpaceChange={handleSpaceChange}
+        onPromoteFolderToSpace={handlePromoteFolderToSpace}
+        onSpaceDelete={handleSpaceDelete}
+        onSpaceUpdate={handleSpaceUpdate}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
@@ -520,8 +535,6 @@ export default function App() {
         activeSpace={activeSpace}
         onSpaceChange={handleSpaceChange}
         inputRef={chatInputRef}
-        onSpaceUpdate={handleSpaceUpdate}
-        onSpaceDelete={handleSpaceDelete}
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
         isFirstRun={isFirstRun}

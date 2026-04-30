@@ -315,7 +315,7 @@ function resolveSpaceRow(name: string) {
     spaceStore.getByDisplayName(trimmed)
   );
 }
-const spaceService = new SpaceService(spaceStore, store, artifactService);
+const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
 await memoryProvider.init();
 
@@ -590,6 +590,38 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       }
       return;
     }
+  }
+
+  // POST /api/spaces/from-path — one-shot "promote folder to space": create
+  // a new space named after the folder, attach the path as its sole source,
+  // and re-attribute orphan sessions whose cwd matches. Local-origin gated +
+  // size-capped — it accepts a filesystem path so it inherits the same
+  // hardening as /api/spaces/:id/sources POST.
+  if (url === "/api/spaces/from-path" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    try {
+      const body = await readJsonBody();
+      const path = typeof body.path === "string" ? body.path.trim() : "";
+      const name = typeof body.name === "string" ? body.name.trim() : undefined;
+      if (!path) {
+        sendJson({ error: "path is required" }, 400);
+        return;
+      }
+      const { space } = spaceService.createSpaceFromPath({ path, name });
+      // Tell connected clients to refetch sessions — the backfill just
+      // moved orphan rows from `(NULL, NULL)` to `(space, source)` and the
+      // hook only otherwise refreshes when the watcher fires.
+      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+      // Trigger an initial scan in the background so artefacts surface via
+      // SSE — same UX as /api/spaces/:id/sources POST.
+      spaceService.scanSpace(space.id).catch((err) => {
+        console.warn("[from-path] scan failed:", err instanceof Error ? err.message : err);
+      });
+      sendJson(space, 201);
+    } catch (err) {
+      sendError(err);
+    }
+    return;
   }
 
   // GET /api/memories — list memories, optionally scoped to a space.
@@ -1137,7 +1169,18 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       Connection: "keep-alive",
     });
     uiClients.add(res);
-    req.on("close", () => uiClients.delete(res));
+    // SSE comment-line heartbeat every 25s. Browsers / proxies / dev
+    // servers can silently close idle connections after ~30-60s of no
+    // bytes; the heartbeat keeps the pipe warm so session_changed events
+    // arrive promptly without the client having to refresh manually.
+    const heartbeat = setInterval(() => {
+      try { res.write(": heartbeat\n\n"); }
+      catch { /* socket gone — close handler will clean up */ }
+    }, 25_000);
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      uiClients.delete(res);
+    });
     return;
   }
 
@@ -1317,7 +1360,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // ── Spaces API ──
 
-  if (await handleSpacesRequest(url, req, res, spaceService)) return;
+  if (await handleSpacesRequest(url, req, res, spaceService, () => {
+    broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+  })) return;
 
   // ── Import routes ──
 

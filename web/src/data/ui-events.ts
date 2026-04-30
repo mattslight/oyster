@@ -28,12 +28,41 @@ function handleMessage(e: MessageEvent) {
   }
 }
 
+function ensureConnection() {
+  if (es && es.readyState !== EventSource.CLOSED) return;
+  if (es) es.close();
+  es = new EventSource("/api/ui/events");
+  es.onmessage = handleMessage;
+  // EventSource auto-reconnects on transport errors, but a half-open
+  // connection (server crash, proxy timeout) can leave readyState stuck.
+  // Force a fresh connect on error so listeners aren't silently stranded.
+  es.onerror = () => {
+    if (es && es.readyState === EventSource.CLOSED) {
+      es = null;
+      if (listeners.size > 0) ensureConnection();
+    }
+  };
+}
+
+// When the tab returns to the foreground, replay a synthetic event so
+// any listener that refetches on, say, `session_changed` gets fresh data
+// — covers the case where the OS or proxy dropped our connection while
+// the tab was backgrounded and we missed real events. Cheap: each
+// refetch is a small JSON GET.
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    ensureConnection();
+    for (const l of listeners) {
+      try { l({ command: "session_changed", payload: { id: "" } }); }
+      catch { /* isolate */ }
+    }
+  });
+}
+
 export function subscribeUiEvents(listener: Listener): () => void {
   listeners.add(listener);
-  if (!es) {
-    es = new EventSource("/api/ui/events");
-    es.onmessage = handleMessage;
-  }
+  ensureConnection();
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0 && es) {

@@ -88,6 +88,9 @@ export interface SessionStore {
   upsertSession(row: InsertSession): void;
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void;
   updateSession(id: string, fields: Partial<Omit<SessionRow, "id" | "started_at">>): void;
+  /** Re-attribute orphan sessions (source_id NULL) whose cwd matches a newly-attached folder.
+   *  Without this, "done" sessions stay stuck in Elsewhere when the user promotes / attaches. */
+  backfillSourceForCwd(cwd: string, spaceId: string, sourceId: string): number;
   // session_events — bulk-friendly
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
@@ -273,6 +276,17 @@ export class SqliteSessionStore implements SessionStore {
     }
     if (sets.length === 0) return;
     this.db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = @id`).run(values);
+  }
+
+  backfillSourceForCwd(cwd: string, spaceId: string, sourceId: string): number {
+    // Only re-attribute genuinely-orphan rows. Both space_id and source_id
+    // must be NULL — a session manually attached to a "logical-only" space
+    // (no source) should not get yanked into the freshly-promoted folder
+    // just because its cwd happens to match.
+    const info = this.db
+      .prepare("UPDATE sessions SET space_id = ?, source_id = ? WHERE cwd = ? AND source_id IS NULL AND space_id IS NULL")
+      .run(spaceId, sourceId, cwd);
+    return Number(info.changes);
   }
 
   insertEvent(row: InsertSessionEvent): number {

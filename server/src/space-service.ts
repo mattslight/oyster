@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import type { SpaceStore, SpaceRow, Source } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
+import type { SessionStore } from "./session-store.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
 
@@ -66,6 +67,7 @@ export class SpaceService {
     private spaceStore: SpaceStore,
     private artifactStore: ArtifactStore,
     private artifactService: ArtifactService,
+    private sessionStore: SessionStore,
   ) {}
 
   createSpace(params: { name: string }): Space {
@@ -215,6 +217,52 @@ export class SpaceService {
     }
     this.spaceStore.update(id, dbFields);
     return rowToSpace(this.spaceStore.getById(id)!);
+  }
+
+  // One-shot "promote folder to space": create a fresh space named after the
+  // folder (or `name`), attach `path` as its sole source, and re-attribute any
+  // orphan sessions whose cwd matches. If the attach step fails (path missing,
+  // already attached elsewhere, etc.), we delete the just-created empty space
+  // so the caller doesn't see ghost spaces from failed promotions.
+  createSpaceFromPath(params: { path: string; name?: string }): { space: Space; source: Source; backfilled: number } {
+    const rawPath = params.path?.trim();
+    if (!rawPath) throw new Error("path is required");
+
+    const resolved = expandHome(rawPath);
+    if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
+    if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
+
+    const active = this.spaceStore.getActiveSourceByPath(resolved);
+    if (active) {
+      const ownerName = this.spaceStore.getById(active.space_id)?.display_name ?? active.space_id;
+      throw new Error(`Path is already attached to space "${ownerName}"`);
+    }
+
+    // Folder basenames usually come in lowercase from the filesystem
+    // (`blunderfixer`). Title-case the first character so the saved
+    // displayName matches the chip / header convention (Tokinvest, Oyster).
+    // An explicit `name` from the caller is honoured verbatim.
+    const rawName = params.name?.trim() || folderSlug(resolved);
+    const displayName = params.name?.trim()
+      ? rawName
+      : rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    const id = slugify(displayName);
+    if (!id) throw new Error("name must contain at least one alphanumeric character");
+    if (this.spaceStore.getById(id)) throw new Error(`Space "${id}" already exists`);
+
+    const space = this.createSpace({ name: displayName });
+    let source: Source;
+    try {
+      source = this.addSource(space.id, resolved);
+    } catch (err) {
+      // Roll back the just-created (empty) space so failed promotions don't
+      // leave orphan spaces behind.
+      try { this.spaceStore.delete(space.id); } catch { /* best-effort cleanup */ }
+      throw err;
+    }
+
+    const backfilled = this.sessionStore.backfillSourceForCwd(resolved, space.id, source.id);
+    return { space, source, backfilled };
   }
 
   convertFolderToSpace(sourceSpaceId: string, folderName: string, targetSpaceId: string): void {

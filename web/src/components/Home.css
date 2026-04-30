@@ -1158,7 +1158,9 @@
   padding: 5px 12px;
   border-radius: 9999px;
   border: none;
-  background: transparent;
+  /* Ghost-pill resting state — the shape is always discoverable, the
+     three-state ladder (rest / hover / selected) reads cleanly. */
+  background: rgba(255, 255, 255, 0.025);
   color: var(--text-dim);
   font-family: var(--font-body);
   font-size: 0.78rem;
@@ -1169,7 +1171,7 @@
 }
 .home-breadcrumb-pill:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
 }
 .home-breadcrumb-pill.selected:hover {
   background: transparent;

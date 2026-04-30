@@ -12,6 +12,10 @@ export async function handleSpacesRequest(
   req: IncomingMessage,
   res: ServerResponse,
   spaceService: SpaceService,
+  /** Optional — when supplied, lifecycle changes that touch sessions
+   *  (DELETE space cascades sessions.space_id to NULL) trigger a refetch
+   *  on the client by emitting a `session_changed` event. */
+  onSessionsChanged?: () => void,
 ): Promise<boolean> {
 
   // POST /api/spaces/from-folder — convert a folder group (under home) into its own space.
@@ -75,6 +79,11 @@ export async function handleSpacesRequest(
         try {
           const parsed = body ? JSON.parse(body) : {};
           spaceService.deleteSpace(spaceIdMatch[1], parsed.folderName);
+          // Cascade fired sessions.space_id → NULL on every session in the
+          // deleted space. Tell connected clients to refetch the session
+          // list so the UI moves them back to Elsewhere immediately rather
+          // than waiting for the next watcher tick.
+          onSessionsChanged?.();
           res.writeHead(204);
           res.end();
         } catch (err) {

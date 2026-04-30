@@ -2258,8 +2258,10 @@ body {
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
-  transform: translate(-50%, -100%);
-  margin-top: -8px;
+  /* Anchor is the breadcrumb pill at the top of the page — drop the menu
+     below it, centered horizontally on the pill. */
+  transform: translate(-50%, 0);
+  margin-top: 8px;
 }
 .space-ctx-item {
   display: block;
@@ -2282,21 +2284,6 @@ body {
   background: rgba(255, 255, 255, 0.08);
   margin: 3px 8px;
 }
-.space-ctx-colors {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  padding: 8px;
-}
-.space-ctx-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
-}
-.space-ctx-swatch:hover { border-color: rgba(255, 255, 255, 0.5); transform: scale(1.15); }
 .space-ctx-confirm {
   padding: 8px 12px;
   font-family: var(--font-mono);
