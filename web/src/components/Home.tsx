@@ -1243,7 +1243,7 @@ function ProjectTileGrid({
           >
             <div className="home-space-card-name">
               <span>{spaceId}</span>
-              <Shield size={12} strokeWidth={2} aria-hidden="true" className="home-project-glyph" />
+              <Shield size={12} strokeWidth={2} fill="currentColor" aria-hidden="true" className="home-project-glyph" />
               <span className="home-project-tag">vault</span>
             </div>
             <div className="home-space-card-counts">
