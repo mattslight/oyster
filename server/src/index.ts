@@ -14,6 +14,7 @@ import {
   getGeneratedArtifactEntries,
   type ArtifactKind,
 } from "./process-manager.js";
+import Database from "better-sqlite3";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
 import { SqliteSessionStore } from "./session-store.js";
@@ -141,6 +142,230 @@ const USERLAND_DIR = OYSTER_HOME;
 // a one-function change.
 function getNativeSourcePath(spaceId: string): string {
   return join(SPACES_DIR, spaceId);
+}
+
+// Recursive size+count walker for /api/vault/inventory. Skips symlinks so
+// we don't follow a circular link out of the userland tree, and ignores
+// permission errors silently — a single unreadable file shouldn't fail
+// the whole inventory.
+function walkDirSize(dir: string): { count: number; size: number } {
+  let count = 0;
+  let size = 0;
+  let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch { return { count, size }; }
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const sub = walkDirSize(full);
+      count += sub.count;
+      size += sub.size;
+    } else if (entry.isFile()) {
+      try {
+        const st = statSync(full);
+        count += 1;
+        size += st.size;
+      } catch { /* unreadable, skip */ }
+    }
+  }
+  return { count, size };
+}
+
+// Render the absolute OYSTER_HOME with the user's home dir collapsed to
+// `~/` for display — keeps the Vault page header readable on shared
+// screenshots without leaking the macOS username.
+function humanizeHome(p: string): string {
+  const h = homedir();
+  return p.startsWith(h) ? "~" + p.slice(h.length) : p;
+}
+
+// Count immediate subdirectories. Used for Apps (one bundle = one
+// directory) and Backups (one snapshot = one directory or file).
+function countTopEntries(dir: string, opts: { dirsOnly?: boolean } = {}): number {
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    return opts.dirsOnly ? entries.filter((e) => e.isDirectory()).length : entries.length;
+  } catch { return 0; }
+}
+
+// Newest mtime in a directory's immediate children. Returns null if the
+// directory is empty or unreadable. Used to render "newest Xd ago" on
+// the Backups row.
+function newestMtime(dir: string): Date | null {
+  let newest: number | null = null;
+  let entries: Array<{ name: string }>;
+  try { entries = readdirSync(dir, { withFileTypes: true }); }
+  catch { return null; }
+  for (const e of entries) {
+    try {
+      const st = statSync(join(dir, e.name));
+      const t = st.mtimeMs;
+      if (newest === null || t > newest) newest = t;
+    } catch { /* skip */ }
+  }
+  return newest === null ? null : new Date(newest);
+}
+
+interface VaultInventoryEntry {
+  name: string;
+  label: string;
+  description: string;
+  count: number;
+  unit: string;
+  size: number;
+  exists: boolean;
+  meta?: string;
+}
+
+function buildVaultInventory(deps: { db: Database.Database; spaceStore: SqliteSpaceStore }): VaultInventoryEntry[] {
+  const out: VaultInventoryEntry[] = [];
+
+  // Spaces — DB rows are the source of truth (a space can have a repo_path
+  // pointing outside SPACES_DIR). The on-disk SPACES_DIR is just where
+  // native AI-generated artefacts land.
+  const spaceCount = deps.spaceStore.getAll()
+    .filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__")
+    .length;
+  out.push({
+    name: "spaces",
+    label: "Spaces",
+    description: "Your projects and workspaces",
+    count: spaceCount,
+    unit: "space",
+    size: existsSync(SPACES_DIR) ? walkDirSize(SPACES_DIR).size : 0,
+    exists: existsSync(SPACES_DIR),
+  });
+
+  // Apps — count bundles (top-level directories), not the recursive file
+  // count. A bundle is the unit users actually think about.
+  out.push({
+    name: "apps",
+    label: "Apps",
+    description: "Installed plugin bundles",
+    count: countTopEntries(APPS_DIR, { dirsOnly: true }),
+    unit: "bundle",
+    size: existsSync(APPS_DIR) ? walkDirSize(APPS_DIR).size : 0,
+    exists: existsSync(APPS_DIR),
+  });
+
+  // Database — row count, not file count. Sums the user-facing tables
+  // across both oyster.db and memory.db. SQL is wrapped in try/catch so
+  // a missing table (e.g. on a fresh install) doesn't break the endpoint.
+  let dbRows = 0;
+  const tables = ["artifacts", "spaces", "sources", "sessions", "session_events", "session_artifacts"];
+  for (const t of tables) {
+    try {
+      const row = deps.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number } | undefined;
+      if (row) dbRows += row.n;
+    } catch { /* table missing — skip */ }
+  }
+  // Memories live in a separate DB file; open read-only so a busy WAL
+  // can't block us.
+  try {
+    const memDbPath = join(DB_DIR, "memory.db");
+    if (existsSync(memDbPath)) {
+      const memDb = new Database(memDbPath, { readonly: true, fileMustExist: true });
+      try {
+        const row = memDb.prepare("SELECT COUNT(*) AS n FROM memories").get() as { n: number } | undefined;
+        if (row) dbRows += row.n;
+      } finally { memDb.close(); }
+    }
+  } catch { /* memory.db missing or unreadable — skip */ }
+  out.push({
+    name: "db",
+    label: "Database",
+    description: "Artefacts, sessions, memories",
+    count: dbRows,
+    unit: "row",
+    size: existsSync(DB_DIR) ? walkDirSize(DB_DIR).size : 0,
+    exists: existsSync(DB_DIR),
+  });
+
+  // Config — opencode-ai's config lives at OYSTER_HOME root (opencode.json
+  // and the .opencode/ overrides), not under CONFIG_DIR. Count those files
+  // directly so the row reflects what's actually configured.
+  let configCount = 0;
+  let configSize = 0;
+  const opencodeJson = join(OYSTER_HOME, "opencode.json");
+  if (existsSync(opencodeJson)) {
+    try { configCount += 1; configSize += statSync(opencodeJson).size; } catch { /* skip */ }
+  }
+  const dotOpencode = join(OYSTER_HOME, ".opencode");
+  if (existsSync(dotOpencode)) {
+    const w = walkDirSize(dotOpencode);
+    configCount += w.count; configSize += w.size;
+  }
+  if (existsSync(CONFIG_DIR)) {
+    const w = walkDirSize(CONFIG_DIR);
+    configCount += w.count; configSize += w.size;
+  }
+  out.push({
+    name: "config",
+    label: "Config",
+    description: "Agent and workspace settings",
+    count: configCount,
+    unit: "file",
+    size: configSize,
+    exists: configCount > 0,
+  });
+
+  // Backups — auto-backup writes to `~/oyster-backups/{auto,dev,manual}/`
+  // (see backup.ts), NOT to OYSTER_HOME/backups. Walk those subdirs and
+  // aggregate; otherwise the row reads "0 snapshots" even on an install
+  // that's been running for weeks.
+  const backupRoot = join(homedir(), "oyster-backups");
+  let backupCount = 0;
+  let backupSize = 0;
+  let newestBackup: number | null = null;
+  if (existsSync(backupRoot)) {
+    let topEntries: Array<{ name: string; isDirectory(): boolean }> = [];
+    try { topEntries = readdirSync(backupRoot, { withFileTypes: true }); } catch { /* skip */ }
+    for (const entry of topEntries) {
+      const full = join(backupRoot, entry.name);
+      if (entry.isDirectory() && (entry.name === "auto" || entry.name === "dev" || entry.name === "manual")) {
+        // Bucketed snapshots — each child of auto/dev/manual is one snapshot.
+        let children: Array<{ name: string; isDirectory(): boolean }> = [];
+        try { children = readdirSync(full, { withFileTypes: true }); } catch { continue; }
+        for (const child of children) {
+          if (!child.name.startsWith("backup-")) continue;
+          backupCount += 1;
+          const childPath = join(full, child.name);
+          backupSize += walkDirSize(childPath).size;
+          try {
+            const t = statSync(childPath).mtimeMs;
+            if (newestBackup === null || t > newestBackup) newestBackup = t;
+          } catch { /* skip */ }
+        }
+      } else if (entry.isDirectory() && entry.name.startsWith("backup-")) {
+        // Legacy flat snapshots directly under ~/oyster-backups/.
+        backupCount += 1;
+        backupSize += walkDirSize(full).size;
+        try {
+          const t = statSync(full).mtimeMs;
+          if (newestBackup === null || t > newestBackup) newestBackup = t;
+        } catch { /* skip */ }
+      }
+    }
+  }
+  let backupMeta: string | undefined;
+  if (newestBackup !== null) {
+    const days = Math.floor((Date.now() - newestBackup) / 86_400_000);
+    backupMeta = days <= 0 ? "newest today" : `newest ${days}d ago`;
+  }
+  out.push({
+    name: "backups",
+    label: "Backups",
+    description: "Local snapshots of the database",
+    count: backupCount,
+    unit: "snapshot",
+    size: backupSize,
+    exists: backupCount > 0,
+    meta: backupMeta,
+  });
+
+  return out;
 }
 
 // For the watcher and scanExistingArtifacts, which walk a single directory
@@ -620,6 +845,22 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       sendJson(space, 201);
     } catch (err) {
       sendError(err);
+    }
+    return;
+  }
+
+  // GET /api/vault/inventory — what's currently in the user's ~/Oyster
+  // root: file count + on-disk size for each top-level subdir. Powers the
+  // Vault info page so users can see what cloud sync (when it ships) will
+  // be backing up. Local-origin only — surfaces filesystem layout.
+  if (url === "/api/vault/inventory" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return;
+    try {
+      const result = buildVaultInventory({ db, spaceStore });
+      const totalSize = result.reduce((acc, r) => acc + r.size, 0);
+      sendJson({ root: humanizeHome(OYSTER_HOME), totalSize, entries: result });
+    } catch (err) {
+      sendError(err, 500);
     }
     return;
   }

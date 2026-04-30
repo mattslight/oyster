@@ -9,6 +9,11 @@
   --accent: #7c6bff;
   --accent-bright: #a597ff;
   --accent-glow: rgba(124, 107, 255, 0.15);
+  /* Secondary accent — amber gold. Warm dyad with the purple primary;
+     reads as "premium / valuable" without crypto-tooling or candy
+     connotations. Use sparingly — let the primary lead. */
+  --accent-2: #fbbf24;
+  --accent-2-glow: rgba(251, 191, 36, 0.15);
   --border: rgba(255, 255, 255, 0.08);
   --text: #e8e9f0;
   --text-dim: rgba(232, 233, 240, 0.5);
