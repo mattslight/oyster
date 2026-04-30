@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
-import { ArrowUpRight, Brain, Folder, FolderPlus, Globe, Lock, RefreshCw, Shield } from "lucide-react";
+import { ArrowUpRight, Brain, Folder, FolderPlus, Globe, RefreshCw, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -1749,10 +1749,6 @@ function VaultInfo() {
             <span className="home-vault-chip">
               <Globe size={12} strokeWidth={2} aria-hidden="true" />
               Publish
-            </span>
-            <span className="home-vault-chip">
-              <Lock size={12} strokeWidth={2} aria-hidden="true" />
-              End-to-end Encrypted
             </span>
           </div>
           <div className="home-vault-hero-cta">
