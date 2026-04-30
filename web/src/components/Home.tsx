@@ -183,6 +183,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // so each space starts compact and at "all".
   const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
   const [artefactsLimit, setArtefactsLimit] = useState(ARTEFACTS_PREVIEW);
+  // Elsewhere project-tile filter: orphan tiles aren't backed by a
+  // source row, so they're keyed by cwd instead of source_id. Lives
+  // alongside selectedFolderId; resets when scope changes.
+  const [selectedOrphanCwd, setSelectedOrphanCwd] = useState<string | null>(null);
   // Project-tile filter: null = "All" (no folder scope), "__vault__" =
   // native artefacts, otherwise a source_id. The tile grid is the canonical
   // surface for switching between folders; selection is exclusive.
@@ -208,6 +212,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     setArtefactsLimit(ARTEFACTS_PREVIEW);
     setArtefactSource("all");
     setSelectedFolderId(null);
+    setSelectedOrphanCwd(null);
   }, [scopedSpace, showElsewhere, isHomeView]);
 
   const scopedSessions = useMemo(() => {
@@ -227,12 +232,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   }, [scopedSessions]);
 
   // Folder-narrowed sessions: when a project tile is selected, sessions
-  // filter to that source (or sessions without a source for VAULT).
+  // filter to that source (or sessions without a source for VAULT, or
+  // by cwd when an Elsewhere orphan tile is picked).
   const folderScopedSessions = useMemo(() => {
+    if (showElsewhere && isHomeView && selectedOrphanCwd) {
+      return scopedSessions.filter((s) => s.cwd === selectedOrphanCwd);
+    }
     if (selectedFolderId === VAULT) return scopedSessions.filter((s) => !s.sourceId);
     if (selectedFolderId) return scopedSessions.filter((s) => s.sourceId === selectedFolderId);
     return scopedSessions;
-  }, [scopedSessions, selectedFolderId]);
+  }, [scopedSessions, selectedFolderId, selectedOrphanCwd, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
     const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
@@ -616,10 +625,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           <div className="home-section home-active-projects-section">
             <div className="home-active-projects-grid">
               {orphanCwdGroups.map((p) => (
-                <div
+                <button
+                  type="button"
                   key={p.cwd}
-                  className="home-active-project-tile home-active-project-tile--orphan"
+                  className={`home-active-project-tile home-active-project-tile--orphan${selectedOrphanCwd === p.cwd ? " selected" : ""}`}
                   title={p.cwd}
+                  onClick={() => setSelectedOrphanCwd(selectedOrphanCwd === p.cwd ? null : p.cwd)}
                 >
                   <div className="home-active-project-name home-active-project-name--folder">
                     <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -631,7 +642,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                     {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
                     {p.counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{p.counts.done} done</span>}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>

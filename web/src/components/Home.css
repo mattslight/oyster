@@ -1282,15 +1282,17 @@
   gap: 5px;
   color: rgba(232, 233, 240, 0.78);
 }
-/* Orphan-cwd tiles on Elsewhere — informational only; no click target
-   yet (clicking a registered project jumps to the parent space, but
-   orphans have no parent to jump to). */
+/* Orphan-cwd tiles on Elsewhere — clickable: filters the session list
+   below to that cwd, mirroring how project tiles inside a real space
+   filter by source_id. */
 .home-active-project-tile--orphan {
-  cursor: default;
+  font: inherit;
+  color: inherit;
 }
-.home-active-project-tile--orphan:hover {
-  background: var(--home-surface);
-  border-color: var(--home-border);
+.home-active-project-tile--orphan.selected {
+  background: rgba(124, 107, 255, 0.14);
+  border-color: var(--home-border-accent);
+  box-shadow: 0 0 0 1px var(--home-border-accent) inset;
 }
 /* Folder treatment for orphan tile names: muted text + folder glyph
    so the tile reads as "a folder you ran in but isn't attached"
