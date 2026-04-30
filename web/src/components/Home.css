@@ -306,9 +306,10 @@
 .home-space-card-counts {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 3px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.4;
   color: var(--text-dim);
 }
 .home-space-card-counts .signal {
@@ -1269,9 +1270,10 @@
 .home-active-project-counts {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 3px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.4;
   color: var(--text-dim);
 }
 .home-active-project-counts .signal {
