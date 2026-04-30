@@ -1274,24 +1274,28 @@
 }
 .home-active-project-tile-jump {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
   border: none;
+  border-radius: 6px;
   color: var(--home-text-muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 .home-active-project-tile:hover .home-active-project-tile-jump,
 .home-active-project-tile-jump:focus-visible {
   opacity: 1;
 }
 .home-active-project-tile-jump:hover {
+  background: rgba(124, 107, 255, 0.18);
   color: var(--home-accent-bright);
 }
 .home-active-project-meta {
