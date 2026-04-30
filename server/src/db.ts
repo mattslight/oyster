@@ -187,29 +187,12 @@ export function initDb(userlandDir: string): Database.Database {
 
   // last_offset added in 0.5.0 to backfill transcripts on boot scan (#275).
   // Existing installs created sessions without this column; ALTER adds it.
+  // last_offset specifically is also baked into _sessions_new in the
+  // state-rename rebuild below, so this ALTER and the rebuild can run in
+  // either order. source_id / cwd ALTERs (which post-date the rebuild)
+  // run *after* the rebuild block so the rebuild can't drop them.
   try {
     db.exec("ALTER TABLE sessions ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0");
-  } catch { /* already exists */ }
-
-  // source_id added so sessions can be grouped by project (sub-folder
-  // within a space), not just by space. Lets us render an "Active
-  // projects" section on Home without needing a separate join table.
-  // ON DELETE SET NULL: detaching a source shouldn't blow up a
-  // session record — it just unlinks the project association.
-  try {
-    db.exec("ALTER TABLE sessions ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
-  } catch { /* already exists */ }
-  // Index creation lives in its own try so an already-applied ALTER
-  // (which throws above) doesn't skip indexing on installs that
-  // pre-date this migration.
-  db.exec("CREATE INDEX IF NOT EXISTS sessions_source_id ON sessions(source_id)");
-
-  // cwd added so we can rebuild the resume command (`cd <cwd> && claude
-  // --resume <id>`) and surface a useful label for orphan sessions
-  // (cwd outside any registered source). Watcher already tracks cwd
-  // in memory; this just persists it.
-  try {
-    db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
@@ -307,6 +290,31 @@ export function initDb(userlandDir: string): Database.Database {
       PRAGMA foreign_keys = ON;
     `);
   }
+
+  // source_id added so sessions can be grouped by project (sub-folder
+  // within a space), not just by space. Lets us render an "Active
+  // projects" section on Home without needing a separate join table.
+  // ON DELETE SET NULL: detaching a source shouldn't blow up a
+  // session record — it just unlinks the project association.
+  // Lives *after* the state-rename rebuild so the rebuild (which
+  // recreates the sessions table from scratch) can't drop it on
+  // installs that trigger needsMigrate.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
+  } catch { /* already exists */ }
+  // Index creation lives in its own try so an already-applied ALTER
+  // (which throws above) doesn't skip indexing on installs that
+  // pre-date this migration.
+  db.exec("CREATE INDEX IF NOT EXISTS sessions_source_id ON sessions(source_id)");
+
+  // cwd added so we can rebuild the resume command (`cd <cwd> && claude
+  // --resume <id>`) and surface a useful label for orphan sessions
+  // (cwd outside any registered source). Watcher already tracks cwd
+  // in memory; this just persists it. Same post-rebuild placement as
+  // source_id above.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
+  } catch { /* already exists */ }
 
   // One-time seed: populate spaces from artifact space_ids only if the table is empty.
   // Using INSERT OR IGNORE on an existing table would resurrect deleted spaces on restart.
