@@ -14,6 +14,28 @@ export async function handleSpacesRequest(
   spaceService: SpaceService,
 ): Promise<boolean> {
 
+  // POST /api/spaces/from-path — one-shot "promote folder to space": create a
+  // new space named after the folder, attach the path as its sole source, and
+  // re-attribute orphan sessions whose cwd matches. Used by the orphan-tile
+  // promote affordance on Home → Elsewhere.
+  if (url === "/api/spaces/from-path" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer | string) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { path, name } = JSON.parse(body);
+        if (!path) throw new Error("path is required");
+        const { space } = spaceService.createSpaceFromPath({ path, name });
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(space));
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+    });
+    return true;
+  }
+
   // POST /api/spaces/from-folder — convert a folder group (under home) into its own space.
   // Used by the desktop right-click "Move folder to space" flow.
   if (url === "/api/spaces/from-folder" && req.method === "POST") {

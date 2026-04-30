@@ -315,7 +315,7 @@ function resolveSpaceRow(name: string) {
     spaceStore.getByDisplayName(trimmed)
   );
 }
-const spaceService = new SpaceService(spaceStore, store, artifactService);
+const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
 await memoryProvider.init();
 

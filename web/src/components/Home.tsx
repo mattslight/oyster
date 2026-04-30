@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
-import { ArrowUpRight, Folder, Shield } from "lucide-react";
+import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -16,6 +16,7 @@ import { InspectorPanel, type ActivePanel } from "./InspectorPanel";
 import { SessionInspector } from "./SessionInspector";
 import { ArtefactInspector } from "./ArtefactInspector";
 import { ConfirmModal } from "./ConfirmModal";
+import { SpaceContextMenu } from "./SpaceContextMenu";
 import "./Home.css";
 
 interface Props {
@@ -24,6 +25,13 @@ interface Props {
   desktopProps: Omit<Parameters<typeof Desktop>[0], "isHero">;
   isHero?: boolean;
   onSpaceChange: (space: string) => void;
+  onPromoteFolderToSpace?: (path: string) => Promise<Space | null>;
+  /** Removing the last folder from a real space collapses the space —
+   *  Home delegates the delete (+ redirect) to App so spaces state
+   *  stays consistent. */
+  onSpaceDelete?: (spaceId: string) => Promise<void> | void;
+  /** Used by the breadcrumb-pill context menu (rename / color). */
+  onSpaceUpdate?: (id: string, fields: { displayName?: string; color?: string }) => void;
 }
 
 type ViewMode = "icons" | "table";
@@ -141,7 +149,7 @@ function renderPipCounts(counts: { active?: number; waiting?: number; disconnect
   );
 }
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate }: Props) {
   const { sessions, error, loading } = useSessions();
   const {
     memories,
@@ -187,6 +195,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // source row, so they're keyed by cwd instead of source_id. Lives
   // alongside selectedFolderId; resets when scope changes.
   const [selectedOrphanCwd, setSelectedOrphanCwd] = useState<string | null>(null);
+  // Cwd of the orphan tile currently mid-promotion. Disables the FolderPlus
+  // button so a slow server response can't kick off a duplicate promote.
+  const [promotingCwd, setPromotingCwd] = useState<string | null>(null);
+  // Space-delete confirm. Set to a real space id to open. Two entry points
+  // share this state: the empty-shell banner button (acts on the active
+  // space) and the breadcrumb-pill context menu (acts on the clicked one).
+  const [spaceToDelete, setSpaceToDelete] = useState<string | null>(null);
+  // Right-click context menu on a breadcrumb pill — owns rename / color /
+  // delete entry points. Anchored by the clicked pill's bounding rect.
+  const [pillCtx, setPillCtx] = useState<{ spaceId: string; rect: DOMRect } | null>(null);
   // Project-tile filter: null = "All" (no folder scope), "__vault__" =
   // native artefacts, otherwise a source_id. The tile grid is the canonical
   // surface for switching between folders; selection is exclusive.
@@ -509,6 +527,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               type="button"
               className={`home-breadcrumb-pill home-breadcrumb-pill--home${isHomeView && !showElsewhere ? " selected" : ""}`}
               onClick={() => { onSpaceChange("home"); setShowElsewhere(false); }}
+              onContextMenu={(e) => e.preventDefault()}
               title={`${totalCounts.active} active · ${totalCounts.waiting} waiting · ${totalCounts.disconnected} disconnected · ${totalCounts.done} done`}
             >
               {isHomeView && !showElsewhere && (
@@ -537,6 +556,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   type="button"
                   className={`home-breadcrumb-pill${isSelected ? " selected" : ""}`}
                   onClick={() => onSpaceChange(space.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setPillCtx({ spaceId: space.id, rect: e.currentTarget.getBoundingClientRect() });
+                  }}
                   title={tip}
                 >
                   {isSelected && (
@@ -560,6 +583,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 type="button"
                 className={`home-breadcrumb-pill home-breadcrumb-pill--elsewhere${showElsewhere && isHomeView ? " selected" : ""}`}
                 onClick={() => { onSpaceChange("home"); setShowElsewhere(true); }}
+                onContextMenu={(e) => e.preventDefault()}
                 title={[
                   orphanCounts.active > 0 && `${orphanCounts.active} active`,
                   orphanCounts.waiting > 0 && `${orphanCounts.waiting} waiting`,
@@ -651,6 +675,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             <div className="home-active-projects-grid">
               {orphanCwdGroups.map((p) => {
                 const isSelected = selectedOrphanCwd === p.cwd;
+                const isPromoting = promotingCwd === p.cwd;
                 return (
                   <div
                     key={p.cwd}
@@ -673,6 +698,27 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                         {p.counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{p.counts.done} done</span>}
                       </div>
                     </button>
+                    {onPromoteFolderToSpace && (
+                      <button
+                        type="button"
+                        className="home-active-project-tile-jump"
+                        disabled={isPromoting}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (promotingCwd) return;
+                          setPromotingCwd(p.cwd);
+                          try {
+                            await onPromoteFolderToSpace(p.cwd);
+                          } finally {
+                            setPromotingCwd(null);
+                          }
+                        }}
+                        aria-label={`Promote ${homeRelative(p.cwd)} to its own space`}
+                        title={`Promote ${homeRelative(p.cwd)} to its own space`}
+                      >
+                        <FolderPlus size={14} strokeWidth={2} aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -704,6 +750,18 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   >
                     attach one now
                   </button>.
+                  {onSpaceDelete && (
+                    <>
+                      {" "}If this space was created in error, you can{" "}
+                      <button
+                        type="button"
+                        className="home-folders-empty-link"
+                        onClick={() => setSpaceToDelete(sourcesSpaceId)}
+                      >
+                        delete it
+                      </button>.
+                    </>
+                  )}
                 </span>
               </div>
               {showAttachForm && (
@@ -720,6 +778,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           ) : (
             <ProjectTileGrid
               spaceId={sourcesSpaceId}
+              spaceDisplayName={spaces.find((s) => s.id === sourcesSpaceId)?.displayName ?? sourcesSpaceId}
               sources={spaceSources}
               folderArtefactCounts={folderArtefactCounts}
               sessionCountsBySource={sessionCountsBySource}
@@ -729,6 +788,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               showAttachForm={showAttachForm}
               setShowAttachForm={setShowAttachForm}
               onSourcesChanged={refreshSpaceSources}
+              onSpaceDelete={onSpaceDelete}
             />
           )
         )}
@@ -968,6 +1028,57 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           />
         )}
       </InspectorPanel>
+      {pillCtx && (() => {
+        const target = spaces.find((s) => s.id === pillCtx.spaceId);
+        if (!target) return null;
+        return (
+          <SpaceContextMenu
+            spaceId={pillCtx.spaceId}
+            spaceName={target.displayName}
+            anchorRect={pillCtx.rect}
+            onClose={() => setPillCtx(null)}
+            onRename={(id, name) => onSpaceUpdate?.(id, { displayName: name })}
+            onRequestDelete={(id) => setSpaceToDelete(id)}
+          />
+        );
+      })()}
+      {spaceToDelete && onSpaceDelete && (() => {
+        const targetId = spaceToDelete;
+        const displayName = spaces.find((s) => s.id === targetId)?.displayName ?? targetId;
+        const sessionCount = sessions.filter((s) => s.spaceId === targetId).length;
+        const artefactCount = desktopProps.artifacts.filter((a) => a.spaceId === targetId).length;
+        const memoryCount = memories.filter((m) => m.space_id === targetId).length;
+        const plural = (n: number, one: string, many: string) => n === 1 ? `1 ${one}` : `${n} ${many}`;
+        const lines: React.ReactNode[] = [];
+        if (sessionCount > 0) lines.push(<>{plural(sessionCount, "session", "sessions")} → Elsewhere</>);
+        if (artefactCount > 0) lines.push(<>{plural(artefactCount, "artefact", "artefacts")} → Home, grouped under <strong>{displayName}</strong></>);
+        if (memoryCount > 0) lines.push(<>{plural(memoryCount, "memory", "memories")} → Elsewhere (unbound from this space)</>);
+        return (
+          <ConfirmModal
+            open={true}
+            title={`Delete ${displayName}?`}
+            body={
+              lines.length === 0 ? (
+                <><strong>{displayName}</strong> has no sessions, artefacts, or memories. It will be removed.</>
+              ) : (
+                <>
+                  Linked folders will be detached. The space's contents will move:
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+                    {lines.map((line, i) => <li key={i}>{line}</li>)}
+                  </ul>
+                </>
+              )
+            }
+            confirmLabel="Delete space"
+            destructive
+            onConfirm={async () => {
+              await onSpaceDelete(targetId);
+              setSpaceToDelete(null);
+            }}
+            onCancel={() => setSpaceToDelete(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -1230,11 +1341,12 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
 // the selected tile snaps back to All. Detach lives in a hover ⋯ menu
 // on linked tiles only — Vault can't be detached.
 function ProjectTileGrid({
-  spaceId, sources, folderArtefactCounts, sessionCountsBySource,
+  spaceId, spaceDisplayName, sources, folderArtefactCounts, sessionCountsBySource,
   selectedFolderId, setSelectedFolderId,
-  totalCounts, showAttachForm, setShowAttachForm, onSourcesChanged,
+  totalCounts, showAttachForm, setShowAttachForm, onSourcesChanged, onSpaceDelete,
 }: {
   spaceId: string;
+  spaceDisplayName: string;
   sources: SpaceSource[];
   folderArtefactCounts: Record<string, number>;
   sessionCountsBySource: Record<string, { active: number; waiting: number; disconnected: number }>;
@@ -1244,6 +1356,7 @@ function ProjectTileGrid({
   showAttachForm: boolean;
   setShowAttachForm: (v: boolean) => void;
   onSourcesChanged: () => void;
+  onSpaceDelete?: (spaceId: string) => Promise<void> | void;
 }) {
   // Sort linked tiles by tile count desc — busiest folders first.
   const sortedSources = useMemo(
@@ -1304,6 +1417,10 @@ function ProjectTileGrid({
             selected={selectedFolderId === s.id}
             onSelect={() => pickTile(s.id)}
             onSourcesChanged={onSourcesChanged}
+            isLastSource={sources.length === 1}
+            spaceDisplayName={spaceDisplayName}
+            spaceTotalSessions={totalCounts.all}
+            onSpaceDelete={onSpaceDelete}
           />
         ))}
 
@@ -1335,6 +1452,7 @@ function ProjectTileGrid({
 
 function ProjectTile({
   source, artefactCount, sessionCounts, selected, onSelect, onSourcesChanged,
+  isLastSource, spaceDisplayName, spaceTotalSessions, onSpaceDelete,
 }: {
   source: SpaceSource;
   artefactCount: number;
@@ -1342,12 +1460,21 @@ function ProjectTile({
   selected: boolean;
   onSelect: () => void;
   onSourcesChanged: () => void;
+  /** True when this is the only source in the space — removing it collapses the space. */
+  isLastSource: boolean;
+  spaceDisplayName: string;
+  spaceTotalSessions: number;
+  onSpaceDelete?: (spaceId: string) => Promise<void> | void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Separator-agnostic so Windows paths (`C:\Users\...`) display correctly too.
   const basename = source.path.split(/[\\/]/).filter(Boolean).pop() ?? source.path;
+  // Removing the only folder from a real space implicitly demotes the space:
+  // we soft-delete the source then ask App to delete the (now empty) space.
+  // Cascade returns sessions to Elsewhere via sessions.space_id ON DELETE SET NULL.
+  const willCollapseSpace = isLastSource && Boolean(onSpaceDelete);
 
   // Close menu on outside click — same pattern as space-card menus.
   useEffect(() => {
@@ -1361,18 +1488,23 @@ function ProjectTile({
     return () => document.removeEventListener("click", onDocClick);
   }, [menuOpen]);
 
-  async function performDetach() {
+  async function performRemove() {
     setBusy(true);
     try {
       await removeSpaceSource(source.space_id, source.id);
+      if (willCollapseSpace) {
+        await onSpaceDelete!(source.space_id);
+      }
       onSourcesChanged();
       setConfirmOpen(false);
     } catch (err) {
-      alert(`Couldn't detach: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Couldn't remove: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
   }
+
+  const sessionPhrase = spaceTotalSessions === 1 ? "1 session" : `${spaceTotalSessions} sessions`;
 
   return (
     <>
@@ -1410,25 +1542,35 @@ function ProjectTile({
               className="home-project-tile-menu-item danger"
               onClick={() => { setMenuOpen(false); setConfirmOpen(true); }}
             >
-              Detach folder…
+              Remove folder…
             </button>
           </div>
         )}
       </div>
       <ConfirmModal
         open={confirmOpen}
-        title={`Detach "${basename}"?`}
+        title={willCollapseSpace ? `Remove "${basename}" and delete ${spaceDisplayName}?` : `Remove "${basename}"?`}
         body={
           <>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>
               {source.path}
             </div>
-            Its artefacts will be hidden. Reattach the same path to restore them.
+            {willCollapseSpace ? (
+              <>
+                This is the only folder in <strong>{spaceDisplayName}</strong>.
+                Removing it will delete the space, hide its artefacts, and send {sessionPhrase} back to Elsewhere.
+              </>
+            ) : (
+              <>
+                Its artefacts will be hidden. Sessions stay in <strong>{spaceDisplayName}</strong>.
+                Reattach the same path to restore them.
+              </>
+            )}
           </>
         }
-        confirmLabel={busy ? "Detaching…" : "Detach"}
+        confirmLabel={busy ? (willCollapseSpace ? "Deleting…" : "Removing…") : (willCollapseSpace ? "Remove and delete" : "Remove")}
         destructive
-        onConfirm={performDetach}
+        onConfirm={performRemove}
         onCancel={() => !busy && setConfirmOpen(false)}
       />
     </>

@@ -32,6 +32,19 @@ export async function convertFolderToSpace(folderName: string, sourceSpaceId: st
   return res.json();
 }
 
+export async function promoteFolderToSpace(path: string, name?: string): Promise<Space> {
+  const res = await fetch("/api/spaces/from-path", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, name }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // Sources = linked folders attached to a space. The UI can list, attach,
 // and detach them via the REST endpoints in this file; MCP via the chat
 // bar still works as a parallel path. (#266)

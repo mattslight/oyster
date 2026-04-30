@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { sendMessage, replyToQuestion, formatChatError, ChatSendError } from "../data/chat-api";
@@ -90,8 +89,6 @@ interface Props {
   spaces?: Space[];
   activeSpace?: string;
   onSpaceChange?: (space: string) => void;
-  onSpaceUpdate?: (id: string, fields: { displayName?: string; color?: string }) => void;
-  onSpaceDelete?: (id: string, folderName?: string) => void;
   inputRef?: React.RefObject<HTMLInputElement | null>;
   artifacts?: Artifact[];
   onArtifactOpen?: (artifact: Artifact) => void;
@@ -99,12 +96,7 @@ interface Props {
   onAiError?: (message: string | null) => void;
 }
 
-const SPACE_PALETTE = [
-  "#6057c4", "#3d8aaa", "#3a8f64", "#b06840",
-  "#8f5a9e", "#3a8a7a", "#9e7c2a", "#8f4a5a",
-];
-
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, onSpaceUpdate, onSpaceDelete, inputRef: externalInputRef, artifacts = [], onArtifactOpen, isFirstRun, onAiError }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, inputRef: externalInputRef, artifacts = [], onArtifactOpen, isFirstRun, onAiError }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -120,31 +112,6 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
   const [placeholder, setPlaceholder] = useState(() => placeholders[Math.floor(Math.random() * placeholders.length)]);
   const placeholderIndexRef = useRef(0);
   const isHero = !!isHeroProp;
-
-  // Space context menu
-  const [ctxMenu, setCtxMenu] = useState<{ spaceId: string; rect: DOMRect } | null>(null);
-  const [renaming, setRenaming] = useState<{ spaceId: string; name: string } | null>(null);
-  const [showColors, setShowColors] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const ctxRef = useRef<HTMLDivElement>(null);
-  const renameRef = useRef<HTMLInputElement>(null);
-
-  // Close context menu on outside click
-  useEffect(() => {
-    if (!ctxMenu) return;
-    function handleClick(e: MouseEvent) {
-      if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) {
-        setCtxMenu(null);
-        setShowColors(false);
-        setConfirmDelete(false);
-      }
-    }
-    window.addEventListener("mousedown", handleClick);
-    return () => window.removeEventListener("mousedown", handleClick);
-  }, [ctxMenu]);
-
-  // Focus rename input when it appears
-  useEffect(() => { renameRef.current?.focus(); }, [renaming]);
 
   const { messages, setMessages, sessionId, expanded, setExpanded, pushSessionUrl } = useChatSession();
 
@@ -625,106 +592,6 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
           {streaming ? "..." : "↑"}
         </button>
       </div>
-
-      {/* Space pills below the chat bar were dropped now that the top
-          breadcrumb is the canonical space nav. The right-click context
-          menu (rename / colour / delete) lived on those pills — that
-          surface needs a new home. Tracked separately. */}
-
-      {/* Space context menu — portaled to body to escape transforms */}
-      {ctxMenu && createPortal(
-        <div
-          ref={ctxRef}
-          className="space-ctx-menu"
-          style={{ left: ctxMenu.rect.left + ctxMenu.rect.width / 2, top: ctxMenu.rect.top }}
-        >
-          {!showColors && !confirmDelete && (
-            <>
-              <button className="space-ctx-item" onClick={() => {
-                const s = spaces.find(sp => sp.id === ctxMenu.spaceId);
-                if (s) setRenaming({ spaceId: s.id, name: s.displayName });
-                setCtxMenu(null);
-              }}>
-                Rename
-              </button>
-              <button className="space-ctx-item" onClick={() => setShowColors(true)}>
-                Color
-              </button>
-              <div className="space-ctx-sep" />
-              <button className="space-ctx-item space-ctx-delete" onClick={() => setConfirmDelete(true)}>
-                Remove
-              </button>
-            </>
-          )}
-          {showColors && (
-            <div className="space-ctx-colors">
-              {SPACE_PALETTE.map((c) => (
-                <button
-                  key={c}
-                  className="space-ctx-swatch"
-                  style={{ background: c }}
-                  onClick={() => {
-                    onSpaceUpdate?.(ctxMenu.spaceId, { color: c });
-                    setCtxMenu(null);
-                    setShowColors(false);
-                  }}
-                />
-              ))}
-            </div>
-          )}
-          {confirmDelete && (() => {
-            const sp = spaces.find(s => s.id === ctxMenu.spaceId);
-            const folderName = sp?.displayName ?? ctxMenu.spaceId;
-            const spaceArtifacts = artifacts.filter(a => a.spaceId === ctxMenu.spaceId);
-            const isEmpty = spaceArtifacts.length === 0;
-            const hasConflict = !isEmpty && artifacts.some(a => a.spaceId === "home" && a.groupName === folderName);
-            const altName = folderName + " (2)";
-            return (
-              <div className="space-ctx-confirm">
-                {isEmpty ? (
-                  <>
-                    <span>Remove this space?</span>
-                    <div className="space-ctx-confirm-actions">
-                      <button className="space-ctx-item" onClick={() => { setConfirmDelete(false); setCtxMenu(null); }}>Cancel</button>
-                      <button className="space-ctx-item space-ctx-delete" onClick={() => {
-                        onSpaceDelete?.(ctxMenu.spaceId);
-                        setCtxMenu(null); setConfirmDelete(false);
-                      }}>Remove</button>
-                    </div>
-                  </>
-                ) : hasConflict ? (
-                  <>
-                    <span>"{folderName}" folder exists on Home.</span>
-                    <div className="space-ctx-confirm-actions">
-                      <button className="space-ctx-item" onClick={() => { setConfirmDelete(false); setCtxMenu(null); }}>Cancel</button>
-                      <button className="space-ctx-item" onClick={() => {
-                        onSpaceDelete?.(ctxMenu.spaceId);
-                        setCtxMenu(null); setConfirmDelete(false);
-                      }}>Merge</button>
-                      <button className="space-ctx-item" onClick={() => {
-                        onSpaceDelete?.(ctxMenu.spaceId, altName);
-                        setCtxMenu(null); setConfirmDelete(false);
-                      }}>Keep "{altName}"</button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span>Moves to a folder on Home.</span>
-                    <div className="space-ctx-confirm-actions">
-                      <button className="space-ctx-item" onClick={() => { setConfirmDelete(false); setCtxMenu(null); }}>Cancel</button>
-                      <button className="space-ctx-item space-ctx-delete" onClick={() => {
-                        onSpaceDelete?.(ctxMenu.spaceId);
-                        setCtxMenu(null); setConfirmDelete(false);
-                      }}>Remove</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-        </div>,
-        document.body,
-      )}
 
     </div>
   );
