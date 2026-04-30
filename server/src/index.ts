@@ -691,6 +691,17 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       sendJson({ error: "Forbidden origin" }, 403);
       return true;
     }
+    if (!origin) {
+      const remote = req.socket.remoteAddress || "";
+      const isLoopback =
+        remote === "127.0.0.1" ||
+        remote === "::1" ||
+        remote === "::ffff:127.0.0.1";
+      if (!isLoopback) {
+        sendJson({ error: "Forbidden — non-local origin" }, 403);
+        return true;
+      }
+    }
     if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
     return false;
   };
@@ -1945,7 +1956,7 @@ function findPort(preferred: number, maxAttempts = 10): Promise<number> {
           reject(new Error(`No available port found (tried ${preferred}-${port})`));
         }
       });
-      testServer.listen(port, () => {
+      testServer.listen(port, "127.0.0.1", () => {
         testServer.close(() => resolve(port));
       });
     }
@@ -1999,10 +2010,10 @@ writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
 
-httpServer.listen(port, () => {
-  console.log(`Oyster server listening on http://localhost:${port}`);
-  console.log(`  WebSocket: ws://localhost:${port}`);
-  console.log(`  API:       http://localhost:${port}/api/artifacts`);
+httpServer.listen(port, "127.0.0.1", () => {
+  console.log(`Oyster server listening on http://127.0.0.1:${port}`);
+  console.log(`  WebSocket: ws://127.0.0.1:${port}`);
+  console.log(`  API:       http://127.0.0.1:${port}/api/artifacts`);
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);

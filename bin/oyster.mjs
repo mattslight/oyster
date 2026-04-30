@@ -454,7 +454,7 @@ async function main() {
     const text = data.toString();
     process.stdout.write(text);
     if (!opened) {
-      const match = text.match(/listening on (http:\/\/localhost:\d+)/);
+      const match = text.match(/listening on (http:\/\/(?:localhost|127\.0\.0\.1):\d+)/);
       if (match) {
         opened = true;
         const url = match[1];

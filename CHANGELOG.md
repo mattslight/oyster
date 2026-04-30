@@ -16,6 +16,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Memories on Home.** Your agents' `remember` notes now show up as a section on Home alongside Sessions and Artefacts. The space pills scope all three together — pick *tokinvest* and you see what each agent learned about that project, not the global pile. Orphan memories (no space attached) live under *Elsewhere*. ([#254](https://github.com/mattslight/oyster/issues/254))
 - **Scroll up to load older transcript turns.** The session inspector loads the latest 1000 turns by default and shows a `1000+` badge when there's more behind them. Scroll near the top of the transcript and the next 1000 older turns prepend in place — your scroll position stays pinned to the same turn so you don't lose your place. Live updates still append to the bottom as the agent works. ([#274](https://github.com/mattslight/oyster/issues/274))
 
+### Security
+
+- **Local-only endpoints now refuse non-loopback callers.** The Oyster server used to listen on every network interface and rely on the HTTP `Origin` header alone to gate access — fine against a browser tab on `evil.com`, but a non-browser client on the same WiFi could omit `Origin` and pull `/api/vault/inventory`, `/api/memories`, etc. The server now binds to `127.0.0.1` *and* the Origin guard rejects requests with no Origin from non-loopback addresses (belt and braces). ([#289](https://github.com/mattslight/oyster/issues/289))
+
 ### Fixed
 
 - **`?limit=N` on the events endpoint was silently ignored.** The route regex `$`-anchored before the query string so the parameter never reached the handler — the inspector always got the default 1000. Fixed as part of #274.
