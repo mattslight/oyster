@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
-import { Folder, Vault } from "lucide-react";
+import { Folder, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -1242,7 +1242,7 @@ function ProjectTileGrid({
             title="Native artefacts created in this space (not from a linked folder)"
           >
             <div className="home-space-card-name">
-              <Vault size={16} strokeWidth={1.75} aria-hidden="true" className="home-project-glyph" />
+              <Shield size={16} strokeWidth={1.75} aria-hidden="true" className="home-project-glyph" />
               <span>{spaceId}</span>
               <span className="home-project-tag">vault</span>
             </div>
