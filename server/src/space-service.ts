@@ -180,6 +180,10 @@ export class SpaceService {
     return this.spaceStore.getSources(spaceId);
   }
 
+  getSourceById(sourceId: string): Source | undefined {
+    return this.spaceStore.getSourceById(sourceId);
+  }
+
   getActiveSourceByPath(path: string): Source | undefined {
     return this.spaceStore.getActiveSourceByPath(expandHome(path));
   }

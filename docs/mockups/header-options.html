@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Header — whisper integration · 5 iterations</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #7c6bff;
+      --accent-bright: #a597ff;
+      --green: #4ade80;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --text: #f0f0f5;
+      --text-dim: rgba(232, 233, 240, 0.55);
+      --text-muted: rgba(232, 233, 240, 0.3);
+      --surface: rgba(12, 13, 28, 0.6);
+      --border: rgba(255, 255, 255, 0.06);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      padding: 60px 0 120px;
+    }
+
+    .glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(ellipse 70% 45% at 50% 10%, rgba(124,107,255,0.08) 0%, transparent 60%);
+    }
+
+    .page {
+      position: relative; z-index: 1;
+      max-width: 1100px; margin: 0 auto;
+      padding: 0 32px;
+    }
+    .page-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .page-subtitle {
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-bottom: 48px;
+      max-width: 720px;
+      line-height: 1.55;
+    }
+
+    .option {
+      margin-bottom: 56px;
+      padding: 38px 40px 44px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    .option.recommended {
+      border-color: rgba(124, 107, 255, 0.35);
+      box-shadow: 0 0 0 1px rgba(124, 107, 255, 0.1), 0 12px 36px rgba(124, 107, 255, 0.08);
+    }
+    .option-tag {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .option.recommended .option-tag { color: var(--accent-bright); }
+    .option-tag .tag-badge {
+      padding: 2px 8px;
+      border-radius: 9999px;
+      background: rgba(124,107,255,0.18);
+      border: 1px solid rgba(124,107,255,0.3);
+      color: var(--accent-bright);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+    }
+    .option-name {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 6px;
+    }
+    .option-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 36px;
+      line-height: 1.5;
+      max-width: 720px;
+    }
+    .option-desc strong { color: var(--text); font-weight: 500; }
+
+    .demo {
+      padding: 32px 0 8px;
+      border-top: 1px dashed var(--border);
+      border-bottom: 1px dashed var(--border);
+    }
+
+    /* ===== Shared header bits ===== */
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      opacity: 0.85;
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-size: clamp(2rem, 4vw, 2.6rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .stats-line {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 14px;
+      color: var(--text-dim);
+      flex-wrap: wrap;
+      margin-bottom: 0;
+    }
+    .stats-line .signal {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--text);
+    }
+    .stats-line .pip {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .pip.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .pip.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .pip.red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+
+    .stats-secondary {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    /* ===== Whisper variants ===== */
+    .whisper {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 22px;
+      line-height: 1.55;
+    }
+    .whisper svg { width: 14px; height: 14px; opacity: 0.4; flex-shrink: 0; margin-top: 3px; }
+    .whisper em { color: var(--text-dim); font-style: normal; }
+
+    /* Variant: tight (small gap above) */
+    .whisper.tight { margin-top: 10px; }
+
+    /* Variant: lead — larger, brighter, italic-ish */
+    .whisper.lead {
+      font-size: 15px;
+      color: var(--text-dim);
+      margin-top: 14px;
+      margin-bottom: 14px;
+      line-height: 1.5;
+      max-width: 760px;
+    }
+    .whisper.lead svg { color: var(--accent-bright); opacity: 0.7; width: 16px; height: 16px; margin-top: 4px; }
+    .whisper.lead em { color: var(--accent-bright); }
+
+    /* Variant: subtitle — same as current size but positioned between H1 and stats */
+    .whisper.subtitle {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 4px;
+      margin-bottom: 16px;
+    }
+    .whisper.subtitle svg { color: var(--accent-bright); opacity: 0.6; }
+    .whisper.subtitle em { color: var(--accent-bright); }
+
+    /* Variant: tether — subtle left accent bar */
+    .whisper.tether {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 18px;
+      padding-left: 14px;
+      border-left: 2px solid rgba(124,107,255,0.4);
+      gap: 8px;
+    }
+    .whisper.tether svg { color: var(--accent-bright); opacity: 0.6; }
+    .whisper.tether em { color: var(--accent-bright); }
+
+    /* Variant: bright (no demotion — same weight as stats) */
+    .whisper.bright {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 14px;
+    }
+    .whisper.bright svg { color: var(--accent-bright); opacity: 0.6; }
+    .whisper.bright em { color: var(--accent-bright); }
+
+    .verdict {
+      margin-top: 20px;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .verdict-col { flex: 1; min-width: 240px; }
+    .verdict-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .verdict-label.pro  { color: #6ee7a8; }
+    .verdict-label.con  { color: #ffd97a; }
+    .verdict-text {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+
+  <div class="page">
+    <div class="page-title">Header — whisper integration</div>
+    <div class="page-subtitle">The current Option 5 demoted the whisper too aggressively, leaving it floating below the stats with no visual tether. Five iterations exploring different ways to bind it back into the header. Recommended option highlighted in purple.</div>
+
+    <!-- BASELINE -->
+    <div class="option">
+      <div class="option-tag">Current</div>
+      <div class="option-name">Demoted whisper (the problem)</div>
+      <div class="option-desc">Whisper sits below the stats with extra vertical gap. Smaller font, faded color, faint icon. Floats unanchored — feels like a separate UI element, not part of the same header block.</div>
+      <div class="demo">
+        <div class="eyebrow">Home</div>
+        <h1>Today.</h1>
+        <div class="stats-line">
+          <span class="signal"><span class="pip green"></span>2 running</span>
+          <span class="signal"><span class="pip amber"></span>1 awaiting you</span>
+          <span class="signal"><span class="pip red"></span>1 disconnected</span>
+        </div>
+        <div class="stats-secondary">
+          <span>6 done</span>
+          <span>11 artefacts</span>
+        </div>
+        <div class="whisper">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.5 10.5 L21 12 L13.5 13.5 L12 21 L10.5 13.5 L3 12 L10.5 10.5 Z"/></svg>
+          <span>Most of today's work was on <em>tokinvest</em>'s homepage. <em>kps</em>'s auth refactor is mid-flight. <em>blunderfixer</em> went silent 14 minutes in.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 1 — Tighten -->
+    <div class="option">
+      <div class="option-tag">Option 1</div>
+      <div class="option-name">Tighten gap</div>
+      <div class="option-desc">Smallest possible change. Pull the whisper closer to the stats — about 12px gap instead of 22px. Same size, same color. The pure-vertical fix.</div>
+      <div class="demo">
+        <div class="eyebrow">Home</div>
+        <h1>Today.</h1>
+        <div class="stats-line">
+          <span class="signal"><span class="pip green"></span>2 running</span>
+          <span class="signal"><span class="pip amber"></span>1 awaiting you</span>
+          <span class="signal"><span class="pip red"></span>1 disconnected</span>
+        </div>
+        <div class="stats-secondary">
+          <span>6 done</span>
+          <span>11 artefacts</span>
+        </div>
+        <div class="whisper tight">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.5 10.5 L21 12 L13.5 13.5 L12 21 L10.5 13.5 L3 12 L10.5 10.5 Z"/></svg>
+          <span>Most of today's work was on <em>tokinvest</em>'s homepage. <em>kps</em>'s auth refactor is mid-flight. <em>blunderfixer</em> went silent 14 minutes in.</span>
+        </div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-col">
+          <div class="verdict-label pro">Pros</div>
+          <div class="verdict-text">Trivial change. Doesn't touch any other choice. Most reversible.</div>
+        </div>
+        <div class="verdict-col">
+          <div class="verdict-label con">Cons</div>
+          <div class="verdict-text">Closes the gap but doesn't address WHY it feels disconnected. The whisper is still typographically isolated — different size, different colour, no anchor.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 2 — Subtitle position -->
+    <div class="option">
+      <div class="option-tag">Option 2</div>
+      <div class="option-name">Subtitle position (above stats)</div>
+      <div class="option-desc">Move the whisper between the H1 and the stats. Same size as before — but now it acts as a subtitle that anchors directly to the title. Stats fall below as supporting numbers.</div>
+      <div class="demo">
+        <div class="eyebrow">Home</div>
+        <h1>Today.</h1>
+        <div class="whisper subtitle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.5 10.5 L21 12 L13.5 13.5 L12 21 L10.5 13.5 L3 12 L10.5 10.5 Z"/></svg>
+          <span>Most of today's work was on <em>tokinvest</em>'s homepage. <em>kps</em>'s auth refactor is mid-flight. <em>blunderfixer</em> went silent 14 minutes in.</span>
+        </div>
+        <div class="stats-line">
+          <span class="signal"><span class="pip green"></span>2 running</span>
+          <span class="signal"><span class="pip amber"></span>1 awaiting you</span>
+          <span class="signal"><span class="pip red"></span>1 disconnected</span>
+        </div>
+        <div class="stats-secondary">
+          <span>6 done</span>
+          <span>11 artefacts</span>
+        </div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-col">
+          <div class="verdict-label pro">Pros</div>
+          <div class="verdict-text">Whisper becomes the lead-in — story first, numbers second. Reads top-to-bottom: "Home / Today / here's the situation / here are the counts". Strong narrative flow.</div>
+        </div>
+        <div class="verdict-col">
+          <div class="verdict-label con">Cons</div>
+          <div class="verdict-text">Pushes actionable stats below the fold of attention. If a user is scanning for "what needs me?", they have to read the prose first.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 3 — Lead paragraph -->
+    <div class="option">
+      <div class="option-tag">Option 3</div>
+      <div class="option-name">Lead paragraph</div>
+      <div class="option-desc">Like Option 2 but bolder. Whisper becomes a <strong>large lead paragraph</strong> right under the H1 — bigger font, brighter colour, more presence. The whisper is the headline content; stats are supporting reference.</div>
+      <div class="demo">
+        <div class="eyebrow">Home</div>
+        <h1>Today.</h1>
+        <div class="whisper lead">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.5 10.5 L21 12 L13.5 13.5 L12 21 L10.5 13.5 L3 12 L10.5 10.5 Z"/></svg>
+          <span>Most of today's work was on <em>tokinvest</em>'s homepage. <em>kps</em>'s auth refactor is mid-flight. <em>blunderfixer</em> went silent 14 minutes in.</span>
+        </div>
+        <div class="stats-line">
+          <span class="signal"><span class="pip green"></span>2 running</span>
+          <span class="signal"><span class="pip amber"></span>1 awaiting you</span>
+          <span class="signal"><span class="pip red"></span>1 disconnected</span>
+        </div>
+        <div class="stats-secondary">
+          <span>6 done</span>
+          <span>11 artefacts</span>
+        </div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-col">
+          <div class="verdict-label pro">Pros</div>
+          <div class="verdict-text">Establishes the whisper as Oyster's voice — distinctive, loud, emphasises the differentiator. Maximal narrative.</div>
+        </div>
+        <div class="verdict-col">
+          <div class="verdict-label con">Cons</div>
+          <div class="verdict-text">Shifts the entire visual centre of the header onto prose. Risks "marketing copy" feeling. Less suitable for power-users who scan numbers.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 4 — Tether -->
+    <div class="option recommended">
+      <div class="option-tag">
+        Option 4
+        <span class="tag-badge">Recommended</span>
+      </div>
+      <div class="option-name">Vertical tether (left accent bar)</div>
+      <div class="option-desc">Keep order and weight as Option 5 currently does, but add a thin <strong>purple left bar</strong> on the whisper. Visually ties it to the header column without changing structure. Whisper stays subordinate but gains a clear anchor — it's quoted commentary, not floating noise.</div>
+      <div class="demo">
+        <div class="eyebrow">Home</div>
+        <h1>Today.</h1>
+        <div class="stats-line">
+          <span class="signal"><span class="pip green"></span>2 running</span>
+          <span class="signal"><span class="pip amber"></span>1 awaiting you</span>
+          <span class="signal"><span class="pip red"></span>1 disconnected</span>
+        </div>
+        <div class="stats-secondary">
+          <span>6 done</span>
+          <span>11 artefacts</span>
+        </div>
+        <div class="whisper tether">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.5 10.5 L21 12 L13.5 13.5 L12 21 L10.5 13.5 L3 12 L10.5 10.5 Z"/></svg>
+          <span>Most of today's work was on <em>tokinvest</em>'s homepage. <em>kps</em>'s auth refactor is mid-flight. <em>blunderfixer</em> went silent 14 minutes in.</span>
+        </div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-col">
+          <div class="verdict-label pro">Pros</div>
+          <div class="verdict-text">Solves the disconnect with a single visual gesture. Order is unchanged (stats stay primary). The bar matches the eyebrow purple, so the whisper now visually <em>belongs</em> to the header.</div>
+        </div>
+        <div class="verdict-col">
+          <div class="verdict-label con">Cons</div>
+          <div class="verdict-text">Adds one new visual element (the bar). Slight risk of looking blockquote-y / quote-card-y if the bar is too thick.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 5 — Bright -->
+    <div class="option">
+      <div class="option-tag">Option 5</div>
+      <div class="option-name">Undo the demotion</div>
+      <div class="option-desc">Keep the position but stop demoting the whisper typographically. Same size and colour as the stats reference line. Brighter sparkle. The whisper becomes another row of header content, not a footnote.</div>
+      <div class="demo">
+        <div class="eyebrow">Home</div>
+        <h1>Today.</h1>
+        <div class="stats-line">
+          <span class="signal"><span class="pip green"></span>2 running</span>
+          <span class="signal"><span class="pip amber"></span>1 awaiting you</span>
+          <span class="signal"><span class="pip red"></span>1 disconnected</span>
+        </div>
+        <div class="stats-secondary">
+          <span>6 done</span>
+          <span>11 artefacts</span>
+        </div>
+        <div class="whisper bright">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.5 10.5 L21 12 L13.5 13.5 L12 21 L10.5 13.5 L3 12 L10.5 10.5 Z"/></svg>
+          <span>Most of today's work was on <em>tokinvest</em>'s homepage. <em>kps</em>'s auth refactor is mid-flight. <em>blunderfixer</em> went silent 14 minutes in.</span>
+        </div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-col">
+          <div class="verdict-label pro">Pros</div>
+          <div class="verdict-text">Solves disconnect by raising the whisper's weight to match the stats. Reads like one continuous header block. No new visual elements.</div>
+        </div>
+        <div class="verdict-col">
+          <div class="verdict-label con">Cons</div>
+          <div class="verdict-text">Reintroduces some of the busy-ness Option 5 was trying to fix. The whole point of demoting it was that it competed with stats. Now it competes again.</div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size: 12px; color: var(--text-muted); margin-top: 24px; line-height: 1.6;">
+      <strong>Recommendation: Option 4 (Tether).</strong> The disconnect is fundamentally a visual-grouping problem, not a typographic one. The thin purple bar matches the eyebrow colour and hooks the whisper to the rest of the header without restructuring or shouting. Option 1 doesn't go far enough; Option 2/3 reorder content (and Option 3 risks marketing-y); Option 5 just walks back the original demotion. Tether keeps the hierarchy and adds the missing anchor.
+    </p>
+  </div>
+</body>
+</html>

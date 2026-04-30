@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sessions filter — UX options</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #7c6bff;
+      --accent-bright: #a597ff;
+      --green: #4ade80;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --text: #f0f0f5;
+      --text-dim: rgba(232, 233, 240, 0.55);
+      --text-muted: rgba(232, 233, 240, 0.3);
+      --surface: rgba(12, 13, 28, 0.6);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-accent: rgba(124, 107, 255, 0.3);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      padding: 60px 0;
+    }
+    .glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 45% at 50% 10%, rgba(124,107,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 85% 90%, rgba(165,151,255,0.05) 0%, transparent 50%);
+    }
+    .page {
+      position: relative; z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+    h1 {
+      font-size: 48px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .lede {
+      font-size: 16px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      max-width: 760px;
+    }
+    .meta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      margin-bottom: 56px;
+    }
+    .option {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      backdrop-filter: blur(20px);
+    }
+    .option-head {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
+    .option-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-bright);
+      letter-spacing: 0.08em;
+    }
+    .option-title {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .option-desc {
+      font-size: 14px;
+      color: var(--text-dim);
+      max-width: 720px;
+      margin-bottom: 24px;
+      line-height: 1.55;
+    }
+    .option-desc kbd {
+      font-family: var(--font-mono);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 11px;
+    }
+
+    /* Sessions header skeleton matching the real Home component */
+    .session-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px 0;
+      border-top: 1px dashed var(--border);
+      border-bottom: 1px dashed var(--border);
+      margin-bottom: 18px;
+    }
+    .section-label {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .stat-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      padding: 3px 10px;
+      border-radius: 9999px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      user-select: none;
+    }
+    .stat-btn:hover { background: rgba(255, 255, 255, 0.05); }
+    .stat-btn.selected {
+      background: rgba(124, 107, 255, 0.18);
+      border-color: var(--border-accent);
+      color: var(--accent-bright);
+    }
+    .stat-btn .pip { width: 6px; height: 6px; border-radius: 50%; }
+    .pip-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .pip-amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .pip-red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+    .pip-dim   { background: rgba(255,255,255,0.18); }
+
+    .stat-divider {
+      flex: 0 0 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+    .stat-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 3px 4px;
+      letter-spacing: 0.04em;
+      user-select: none;
+    }
+    .stat-toggle input { display: none; }
+    .toggle-pill {
+      width: 28px;
+      height: 14px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 9999px;
+      position: relative;
+      transition: background 0.15s ease;
+    }
+    .toggle-pill::after {
+      content: "";
+      position: absolute;
+      top: 1px; left: 1px;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.55);
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+    .stat-toggle input:checked + .toggle-pill {
+      background: rgba(124, 107, 255, 0.35);
+    }
+    .stat-toggle input:checked + .toggle-pill::after {
+      transform: translateX(14px);
+      background: var(--accent-bright);
+    }
+
+    /* Sample sessions list — minimal */
+    .session-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .session-row {
+      display: grid;
+      grid-template-columns: 8px 110px 1fr 100px;
+      gap: 16px;
+      align-items: center;
+      padding: 8px 14px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid transparent;
+      font-size: 13px;
+      transition: background 0.15s ease;
+    }
+    .session-row:hover { background: rgba(255,255,255,0.04); }
+    .session-row .row-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .session-row.s-active .row-status   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .session-row.s-waiting .row-status  { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .session-row.s-disconnected .row-status { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .session-row.s-done .row-status     { background: rgba(255,255,255,0.18); }
+    .session-row .row-space {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-bright);
+    }
+    .session-row .row-title { color: var(--text); }
+    .session-row .row-time {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.03em;
+      text-align: right;
+    }
+    .empty {
+      padding: 24px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .hint {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+      margin-top: 12px;
+      text-transform: uppercase;
+    }
+
+    .recommend-tag {
+      display: inline-block;
+      margin-left: 12px;
+      padding: 2px 8px;
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--green);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      border-radius: 4px;
+      text-transform: uppercase;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="page">
+    <h1>Sessions filter — UX options</h1>
+    <p class="lede">Five interactive variants. Same sample data in each (4 active · 1 waiting · 2 disconnected · 16 done — 23 total). Click around. The current production behaviour is option 0: single-select, "all" includes everything.</p>
+    <p class="meta">filter-options.html</p>
+
+    <!-- Option 0: current behaviour, for reference -->
+    <section class="option" data-option="current">
+      <div class="option-head">
+        <span class="option-num">CURRENT</span>
+        <span class="option-title">Single-select including done</span>
+      </div>
+      <p class="option-desc">What ships today. Click any chip to filter to that one state. "All" includes everything (done is bundled in the count). Done sessions are mixed into the inventory by default.</p>
+      <div class="session-header"></div>
+      <div class="session-list"></div>
+    </section>
+
+    <!-- Option 1: hide done by default + toggle -->
+    <section class="option" data-option="hide-done">
+      <div class="option-head">
+        <span class="option-num">OPTION 1</span>
+        <span class="option-title">Hide done by default · toggle to include<span class="recommend-tag">my pick</span></span>
+      </div>
+      <p class="option-desc">Done is treated as archive. Coloured chips behave exactly like today (single-select). "All" means "all-not-done". A separate <kbd>+ N done</kbd> toggle on the right adds done back in. Most people never click it.</p>
+      <div class="session-header"></div>
+      <div class="session-list"></div>
+      <p class="hint">Try: click "all" — see done are hidden. Toggle "+ 16 done" — they appear. Click red chip — only disconnected.</p>
+    </section>
+
+    <!-- Option 2: multi-select toggle chips -->
+    <section class="option" data-option="multi">
+      <div class="option-head">
+        <span class="option-num">OPTION 2</span>
+        <span class="option-title">Multi-select toggle chips (Gmail/GitHub model)</span>
+      </div>
+      <p class="option-desc">Each chip toggles independently. None selected = show all. "All" toggles all on/off. To get "active+waiting+disconnected" — click those 3, or click "all" then click "done" to remove it.</p>
+      <div class="session-header"></div>
+      <div class="session-list"></div>
+      <p class="hint">Try: click red, amber, green individually. Click "all" — all light up. Click "done" while all are on — done excluded.</p>
+    </section>
+
+    <!-- Option 3: modifier-key multi-select -->
+    <section class="option" data-option="modifier">
+      <div class="option-head">
+        <span class="option-num">OPTION 3</span>
+        <span class="option-title">Modifier-key multi-select</span>
+      </div>
+      <p class="option-desc">Single click = single-select (current). <kbd>Cmd</kbd>+click (or <kbd>Ctrl</kbd> on Windows) = add/remove from selection. "All" clears the filter. Power-user move; not discoverable on its own.</p>
+      <div class="session-header"></div>
+      <div class="session-list"></div>
+      <p class="hint">Try: click red. Cmd+click amber and green to add them. Cmd+click red again to remove it.</p>
+    </section>
+
+    <!-- Option 4: smart preset -->
+    <section class="option" data-option="preset">
+      <div class="option-head">
+        <span class="option-num">OPTION 4</span>
+        <span class="option-title">"Live" preset chip</span>
+      </div>
+      <p class="option-desc">An extra chip "Live" pre-bundles active+waiting+disconnected. Single-select on everything (you'd switch between "Live", "Active", "Done" etc). One-click for the common case but adds a pseudo-state.</p>
+      <div class="session-header"></div>
+      <div class="session-list"></div>
+      <p class="hint">Try: click "Live" — green/amber/red rows shown, done hidden. Click red individually — only disconnected.</p>
+    </section>
+
+    <!-- Option 5: "≥ this" range select -->
+    <section class="option" data-option="range">
+      <div class="option-head">
+        <span class="option-num">OPTION 5</span>
+        <span class="option-title">"≥ this liveness" range select</span>
+      </div>
+      <p class="option-desc">Chips are ordered active → waiting → disconnected → done. Click "disconnected" → shows everything at least this live (active + waiting + disconnected). Click "active" → only active. The natural ordering does the work.</p>
+      <div class="session-header"></div>
+      <div class="session-list"></div>
+      <p class="hint">Try: click red — green/amber/red rows shown. Click amber — active+waiting only. Click "all" — full list with done.</p>
+    </section>
+  </div>
+
+<script>
+  const SESSIONS = [
+    { state: "active",       space: "oyster",      title: "OYSTER: Dev Improvements",          time: "now"     },
+    { state: "active",       space: "oyster",      title: "feat/sessions-process-probe review", time: "12s ago" },
+    { state: "active",       space: "tokinvest",   title: "drc campaign page refactor",         time: "32s ago" },
+    { state: "active",       space: "blunderfixer",title: "blunder coach personality tuning",   time: "48s ago" },
+    { state: "waiting",      space: "oyster",      title: "laptop is freezing up can you di…",  time: "2m"      },
+    { state: "disconnected", space: "oyster",      title: "OYSTER: 0.4.0 launch + filter_…",    time: "21m"     },
+    { state: "disconnected", space: "tokinvest",   title: "TOKINVEST: BREI landing page rev…",  time: "1h"      },
+    { state: "done",         space: "oyster",      title: "OYSTER: bundles + 0.6.0 tickets",    time: "6h"      },
+    { state: "done",         space: "oyster",      title: "OYSTER: PR #205 .html as notes",     time: "1d"      },
+    { state: "done",         space: "oyster",      title: "OYSTER: Dev Improvements (older)",   time: "2d"      },
+    { state: "done",         space: "oyster",      title: "OYSTER: changelog + PR ops",         time: "3d"      },
+    { state: "done",         space: "oyster",      title: "Set up Oyster for me. Call get_…",   time: "5d"      },
+    { state: "done",         space: "blunderfixer",title: "blunder coach: cohort eval",         time: "1w"      },
+    { state: "done",         space: "blunderfixer",title: "BUG: knight tactic mis-rated",       time: "1w"      },
+    { state: "done",         space: "kps",         title: "annual review draft",                time: "2w"      },
+    { state: "done",         space: "tokinvest",   title: "BREI deal flow: data import",        time: "2w"      },
+    { state: "done",         space: "tokinvest",   title: "kyc redesign discussion",            time: "3w"      },
+    { state: "done",         space: "oyster",      title: "Set up Oyster with my projects…",    time: "3w"      },
+    { state: "done",         space: "oyster",      title: "MCP tool registry follow-up",        time: "1mo"     },
+    { state: "done",         space: "oyster",      title: "scan — onboarding writeup",          time: "1mo"     },
+    { state: "done",         space: "blunderfixer",title: "rate-limit retry policy",            time: "2mo"     },
+    { state: "done",         space: "kps",         title: "consult flow: chunk one",            time: "2mo"     },
+    { state: "done",         space: "kps",         title: "consult flow: chunk two",            time: "3mo"     },
+  ];
+  const STATES = ["active", "waiting", "disconnected", "done"];
+  const PIP = { active: "green", waiting: "amber", disconnected: "red", done: "dim" };
+
+  const counts = STATES.reduce((acc, s) => { acc[s] = SESSIONS.filter(x => x.state === s).length; return acc; }, {});
+  counts.all = SESSIONS.length;
+
+  function chip(label, count, pipClass, opts = {}) {
+    const cls = ["stat-btn"];
+    if (opts.selected) cls.push("selected");
+    return `<button class="${cls.join(" ")}" data-action="${opts.action ?? "select"}" data-state="${opts.state ?? ""}">
+      ${pipClass ? `<span class="pip pip-${pipClass}"></span>` : ""}
+      ${count} ${label}
+    </button>`;
+  }
+
+  function renderList(container, predicate) {
+    const rows = SESSIONS.filter(predicate);
+    if (rows.length === 0) {
+      container.innerHTML = `<div class="empty">No sessions match.</div>`;
+      return;
+    }
+    container.innerHTML = rows.map(s => `
+      <div class="session-row s-${s.state}">
+        <span class="row-status"></span>
+        <span class="row-space">${s.space}</span>
+        <span class="row-title">${s.title}</span>
+        <span class="row-time">${s.state === "active" ? s.time : `${s.state} ${s.time}`}</span>
+      </div>
+    `).join("");
+  }
+
+  // ── Each option's renderer ─────────────────────────────────────────────
+
+  function renderOption(name, render) {
+    const root = document.querySelector(`[data-option="${name}"]`);
+    const header = root.querySelector(".session-header");
+    const list = root.querySelector(".session-list");
+    render({ root, header, list });
+  }
+
+  // 0 — current
+  renderOption("current", ({ root, header, list }) => {
+    let filter = "all";
+    const draw = () => {
+      header.innerHTML = `
+        <span class="section-label">Sessions</span>
+        ${chip("active",       counts.active,       "green", { state: "active",       selected: filter === "active" })}
+        ${chip("waiting",      counts.waiting,      "amber", { state: "waiting",      selected: filter === "waiting" })}
+        ${chip("disconnected", counts.disconnected, "red",   { state: "disconnected", selected: filter === "disconnected" })}
+        ${chip("done",         counts.done,         "dim",   { state: "done",         selected: filter === "done" })}
+        ${chip("all",          counts.all,          null,    { state: "all",          selected: filter === "all" })}
+      `;
+      header.querySelectorAll(".stat-btn").forEach(b => {
+        b.onclick = () => { filter = b.dataset.state; draw(); };
+      });
+      renderList(list, s => filter === "all" ? true : s.state === filter);
+    };
+    draw();
+  });
+
+  // 1 — hide done by default + toggle
+  renderOption("hide-done", ({ root, header, list }) => {
+    let filter = "all"; // among non-done states + all
+    let showDone = false;
+    const draw = () => {
+      const recentTotal = counts.active + counts.waiting + counts.disconnected;
+      header.innerHTML = `
+        <span class="section-label">Sessions</span>
+        ${chip("active",       counts.active,       "green", { state: "active",       selected: filter === "active" })}
+        ${chip("waiting",      counts.waiting,      "amber", { state: "waiting",      selected: filter === "waiting" })}
+        ${chip("disconnected", counts.disconnected, "red",   { state: "disconnected", selected: filter === "disconnected" })}
+        ${chip("all",          recentTotal + (showDone ? counts.done : 0), null, { state: "all", selected: filter === "all" })}
+        <span class="stat-divider"></span>
+        <label class="stat-toggle">
+          <input type="checkbox" ${showDone ? "checked" : ""} data-action="toggle-done" />
+          <span class="toggle-pill"></span>
+          <span>+ ${counts.done} done</span>
+        </label>
+      `;
+      header.querySelectorAll(".stat-btn").forEach(b => {
+        b.onclick = () => { filter = b.dataset.state; draw(); };
+      });
+      header.querySelector("[data-action='toggle-done']").onchange = (e) => { showDone = e.target.checked; draw(); };
+      renderList(list, s => {
+        if (s.state === "done" && !showDone) return false;
+        if (filter === "all") return true;
+        return s.state === filter;
+      });
+    };
+    draw();
+  });
+
+  // 2 — multi-select toggle chips
+  renderOption("multi", ({ root, header, list }) => {
+    let selected = new Set(); // empty = show all
+    const draw = () => {
+      const allOn = STATES.every(s => selected.has(s));
+      header.innerHTML = `
+        <span class="section-label">Sessions</span>
+        ${chip("active",       counts.active,       "green", { state: "active",       selected: selected.has("active") })}
+        ${chip("waiting",      counts.waiting,      "amber", { state: "waiting",      selected: selected.has("waiting") })}
+        ${chip("disconnected", counts.disconnected, "red",   { state: "disconnected", selected: selected.has("disconnected") })}
+        ${chip("done",         counts.done,         "dim",   { state: "done",         selected: selected.has("done") })}
+        ${chip("all",          counts.all,          null,    { state: "all",          selected: allOn || selected.size === 0 })}
+      `;
+      header.querySelectorAll(".stat-btn").forEach(b => {
+        b.onclick = () => {
+          const s = b.dataset.state;
+          if (s === "all") {
+            if (selected.size === STATES.length || selected.size === 0) selected = new Set();
+            else selected = new Set(STATES);
+          } else {
+            if (selected.has(s)) selected.delete(s); else selected.add(s);
+          }
+          draw();
+        };
+      });
+      renderList(list, s => selected.size === 0 ? true : selected.has(s.state));
+    };
+    draw();
+  });
+
+  // 3 — modifier-key multi-select
+  renderOption("modifier", ({ root, header, list }) => {
+    let selected = new Set(); // empty = all
+    const draw = () => {
+      header.innerHTML = `
+        <span class="section-label">Sessions</span>
+        ${chip("active",       counts.active,       "green", { state: "active",       selected: selected.has("active") })}
+        ${chip("waiting",      counts.waiting,      "amber", { state: "waiting",      selected: selected.has("waiting") })}
+        ${chip("disconnected", counts.disconnected, "red",   { state: "disconnected", selected: selected.has("disconnected") })}
+        ${chip("done",         counts.done,         "dim",   { state: "done",         selected: selected.has("done") })}
+        ${chip("all",          counts.all,          null,    { state: "all",          selected: selected.size === 0 })}
+      `;
+      header.querySelectorAll(".stat-btn").forEach(b => {
+        b.onclick = (e) => {
+          const s = b.dataset.state;
+          const additive = e.metaKey || e.ctrlKey;
+          if (s === "all") {
+            selected = new Set();
+          } else if (additive) {
+            if (selected.has(s)) selected.delete(s); else selected.add(s);
+          } else {
+            selected = new Set([s]);
+          }
+          draw();
+        };
+      });
+      renderList(list, s => selected.size === 0 ? true : selected.has(s.state));
+    };
+    draw();
+  });
+
+  // 4 — smart preset
+  renderOption("preset", ({ root, header, list }) => {
+    let filter = "live"; // 'live' | 'active' | 'waiting' | 'disconnected' | 'done' | 'all'
+    const liveCount = counts.active + counts.waiting + counts.disconnected;
+    const draw = () => {
+      header.innerHTML = `
+        <span class="section-label">Sessions</span>
+        ${chip("live",         liveCount,           null,    { state: "live",         selected: filter === "live" })}
+        <span class="stat-divider"></span>
+        ${chip("active",       counts.active,       "green", { state: "active",       selected: filter === "active" })}
+        ${chip("waiting",      counts.waiting,      "amber", { state: "waiting",      selected: filter === "waiting" })}
+        ${chip("disconnected", counts.disconnected, "red",   { state: "disconnected", selected: filter === "disconnected" })}
+        ${chip("done",         counts.done,         "dim",   { state: "done",         selected: filter === "done" })}
+        ${chip("all",          counts.all,          null,    { state: "all",          selected: filter === "all" })}
+      `;
+      header.querySelectorAll(".stat-btn").forEach(b => {
+        b.onclick = () => { filter = b.dataset.state; draw(); };
+      });
+      renderList(list, s => {
+        if (filter === "all") return true;
+        if (filter === "live") return s.state !== "done";
+        return s.state === filter;
+      });
+    };
+    draw();
+  });
+
+  // 5 — ≥ this liveness range
+  renderOption("range", ({ root, header, list }) => {
+    const order = { active: 0, waiting: 1, disconnected: 2, done: 3 };
+    let filter = "all"; // a state-name, or 'all'
+    const draw = () => {
+      const totalAtLeast = (st) => SESSIONS.filter(s => order[s.state] <= order[st]).length;
+      header.innerHTML = `
+        <span class="section-label">Sessions</span>
+        ${chip("active",       totalAtLeast("active"),       "green", { state: "active",       selected: filter === "active" })}
+        ${chip("waiting",      totalAtLeast("waiting"),      "amber", { state: "waiting",      selected: filter === "waiting" })}
+        ${chip("disconnected", totalAtLeast("disconnected"), "red",   { state: "disconnected", selected: filter === "disconnected" })}
+        ${chip("done",         totalAtLeast("done"),         "dim",   { state: "done",         selected: filter === "done" })}
+        ${chip("all",          counts.all,                   null,    { state: "all",          selected: filter === "all" })}
+      `;
+      header.querySelectorAll(".stat-btn").forEach(b => {
+        b.onclick = () => { filter = b.dataset.state; draw(); };
+      });
+      renderList(list, s => filter === "all" ? true : order[s.state] <= order[filter]);
+    };
+    draw();
+  });
+</script>
+</body>
+</html>

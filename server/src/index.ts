@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join, dirname, resolve, sep } from "node:path";
+import { basename, extname, join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, renderMermaid } from "./renderers.js";
 import { handleSpacesRequest } from "./spaces-routes.js";
@@ -530,6 +530,68 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // /api/spaces/:id/sources — active sources (linked folders) for a
+  // space. Local-origin only: paths leak the user's home directory.
+  // Surfaces #266 plus attach/detach from the Folders section.
+  {
+    const sourcesPath = url.split("?")[0];
+    const m = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        sendJson(spaceService.getSources(m[1]));
+      } catch (err) {
+        sendError(err, 500);
+      }
+      return;
+    }
+    // POST /api/spaces/:id/sources — { path } attaches a folder. Mirrors
+    // the chat-bar `onboard_space` flow: addSource then scan so artefacts
+    // surface in the same round-trip.
+    if (m && req.method === "POST") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        const body = await readJsonBody();
+        const path = typeof body.path === "string" ? body.path.trim() : "";
+        if (!path) {
+          sendJson({ error: "path is required" }, 400);
+          return;
+        }
+        const source = spaceService.addSource(m[1], path);
+        // Fire scan but don't block the response — tiles surface via SSE
+        // as the watcher / scanner picks them up. A long scan would
+        // otherwise hang the Folders UI for many seconds on a big repo.
+        spaceService.scanSpace(m[1]).catch((err) => {
+          console.warn("[attach-source] scan failed:", err instanceof Error ? err.message : err);
+        });
+        sendJson(source, 201);
+      } catch (err) {
+        sendError(err);
+      }
+      return;
+    }
+    // DELETE /api/spaces/:id/sources/:source_id — detach a folder.
+    // Soft-deletes the source row AND every artifact that came from it.
+    const dm = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources\/([^/]+)$/);
+    if (dm && req.method === "DELETE") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        const [, spaceId, sourceId] = dm;
+        const source = spaceService.getSourceById(sourceId);
+        if (!source || source.space_id !== spaceId) {
+          sendJson({ error: "source not found in this space" }, 404);
+          return;
+        }
+        spaceService.removeSource(sourceId);
+        res.writeHead(204);
+        res.end();
+      } catch (err) {
+        sendError(err);
+      }
+      return;
+    }
+  }
+
   // GET /api/memories — list memories, optionally scoped to a space.
   // Local-origin only: memory contents are private user notes. Strip the
   // query string before path-matching (same trap the events route had —
@@ -577,17 +639,38 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // session titles are derived from user prompts, which are private.
   if (url === "/api/sessions" && req.method === "GET") {
     if (rejectIfNonLocalOrigin()) return;
-    sendJson(sessionStore.getAll().map((row) => ({
-      id: row.id,
-      spaceId: row.space_id,
-      agent: row.agent,
-      title: row.title,
-      state: row.state,
-      startedAt: row.started_at,
-      endedAt: row.ended_at,
-      model: row.model,
-      lastEventAt: row.last_event_at,
-    })));
+    const rows = sessionStore.getAll();
+    // Join sources for sourceLabel — batched IN-list queries so the
+    // home feed can show "active project" tiles without a per-tile
+    // round trip. Sources are dedup'd because most sessions cluster
+    // around a small number of registered folders. Chunked at 500
+    // ids per batch to stay well below SQLite's 999-bound-variable
+    // ceiling on installs that haven't been recompiled with the
+    // higher 32_766 limit.
+    const sourceIds = [...new Set(rows.map((r) => r.source_id).filter((id): id is string => !!id))];
+    const SOURCE_BATCH = 500;
+    const sourceList = [];
+    for (let i = 0; i < sourceIds.length; i += SOURCE_BATCH) {
+      sourceList.push(...spaceStore.getSourcesByIds(sourceIds.slice(i, i + SOURCE_BATCH)));
+    }
+    const sourcesById = new Map(sourceList.map((s) => [s.id, s]));
+    sendJson(rows.map((row) => {
+      const src = row.source_id ? sourcesById.get(row.source_id) : null;
+      const label = src ? (src.label ?? (basename(src.path) || null)) : null;
+      return {
+        id: row.id,
+        spaceId: row.space_id,
+        sourceId: row.source_id ?? null,
+        sourceLabel: label,
+        agent: row.agent,
+        title: row.title,
+        state: row.state,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        model: row.model,
+        lastEventAt: row.last_event_at,
+      };
+    }));
     return;
   }
 
@@ -602,9 +685,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         res.end(JSON.stringify({ error: "session not found" }));
         return;
       }
+      const src = row.source_id ? spaceStore.getSourceById(row.source_id) : undefined;
+      const sourceLabel = src ? (src.label ?? (basename(src.path) || null)) : null;
       sendJson({
         id: row.id,
         spaceId: row.space_id,
+        sourceId: row.source_id ?? null,
+        sourceLabel,
         agent: row.agent,
         title: row.title,
         state: row.state,
@@ -739,6 +826,8 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
           session: {
             id: s.id,
             spaceId: s.space_id,
+            sourceId: s.source_id ?? null,
+            sourceLabel: null,
             agent: s.agent,
             title: s.title,
             state: s.state,

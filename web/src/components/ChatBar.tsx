@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { motion, LayoutGroup } from "framer-motion";
-import { spaceColor } from "../utils/spaceColor";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { sendMessage, replyToQuestion, formatChatError, ChatSendError } from "../data/chat-api";
@@ -628,78 +626,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         </button>
       </div>
 
-      {/* Space pills — below the input bar */}
-      {(spaces.length > 0 || activeSpace) && onSpaceChange && (
-        <div className="space-pills-inline">
-          <LayoutGroup id="space-pill">
-          <div className="space-pills">
-            {/* Home */}
-            <button className={`space-pill space-pill--icon${activeSpace === "home" ? " active" : ""}`} onClick={() => onSpaceChange("home")} title="Home" style={{ position: "relative" }}>
-              {activeSpace === "home" && (
-                <motion.span layoutId="space-pill-bg" className="space-pill-bg" style={{ background: "#7c6bff" }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />
-              )}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ position: "relative", zIndex: 1 }}>
-                <path d="M11.03 2.59a1.5 1.5 0 0 1 1.94 0l7.5 6.363A1.5 1.5 0 0 1 21 10.097V19.5a2.5 2.5 0 0 1-2.5 2.5H15v-4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v4H5.5A2.5 2.5 0 0 1 3 19.5v-9.403a1.5 1.5 0 0 1 .53-1.137l7.5-6.37Z"/>
-              </svg>
-            </button>
-
-            {/* The "All" pill collapsed into Home with the sessions arc
-                (#252). #all and #0 still alias to home for muscle memory. */}
-
-            {/* Named spaces */}
-            {spaces.filter(s => s.id !== "home").map((s) => {
-              const color = s.color ?? spaceColor(s.id);
-              const isActive = activeSpace === s.id;
-              const isRenaming = renaming?.spaceId === s.id;
-              return (
-                <button
-                  key={s.id}
-                  className={`space-pill${isActive ? " active" : ""}`}
-                  onClick={() => !isRenaming && onSpaceChange?.(s.id)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    setCtxMenu({ spaceId: s.id, rect });
-                    setShowColors(false);
-                    setConfirmDelete(false);
-                    setRenaming(null);
-                  }}
-                  style={{ position: "relative" }}
-                >
-                  {isActive && (
-                    <motion.span layoutId="space-pill-bg" className="space-pill-bg" style={{ background: color }} transition={{ type: "spring", stiffness: 400, damping: 35 }} />
-                  )}
-                  {isRenaming ? (
-                    <input
-                      ref={renameRef}
-                      className="space-pill-rename"
-                      value={renaming.name}
-                      onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && renaming.name.trim()) {
-                          onSpaceUpdate?.(s.id, { displayName: renaming.name.trim() });
-                          setRenaming(null);
-                          e.currentTarget.blur();
-                        }
-                        if (e.key === "Escape") {
-                          setRenaming(null);
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      onBlur={() => setRenaming(null)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span style={{ position: "relative", zIndex: 1 }}>{s.displayName}</span>
-                  )}
-                </button>
-              );
-            })}
-
-          </div>
-          </LayoutGroup>
-        </div>
-      )}
+      {/* Space pills below the chat bar were dropped now that the top
+          breadcrumb is the canonical space nav. The right-click context
+          menu (rename / colour / delete) lived on those pills — that
+          surface needs a new home. Tracked separately. */}
 
       {/* Space context menu — portaled to body to escape transforms */}
       {ctxMenu && createPortal(

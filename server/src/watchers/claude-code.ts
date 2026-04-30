@@ -256,9 +256,11 @@ export class ClaudeCodeWatcher {
     // consistent (`YYYY-MM-DDTHH:MM:SS.mmmZ`).
     const startedAt = meta.startedAt ?? (stat.birthtime ?? stat.mtime).toISOString();
 
+    const resolved = this.resolveSource(meta.cwd);
     this.deps.sessionStore.upsertSession({
       id: meta.sessionId,
-      space_id: this.resolveSpaceId(meta.cwd),
+      space_id: resolved.spaceId,
+      source_id: resolved.sourceId,
       agent: "claude-code",
       title: effectiveTitle(meta),
       state,
@@ -624,9 +626,11 @@ export class ClaudeCodeWatcher {
       // First event from a brand-new file: upsert the row before any events
       // are inserted (FK constraint).
       if (!sessionEnsured && tracker.sessionId) {
+        const resolved = this.resolveSource(tracker.cwd);
         this.deps.sessionStore.upsertSession({
           id: tracker.sessionId,
-          space_id: this.resolveSpaceId(tracker.cwd),
+          space_id: resolved.spaceId,
+          source_id: resolved.sourceId,
           agent: "claude-code",
           title: effectiveTitle(tracker),
           state: "active",
@@ -758,9 +762,13 @@ export class ClaudeCodeWatcher {
   // ── Helpers ─────────────────────────────────────────────────────────────
 
   private resolveSpaceId(cwd: string | null): string | null {
-    if (!cwd) return null;
+    return this.resolveSource(cwd).spaceId;
+  }
+
+  private resolveSource(cwd: string | null): { spaceId: string | null; sourceId: string | null } {
+    if (!cwd) return { spaceId: null, sourceId: null };
     const source = this.deps.spaceStore.getActiveSourceByPath(cwd);
-    return source?.space_id ?? null;
+    return { spaceId: source?.space_id ?? null, sourceId: source?.id ?? null };
   }
 
   private logError = (err: unknown) => {

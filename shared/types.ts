@@ -41,6 +41,8 @@ export interface Artifact {
   sourceLabel?: string | null;
   /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan / linked source. `ai_generated` — produced by an agent. Drives the source filter on Home. */
   sourceOrigin?: "manual" | "discovered" | "ai_generated";
+  /** ID of the linked source folder this artefact came from. Null/undefined for native artefacts (manual / ai_generated). Drives per-folder filtering on the project-tile grid. */
+  sourceId?: string | null;
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";
@@ -60,6 +62,15 @@ export type SessionAgent = "claude-code" | "opencode" | "codex";
 export interface Session {
   id: string;
   spaceId: string | null;
+  /** Source (project / linked folder) within the space, when the session's
+   * cwd matched a registered source. Null for sessions in unattached cwds
+   * and for native (non-source-backed) work. */
+  sourceId: string | null;
+  /** Display label of the source — `source.label ?? basename(source.path)`.
+   * Resolved server-side via a batched join so the Home active-projects
+   * tiles don't need a per-row lookup. Null when sourceId is null or
+   * (rare) when the source has been hard-deleted. */
+  sourceLabel: string | null;
   agent: SessionAgent;
   title: string | null;
   state: SessionState;

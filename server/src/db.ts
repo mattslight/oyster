@@ -191,6 +191,19 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0");
   } catch { /* already exists */ }
 
+  // source_id added so sessions can be grouped by project (sub-folder
+  // within a space), not just by space. Lets us render an "Active
+  // projects" section on Home without needing a separate join table.
+  // ON DELETE SET NULL: detaching a source shouldn't blow up a
+  // session record — it just unlinks the project association.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
+  } catch { /* already exists */ }
+  // Index creation lives in its own try so an already-applied ALTER
+  // (which throws above) doesn't skip indexing on installs that
+  // pre-date this migration.
+  db.exec("CREATE INDEX IF NOT EXISTS sessions_source_id ON sessions(source_id)");
+
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
   // SQLite can't ALTER a CHECK constraint, so we rebuild via temp table.
   //

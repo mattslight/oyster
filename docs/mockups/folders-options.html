@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Option C — enriched pills, no Spaces section</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #7c6bff;
+      --accent-bright: #a597ff;
+      --green: #4ade80;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --text: #f0f0f5;
+      --text-dim: rgba(232, 233, 240, 0.55);
+      --text-muted: rgba(232, 233, 240, 0.3);
+      --surface: rgba(12, 13, 28, 0.6);
+      --border: rgba(255, 255, 255, 0.06);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      padding: 60px 0 120px;
+    }
+    .glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(ellipse 70% 45% at 50% 10%, rgba(124,107,255,0.08) 0%, transparent 60%);
+    }
+    .page { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 32px; }
+    .page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .page-subtitle {
+      font-size: 14px; color: var(--text-dim);
+      margin-bottom: 28px; max-width: 760px; line-height: 1.55;
+    }
+    .pick-hint {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-bright);
+      margin-bottom: 12px;
+      letter-spacing: 0.05em;
+    }
+    .panel {
+      padding: 28px 36px 36px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      margin-bottom: 32px;
+    }
+
+    /* TOP NAV — enriched pills carry the at-a-glance state info */
+    .topnav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding-bottom: 24px;
+      border-bottom: 1px dashed var(--border);
+      margin-bottom: 26px;
+      align-items: center;
+    }
+    .topnav-pill {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+    .topnav-pill:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+    }
+    .topnav-pill.selected {
+      background: rgba(124, 107, 255, 0.18);
+      border-color: rgba(124, 107, 255, 0.5);
+      color: var(--accent-bright);
+    }
+    .topnav-pill.elsewhere {
+      border-style: dashed;
+      font-style: italic;
+    }
+    .topnav-pill.add {
+      border-style: dashed;
+      border-color: rgba(124, 107, 255, 0.32);
+      color: var(--accent);
+    }
+    .topnav-pill .pip-cluster {
+      display: inline-flex;
+      gap: 3px;
+      align-items: center;
+    }
+    /* Tile / inline pip — small dot used in tile counts */
+    .topnav-pill .pip,
+    .tile-counts .pip {
+      width: 5px; height: 5px; border-radius: 50%;
+    }
+    .pip.green { background: var(--green); box-shadow: 0 0 4px var(--green); animation: breathe 2.4s ease-in-out infinite; }
+    .pip.amber { background: var(--amber); box-shadow: 0 0 4px var(--amber); }
+    .pip.red   { background: var(--red);   box-shadow: 0 0 4px var(--red); }
+    .pip.dim   { background: var(--text-muted); }
+    @keyframes breathe { 50% { opacity: 0.45; } }
+
+    /* Numbered status badges — used on top-nav pills. Tinted background
+       + same-hue text reads as a chip/tag without screaming. Tight. */
+    .topnav-pill .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 13px;
+      height: 13px;
+      padding: 0 3px;
+      border-radius: 7px;
+      font-family: var(--font-mono);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .topnav-pill .badge.green { background: rgba(74, 222, 128, 0.16); color: var(--green); }
+    .topnav-pill .badge.amber { background: rgba(251, 191, 36, 0.16); color: var(--amber); }
+    .topnav-pill .badge.red   { background: rgba(248, 113, 113, 0.16); color: var(--red); }
+
+    /* Tooltip on pill hover */
+    .topnav-pill[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 10px;
+      background: rgba(20, 21, 40, 0.98);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--text);
+      white-space: nowrap;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent-bright);
+      margin-bottom: 8px;
+    }
+    .h1 {
+      font-size: 34px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 28px;
+      color: var(--text);
+    }
+
+    .section-head {
+      display: flex; align-items: center; gap: 12px;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .section-head .label { color: var(--text); }
+    .section-head .count { font-size: 11px; color: var(--text-muted); }
+    .section-head .rule { flex: 1; height: 1px; background: var(--border); }
+
+    /* Project tile grid */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .tile {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      padding: 12px 16px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .tile:hover {
+      background: rgba(255, 255, 255, 0.02);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+    .tile.selected {
+      background: rgba(124, 107, 255, 0.08);
+      border-color: rgba(124, 107, 255, 0.5);
+      box-shadow: 0 0 0 1px rgba(124, 107, 255, 0.18);
+    }
+    .tile-name {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tile-name .star { color: var(--accent-bright); }
+    .tile-name .tag {
+      margin-left: 4px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    .tile-counts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .tile-counts .signal { display: inline-flex; align-items: center; gap: 5px; color: var(--text); }
+    .tile-counts .signal-muted { color: var(--text-muted); }
+    .tile-counts .pip { width: 5px; height: 5px; }
+    .tile.add {
+      border-style: dashed;
+      border-color: rgba(124, 107, 255, 0.32);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      align-items: flex-start;
+    }
+
+    .h-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .h-tile {
+      aspect-ratio: 1;
+      background: rgba(124, 107, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-size: 9px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 4px;
+    }
+    .h-grid.sessions { grid-template-columns: repeat(5, 1fr); }
+    .h-grid.sessions .h-tile {
+      aspect-ratio: 1.6;
+      background: rgba(74, 222, 128, 0.05);
+      border-color: rgba(74, 222, 128, 0.12);
+    }
+
+    .notes {
+      margin: 0;
+      padding: 22px 24px;
+      background: rgba(124, 107, 255, 0.04);
+      border: 1px solid rgba(124, 107, 255, 0.18);
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--text-dim);
+    }
+    .notes strong { color: var(--text); }
+    .notes ul { margin: 8px 0 0 18px; }
+    .notes li { margin-bottom: 4px; }
+
+    [data-show] { display: none; }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="page">
+    <div class="page-title">Option C — enriched pills, no Spaces section</div>
+    <div class="page-subtitle">
+      Top pills carry the at-a-glance state info that the rich cards used to provide
+      (multiple pips per space, tooltip on hover). The "Spaces" content section is gone —
+      the pills enumerate the spaces, no point doing it twice. On a real-space view, the
+      first content section is <em>Projects</em> (children of that scope).
+    </div>
+    <div class="pick-hint">▼ click a pill to flip views · hover for full counts</div>
+
+    <div class="panel">
+      <nav class="topnav" id="topnav">
+        <button class="topnav-pill selected" data-view="home" data-tip="2 active · 1 waiting · 2 disconnected · 49 done">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12l9-9 9 9" />
+            <path d="M5 10v10h14V10" />
+          </svg>
+          Home
+        </button>
+        <button class="topnav-pill" data-view="oyster" data-tip="1 active · 1 waiting · 1 disconnected · 18 done">
+          <span class="pip-cluster">
+            <span class="badge green">1</span>
+            <span class="badge amber">1</span>
+            <span class="badge red">1</span>
+          </span>
+          Oyster
+        </button>
+        <button class="topnav-pill" data-view="tokinvest" data-tip="1 disconnected · 8 done">
+          <span class="pip-cluster">
+            <span class="badge red">1</span>
+          </span>
+          Tokinvest
+        </button>
+        <button class="topnav-pill elsewhere" data-view="elsewhere" data-tip="1 disconnected · 15 done">
+          <span class="pip-cluster">
+            <span class="badge red">1</span>
+          </span>
+          Elsewhere
+        </button>
+        <button class="topnav-pill add" data-tip="Create a new top-level workspace">
+          + create space
+        </button>
+      </nav>
+
+      <!-- ────── HOME view ────── -->
+      <div data-show="home" style="display: block;">
+        <div class="eyebrow">Home</div>
+        <div class="h1">Everything.</div>
+
+        <div class="section-head">
+          <span class="label">Sessions</span>
+          <span class="count">3 live · across all spaces</span>
+          <span class="rule"></span>
+        </div>
+        <div class="h-grid sessions">
+          <div class="h-tile">cc · oyster · active</div>
+          <div class="h-tile">cc · oyster · waiting</div>
+          <div class="h-tile">cc · tokinvest · disconnected</div>
+          <div class="h-tile">cc · oyster · done</div>
+          <div class="h-tile">oc · oyster · done</div>
+        </div>
+
+        <div class="section-head">
+          <span class="label">Artefacts</span>
+          <span class="count">71 · across all spaces</span>
+          <span class="rule"></span>
+        </div>
+        <div class="h-grid">
+          <div class="h-tile">notes · oyster</div>
+          <div class="h-tile">notes · oyster</div>
+          <div class="h-tile">app · oyster</div>
+          <div class="h-tile">notes · tokinvest</div>
+          <div class="h-tile">notes · oyster</div>
+          <div class="h-tile">app · tokinvest</div>
+          <div class="h-tile">notes · oyster</div>
+        </div>
+
+        <div class="section-head">
+          <span class="label">Memories</span>
+          <span class="count">6 · across all spaces</span>
+          <span class="rule"></span>
+        </div>
+        <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); padding: 8px 0;">[memory list — aggregated]</div>
+      </div>
+
+      <!-- ────── OYSTER ────── -->
+      <div data-show="oyster">
+        <div class="eyebrow">Oyster</div>
+        <div class="h1">Everything in this space.</div>
+
+        <div class="section-head">
+          <span class="label">Projects</span>
+          <span class="count">5 · plus All and scratchpad</span>
+          <span class="rule"></span>
+        </div>
+        <div class="tile-grid">
+          <button class="tile selected">
+            <span class="tile-name">All</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip green"></span>1 active</span>
+              <span class="signal"><span class="pip amber"></span>1 waiting</span>
+              <span class="signal"><span class="pip red"></span>1 disconnected</span>
+              <span class="signal"><span class="pip dim"></span>18 done</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name"><span class="star">★</span> oyster <span class="tag">scratchpad</span></span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>61 artefacts</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">oyster-os</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>1 artefact</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">oyster-crm</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>1 artefact</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">oyster-sample-plugin</span>
+            <span class="tile-counts">
+              <span class="signal signal-muted">no artefacts yet</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">oyster-community-plugins</span>
+            <span class="tile-counts">
+              <span class="signal signal-muted">no artefacts yet</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">oyster-technology-www</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>1 artefact</span>
+            </span>
+          </button>
+          <button class="tile add">
+            <span class="tile-name">+ Attach folder</span>
+            <span class="tile-counts">
+              <span class="signal signal-muted">link a repo or folder</span>
+            </span>
+          </button>
+        </div>
+
+        <div class="section-head">
+          <span class="label">Sessions</span>
+          <span class="count">3 live · in this space</span>
+          <span class="rule"></span>
+        </div>
+        <div class="h-grid sessions">
+          <div class="h-tile">cc · oyster-os · active</div>
+          <div class="h-tile">cc · oyster-crm · waiting</div>
+          <div class="h-tile">cc · oyster-os · disconnected</div>
+          <div class="h-tile">cc · oyster-os · done</div>
+          <div class="h-tile">oc · oyster-os · done</div>
+        </div>
+
+        <div class="section-head">
+          <span class="label">Artefacts</span>
+          <span class="count">all 64 · mine 0 · agents 0 · linked 64</span>
+          <span class="rule"></span>
+        </div>
+        <div class="h-grid">
+          <div class="h-tile">README · oyster-os</div>
+          <div class="h-tile">CLAUDE · oyster-os</div>
+          <div class="h-tile">README · oyster-crm</div>
+          <div class="h-tile">CHANGELOG</div>
+          <div class="h-tile">app · sample</div>
+          <div class="h-tile">plans/sessions</div>
+          <div class="h-tile">app · crm</div>
+        </div>
+      </div>
+
+      <!-- ────── TOKINVEST ────── -->
+      <div data-show="tokinvest">
+        <div class="eyebrow">Tokinvest</div>
+        <div class="h1">Everything in this space.</div>
+
+        <div class="section-head">
+          <span class="label">Projects</span>
+          <span class="count">4 · plus All and scratchpad</span>
+          <span class="rule"></span>
+        </div>
+        <div class="tile-grid">
+          <button class="tile selected">
+            <span class="tile-name">All</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip red"></span>1 disconnected</span>
+              <span class="signal"><span class="pip dim"></span>8 done</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name"><span class="star">★</span> tokinvest <span class="tag">scratchpad</span></span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>24 artefacts</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">tokinvest-website</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>1 artefact</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">tokinvest-client-portal</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>1 artefact</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">tokinvest-concept</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>1 artefact</span>
+            </span>
+          </button>
+          <button class="tile">
+            <span class="tile-name">tokinvest-drc</span>
+            <span class="tile-counts">
+              <span class="signal"><span class="pip dim"></span>1 artefact</span>
+            </span>
+          </button>
+          <button class="tile add">
+            <span class="tile-name">+ Attach folder</span>
+            <span class="tile-counts">
+              <span class="signal signal-muted">link a repo or folder</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ────── ELSEWHERE ────── -->
+      <div data-show="elsewhere">
+        <div class="eyebrow">Elsewhere</div>
+        <div class="h1">Everything else.</div>
+        <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); padding: 8px 0 28px;">
+          Sessions started in folders that aren't attached to any space.<br>
+          (No Projects section here — Elsewhere isn't a space, just a meta-bucket.)
+        </div>
+        <div class="section-head">
+          <span class="label">Sessions</span>
+          <span class="count">1 disconnected · 15 done</span>
+          <span class="rule"></span>
+        </div>
+        <div class="h-grid sessions">
+          <div class="h-tile">cc · ~/notes · disconnected</div>
+          <div class="h-tile">cc · ~/notes · done</div>
+          <div class="h-tile">cc · ~/scratch · done</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <strong>What changed vs. the previous mock:</strong>
+      <ul>
+        <li><strong>No "Spaces" content section on Home.</strong> Pills enumerate the spaces; doing it twice was redundant.</li>
+        <li><strong>Pills carry multiple pips</strong> — one per non-zero <em>active / waiting / disconnected</em> count. Done is omitted (resting state, would always show). Hover any pill for the full count breakdown.</li>
+        <li><strong>+ create space</strong> moves to the end of the top nav. Mirrors how the chat-bar pills work.</li>
+        <li><strong>On a real-space view</strong>, Projects is the first content section — children of the current scope.</li>
+      </ul>
+
+      <strong style="display:block; margin-top:14px;">Questions to gut-check:</strong>
+      <ul>
+        <li>Are three pips on Oyster's pill too busy? Could clamp to one (most-active) and put the rest in the tooltip.</li>
+        <li>Is "+ create space" useful enough on the top nav, or does it belong in a settings-y place?</li>
+        <li>Does Home losing its rich cards feel like a downgrade, or like the page got cleaner?</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const nav = document.getElementById('topnav');
+    const views = document.querySelectorAll('[data-show]');
+    nav.addEventListener('click', (e) => {
+      const btn = e.target.closest('.topnav-pill[data-view]');
+      if (!btn) return;
+      const view = btn.getAttribute('data-view');
+      nav.querySelectorAll('.topnav-pill').forEach((p) => p.classList.toggle('selected', p === btn));
+      views.forEach((v) => {
+        v.style.display = v.getAttribute('data-show') === view ? 'block' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>
