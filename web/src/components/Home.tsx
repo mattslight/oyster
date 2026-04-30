@@ -1843,7 +1843,6 @@ function VaultContents() {
         <span className="home-vault-contents-path">{inv.root}</span>
         <span className="home-vault-section-rule" />
       </div>
-      <div className="home-vault-contents-total">{formatBytes(inv.totalSize)}</div>
       <ul className="home-vault-contents-list">
         {inv.entries.map((e) => (
           <li key={e.name} className={`home-vault-row${!e.exists ? " home-vault-row--missing" : ""}`}>
@@ -1855,7 +1854,13 @@ function VaultContents() {
             <span className="home-vault-row-count">
               {e.exists ? `${e.count.toLocaleString()} ${pluralize(e.count, e.unit)}` : "—"}
             </span>
-            <span className="home-vault-row-size">{e.exists ? formatBytes(e.size) : ""}</span>
+            <span className="home-vault-row-size">
+              {/* Spaces dir on disk is always empty — real spaces have repo_path
+                  elsewhere — so its 0 B is meaningless. Show the vault total
+                  in that slot instead; it lands on the topmost row, reading
+                  as the headline number for the whole inventory. */}
+              {e.name === "spaces" ? formatBytes(inv.totalSize) : (e.exists ? formatBytes(e.size) : "")}
+            </span>
           </li>
         ))}
       </ul>
