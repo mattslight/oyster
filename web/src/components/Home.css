@@ -1185,14 +1185,6 @@
 .home-breadcrumb-pill--elsewhere .home-breadcrumb-pill-label {
   font-style: italic;
 }
-/* Folder-derived names (e.g. `blunderfixer` after a promote) come in
-   lowercase from the filesystem. Display them title-cased to match the
-   established convention (Oyster, Tokinvest, Elsewhere). Whitelisted to
-   the breadcrumb so we don't accidentally re-case things in inputs or
-   monospace contexts. */
-.home-breadcrumb-pill-label {
-  text-transform: capitalize;
-}
 /* Sliding selection background — animated by Framer Motion's
    shared-layout (LayoutGroup + layoutId), mirrors the chat-bar
    `space-pill-bg`. Sits behind the content. */

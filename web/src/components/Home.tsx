@@ -30,7 +30,7 @@ interface Props {
    *  Home delegates the delete (+ redirect) to App so spaces state
    *  stays consistent. */
   onSpaceDelete?: (spaceId: string) => Promise<void> | void;
-  /** Used by the breadcrumb-pill context menu (rename / color). */
+  /** Used by the breadcrumb-pill context menu (rename). */
   onSpaceUpdate?: (id: string, fields: { displayName?: string; color?: string }) => void;
 }
 
@@ -675,7 +675,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <div className="home-active-projects-grid">
               {orphanCwdGroups.map((p) => {
                 const isSelected = selectedOrphanCwd === p.cwd;
-                const isPromoting = promotingCwd === p.cwd;
+                // Disable every promote button while *any* promotion is in
+                // flight — the click handler also short-circuits in that
+                // case, so the disabled state is honest about it.
+                const isPromoting = Boolean(promotingCwd);
                 return (
                   <div
                     key={p.cwd}

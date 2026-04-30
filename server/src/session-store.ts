@@ -279,8 +279,12 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   backfillSourceForCwd(cwd: string, spaceId: string, sourceId: string): number {
+    // Only re-attribute genuinely-orphan rows. Both space_id and source_id
+    // must be NULL — a session manually attached to a "logical-only" space
+    // (no source) should not get yanked into the freshly-promoted folder
+    // just because its cwd happens to match.
     const info = this.db
-      .prepare("UPDATE sessions SET space_id = ?, source_id = ? WHERE cwd = ? AND source_id IS NULL")
+      .prepare("UPDATE sessions SET space_id = ?, source_id = ? WHERE cwd = ? AND source_id IS NULL AND space_id IS NULL")
       .run(spaceId, sourceId, cwd);
     return Number(info.changes);
   }

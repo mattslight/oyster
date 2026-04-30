@@ -12,29 +12,11 @@ export async function handleSpacesRequest(
   req: IncomingMessage,
   res: ServerResponse,
   spaceService: SpaceService,
+  /** Optional — when supplied, lifecycle changes that touch sessions
+   *  (DELETE space cascades sessions.space_id to NULL) trigger a refetch
+   *  on the client by emitting a `session_changed` event. */
+  onSessionsChanged?: () => void,
 ): Promise<boolean> {
-
-  // POST /api/spaces/from-path — one-shot "promote folder to space": create a
-  // new space named after the folder, attach the path as its sole source, and
-  // re-attribute orphan sessions whose cwd matches. Used by the orphan-tile
-  // promote affordance on Home → Elsewhere.
-  if (url === "/api/spaces/from-path" && req.method === "POST") {
-    let body = "";
-    req.on("data", (chunk: Buffer | string) => (body += chunk));
-    req.on("end", () => {
-      try {
-        const { path, name } = JSON.parse(body);
-        if (!path) throw new Error("path is required");
-        const { space } = spaceService.createSpaceFromPath({ path, name });
-        res.writeHead(201, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(space));
-      } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: (err as Error).message }));
-      }
-    });
-    return true;
-  }
 
   // POST /api/spaces/from-folder — convert a folder group (under home) into its own space.
   // Used by the desktop right-click "Move folder to space" flow.
@@ -97,6 +79,11 @@ export async function handleSpacesRequest(
         try {
           const parsed = body ? JSON.parse(body) : {};
           spaceService.deleteSpace(spaceIdMatch[1], parsed.folderName);
+          // Cascade fired sessions.space_id → NULL on every session in the
+          // deleted space. Tell connected clients to refetch the session
+          // list so the UI moves them back to Elsewhere immediately rather
+          // than waiting for the next watcher tick.
+          onSessionsChanged?.();
           res.writeHead(204);
           res.end();
         } catch (err) {

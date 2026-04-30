@@ -20,6 +20,15 @@ export function SpaceContextMenu({ spaceId, spaceName, anchorRect, onClose, onRe
   const ref = useRef<HTMLDivElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
 
+  // Reset rename buffer + mode when the parent reopens the menu for a
+  // different space without unmounting (React reuses the instance because
+  // the JSX position is identical). Without this, "Rename" on Tokinvest
+  // would prefill with Blunderfixer's name.
+  useEffect(() => {
+    setRenameValue(spaceName);
+    setMode("menu");
+  }, [spaceId, spaceName]);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
