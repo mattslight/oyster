@@ -114,17 +114,21 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
   codex: "codex",
 };
 
-// State-count visualised as 1–3 horizontally overlapping glow dots.
-// Caps at 3 — any larger count still reads as "several". The colour
-// itself carries the state, so no numeral is needed.
-function renderDots(n: number, color: "green" | "amber" | "red") {
-  const visible = Math.min(n, 3);
+// Compact pip + numeral, one per non-zero state. Same glow primitive
+// the Active-projects tile signals use, just without the trailing
+// state word — fits in a breadcrumb pill while keeping counts exact
+// and the visual language consistent with the tiles.
+function renderPipCounts(counts: { active?: number; waiting?: number; disconnected?: number }) {
+  const a = counts.active ?? 0;
+  const w = counts.waiting ?? 0;
+  const d = counts.disconnected ?? 0;
+  if (a + w + d === 0) return null;
   return (
-    <span className="dot-stack" aria-label={`${n}`}>
-      {Array.from({ length: visible }, (_, i) => (
-        <span key={i} className={`pip pip-${color}`} />
-      ))}
-    </span>
+    <>
+      {a > 0 && <span className="pip-count"><span className="pip pip-green" />{a}</span>}
+      {w > 0 && <span className="pip-count"><span className="pip pip-amber" />{w}</span>}
+      {d > 0 && <span className="pip-count"><span className="pip pip-red" />{d}</span>}
+    </>
   );
 }
 
@@ -452,9 +456,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   )}
                   {(counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
                     <span className="home-breadcrumb-badges">
-                      {counts.active > 0 && renderDots(counts.active, "green")}
-                      {counts.waiting > 0 && renderDots(counts.waiting, "amber")}
-                      {counts.disconnected > 0 && renderDots(counts.disconnected, "red")}
+                      {renderPipCounts(counts)}
                     </span>
                   )}
                   <span className="home-breadcrumb-pill-label">{space.displayName}</span>
@@ -482,9 +484,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 )}
                 {(orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
                   <span className="home-breadcrumb-badges">
-                    {orphanCounts.active > 0 && renderDots(orphanCounts.active, "green")}
-                    {orphanCounts.waiting > 0 && renderDots(orphanCounts.waiting, "amber")}
-                    {orphanCounts.disconnected > 0 && renderDots(orphanCounts.disconnected, "red")}
+                    {renderPipCounts(orphanCounts)}
                   </span>
                 )}
                 <span className="home-breadcrumb-pill-label">Elsewhere</span>
@@ -525,9 +525,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                     <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
                     <div className="home-active-project-name">{p.label}</div>
                     <div className="home-active-project-counts">
-                      {p.counts.active > 0 && <span className="signal">{renderDots(p.counts.active, "green")} active</span>}
-                      {p.counts.waiting > 0 && <span className="signal">{renderDots(p.counts.waiting, "amber")} waiting</span>}
-                      {p.counts.disconnected > 0 && <span className="signal">{renderDots(p.counts.disconnected, "red")} disconnected</span>}
+                      {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
+                      {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
+                      {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
                     </div>
                   </button>
                 );
@@ -894,6 +894,11 @@ function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
     : session.state === "disconnected" ? `disconnected ${rel}`
     : rel;
   const title = session.title ?? "(no title yet)";
+  // Prefer the most specific label available: source (folder) > space >
+  // cwd basename for orphan sessions. Always tooltip the full cwd so
+  // the user can identify where the session was running.
+  const cwdBasename = session.cwd ? session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
+  const projectLabel = session.sourceLabel ?? spaceLabel ?? cwdBasename ?? "—";
   return (
     <div
       className="home-row"
@@ -905,7 +910,7 @@ function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
       tabIndex={onOpen ? 0 : undefined}
     >
       <span className={`home-row-status ${session.state}`} />
-      <span className="home-row-space">{spaceLabel ?? "—"}</span>
+      <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
       <span className="home-row-title" title={title}>{title}</span>
       <span className={`home-row-agent ${AGENT_PIP_CLASS[session.agent]}`}>
         <span className="home-agent-pip" />

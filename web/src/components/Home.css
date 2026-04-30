@@ -1197,24 +1197,23 @@
   z-index: 1;
 }
 
-/* Status counts on breadcrumb pills — glow dots stacked horizontally
-   (1–3, capped). Colour carries state, count is encoded by the stack
-   length, matching the Active-projects tile treatment. */
+/* Status counts on breadcrumb pills — same glow-pip primitive the
+   Active-projects tile uses, but with the state word elided so the
+   pill stays compact. Each colour group renders as `● N`. */
 .home-breadcrumb-badges {
   display: inline-flex;
-  gap: 8px;
+  gap: 7px;
   align-items: center;
-  margin-right: 4px;
+  margin-right: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
-/* Shared stack — slight horizontal overlap so multiple dots read as
-   one cluster rather than three loose pips. Used on breadcrumb pills
-   and Active-projects tile signals. */
-.dot-stack {
+.pip-count {
   display: inline-flex;
   align-items: center;
-}
-.dot-stack .pip + .pip {
-  margin-left: -2px;
+  gap: 4px;
 }
 
 
