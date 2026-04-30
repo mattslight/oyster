@@ -275,7 +275,7 @@
   align-items: flex-start;
   justify-content: flex-start;
   text-align: left;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: var(--home-surface);
   border: 1px solid var(--home-border);
   border-radius: 12px;
@@ -295,29 +295,31 @@
   box-shadow: 0 0 0 1px var(--home-border-accent) inset;
 }
 .home-space-card-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--home-accent-bright);
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 .home-space-card-counts {
   display: flex;
-  gap: 10px;
   flex-wrap: wrap;
+  gap: 3px 12px;
+  font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.4;
   color: var(--text-dim);
 }
 .home-space-card-counts .signal {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: rgba(232, 233, 240, 0.78);
 }
 .home-space-card-counts .signal-muted {
   color: var(--home-text-muted);
-}
-.home-space-card-counts .pip {
-  width: 5px;
-  height: 5px;
 }
 /* Elsewhere card: same shape, dashed border to read as a meta-bucket
    rather than a real space. Selected state mirrors the chip-bar
@@ -968,7 +970,7 @@
  * Reuse .home-space-card chrome so a project tile reads as the same
  * primitive as a Home space card. The tile body is a clickable button
  * (filter scope); the ⋯ button on the corner opens a small menu for
- * Detach. Scratchpad and All tiles don't get a ⋯ — they have nothing
+ * Detach. Vault and All tiles don't get a ⋯ — they have nothing
  * to manage from here.
  */
 .home-projects-section {
@@ -990,12 +992,12 @@
   border-radius: 12px;
 }
 
-.home-project-star {
+.home-project-glyph {
   color: var(--accent-bright);
-  margin-right: 4px;
+  flex-shrink: 0;
 }
 .home-project-tag {
-  margin-left: 6px;
+  margin-left: 2px;
   font-size: 9px;
   letter-spacing: 0.1em;
   color: var(--home-text-muted);
@@ -1197,53 +1199,23 @@
   z-index: 1;
 }
 
-/* Numbered status badges on breadcrumb pills — tinted background with
-   same-hue text reads as a chip/tag, not a status alert. */
+/* Status counts on breadcrumb pills — same glow-pip primitive the
+   Active-projects tile uses, but with the state word elided so the
+   pill stays compact. Each colour group renders as `● N`. */
 .home-breadcrumb-badges {
   display: inline-flex;
-  gap: 2px;
+  gap: 7px;
   align-items: center;
-  margin-right: 2px;
-}
-.home-breadcrumb-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 13px;
-  height: 13px;
-  padding: 0 3px;
-  border-radius: 7px;
+  margin-right: 6px;
   font-family: var(--font-mono);
-  font-size: 8px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
-.home-breadcrumb-badge.green {
-  background: rgba(74, 222, 128, 0.16);
-  color: var(--home-green);
-}
-.home-breadcrumb-badge.amber {
-  background: rgba(251, 191, 36, 0.16);
-  color: var(--home-amber);
-}
-.home-breadcrumb-badge.red {
-  background: rgba(248, 113, 113, 0.16);
-  color: var(--home-red);
-}
-/* Selected pill has a saturated purple background; the tinted badges
-   wash out against it. Switch to fully opaque colour + dark numerals
-   so the dots punch through and stay readable. */
-.home-breadcrumb-pill.selected .home-breadcrumb-badge.green {
-  background: var(--home-green);
-  color: rgba(0, 0, 0, 0.82);
-}
-.home-breadcrumb-pill.selected .home-breadcrumb-badge.amber {
-  background: var(--home-amber);
-  color: rgba(0, 0, 0, 0.82);
-}
-.home-breadcrumb-pill.selected .home-breadcrumb-badge.red {
-  background: var(--home-red);
-  color: rgba(0, 0, 0, 0.82);
+.pip-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 
@@ -1263,49 +1235,116 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
 }
+/* Two-piece tile: outer div carries the chrome (border, background,
+   selected state, blur) and is the positioning anchor for the
+   top-right jump button; inner <button> covers the body and is the
+   filter click target. Same pattern as ProjectTile inside a real
+   space — keeps nested click targets valid HTML. */
 .home-active-project-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  padding: 12px 14px;
+  position: relative;
   background: var(--home-surface);
   border: 1px solid var(--home-border);
   border-radius: 12px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .home-active-project-tile:hover {
   background: rgba(255, 255, 255, 0.02);
   border-color: rgba(255, 255, 255, 0.12);
 }
+.home-active-project-tile.selected {
+  background: rgba(124, 107, 255, 0.14);
+  border-color: var(--home-border-accent);
+  box-shadow: 0 0 0 1px var(--home-border-accent) inset;
+}
+.home-active-project-tile-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.home-active-project-tile-jump {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: none;
+  border-radius: 6px;
+  color: var(--home-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  /* Disable hit-testing while invisible so touch users (no hover) don't
+     hit a phantom click target in the top-right of every tile. */
+  pointer-events: none;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.home-active-project-tile:hover .home-active-project-tile-jump,
+.home-active-project-tile-jump:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.home-active-project-tile-jump:hover {
+  background: rgba(124, 107, 255, 0.18);
+  color: var(--home-accent-bright);
+}
 .home-active-project-meta {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--home-accent-bright);
+  color: rgba(232, 233, 240, 0.55);
   margin-bottom: 4px;
 }
 .home-active-project-name {
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--home-text);
+  color: var(--home-accent-bright);
   margin-bottom: 8px;
 }
 .home-active-project-counts {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 3px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.4;
   color: var(--text-dim);
 }
 .home-active-project-counts .signal {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--home-text);
+  color: rgba(232, 233, 240, 0.78);
+}
+/* Orphan-cwd tiles on Elsewhere — clickable: filters the session list
+   below to that cwd, mirroring how project tiles inside a real space
+   filter by source_id. No "jump" affordance: orphans have no parent
+   space to navigate to. */
+/* Folder treatment for orphan tile names: muted text + folder glyph
+   so the tile reads as "a folder you ran in but isn't attached"
+   rather than a project. The home-relative path (~/Dev) is what we
+   display, full absolute path is on the tile's title attr. */
+.home-active-project-name--folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--home-text-muted);
+}
+.home-active-project-name--folder svg {
+  flex-shrink: 0;
 }

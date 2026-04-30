@@ -468,10 +468,23 @@ function Header({ session, onClose }: { session: Session; onClose: () => void })
   );
 }
 
+// POSIX single-quote: wrap in 's, replace embedded ' with '\''. Keeps
+// paths with spaces, $, backticks, etc. literal so resume can be pasted
+// straight into bash/zsh.
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 function SessionActions({ session }: { session: Session }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
-  const command = `claude --resume ${session.id}`;
+  // `cd --` disables option parsing so a path beginning with `-` (or
+  // the literal `-`, which would otherwise mean "previous dir") is
+  // taken as a positional path argument. Single-quoting handles
+  // spaces/$/backticks; `--` handles the leading-dash edge case.
+  const command = session.cwd
+    ? `cd -- ${shellQuote(session.cwd)} && claude --resume ${session.id}`
+    : `claude --resume ${session.id}`;
 
   function copyCommand() {
     if (!navigator.clipboard) {

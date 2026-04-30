@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
+import { ArrowUpRight, Folder, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -83,9 +84,9 @@ const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0
 // <5 memories) stay fully visible.
 const MEMORIES_PREVIEW = 5;
 
-// Sentinel for the scratchpad tile (artefacts with no source_id —
+// Sentinel for the Vault tile (artefacts with no source_id —
 // natively-created via create_artifact, not from a linked folder).
-const SCRATCHPAD = "__scratchpad__";
+const VAULT = "__vault__";
 
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
@@ -113,6 +114,32 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
   opencode: "oc",
   codex: "codex",
 };
+
+// Collapse `/Users/<name>/...` and `/home/<name>/...` to `~/...` so
+// orphan-cwd labels read at a glance. Falls through unchanged for
+// Windows paths and anything outside the user home tree.
+function homeRelative(p: string): string {
+  const m = p.match(/^\/(?:Users|home)\/[^/]+/);
+  return m ? "~" + p.slice(m[0].length) : p;
+}
+
+// Compact pip + numeral, one per non-zero state. Same glow primitive
+// the Active-projects tile signals use, just without the trailing
+// state word — fits in a breadcrumb pill while keeping counts exact
+// and the visual language consistent with the tiles.
+function renderPipCounts(counts: { active?: number; waiting?: number; disconnected?: number }) {
+  const a = counts.active ?? 0;
+  const w = counts.waiting ?? 0;
+  const d = counts.disconnected ?? 0;
+  if (a + w + d === 0) return null;
+  return (
+    <>
+      {a > 0 && <span className="pip-count"><span className="pip pip-green" />{a}</span>}
+      {w > 0 && <span className="pip-count"><span className="pip pip-amber" />{w}</span>}
+      {d > 0 && <span className="pip-count"><span className="pip pip-red" />{d}</span>}
+    </>
+  );
+}
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange }: Props) {
   const { sessions, error, loading } = useSessions();
@@ -156,7 +183,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // so each space starts compact and at "all".
   const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
   const [artefactsLimit, setArtefactsLimit] = useState(ARTEFACTS_PREVIEW);
-  // Project-tile filter: null = "All" (no folder scope), "__scratchpad__" =
+  // Elsewhere project-tile filter: orphan tiles aren't backed by a
+  // source row, so they're keyed by cwd instead of source_id. Lives
+  // alongside selectedFolderId; resets when scope changes.
+  const [selectedOrphanCwd, setSelectedOrphanCwd] = useState<string | null>(null);
+  // Project-tile filter: null = "All" (no folder scope), "__vault__" =
   // native artefacts, otherwise a source_id. The tile grid is the canonical
   // surface for switching between folders; selection is exclusive.
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -175,12 +206,23 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
 
   // Collapse limits + filter reset on scope change — switching from a
   // 60-item Home view to a single-space view shouldn't carry over either
-  // the "show more" depth, source filter, or tile selection.
+  // the "show more" depth, source filter, or tile selection. Exception:
+  // the Active-projects jump arrow lets the user "open this space with
+  // this project pre-selected" — the click stashes a source_id in the
+  // pending ref before triggering onSpaceChange, and this effect honours
+  // it instead of the default null reset.
+  const pendingFolderSelection = useRef<string | null>(null);
   useEffect(() => {
     setMemoriesLimit(MEMORIES_PREVIEW);
     setArtefactsLimit(ARTEFACTS_PREVIEW);
     setArtefactSource("all");
-    setSelectedFolderId(null);
+    if (pendingFolderSelection.current) {
+      setSelectedFolderId(pendingFolderSelection.current);
+      pendingFolderSelection.current = null;
+    } else {
+      setSelectedFolderId(null);
+    }
+    setSelectedOrphanCwd(null);
   }, [scopedSpace, showElsewhere, isHomeView]);
 
   const scopedSessions = useMemo(() => {
@@ -188,18 +230,41 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions;
   }, [sessions, scopedSpace, showElsewhere, isHomeView]);
 
-  const stateCounts = useMemo(() => {
+  // Space-wide counts feed the "All" tile in ProjectTileGrid — that
+  // tile is the user's reset button, so its counts must NOT narrow
+  // when a folder is selected. Everything below this point (chips,
+  // list) does narrow.
+  const spaceCounts = useMemo(() => {
     const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
     counts.live = counts.active + counts.waiting + counts.disconnected;
     return counts;
   }, [scopedSessions]);
 
+  // Folder-narrowed sessions: when a project tile is selected, sessions
+  // filter to that source (or sessions without a source for VAULT, or
+  // by cwd when an Elsewhere orphan tile is picked).
+  const folderScopedSessions = useMemo(() => {
+    if (showElsewhere && isHomeView && selectedOrphanCwd) {
+      return scopedSessions.filter((s) => s.cwd === selectedOrphanCwd);
+    }
+    if (selectedFolderId === VAULT) return scopedSessions.filter((s) => !s.sourceId);
+    if (selectedFolderId) return scopedSessions.filter((s) => s.sourceId === selectedFolderId);
+    return scopedSessions;
+  }, [scopedSessions, selectedFolderId, selectedOrphanCwd, showElsewhere, isHomeView]);
+
+  const stateCounts = useMemo(() => {
+    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
+    for (const s of folderScopedSessions) counts[s.state]++;
+    counts.live = counts.active + counts.waiting + counts.disconnected;
+    return counts;
+  }, [folderScopedSessions]);
+
   const visibleSessions = useMemo(() => {
-    if (stateFilter === "all") return scopedSessions;
-    if (stateFilter === "live") return scopedSessions.filter((s) => LIVE_STATES.includes(s.state));
-    return scopedSessions.filter((s) => s.state === stateFilter);
-  }, [scopedSessions, stateFilter]);
+    if (stateFilter === "all") return folderScopedSessions;
+    if (stateFilter === "live") return folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
+    return folderScopedSessions.filter((s) => s.state === stateFilter);
+  }, [folderScopedSessions, stateFilter]);
 
   // Per-space session counts + a separate orphan tally (sessions with
   // spaceId === null) + a grand total for the Home card, plus the most
@@ -264,6 +329,51 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return [...map.values()].sort((a, b) => b.lastEventAt - a.lastEventAt);
   }, [sessions, isHomeView, showElsewhere]);
 
+  // Per-source live-session counts, keyed by source_id. Used by
+  // ProjectTileGrid so a folder tile can show "1 active · 1 waiting"
+  // alongside its artefact count when sessions are running there.
+  const sessionCountsBySource = useMemo(() => {
+    const out: Record<string, { active: number; waiting: number; disconnected: number }> = {};
+    for (const s of sessions) {
+      if (!s.sourceId || s.state === "done") continue;
+      const c = out[s.sourceId] ?? { active: 0, waiting: 0, disconnected: 0 };
+      if (s.state === "active") c.active++;
+      else if (s.state === "waiting") c.waiting++;
+      else if (s.state === "disconnected") c.disconnected++;
+      out[s.sourceId] = c;
+    }
+    return out;
+  }, [sessions]);
+
+  // Orphan-cwd "projects" on Elsewhere — sessions whose cwd doesn't
+  // match any registered source still came from somewhere. Group by
+  // cwd so the user can see at a glance which rogue folders have
+  // activity, not just an undifferentiated session list.
+  const orphanCwdGroups = useMemo(() => {
+    if (!showElsewhere || !isHomeView) return [];
+    const map = new Map<string, {
+      cwd: string;
+      counts: { active: number; waiting: number; disconnected: number; done: number };
+      lastEventAt: number;
+    }>();
+    for (const s of sessions) {
+      if (s.spaceId !== null || !s.cwd) continue;
+      let entry = map.get(s.cwd);
+      if (!entry) {
+        entry = {
+          cwd: s.cwd,
+          counts: { active: 0, waiting: 0, disconnected: 0, done: 0 },
+          lastEventAt: 0,
+        };
+        map.set(s.cwd, entry);
+      }
+      entry.counts[s.state]++;
+      const t = parseTimestamp(s.lastEventAt);
+      if (Number.isFinite(t) && t > entry.lastEventAt) entry.lastEventAt = t;
+    }
+    return [...map.values()].sort((a, b) => b.lastEventAt - a.lastEventAt);
+  }, [sessions, showElsewhere, isHomeView]);
+
   // Drop meta-spaces from the Spaces summary cards: the chat bar already
   // renders Home as its own pill, so a `home` row in the spaces table would
   // surface a redundant card. __all__ and __archived__ are similar.
@@ -324,15 +434,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
-  // Per-source artefact counts for the project tile grid. "scratchpad"
+  // Per-source artefact counts for the project tile grid. "vault"
   // collects everything without a source_id (manual + ai_generated tiles
   // that didn't come from a linked folder). The tile grid itself drives
   // the SELECTED_FOLDER filter, separate from the source-origin chips.
   const folderArtefactCounts = useMemo(() => {
-    const counts: Record<string, number> = { [SCRATCHPAD]: 0 };
+    const counts: Record<string, number> = { [VAULT]: 0 };
     for (const a of effectiveDesktopProps.artifacts) {
       if (a.sourceId) counts[a.sourceId] = (counts[a.sourceId] ?? 0) + 1;
-      else counts[SCRATCHPAD]++;
+      else counts[VAULT]++;
     }
     return counts;
   }, [effectiveDesktopProps.artifacts]);
@@ -342,7 +452,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // the cap because it's already linear and easy to scan.
   const filteredArtefacts = useMemo(() => {
     let list = effectiveDesktopProps.artifacts;
-    if (selectedFolderId === SCRATCHPAD) {
+    if (selectedFolderId === VAULT) {
       list = list.filter((a) => !a.sourceId);
     } else if (selectedFolderId) {
       list = list.filter((a) => a.sourceId === selectedFolderId);
@@ -438,9 +548,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   )}
                   {(counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
                     <span className="home-breadcrumb-badges">
-                      {counts.active > 0 && <span className="home-breadcrumb-badge green">{counts.active}</span>}
-                      {counts.waiting > 0 && <span className="home-breadcrumb-badge amber">{counts.waiting}</span>}
-                      {counts.disconnected > 0 && <span className="home-breadcrumb-badge red">{counts.disconnected}</span>}
+                      {renderPipCounts(counts)}
                     </span>
                   )}
                   <span className="home-breadcrumb-pill-label">{space.displayName}</span>
@@ -468,9 +576,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                 )}
                 {(orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
                   <span className="home-breadcrumb-badges">
-                    {orphanCounts.active > 0 && <span className="home-breadcrumb-badge green">{orphanCounts.active}</span>}
-                    {orphanCounts.waiting > 0 && <span className="home-breadcrumb-badge amber">{orphanCounts.waiting}</span>}
-                    {orphanCounts.disconnected > 0 && <span className="home-breadcrumb-badge red">{orphanCounts.disconnected}</span>}
+                    {renderPipCounts(orphanCounts)}
                   </span>
                 )}
                 <span className="home-breadcrumb-pill-label">Elsewhere</span>
@@ -485,7 +591,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           {/* Eyebrow dropped — the breadcrumb above already shows the
               active scope, so a separate "HOME" / "OYSTER" label is
               redundant. */}
-          <h1 className="home-title">{isHomeView ? (showElsewhere ? "Everything else." : "Everything.") : eyebrow}</h1>
+          <h1 className="home-title">{isHomeView ? (showElsewhere ? "Everything else." : "Everything active.") : eyebrow}</h1>
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 
@@ -500,22 +606,74 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             <div className="home-active-projects-grid">
               {activeProjects.map((p) => {
                 const space = spaces.find((s) => s.id === p.spaceId);
+                const isSelected = selectedFolderId === p.sourceId;
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={p.sourceId}
-                    className="home-active-project-tile"
-                    onClick={() => onSpaceChange(p.spaceId)}
-                    title={`Jump to ${space?.displayName ?? p.spaceId}`}
+                    className={`home-active-project-tile${isSelected ? " selected" : ""}`}
                   >
-                    <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
-                    <div className="home-active-project-name">{p.label}</div>
-                    <div className="home-active-project-counts">
-                      {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
-                      {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
-                      {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      className="home-active-project-tile-body"
+                      onClick={() => setSelectedFolderId(isSelected ? null : p.sourceId)}
+                      title={`Filter sessions to ${p.label}`}
+                    >
+                      <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
+                      <div className="home-active-project-name">{p.label}</div>
+                      <div className="home-active-project-counts">
+                        {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
+                        {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
+                        {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="home-active-project-tile-jump"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pendingFolderSelection.current = p.sourceId;
+                        onSpaceChange(p.spaceId);
+                      }}
+                      aria-label={`Open ${space?.displayName ?? p.spaceId}`}
+                      title={`Open ${space?.displayName ?? p.spaceId}`}
+                    >
+                      <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {isHomeView && showElsewhere && orphanCwdGroups.length > 0 && (
+          <div className="home-section home-active-projects-section">
+            <div className="home-active-projects-grid">
+              {orphanCwdGroups.map((p) => {
+                const isSelected = selectedOrphanCwd === p.cwd;
+                return (
+                  <div
+                    key={p.cwd}
+                    className={`home-active-project-tile home-active-project-tile--orphan${isSelected ? " selected" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="home-active-project-tile-body"
+                      onClick={() => setSelectedOrphanCwd(isSelected ? null : p.cwd)}
+                      title={p.cwd}
+                    >
+                      <div className="home-active-project-name home-active-project-name--folder">
+                        <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                        <span>{homeRelative(p.cwd)}</span>
+                      </div>
+                      <div className="home-active-project-counts">
+                        {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
+                        {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
+                        {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
+                        {p.counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{p.counts.done} done</span>}
+                      </div>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -564,9 +722,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               spaceId={sourcesSpaceId}
               sources={spaceSources}
               folderArtefactCounts={folderArtefactCounts}
+              sessionCountsBySource={sessionCountsBySource}
               selectedFolderId={selectedFolderId}
               setSelectedFolderId={setSelectedFolderId}
-              totalCounts={stateCounts}
+              totalCounts={spaceCounts}
               showAttachForm={showAttachForm}
               setShowAttachForm={setShowAttachForm}
               onSourcesChanged={refreshSpaceSources}
@@ -880,6 +1039,11 @@ function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
     : session.state === "disconnected" ? `disconnected ${rel}`
     : rel;
   const title = session.title ?? "(no title yet)";
+  // Prefer the most specific label available: source (folder) > space >
+  // cwd basename for orphan sessions. Always tooltip the full cwd so
+  // the user can identify where the session was running.
+  const cwdBasename = session.cwd ? session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
+  const projectLabel = session.sourceLabel ?? spaceLabel ?? cwdBasename ?? "—";
   return (
     <div
       className="home-row"
@@ -891,7 +1055,7 @@ function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
       tabIndex={onOpen ? 0 : undefined}
     >
       <span className={`home-row-status ${session.state}`} />
-      <span className="home-row-space">{spaceLabel ?? "—"}</span>
+      <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
       <span className="home-row-title" title={title}>{title}</span>
       <span className={`home-row-agent ${AGENT_PIP_CLASS[session.agent]}`}>
         <span className="home-agent-pip" />
@@ -1061,17 +1225,19 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
 
 // Project tile grid — same visual primitive as Home's space cards.
 // Renders one tile per attached folder (plus an "All" meta-tile, a
-// scratchpad tile for native artefacts, and a "+ Attach" tile). The
+// Vault tile for native artefacts, and a "+ Attach" tile). The
 // selected tile is exclusive: clicking another switches scope, clicking
 // the selected tile snaps back to All. Detach lives in a hover ⋯ menu
-// on linked tiles only — scratchpad can't be detached.
+// on linked tiles only — Vault can't be detached.
 function ProjectTileGrid({
-  spaceId, sources, folderArtefactCounts, selectedFolderId, setSelectedFolderId,
+  spaceId, sources, folderArtefactCounts, sessionCountsBySource,
+  selectedFolderId, setSelectedFolderId,
   totalCounts, showAttachForm, setShowAttachForm, onSourcesChanged,
 }: {
   spaceId: string;
   sources: SpaceSource[];
   folderArtefactCounts: Record<string, number>;
+  sessionCountsBySource: Record<string, { active: number; waiting: number; disconnected: number }>;
   selectedFolderId: string | null;
   setSelectedFolderId: (next: string | null) => void;
   totalCounts: Record<StateFilter, number>;
@@ -1086,7 +1252,7 @@ function ProjectTileGrid({
     ),
     [sources, folderArtefactCounts],
   );
-  const scratchpadCount = folderArtefactCounts[SCRATCHPAD] ?? 0;
+  const vaultCount = folderArtefactCounts[VAULT] ?? 0;
 
   function pickTile(id: string | null) {
     setSelectedFolderId(selectedFolderId === id ? null : id);
@@ -1111,19 +1277,20 @@ function ProjectTileGrid({
           </div>
         </button>
 
-        {scratchpadCount > 0 && (
+        {vaultCount > 0 && (
           <button
             type="button"
-            className={`home-space-card home-project-tile--scratchpad${selectedFolderId === SCRATCHPAD ? " selected" : ""}`}
-            onClick={() => pickTile(SCRATCHPAD)}
+            className={`home-space-card home-project-tile--vault${selectedFolderId === VAULT ? " selected" : ""}`}
+            onClick={() => pickTile(VAULT)}
             title="Native artefacts created in this space (not from a linked folder)"
           >
             <div className="home-space-card-name">
-              <span className="home-project-star">★</span> {spaceId}
-              <span className="home-project-tag">scratchpad</span>
+              <span>{spaceId}</span>
+              <Shield size={12} strokeWidth={2} fill="currentColor" aria-hidden="true" className="home-project-glyph" />
+              <span className="home-project-tag">vault</span>
             </div>
             <div className="home-space-card-counts">
-              <span className="signal"><span className="pip pip-dim" />{scratchpadCount} {scratchpadCount === 1 ? "artefact" : "artefacts"}</span>
+              <span className="signal"><span className="pip pip-dim" />{vaultCount} {vaultCount === 1 ? "artefact" : "artefacts"}</span>
             </div>
           </button>
         )}
@@ -1133,6 +1300,7 @@ function ProjectTileGrid({
             key={s.id}
             source={s}
             artefactCount={folderArtefactCounts[s.id] ?? 0}
+            sessionCounts={sessionCountsBySource[s.id]}
             selected={selectedFolderId === s.id}
             onSelect={() => pickTile(s.id)}
             onSourcesChanged={onSourcesChanged}
@@ -1166,10 +1334,11 @@ function ProjectTileGrid({
 }
 
 function ProjectTile({
-  source, artefactCount, selected, onSelect, onSourcesChanged,
+  source, artefactCount, sessionCounts, selected, onSelect, onSourcesChanged,
 }: {
   source: SpaceSource;
   artefactCount: number;
+  sessionCounts?: { active: number; waiting: number; disconnected: number };
   selected: boolean;
   onSelect: () => void;
   onSourcesChanged: () => void;
@@ -1216,6 +1385,9 @@ function ProjectTile({
         >
           <div className="home-space-card-name">{basename}</div>
           <div className="home-space-card-counts">
+            {sessionCounts && sessionCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{sessionCounts.active} active</span>}
+            {sessionCounts && sessionCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{sessionCounts.waiting} waiting</span>}
+            {sessionCounts && sessionCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{sessionCounts.disconnected} disconnected</span>}
             <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>
           </div>
         </button>

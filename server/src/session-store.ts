@@ -22,6 +22,7 @@ export interface SessionRow {
   id: string;
   space_id: string | null;
   source_id: string | null;
+  cwd: string | null;
   agent: SessionAgent;
   title: string | null;
   state: SessionState;
@@ -54,6 +55,7 @@ export interface InsertSession {
   id: string;
   space_id: string | null;
   source_id?: string | null;
+  cwd?: string | null;
   agent: SessionAgent;
   title?: string | null;
   state: SessionState;
@@ -132,9 +134,9 @@ export class SqliteSessionStore implements SessionStore {
       getAll: db.prepare("SELECT * FROM sessions ORDER BY last_event_at DESC"),
       getById: db.prepare("SELECT * FROM sessions WHERE id = ?"),
       insertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, agent, title, state, started_at, model, last_event_at)
+        INSERT INTO sessions (id, space_id, source_id, cwd, agent, title, state, started_at, model, last_event_at)
         VALUES (
-          @id, @space_id, @source_id, @agent, @title, @state,
+          @id, @space_id, @source_id, @cwd, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now'))
@@ -151,9 +153,9 @@ export class SqliteSessionStore implements SessionStore {
       // reconcileExistingFile), so the overwrite here keeps the column
       // shape consistent across rows.
       upsertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, agent, title, state, started_at, model, last_event_at)
+        INSERT INTO sessions (id, space_id, source_id, cwd, agent, title, state, started_at, model, last_event_at)
         VALUES (
-          @id, @space_id, @source_id, @agent, @title, @state,
+          @id, @space_id, @source_id, @cwd, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now'))
@@ -161,6 +163,7 @@ export class SqliteSessionStore implements SessionStore {
         ON CONFLICT(id) DO UPDATE SET
           space_id      = excluded.space_id,
           source_id     = excluded.source_id,
+          cwd           = COALESCE(excluded.cwd, sessions.cwd),
           title         = excluded.title,
           state         = excluded.state,
           model         = excluded.model,
@@ -232,6 +235,7 @@ export class SqliteSessionStore implements SessionStore {
       model: null,
       last_event_at: null,
       source_id: null,
+      cwd: null,
       ...row,
     });
   }
@@ -243,6 +247,7 @@ export class SqliteSessionStore implements SessionStore {
       model: null,
       last_event_at: null,
       source_id: null,
+      cwd: null,
       ...row,
     });
   }
@@ -252,7 +257,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   private static readonly UPDATABLE_SESSION_COLUMNS = new Set([
-    "space_id", "source_id", "title", "state", "ended_at", "model", "last_event_at",
+    "space_id", "source_id", "cwd", "title", "state", "ended_at", "model", "last_event_at",
   ]);
 
   updateSession(
