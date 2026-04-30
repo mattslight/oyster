@@ -282,6 +282,54 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return [...map.values()].sort((a, b) => b.lastEventAt - a.lastEventAt);
   }, [sessions, isHomeView, showElsewhere]);
 
+  // Per-source live-session counts, keyed by source_id. Used by
+  // ProjectTileGrid so a folder tile can show "1 active · 1 waiting"
+  // alongside its artefact count when sessions are running there.
+  const sessionCountsBySource = useMemo(() => {
+    const out: Record<string, { active: number; waiting: number; disconnected: number }> = {};
+    for (const s of sessions) {
+      if (!s.sourceId || s.state === "done") continue;
+      const c = out[s.sourceId] ?? { active: 0, waiting: 0, disconnected: 0 };
+      if (s.state === "active") c.active++;
+      else if (s.state === "waiting") c.waiting++;
+      else if (s.state === "disconnected") c.disconnected++;
+      out[s.sourceId] = c;
+    }
+    return out;
+  }, [sessions]);
+
+  // Orphan-cwd "projects" on Elsewhere — sessions whose cwd doesn't
+  // match any registered source still came from somewhere. Group by
+  // cwd so the user can see at a glance which rogue folders have
+  // activity, not just an undifferentiated session list.
+  const orphanCwdGroups = useMemo(() => {
+    if (!showElsewhere || !isHomeView) return [];
+    const map = new Map<string, {
+      cwd: string;
+      label: string;
+      counts: { active: number; waiting: number; disconnected: number; done: number };
+      lastEventAt: number;
+    }>();
+    for (const s of sessions) {
+      if (s.spaceId !== null || !s.cwd) continue;
+      let entry = map.get(s.cwd);
+      if (!entry) {
+        const label = s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd;
+        entry = {
+          cwd: s.cwd,
+          label,
+          counts: { active: 0, waiting: 0, disconnected: 0, done: 0 },
+          lastEventAt: 0,
+        };
+        map.set(s.cwd, entry);
+      }
+      entry.counts[s.state]++;
+      const t = parseTimestamp(s.lastEventAt);
+      if (Number.isFinite(t) && t > entry.lastEventAt) entry.lastEventAt = t;
+    }
+    return [...map.values()].sort((a, b) => b.lastEventAt - a.lastEventAt);
+  }, [sessions, showElsewhere, isHomeView]);
+
   // Drop meta-spaces from the Spaces summary cards: the chat bar already
   // renders Home as its own pill, so a `home` row in the spaces table would
   // surface a redundant card. __all__ and __archived__ are similar.
@@ -536,6 +584,29 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
           </div>
         )}
 
+        {isHomeView && showElsewhere && orphanCwdGroups.length > 0 && (
+          <div className="home-section home-active-projects-section">
+            <div className="home-active-projects-grid">
+              {orphanCwdGroups.map((p) => (
+                <div
+                  key={p.cwd}
+                  className="home-active-project-tile home-active-project-tile--orphan"
+                  title={p.cwd}
+                >
+                  <div className="home-active-project-meta">unattached</div>
+                  <div className="home-active-project-name">{p.label}</div>
+                  <div className="home-active-project-counts">
+                    {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
+                    {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
+                    {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
+                    {p.counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{p.counts.done} done</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {sourcesSpaceId && (
           spaceSourcesError ? (
             <div className="home-spaces-section">
@@ -578,6 +649,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               spaceId={sourcesSpaceId}
               sources={spaceSources}
               folderArtefactCounts={folderArtefactCounts}
+              sessionCountsBySource={sessionCountsBySource}
               selectedFolderId={selectedFolderId}
               setSelectedFolderId={setSelectedFolderId}
               totalCounts={stateCounts}
@@ -1085,12 +1157,14 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
 // the selected tile snaps back to All. Detach lives in a hover ⋯ menu
 // on linked tiles only — scratchpad can't be detached.
 function ProjectTileGrid({
-  spaceId, sources, folderArtefactCounts, selectedFolderId, setSelectedFolderId,
+  spaceId, sources, folderArtefactCounts, sessionCountsBySource,
+  selectedFolderId, setSelectedFolderId,
   totalCounts, showAttachForm, setShowAttachForm, onSourcesChanged,
 }: {
   spaceId: string;
   sources: SpaceSource[];
   folderArtefactCounts: Record<string, number>;
+  sessionCountsBySource: Record<string, { active: number; waiting: number; disconnected: number }>;
   selectedFolderId: string | null;
   setSelectedFolderId: (next: string | null) => void;
   totalCounts: Record<StateFilter, number>;
@@ -1152,6 +1226,7 @@ function ProjectTileGrid({
             key={s.id}
             source={s}
             artefactCount={folderArtefactCounts[s.id] ?? 0}
+            sessionCounts={sessionCountsBySource[s.id]}
             selected={selectedFolderId === s.id}
             onSelect={() => pickTile(s.id)}
             onSourcesChanged={onSourcesChanged}
@@ -1185,10 +1260,11 @@ function ProjectTileGrid({
 }
 
 function ProjectTile({
-  source, artefactCount, selected, onSelect, onSourcesChanged,
+  source, artefactCount, sessionCounts, selected, onSelect, onSourcesChanged,
 }: {
   source: SpaceSource;
   artefactCount: number;
+  sessionCounts?: { active: number; waiting: number; disconnected: number };
   selected: boolean;
   onSelect: () => void;
   onSourcesChanged: () => void;
@@ -1235,6 +1311,9 @@ function ProjectTile({
         >
           <div className="home-space-card-name">{basename}</div>
           <div className="home-space-card-counts">
+            {sessionCounts && sessionCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{sessionCounts.active} active</span>}
+            {sessionCounts && sessionCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{sessionCounts.waiting} waiting</span>}
+            {sessionCounts && sessionCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{sessionCounts.disconnected} disconnected</span>}
             <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>
           </div>
         </button>

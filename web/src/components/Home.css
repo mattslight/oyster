@@ -1279,3 +1279,13 @@
   gap: 5px;
   color: var(--home-text);
 }
+/* Orphan-cwd tiles on Elsewhere — informational only; no click target
+   yet (clicking a registered project jumps to the parent space, but
+   orphans have no parent to jump to). */
+.home-active-project-tile--orphan {
+  cursor: default;
+}
+.home-active-project-tile--orphan:hover {
+  background: var(--home-surface);
+  border-color: var(--home-border);
+}
