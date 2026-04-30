@@ -204,6 +204,14 @@ export function initDb(userlandDir: string): Database.Database {
   // pre-date this migration.
   db.exec("CREATE INDEX IF NOT EXISTS sessions_source_id ON sessions(source_id)");
 
+  // cwd added so we can rebuild the resume command (`cd <cwd> && claude
+  // --resume <id>`) and surface a useful label for orphan sessions
+  // (cwd outside any registered source). Watcher already tracks cwd
+  // in memory; this just persists it.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
+  } catch { /* already exists */ }
+
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
   // SQLite can't ALTER a CHECK constraint, so we rebuild via temp table.
   //
