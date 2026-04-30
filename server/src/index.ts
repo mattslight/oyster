@@ -640,16 +640,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (url === "/api/sessions" && req.method === "GET") {
     if (rejectIfNonLocalOrigin()) return;
     const rows = sessionStore.getAll();
-    // Join sources for sourceLabel — one batched IN-list query so the
+    // Join sources for sourceLabel — batched IN-list queries so the
     // home feed can show "active project" tiles without a per-tile
     // round trip. Sources are dedup'd because most sessions cluster
-    // around a small number of registered folders.
+    // around a small number of registered folders. Chunked at 500
+    // ids per batch to stay well below SQLite's 999-bound-variable
+    // ceiling on installs that haven't been recompiled with the
+    // higher 32_766 limit.
     const sourceIds = [...new Set(rows.map((r) => r.source_id).filter((id): id is string => !!id))];
-    const sourcesById = new Map(
-      sourceIds.length > 0
-        ? spaceStore.getSourcesByIds(sourceIds).map((s) => [s.id, s])
-        : []
-    );
+    const SOURCE_BATCH = 500;
+    const sourceList = [];
+    for (let i = 0; i < sourceIds.length; i += SOURCE_BATCH) {
+      sourceList.push(...spaceStore.getSourcesByIds(sourceIds.slice(i, i + SOURCE_BATCH)));
+    }
+    const sourcesById = new Map(sourceList.map((s) => [s.id, s]));
     sendJson(rows.map((row) => {
       const src = row.source_id ? sourcesById.get(row.source_id) : null;
       const label = src ? (src.label ?? (basename(src.path) || null)) : null;

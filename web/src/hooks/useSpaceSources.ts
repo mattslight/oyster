@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fetchSpaceSources } from "../data/spaces-api";
 import type { SpaceSource } from "../data/spaces-api";
 
@@ -17,18 +17,17 @@ export function useSpaceSources(spaceId: string | null): {
   const [error, setError] = useState<Error | null>(null);
   const [tick, setTick] = useState(0);
   const latestReqId = useRef(0);
-  // Clear stale `sources`/`error` immediately when the user navigates to
-  // a different space. Without this, switching from a 6-source space
-  // to a 0-source one would briefly show the previous list (or a
-  // stale error masking the loading state). Manual `refresh()` calls
-  // hit the same effect via `tick` but stay on the same spaceId, so
-  // they retain the current data while the new request is in flight.
-  const previousSpaceId = useRef<string | null>(null);
-  if (previousSpaceId.current !== spaceId) {
-    previousSpaceId.current = spaceId;
-    if (sources.length > 0) setSources([]);
-    if (error) setError(null);
-  }
+  // Clear stale `sources`/`error` when the user navigates to a different
+  // space — without this, switching from a 6-source space to a 0-source
+  // one would briefly show the previous list (or a stale error masking
+  // the loading state). useLayoutEffect with [spaceId] deps fires
+  // pre-paint so the wipe is invisible; refresh() ticks change `tick`
+  // but not `spaceId`, so they retain the current data while the new
+  // request is in flight.
+  useLayoutEffect(() => {
+    setSources([]);
+    setError(null);
+  }, [spaceId]);
 
   useEffect(() => {
     if (!spaceId) {

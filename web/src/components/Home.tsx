@@ -569,7 +569,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               totalCounts={stateCounts}
               showAttachForm={showAttachForm}
               setShowAttachForm={setShowAttachForm}
-              onDetached={refreshSpaceSources}
+              onSourcesChanged={refreshSpaceSources}
             />
           )
         )}
@@ -1067,7 +1067,7 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
 // on linked tiles only — scratchpad can't be detached.
 function ProjectTileGrid({
   spaceId, sources, folderArtefactCounts, selectedFolderId, setSelectedFolderId,
-  totalCounts, showAttachForm, setShowAttachForm, onDetached,
+  totalCounts, showAttachForm, setShowAttachForm, onSourcesChanged,
 }: {
   spaceId: string;
   sources: SpaceSource[];
@@ -1077,7 +1077,7 @@ function ProjectTileGrid({
   totalCounts: Record<StateFilter, number>;
   showAttachForm: boolean;
   setShowAttachForm: (v: boolean) => void;
-  onDetached: () => void;
+  onSourcesChanged: () => void;
 }) {
   // Sort linked tiles by tile count desc — busiest folders first.
   const sortedSources = useMemo(
@@ -1135,7 +1135,7 @@ function ProjectTileGrid({
             artefactCount={folderArtefactCounts[s.id] ?? 0}
             selected={selectedFolderId === s.id}
             onSelect={() => pickTile(s.id)}
-            onDetached={onDetached}
+            onSourcesChanged={onSourcesChanged}
           />
         ))}
 
@@ -1156,7 +1156,7 @@ function ProjectTileGrid({
           spaceId={spaceId}
           onAttached={() => {
             setShowAttachForm(false);
-            onDetached();
+            onSourcesChanged();
           }}
           onCancel={() => setShowAttachForm(false)}
         />
@@ -1166,13 +1166,13 @@ function ProjectTileGrid({
 }
 
 function ProjectTile({
-  source, artefactCount, selected, onSelect, onDetached,
+  source, artefactCount, selected, onSelect, onSourcesChanged,
 }: {
   source: SpaceSource;
   artefactCount: number;
   selected: boolean;
   onSelect: () => void;
-  onDetached: () => void;
+  onSourcesChanged: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1196,7 +1196,7 @@ function ProjectTile({
     setBusy(true);
     try {
       await removeSpaceSource(source.space_id, source.id);
-      onDetached();
+      onSourcesChanged();
       setConfirmOpen(false);
     } catch (err) {
       alert(`Couldn't detach: ${err instanceof Error ? err.message : String(err)}`);
