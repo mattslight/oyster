@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
@@ -206,12 +206,22 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
 
   // Collapse limits + filter reset on scope change — switching from a
   // 60-item Home view to a single-space view shouldn't carry over either
-  // the "show more" depth, source filter, or tile selection.
+  // the "show more" depth, source filter, or tile selection. Exception:
+  // the Active-projects jump arrow lets the user "open this space with
+  // this project pre-selected" — the click stashes a source_id in the
+  // pending ref before triggering onSpaceChange, and this effect honours
+  // it instead of the default null reset.
+  const pendingFolderSelection = useRef<string | null>(null);
   useEffect(() => {
     setMemoriesLimit(MEMORIES_PREVIEW);
     setArtefactsLimit(ARTEFACTS_PREVIEW);
     setArtefactSource("all");
-    setSelectedFolderId(null);
+    if (pendingFolderSelection.current) {
+      setSelectedFolderId(pendingFolderSelection.current);
+      pendingFolderSelection.current = null;
+    } else {
+      setSelectedFolderId(null);
+    }
     setSelectedOrphanCwd(null);
   }, [scopedSpace, showElsewhere, isHomeView]);
 
@@ -622,7 +632,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                     <button
                       type="button"
                       className="home-active-project-tile-jump"
-                      onClick={(e) => { e.stopPropagation(); onSpaceChange(p.spaceId); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pendingFolderSelection.current = p.sourceId;
+                        onSpaceChange(p.spaceId);
+                      }}
                       aria-label={`Open ${space?.displayName ?? p.spaceId}`}
                       title={`Open ${space?.displayName ?? p.spaceId}`}
                     >
