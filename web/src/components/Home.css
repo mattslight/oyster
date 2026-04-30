@@ -300,7 +300,7 @@
   gap: 6px;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--home-text);
+  color: var(--home-accent-bright);
   margin-bottom: 8px;
 }
 .home-space-card-counts {
@@ -315,7 +315,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--home-text);
+  color: rgba(232, 233, 240, 0.78);
 }
 .home-space-card-counts .signal-muted {
   color: var(--home-text-muted);
@@ -1263,7 +1263,7 @@
 .home-active-project-name {
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--home-text);
+  color: var(--home-accent-bright);
   margin-bottom: 8px;
 }
 .home-active-project-counts {
@@ -1278,7 +1278,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--home-text);
+  color: rgba(232, 233, 240, 0.78);
 }
 /* Orphan-cwd tiles on Elsewhere — informational only; no click target
    yet (clicking a registered project jumps to the parent space, but

@@ -1242,7 +1242,7 @@ function ProjectTileGrid({
             title="Native artefacts created in this space (not from a linked folder)"
           >
             <div className="home-space-card-name">
-              <Vault size={14} strokeWidth={1.75} aria-hidden="true" className="home-project-glyph" />
+              <Vault size={16} strokeWidth={1.75} aria-hidden="true" className="home-project-glyph" />
               <span>{spaceId}</span>
               <span className="home-project-tag">vault</span>
             </div>
