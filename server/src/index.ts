@@ -1956,7 +1956,7 @@ function findPort(preferred: number, maxAttempts = 10): Promise<number> {
           reject(new Error(`No available port found (tried ${preferred}-${port})`));
         }
       });
-      testServer.listen(port, () => {
+      testServer.listen(port, "127.0.0.1", () => {
         testServer.close(() => resolve(port));
       });
     }
@@ -2011,9 +2011,9 @@ const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer);
 
 httpServer.listen(port, "127.0.0.1", () => {
-  console.log(`Oyster server listening on http://localhost:${port}`);
-  console.log(`  WebSocket: ws://localhost:${port}`);
-  console.log(`  API:       http://localhost:${port}/api/artifacts`);
+  console.log(`Oyster server listening on http://127.0.0.1:${port}`);
+  console.log(`  WebSocket: ws://127.0.0.1:${port}`);
+  console.log(`  API:       http://127.0.0.1:${port}/api/artifacts`);
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
