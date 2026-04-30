@@ -190,24 +190,6 @@ function countTopEntries(dir: string, opts: { dirsOnly?: boolean } = {}): number
   } catch { return 0; }
 }
 
-// Newest mtime in a directory's immediate children. Returns null if the
-// directory is empty or unreadable. Used to render "newest Xd ago" on
-// the Backups row.
-function newestMtime(dir: string): Date | null {
-  let newest: number | null = null;
-  let entries: Array<{ name: string }>;
-  try { entries = readdirSync(dir, { withFileTypes: true }); }
-  catch { return null; }
-  for (const e of entries) {
-    try {
-      const st = statSync(join(dir, e.name));
-      const t = st.mtimeMs;
-      if (newest === null || t > newest) newest = t;
-    } catch { /* skip */ }
-  }
-  return newest === null ? null : new Date(newest);
-}
-
 interface VaultInventoryEntry {
   name: string;
   label: string;
@@ -218,6 +200,17 @@ interface VaultInventoryEntry {
   exists: boolean;
   meta?: string;
 }
+
+// Cache for /api/vault/inventory. The walk visits every file under
+// OYSTER_HOME plus the backups tree — easily seconds on a real install
+// (large WAL, many spaces). Repeat hits within 30s reuse the last result
+// so a user idly looking at the Pro page doesn't grind the disk on every
+// re-render. SSE events that change the inventory (artefact CRUD, source
+// attach/detach) bust the cache via `invalidateVaultInventoryCache()`.
+let vaultInventoryCache: { result: VaultInventoryEntry[]; totalSize: number; root: string; expires: number } | null = null;
+const VAULT_INVENTORY_TTL_MS = 30_000;
+
+function invalidateVaultInventoryCache(): void { vaultInventoryCache = null; }
 
 function buildVaultInventory(deps: { db: Database.Database; spaceStore: SqliteSpaceStore }): VaultInventoryEntry[] {
   const out: VaultInventoryEntry[] = [];
@@ -311,10 +304,11 @@ function buildVaultInventory(deps: { db: Database.Database; spaceStore: SqliteSp
     exists: configCount > 0,
   });
 
-  // Backups — auto-backup writes to `~/oyster-backups/{auto,dev,manual}/`
-  // (see backup.ts), NOT to OYSTER_HOME/backups. Walk those subdirs and
-  // aggregate; otherwise the row reads "0 snapshots" even on an install
-  // that's been running for weeks.
+  // Backups — `~/oyster-backups/`, NOT OYSTER_HOME/backups. The auto-backup
+  // job (see backup.ts) writes to `auto/` (installed) or `dev/` (non-installed);
+  // the `manual/` bucket is user-managed (snapshots they took themselves).
+  // Walk all three buckets so the row reads accurate counts on either install
+  // type, and so manual snapshots aren't ignored.
   const backupRoot = join(homedir(), "oyster-backups");
   let backupCount = 0;
   let backupSize = 0;
@@ -856,9 +850,22 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (url === "/api/vault/inventory" && req.method === "GET") {
     if (rejectIfNonLocalOrigin()) return;
     try {
-      const result = buildVaultInventory({ db, spaceStore });
-      const totalSize = result.reduce((acc, r) => acc + r.size, 0);
-      sendJson({ root: humanizeHome(OYSTER_HOME), totalSize, entries: result });
+      const now = Date.now();
+      if (!vaultInventoryCache || vaultInventoryCache.expires <= now) {
+        const result = buildVaultInventory({ db, spaceStore });
+        const totalSize = result.reduce((acc, r) => acc + r.size, 0);
+        vaultInventoryCache = {
+          result,
+          totalSize,
+          root: humanizeHome(OYSTER_HOME),
+          expires: now + VAULT_INVENTORY_TTL_MS,
+        };
+      }
+      sendJson({
+        root: vaultInventoryCache.root,
+        totalSize: vaultInventoryCache.totalSize,
+        entries: vaultInventoryCache.result,
+      });
     } catch (err) {
       sendError(err, 500);
     }

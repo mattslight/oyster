@@ -1450,9 +1450,6 @@
   50%      { filter: drop-shadow(0 0 26px rgba(124, 107, 255, 0.65)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-vault-hero-art-shield { animation: none; }
-}
-@media (prefers-reduced-motion: reduce) {
   .home-vault-hero-art-ring,
   .home-vault-hero-art-shield {
     animation: none;

@@ -567,6 +567,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               onClick={() => { onSpaceChange("home"); setShowElsewhere(false); setShowVault(true); }}
               onContextMenu={(e) => e.preventDefault()}
               title="Oyster Pro — coming soon"
+              aria-label="Oyster Pro"
             >
               {showVaultPage && (
                 <motion.span
@@ -1832,7 +1833,7 @@ function VaultContents() {
           <span className="home-vault-contents-label">Your Oyster</span>
           <span className="home-vault-section-rule" />
         </div>
-        <p className="home-vault-empty">Reading {"~/Oyster"}…</p>
+        <p className="home-vault-empty">Reading your vault…</p>
       </section>
     );
   }
