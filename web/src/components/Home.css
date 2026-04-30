@@ -968,7 +968,7 @@
  * Reuse .home-space-card chrome so a project tile reads as the same
  * primitive as a Home space card. The tile body is a clickable button
  * (filter scope); the ⋯ button on the corner opens a small menu for
- * Detach. Scratchpad and All tiles don't get a ⋯ — they have nothing
+ * Detach. Vault and All tiles don't get a ⋯ — they have nothing
  * to manage from here.
  */
 .home-projects-section {

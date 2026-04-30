@@ -83,9 +83,9 @@ const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0
 // <5 memories) stay fully visible.
 const MEMORIES_PREVIEW = 5;
 
-// Sentinel for the scratchpad tile (artefacts with no source_id —
+// Sentinel for the Vault tile (artefacts with no source_id —
 // natively-created via create_artifact, not from a linked folder).
-const SCRATCHPAD = "__scratchpad__";
+const VAULT = "__vault__";
 
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
@@ -174,7 +174,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // so each space starts compact and at "all".
   const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
   const [artefactsLimit, setArtefactsLimit] = useState(ARTEFACTS_PREVIEW);
-  // Project-tile filter: null = "All" (no folder scope), "__scratchpad__" =
+  // Project-tile filter: null = "All" (no folder scope), "__vault__" =
   // native artefacts, otherwise a source_id. The tile grid is the canonical
   // surface for switching between folders; selection is exclusive.
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -206,18 +206,37 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions;
   }, [sessions, scopedSpace, showElsewhere, isHomeView]);
 
-  const stateCounts = useMemo(() => {
+  // Space-wide counts feed the "All" tile in ProjectTileGrid — that
+  // tile is the user's reset button, so its counts must NOT narrow
+  // when a folder is selected. Everything below this point (chips,
+  // list) does narrow.
+  const spaceCounts = useMemo(() => {
     const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
     counts.live = counts.active + counts.waiting + counts.disconnected;
     return counts;
   }, [scopedSessions]);
 
+  // Folder-narrowed sessions: when a project tile is selected, sessions
+  // filter to that source (or sessions without a source for VAULT).
+  const folderScopedSessions = useMemo(() => {
+    if (selectedFolderId === VAULT) return scopedSessions.filter((s) => !s.sourceId);
+    if (selectedFolderId) return scopedSessions.filter((s) => s.sourceId === selectedFolderId);
+    return scopedSessions;
+  }, [scopedSessions, selectedFolderId]);
+
+  const stateCounts = useMemo(() => {
+    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
+    for (const s of folderScopedSessions) counts[s.state]++;
+    counts.live = counts.active + counts.waiting + counts.disconnected;
+    return counts;
+  }, [folderScopedSessions]);
+
   const visibleSessions = useMemo(() => {
-    if (stateFilter === "all") return scopedSessions;
-    if (stateFilter === "live") return scopedSessions.filter((s) => LIVE_STATES.includes(s.state));
-    return scopedSessions.filter((s) => s.state === stateFilter);
-  }, [scopedSessions, stateFilter]);
+    if (stateFilter === "all") return folderScopedSessions;
+    if (stateFilter === "live") return folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
+    return folderScopedSessions.filter((s) => s.state === stateFilter);
+  }, [folderScopedSessions, stateFilter]);
 
   // Per-space session counts + a separate orphan tally (sessions with
   // spaceId === null) + a grand total for the Home card, plus the most
@@ -390,15 +409,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
-  // Per-source artefact counts for the project tile grid. "scratchpad"
+  // Per-source artefact counts for the project tile grid. "vault"
   // collects everything without a source_id (manual + ai_generated tiles
   // that didn't come from a linked folder). The tile grid itself drives
   // the SELECTED_FOLDER filter, separate from the source-origin chips.
   const folderArtefactCounts = useMemo(() => {
-    const counts: Record<string, number> = { [SCRATCHPAD]: 0 };
+    const counts: Record<string, number> = { [VAULT]: 0 };
     for (const a of effectiveDesktopProps.artifacts) {
       if (a.sourceId) counts[a.sourceId] = (counts[a.sourceId] ?? 0) + 1;
-      else counts[SCRATCHPAD]++;
+      else counts[VAULT]++;
     }
     return counts;
   }, [effectiveDesktopProps.artifacts]);
@@ -408,7 +427,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
   // the cap because it's already linear and easy to scan.
   const filteredArtefacts = useMemo(() => {
     let list = effectiveDesktopProps.artifacts;
-    if (selectedFolderId === SCRATCHPAD) {
+    if (selectedFolderId === VAULT) {
       list = list.filter((a) => !a.sourceId);
     } else if (selectedFolderId) {
       list = list.filter((a) => a.sourceId === selectedFolderId);
@@ -652,7 +671,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
               sessionCountsBySource={sessionCountsBySource}
               selectedFolderId={selectedFolderId}
               setSelectedFolderId={setSelectedFolderId}
-              totalCounts={stateCounts}
+              totalCounts={spaceCounts}
               showAttachForm={showAttachForm}
               setShowAttachForm={setShowAttachForm}
               onSourcesChanged={refreshSpaceSources}
@@ -1152,10 +1171,10 @@ function AddMemoryForm({ defaultSpaceId, spaces, onSaved, onCancel }: AddMemoryF
 
 // Project tile grid — same visual primitive as Home's space cards.
 // Renders one tile per attached folder (plus an "All" meta-tile, a
-// scratchpad tile for native artefacts, and a "+ Attach" tile). The
+// Vault tile for native artefacts, and a "+ Attach" tile). The
 // selected tile is exclusive: clicking another switches scope, clicking
 // the selected tile snaps back to All. Detach lives in a hover ⋯ menu
-// on linked tiles only — scratchpad can't be detached.
+// on linked tiles only — Vault can't be detached.
 function ProjectTileGrid({
   spaceId, sources, folderArtefactCounts, sessionCountsBySource,
   selectedFolderId, setSelectedFolderId,
@@ -1179,7 +1198,7 @@ function ProjectTileGrid({
     ),
     [sources, folderArtefactCounts],
   );
-  const scratchpadCount = folderArtefactCounts[SCRATCHPAD] ?? 0;
+  const vaultCount = folderArtefactCounts[VAULT] ?? 0;
 
   function pickTile(id: string | null) {
     setSelectedFolderId(selectedFolderId === id ? null : id);
@@ -1204,19 +1223,19 @@ function ProjectTileGrid({
           </div>
         </button>
 
-        {scratchpadCount > 0 && (
+        {vaultCount > 0 && (
           <button
             type="button"
-            className={`home-space-card home-project-tile--scratchpad${selectedFolderId === SCRATCHPAD ? " selected" : ""}`}
-            onClick={() => pickTile(SCRATCHPAD)}
+            className={`home-space-card home-project-tile--vault${selectedFolderId === VAULT ? " selected" : ""}`}
+            onClick={() => pickTile(VAULT)}
             title="Native artefacts created in this space (not from a linked folder)"
           >
             <div className="home-space-card-name">
               <span className="home-project-star">★</span> {spaceId}
-              <span className="home-project-tag">scratchpad</span>
+              <span className="home-project-tag">vault</span>
             </div>
             <div className="home-space-card-counts">
-              <span className="signal"><span className="pip pip-dim" />{scratchpadCount} {scratchpadCount === 1 ? "artefact" : "artefacts"}</span>
+              <span className="signal"><span className="pip pip-dim" />{vaultCount} {vaultCount === 1 ? "artefact" : "artefacts"}</span>
             </div>
           </button>
         )}
