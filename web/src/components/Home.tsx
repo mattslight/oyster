@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
-import { Folder, Shield } from "lucide-react";
+import { ArrowUpRight, Folder, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -599,22 +599,36 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
             <div className="home-active-projects-grid">
               {activeProjects.map((p) => {
                 const space = spaces.find((s) => s.id === p.spaceId);
+                const isSelected = selectedFolderId === p.sourceId;
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={p.sourceId}
-                    className="home-active-project-tile"
-                    onClick={() => onSpaceChange(p.spaceId)}
-                    title={`Jump to ${space?.displayName ?? p.spaceId}`}
+                    className={`home-active-project-tile${isSelected ? " selected" : ""}`}
                   >
-                    <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
-                    <div className="home-active-project-name">{p.label}</div>
-                    <div className="home-active-project-counts">
-                      {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
-                      {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
-                      {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      className="home-active-project-tile-body"
+                      onClick={() => setSelectedFolderId(isSelected ? null : p.sourceId)}
+                      title={`Filter sessions to ${p.label}`}
+                    >
+                      <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
+                      <div className="home-active-project-name">{p.label}</div>
+                      <div className="home-active-project-counts">
+                        {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
+                        {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
+                        {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="home-active-project-tile-jump"
+                      onClick={(e) => { e.stopPropagation(); onSpaceChange(p.spaceId); }}
+                      aria-label={`Open ${space?.displayName ?? p.spaceId}`}
+                      title={`Open ${space?.displayName ?? p.spaceId}`}
+                    >
+                      <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -624,26 +638,33 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
         {isHomeView && showElsewhere && orphanCwdGroups.length > 0 && (
           <div className="home-section home-active-projects-section">
             <div className="home-active-projects-grid">
-              {orphanCwdGroups.map((p) => (
-                <button
-                  type="button"
-                  key={p.cwd}
-                  className={`home-active-project-tile home-active-project-tile--orphan${selectedOrphanCwd === p.cwd ? " selected" : ""}`}
-                  title={p.cwd}
-                  onClick={() => setSelectedOrphanCwd(selectedOrphanCwd === p.cwd ? null : p.cwd)}
-                >
-                  <div className="home-active-project-name home-active-project-name--folder">
-                    <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-                    <span>{homeRelative(p.cwd)}</span>
+              {orphanCwdGroups.map((p) => {
+                const isSelected = selectedOrphanCwd === p.cwd;
+                return (
+                  <div
+                    key={p.cwd}
+                    className={`home-active-project-tile home-active-project-tile--orphan${isSelected ? " selected" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="home-active-project-tile-body"
+                      onClick={() => setSelectedOrphanCwd(isSelected ? null : p.cwd)}
+                      title={p.cwd}
+                    >
+                      <div className="home-active-project-name home-active-project-name--folder">
+                        <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                        <span>{homeRelative(p.cwd)}</span>
+                      </div>
+                      <div className="home-active-project-counts">
+                        {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
+                        {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
+                        {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
+                        {p.counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{p.counts.done} done</span>}
+                      </div>
+                    </button>
                   </div>
-                  <div className="home-active-project-counts">
-                    {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
-                    {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
-                    {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
-                    {p.counts.done > 0 && <span className="signal"><span className="pip pip-dim" />{p.counts.done} done</span>}
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

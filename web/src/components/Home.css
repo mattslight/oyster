@@ -1235,23 +1235,68 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
 }
+/* Two-piece tile: outer div carries the chrome (border, background,
+   selected state, blur) and is the positioning anchor for the
+   top-right jump button; inner <button> covers the body and is the
+   filter click target. Same pattern as ProjectTile inside a real
+   space — keeps nested click targets valid HTML. */
 .home-active-project-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  padding: 12px 14px;
+  position: relative;
   background: var(--home-surface);
   border: 1px solid var(--home-border);
   border-radius: 12px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .home-active-project-tile:hover {
   background: rgba(255, 255, 255, 0.02);
   border-color: rgba(255, 255, 255, 0.12);
+}
+.home-active-project-tile.selected {
+  background: rgba(124, 107, 255, 0.14);
+  border-color: var(--home-border-accent);
+  box-shadow: 0 0 0 1px var(--home-border-accent) inset;
+}
+.home-active-project-tile-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.home-active-project-tile-jump {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--home-border);
+  border-radius: 6px;
+  color: var(--home-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.home-active-project-tile:hover .home-active-project-tile-jump,
+.home-active-project-tile-jump:focus-visible {
+  opacity: 1;
+}
+.home-active-project-tile-jump:hover {
+  color: var(--home-text);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--home-border-accent);
 }
 .home-active-project-meta {
   font-family: var(--font-mono);
@@ -1284,16 +1329,8 @@
 }
 /* Orphan-cwd tiles on Elsewhere — clickable: filters the session list
    below to that cwd, mirroring how project tiles inside a real space
-   filter by source_id. */
-.home-active-project-tile--orphan {
-  font: inherit;
-  color: inherit;
-}
-.home-active-project-tile--orphan.selected {
-  background: rgba(124, 107, 255, 0.14);
-  border-color: var(--home-border-accent);
-  box-shadow: 0 0 0 1px var(--home-border-accent) inset;
-}
+   filter by source_id. No "jump" affordance: orphans have no parent
+   space to navigate to. */
 /* Folder treatment for orphan tile names: muted text + folder glyph
    so the tile reads as "a folder you ran in but isn't attached"
    rather than a project. The home-relative path (~/Dev) is what we
