@@ -353,7 +353,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
     if (!showElsewhere || !isHomeView) return [];
     const map = new Map<string, {
       cwd: string;
-      label: string;
       counts: { active: number; waiting: number; disconnected: number; done: number };
       lastEventAt: number;
     }>();
@@ -361,10 +360,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
       if (s.spaceId !== null || !s.cwd) continue;
       let entry = map.get(s.cwd);
       if (!entry) {
-        const label = s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd;
         entry = {
           cwd: s.cwd,
-          label,
           counts: { active: 0, waiting: 0, disconnected: 0, done: 0 },
           lastEventAt: 0,
         };

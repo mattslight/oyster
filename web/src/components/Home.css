@@ -1288,11 +1288,15 @@
   color: var(--home-text-muted);
   cursor: pointer;
   opacity: 0;
+  /* Disable hit-testing while invisible so touch users (no hover) don't
+     hit a phantom click target in the top-right of every tile. */
+  pointer-events: none;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 .home-active-project-tile:hover .home-active-project-tile-jump,
 .home-active-project-tile-jump:focus-visible {
   opacity: 1;
+  pointer-events: auto;
 }
 .home-active-project-tile-jump:hover {
   background: rgba(124, 107, 255, 0.18);

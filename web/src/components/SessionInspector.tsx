@@ -478,8 +478,12 @@ function shellQuote(s: string): string {
 function SessionActions({ session }: { session: Session }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  // `cd --` disables option parsing so a path beginning with `-` (or
+  // the literal `-`, which would otherwise mean "previous dir") is
+  // taken as a positional path argument. Single-quoting handles
+  // spaces/$/backticks; `--` handles the leading-dash edge case.
   const command = session.cwd
-    ? `cd ${shellQuote(session.cwd)} && claude --resume ${session.id}`
+    ? `cd -- ${shellQuote(session.cwd)} && claude --resume ${session.id}`
     : `claude --resume ${session.id}`;
 
   function copyCommand() {
