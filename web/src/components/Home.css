@@ -1179,7 +1179,8 @@
 .home-breadcrumb-pill.selected {
   color: #fff;
 }
-.home-breadcrumb-pill--home {
+.home-breadcrumb-pill--home,
+.home-breadcrumb-pill--vault {
   padding: 5px 9px;
 }
 .home-breadcrumb-pill--elsewhere .home-breadcrumb-pill-label {
@@ -1210,8 +1211,10 @@
   align-items: center;
   margin-right: 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
+  /* Lighter + a touch smaller than the label so the names lead and the
+     counts read as supporting metadata, not headline numbers. */
+  font-size: 9px;
+  font-weight: 300;
   letter-spacing: -0.02em;
 }
 .pip-count {
@@ -1349,4 +1352,300 @@
 }
 .home-active-project-name--folder svg {
   flex-shrink: 0;
+}
+
+/* Vault info page (cloud-sync teaser) — selected via the Shield pill in
+   the breadcrumb. Sits where the regular home content would, replacing
+   it entirely while showVault is on. */
+.home-vault-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.home-vault-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(124, 107, 255, 0.18);
+  border-radius: 18px;
+  /* Darker base — closer to oyster.to's near-black feel — with the purple
+     wash reserved for the right-side glow and the secondary teal glow on
+     the left. The two coloured glows do the lifting; the bg stays calm. */
+  background: linear-gradient(135deg, #14152a, #0f1020 60%);
+  padding: 36px 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 32px;
+  align-items: center;
+}
+.home-vault-hero-glow {
+  position: absolute;
+  top: -140px;
+  right: -100px;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 107, 255, 0.32), transparent 70%);
+  filter: blur(24px);
+  pointer-events: none;
+}
+.home-vault-hero::before {
+  /* Secondary glow on the opposite corner — subtle teal so the hero
+     reads as two-tone rather than a single purple wash. */
+  content: "";
+  position: absolute;
+  bottom: -160px;
+  left: -120px;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.18), transparent 70%);
+  filter: blur(28px);
+  pointer-events: none;
+}
+.home-vault-hero-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.home-vault-hero-art {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+/* Three concentric static rings as quiet decoration. The pulse lives on
+   the shield's glow alone — earlier passes had the rings radiating
+   outward, which read as a notification/loading spinner and pulled the
+   eye too hard. */
+.home-vault-hero-art-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(124, 107, 255, 0.2);
+}
+.home-vault-hero-art-ring--mid {
+  inset: 28px;
+  border-color: rgba(124, 107, 255, 0.3);
+}
+.home-vault-hero-art-ring--inner {
+  inset: 56px;
+  border-color: rgba(124, 107, 255, 0.45);
+  background: radial-gradient(circle, rgba(124, 107, 255, 0.18), transparent 70%);
+}
+.home-vault-hero-art-shield {
+  position: relative;
+  z-index: 1;
+  color: var(--accent);
+  animation: home-vault-shield-breathe 4.5s ease-in-out infinite;
+}
+@keyframes home-vault-shield-breathe {
+  0%, 100% { filter: drop-shadow(0 0 16px rgba(124, 107, 255, 0.4)); }
+  50%      { filter: drop-shadow(0 0 26px rgba(124, 107, 255, 0.65)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-vault-hero-art-ring,
+  .home-vault-hero-art-shield {
+    animation: none;
+  }
+}
+@media (max-width: 720px) {
+  .home-vault-hero {
+    grid-template-columns: 1fr;
+    padding: 28px 24px;
+  }
+  .home-vault-hero-art {
+    display: none;
+  }
+}
+.home-vault-hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* Teal eyebrow — pairs with the secondary glow and the trust chips so
+     the hero reads as a two-colour composition (purple body, teal accents)
+     rather than a mono-purple wash. */
+  color: var(--accent-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.home-vault-hero-pill {
+  margin-left: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(124, 107, 255, 0.18);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.home-vault-hero-title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.home-vault-hero-sub {
+  margin: 0;
+  /* Body copy on a dark surface — bright enough to read at glance, but
+     not pure white so the title still leads. The shared --home-text-muted
+     token (0.3 alpha) is too dim for hero-length sentences. */
+  color: rgba(232, 233, 240, 0.78);
+  line-height: 1.55;
+  max-width: 540px;
+}
+.home-vault-hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.home-vault-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  color: var(--accent-2);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.home-vault-hero-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+.home-vault-hero-button {
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: not-allowed;
+  opacity: 0.55;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.home-vault-hero-button--secondary {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--text);
+  opacity: 1;
+  cursor: pointer;
+}
+.home-vault-hero-button--secondary:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.04);
+}
+.home-vault-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--home-text);
+}
+.home-vault-list li {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.home-vault-bullet {
+  flex: none;
+  margin-top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+.home-vault-contents {
+  margin-top: 8px;
+}
+.home-vault-contents-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.home-vault-contents-label {
+  color: var(--text);
+}
+.home-vault-contents-path {
+  color: var(--home-text-muted);
+}
+.home-vault-section-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--home-border);
+}
+.home-vault-contents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.home-vault-row {
+  display: grid;
+  grid-template-columns: 130px 1fr auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+}
+.home-vault-row:last-child {
+  border-bottom: none;
+}
+.home-vault-row--missing {
+  opacity: 0.45;
+}
+.home-vault-row-name {
+  color: var(--text);
+  font-weight: 500;
+}
+.home-vault-row-desc {
+  color: var(--home-text-muted);
+}
+.home-vault-row-meta {
+  color: var(--accent);
+  opacity: 0.85;
+}
+.home-vault-row-count,
+.home-vault-row-size {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--home-text-muted);
+  min-width: 64px;
+  text-align: right;
+}
+.home-vault-empty {
+  color: var(--home-text-muted);
+  font-size: 13px;
+  margin: 0;
 }

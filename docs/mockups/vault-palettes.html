@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Vault hero — palette options</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      background: #0b0c1a;
+      color: #e8e9f0;
+      padding: 40px 32px 80px;
+      min-height: 100vh;
+    }
+    .page-head {
+      max-width: 1200px;
+      margin: 0 auto 32px;
+    }
+    .page-title {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 6px;
+    }
+    .page-sub {
+      color: rgba(232, 233, 240, 0.55);
+      font-size: 13px;
+      max-width: 640px;
+      line-height: 1.5;
+    }
+
+    .palette-grid {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .palette-card {
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.015);
+      padding: 22px;
+    }
+
+    .palette-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .palette-name {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .palette-tag {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: rgba(232, 233, 240, 0.45);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .palette-swatches {
+      display: inline-flex;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .palette-vibe {
+      font-size: 12px;
+      color: rgba(232, 233, 240, 0.5);
+      margin-top: 4px;
+      max-width: 100%;
+    }
+
+    /* Hero — same shape as the real app, parameterised via CSS vars per palette */
+    .hero {
+      --p1: #7c6bff;
+      --p2: #f472b6;
+      --p1-rgb: 124, 107, 255;
+      --p2-rgb: 244, 114, 182;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(var(--p1-rgb), 0.18);
+      border-radius: 18px;
+      background: linear-gradient(135deg, #14152a, #0f1020 60%);
+      padding: 32px 36px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 28px;
+      align-items: center;
+    }
+    .hero-glow-a {
+      position: absolute;
+      top: -140px;
+      right: -100px;
+      width: 380px;
+      height: 380px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(var(--p1-rgb), 0.32), transparent 70%);
+      filter: blur(24px);
+      pointer-events: none;
+    }
+    .hero-glow-b {
+      position: absolute;
+      bottom: -160px;
+      left: -120px;
+      width: 340px;
+      height: 340px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(var(--p2-rgb), 0.18), transparent 70%);
+      filter: blur(28px);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--p2);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .eyebrow svg { width: 12px; height: 12px; }
+    .eyebrow-pill {
+      margin-left: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(var(--p1-rgb), 0.18);
+      color: var(--p1);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .hero-title {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: #fff;
+      line-height: 1.1;
+    }
+    .hero-sub {
+      color: rgba(232, 233, 240, 0.6);
+      font-size: 13px;
+      line-height: 1.55;
+      max-width: 460px;
+    }
+    .hero-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(var(--p2-rgb), 0.10);
+      border: 1px solid rgba(var(--p2-rgb), 0.28);
+      color: var(--p2);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .chip svg { width: 10px; height: 10px; }
+    .hero-cta {
+      margin-top: 6px;
+    }
+    .hero-button {
+      padding: 8px 18px;
+      border-radius: 999px;
+      background: var(--p1);
+      color: #fff;
+      border: none;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .hero-art {
+      position: relative;
+      width: 160px;
+      height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid rgba(var(--p1-rgb), 0.2);
+    }
+    .ring--mid { inset: 24px; border-color: rgba(var(--p1-rgb), 0.3); }
+    .ring--inner {
+      inset: 46px;
+      border-color: rgba(var(--p1-rgb), 0.45);
+      background: radial-gradient(circle, rgba(var(--p1-rgb), 0.18), transparent 70%);
+    }
+    .shield {
+      position: relative;
+      z-index: 1;
+      color: var(--p1);
+      filter: drop-shadow(0 0 18px rgba(var(--p1-rgb), 0.5));
+    }
+    .shield svg { width: 44px; height: 44px; }
+  </style>
+</head>
+<body>
+  <div class="page-head">
+    <div class="page-title">Vault hero — primary / secondary palette options</div>
+    <div class="page-sub">Same hero, six palette pairs. Each palette varies the primary glow + shield colour and the secondary chip + eyebrow colour. Open this file in the browser, scan, pick the one that feels right.</div>
+  </div>
+
+  <div class="palette-grid">
+
+    <!-- 1. Current: Purple + Coral pink (the one you said no to) -->
+    <div class="palette-card">
+      <div class="palette-meta">
+        <div>
+          <div class="palette-name">A · Purple + Coral pink</div>
+          <div class="palette-vibe">Current. Pink reads warm but feels candy / consumery against the dark.</div>
+        </div>
+        <div class="palette-swatches">
+          <span class="swatch" style="background:#7c6bff"></span>
+          <span class="swatch" style="background:#f472b6"></span>
+        </div>
+      </div>
+      <div class="hero" style="--p1:#7c6bff;--p2:#f472b6;--p1-rgb:124,107,255;--p2-rgb:244,114,182;">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7a5 5 0 0 1 0 10H7a5 5 0 0 1 0-10 6 6 0 0 1 11.7-1A5 5 0 0 1 17 7Z"/></svg>
+            Cloud Sync
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">One universal memory across every machine — your spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Purple + Amber gold -->
+    <div class="palette-card">
+      <div class="palette-meta">
+        <div>
+          <div class="palette-name">B · Purple + Amber gold</div>
+          <div class="palette-vibe">Premium / valuable. Gold reads as "paid tier" without screaming crypto-tooling. Strong contrast against purple.</div>
+        </div>
+        <div class="palette-swatches">
+          <span class="swatch" style="background:#7c6bff"></span>
+          <span class="swatch" style="background:#fbbf24"></span>
+        </div>
+      </div>
+      <div class="hero" style="--p1:#7c6bff;--p2:#fbbf24;--p1-rgb:124,107,255;--p2-rgb:251,191,36;">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7a5 5 0 0 1 0 10H7a5 5 0 0 1 0-10 6 6 0 0 1 11.7-1A5 5 0 0 1 17 7Z"/></svg>
+            Cloud Sync
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">One universal memory across every machine — your spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Purple + Sunset orange -->
+    <div class="palette-card">
+      <div class="palette-meta">
+        <div>
+          <div class="palette-name">C · Purple + Sunset orange</div>
+          <div class="palette-vibe">Energetic, creative-tool feel (Linear, Figma flavour). Warmer than gold, more direct than coral.</div>
+        </div>
+        <div class="palette-swatches">
+          <span class="swatch" style="background:#7c6bff"></span>
+          <span class="swatch" style="background:#fb923c"></span>
+        </div>
+      </div>
+      <div class="hero" style="--p1:#7c6bff;--p2:#fb923c;--p1-rgb:124,107,255;--p2-rgb:251,146,60;">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7a5 5 0 0 1 0 10H7a5 5 0 0 1 0-10 6 6 0 0 1 11.7-1A5 5 0 0 1 17 7Z"/></svg>
+            Cloud Sync
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">One universal memory across every machine — your spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Purple + Sky blue -->
+    <div class="palette-card">
+      <div class="palette-meta">
+        <div>
+          <div class="palette-name">D · Purple + Sky blue</div>
+          <div class="palette-vibe">Calm, "cloud" reads literally as sky. Analogous, hard to misuse, lowest emotional contrast.</div>
+        </div>
+        <div class="palette-swatches">
+          <span class="swatch" style="background:#7c6bff"></span>
+          <span class="swatch" style="background:#60a5fa"></span>
+        </div>
+      </div>
+      <div class="hero" style="--p1:#7c6bff;--p2:#60a5fa;--p1-rgb:124,107,255;--p2-rgb:96,165,250;">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7a5 5 0 0 1 0 10H7a5 5 0 0 1 0-10 6 6 0 0 1 11.7-1A5 5 0 0 1 17 7Z"/></svg>
+            Cloud Sync
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">One universal memory across every machine — your spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Purple + Lavender (mono-tonal) -->
+    <div class="palette-card">
+      <div class="palette-meta">
+        <div>
+          <div class="palette-name">E · Purple + Lavender</div>
+          <div class="palette-vibe">Mono-tonal, just two purples. Quiet, premium, elegant. Less personality but never wrong.</div>
+        </div>
+        <div class="palette-swatches">
+          <span class="swatch" style="background:#7c6bff"></span>
+          <span class="swatch" style="background:#c084fc"></span>
+        </div>
+      </div>
+      <div class="hero" style="--p1:#7c6bff;--p2:#c084fc;--p1-rgb:124,107,255;--p2-rgb:192,132,252;">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7a5 5 0 0 1 0 10H7a5 5 0 0 1 0-10 6 6 0 0 1 11.7-1A5 5 0 0 1 17 7Z"/></svg>
+            Cloud Sync
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">One universal memory across every machine — your spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Indigo + Amber -->
+    <div class="palette-card">
+      <div class="palette-meta">
+        <div>
+          <div class="palette-name">F · Indigo + Amber</div>
+          <div class="palette-vibe">Slightly cooler primary (indigo, less violet), warm gold accent. Most "fintech / serious product" of the set.</div>
+        </div>
+        <div class="palette-swatches">
+          <span class="swatch" style="background:#6366f1"></span>
+          <span class="swatch" style="background:#fbbf24"></span>
+        </div>
+      </div>
+      <div class="hero" style="--p1:#6366f1;--p2:#fbbf24;--p1-rgb:99,102,241;--p2-rgb:251,191,36;">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7a5 5 0 0 1 0 10H7a5 5 0 0 1 0-10 6 6 0 0 1 11.7-1A5 5 0 0 1 17 7Z"/></svg>
+            Cloud Sync
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">One universal memory across every machine — your spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

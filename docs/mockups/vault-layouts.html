@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Vault page — layout options</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --p1: #7c6bff;
+      --p1-rgb: 124, 107, 255;
+      --p2: #fbbf24;
+      --p2-rgb: 251, 191, 36;
+      --bg: #0b0c1a;
+      --surface: rgba(12, 13, 28, 0.6);
+      --border: rgba(255, 255, 255, 0.06);
+      --text: #f0f0f5;
+      --text-soft: rgba(232, 233, 240, 0.78);
+      --text-dim: rgba(232, 233, 240, 0.5);
+      --text-muted: rgba(232, 233, 240, 0.3);
+      --mono: 'IBM Plex Mono', monospace;
+      --body: 'Space Grotesk', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--body);
+      background: var(--bg);
+      color: var(--text);
+      padding: 32px;
+    }
+    .page-head { max-width: 1200px; margin: 0 auto 32px; }
+    .page-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 6px; }
+    .page-sub { color: var(--text-dim); font-size: 13px; max-width: 720px; line-height: 1.55; }
+    .options { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+
+    .option {
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.015);
+      padding: 24px;
+    }
+    .option-meta { margin-bottom: 20px; }
+    .option-name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4px; }
+    .option-desc { font-size: 12px; color: var(--text-dim); line-height: 1.55; max-width: 720px; }
+
+    /* Mock breadcrumb (decoration only) */
+    .breadcrumb {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      margin-bottom: 22px;
+    }
+    .pill {
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      color: var(--text-soft);
+      background: transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .pill--shield {
+      background: var(--p1);
+      color: white;
+    }
+    .pill--shield svg { width: 12px; height: 12px; }
+    .pill--home svg { width: 12px; height: 12px; color: var(--text-soft); }
+
+    /* Hero — full sized */
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(var(--p1-rgb), 0.18);
+      border-radius: 16px;
+      background: linear-gradient(135deg, #14152a, #0f1020 60%);
+      padding: 28px 32px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+    .hero-glow-a {
+      position: absolute; top: -120px; right: -80px; width: 320px; height: 320px;
+      border-radius: 50%; background: radial-gradient(circle, rgba(var(--p1-rgb), 0.32), transparent 70%);
+      filter: blur(20px); pointer-events: none;
+    }
+    .hero-glow-b {
+      position: absolute; bottom: -140px; left: -100px; width: 300px; height: 300px;
+      border-radius: 50%; background: radial-gradient(circle, rgba(var(--p2-rgb), 0.18), transparent 70%);
+      filter: blur(24px); pointer-events: none;
+    }
+    .hero-content { position: relative; display: flex; flex-direction: column; gap: 10px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--p2); font-family: var(--mono); font-size: 10px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .eyebrow svg { width: 12px; height: 12px; }
+    .eyebrow-pill {
+      margin-left: 4px; padding: 2px 8px; border-radius: 999px;
+      background: rgba(var(--p1-rgb), 0.18); color: var(--p1);
+      font-size: 9px; font-weight: 600; letter-spacing: 0.04em;
+    }
+    .hero-title {
+      font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1;
+    }
+    .hero-sub {
+      color: var(--text-soft); font-size: 13px; line-height: 1.55; max-width: 480px;
+    }
+    .hero-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 999px;
+      background: rgba(var(--p2-rgb), 0.10);
+      border: 1px solid rgba(var(--p2-rgb), 0.28);
+      color: var(--p2); font-size: 10px; font-weight: 500;
+    }
+    .chip svg { width: 10px; height: 10px; }
+    .hero-cta { margin-top: 6px; }
+    .hero-button {
+      padding: 8px 18px; border-radius: 999px; background: var(--p1); color: white;
+      border: none; font-weight: 600; font-size: 12px; cursor: not-allowed; opacity: 0.55;
+    }
+    .hero-art { position: relative; width: 130px; height: 130px; display: flex; align-items: center; justify-content: center; }
+    .ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(var(--p1-rgb), 0.2); }
+    .ring--mid { inset: 20px; border-color: rgba(var(--p1-rgb), 0.3); }
+    .ring--inner { inset: 40px; border-color: rgba(var(--p1-rgb), 0.45); background: radial-gradient(circle, rgba(var(--p1-rgb), 0.18), transparent 70%); }
+    .shield { position: relative; z-index: 1; color: var(--p1); filter: drop-shadow(0 0 14px rgba(var(--p1-rgb), 0.5)); }
+    .shield svg { width: 36px; height: 36px; }
+
+    /* Slim hero strip (Option 1) */
+    .slim-hero {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 18px; border-radius: 999px;
+      background: linear-gradient(90deg, #14152a, #0f1020);
+      border: 1px solid rgba(var(--p1-rgb), 0.22);
+      margin-bottom: 24px;
+    }
+    .slim-hero-shield {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(var(--p1-rgb), 0.18);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--p1);
+    }
+    .slim-hero-shield svg { width: 14px; height: 14px; }
+    .slim-hero-name {
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--p2);
+    }
+    .slim-hero-rule { flex: 1; height: 1px; background: var(--border); }
+    .slim-hero-status {
+      font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .slim-hero-button {
+      padding: 6px 14px; border-radius: 999px; background: var(--p1); color: white;
+      border: none; font-weight: 600; font-size: 11px; cursor: not-allowed; opacity: 0.65;
+    }
+
+    /* Inventory section */
+    .inventory-section { margin-top: 4px; }
+    .inv-head {
+      display: flex; align-items: center; gap: 12px;
+      padding-bottom: 12px;
+      color: var(--text-dim); font-family: var(--mono); font-size: 12px;
+    }
+    .inv-label { color: var(--text); font-size: 14px; font-weight: 600; font-family: var(--body); letter-spacing: -0.01em; }
+    .inv-path { color: var(--text-muted); }
+    .inv-rule { flex: 1; height: 1px; background: var(--border); }
+    .inv-total { color: var(--text-muted); }
+    .inv-list { list-style: none; }
+    .inv-row {
+      display: grid; grid-template-columns: 130px 1fr auto auto;
+      gap: 16px; align-items: center;
+      padding: 10px 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 13px;
+    }
+    .inv-row:last-child { border-bottom: none; }
+    .inv-name { color: var(--text); font-weight: 500; }
+    .inv-desc { color: var(--text-muted); }
+    .inv-meta { color: var(--p1); opacity: 0.85; }
+    .inv-count, .inv-size {
+      font-family: var(--mono); font-size: 12px; color: var(--text-muted); min-width: 64px; text-align: right;
+    }
+
+    /* Cards (Option 2 — single merged) */
+    .merged-card {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface);
+      padding: 22px 24px;
+      margin-top: 28px;
+      overflow: hidden;
+    }
+    .merged-card::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--p1), transparent);
+      opacity: 0.7;
+    }
+    .merged-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: var(--p1);
+    }
+    .merged-head svg { width: 18px; height: 18px; }
+    .merged-head h3 {
+      font-family: var(--body); font-size: 16px; font-weight: 600;
+      letter-spacing: -0.01em; color: white;
+    }
+    .merged-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 24px;
+    }
+    .merged-grid li {
+      list-style: none; display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--text);
+    }
+    .bullet {
+      width: 4px; height: 4px; border-radius: 50%; background: var(--p1); opacity: 0.7;
+    }
+
+    /* Two-col layout (Option 3) */
+    .two-col { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
+    .two-col-marketing {
+      border: 1px solid var(--border); border-radius: 14px;
+      background: var(--surface); padding: 22px 24px;
+      position: relative; overflow: hidden;
+    }
+    .two-col-marketing::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--p1), transparent); opacity: 0.7;
+    }
+    .two-col-marketing h3 {
+      font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+      color: white; margin-bottom: 12px;
+    }
+    .two-col-marketing .chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .two-col-marketing ul { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+    .two-col-marketing li {
+      display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-soft);
+    }
+
+    /* Compact "what cloud sync adds" — Option 1 footer block */
+    .sync-adds {
+      margin-top: 28px;
+      padding: 18px 22px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.015);
+    }
+    .sync-adds-head {
+      display: flex; align-items: center; gap: 10px;
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--p2); margin-bottom: 12px;
+    }
+    .sync-adds-head svg { width: 12px; height: 12px; fill: currentColor; }
+    .sync-adds-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 24px;
+    }
+    .sync-adds-grid li {
+      list-style: none; display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--text);
+    }
+
+  </style>
+</head>
+<body>
+  <div class="page-head">
+    <div class="page-title">Vault page — layout options</div>
+    <div class="page-sub">Three takes on the Vault page. Goal: surface the user's actual inventory above the marketing pitch, since the user clicked the pill on intent. Each option keeps the breadcrumb above unchanged. Pick one and I'll wire it.</div>
+  </div>
+
+  <div class="options">
+
+    <!-- =================================================================== -->
+    <!-- OPTION 1: Inventory-first, slim hero strip -->
+    <!-- =================================================================== -->
+    <div class="option">
+      <div class="option-meta">
+        <div class="option-name">Option 1 · Inventory-first</div>
+        <div class="option-desc">Slim hero strip up top, full inventory below as the main content, and a compact "What cloud sync adds" block at the bottom. Drops all three explanation cards. Highest signal-to-marketing ratio. Scales best when sync ships and rows show per-source sync status.</div>
+      </div>
+
+      <div class="breadcrumb">
+        <span class="pill pill--home"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 4 9v12h6v-7h4v7h6V9z"/></svg></span>
+        <span class="pill pill--shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></span>
+        <span class="pill">● Oyster</span>
+        <span class="pill">● Tokinvest</span>
+        <span class="pill" style="font-style:italic;color:var(--text-muted)">Unsorted</span>
+      </div>
+
+      <div class="slim-hero">
+        <div class="slim-hero-shield">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg>
+        </div>
+        <span class="slim-hero-name">Vault</span>
+        <span class="slim-hero-status">Cloud sync · coming soon</span>
+        <div class="slim-hero-rule"></div>
+        <button class="slim-hero-button">Join the waitlist</button>
+      </div>
+
+      <div class="inventory-section">
+        <div class="inv-head">
+          <span class="inv-label">In your vault</span>
+          <span class="inv-path">~/Oyster</span>
+          <span class="inv-rule"></span>
+          <span class="inv-total">1.45 GB</span>
+        </div>
+        <ul class="inv-list">
+          <li class="inv-row"><span class="inv-name">Spaces</span><span class="inv-desc">Your projects and workspaces</span><span class="inv-count">3 spaces</span><span class="inv-size">0 B</span></li>
+          <li class="inv-row"><span class="inv-name">Apps</span><span class="inv-desc">Installed plugin bundles</span><span class="inv-count">6 bundles</span><span class="inv-size">263.2 KB</span></li>
+          <li class="inv-row"><span class="inv-name">Database</span><span class="inv-desc">Artefacts, sessions, memories</span><span class="inv-count">156,888 rows</span><span class="inv-size">604.9 MB</span></li>
+          <li class="inv-row"><span class="inv-name">Config</span><span class="inv-desc">Agent and workspace settings</span><span class="inv-count">788 files</span><span class="inv-size">4.4 MB</span></li>
+          <li class="inv-row"><span class="inv-name">Backups</span><span class="inv-desc">Local snapshots <span class="inv-meta">· newest today</span></span><span class="inv-count">11 snapshots</span><span class="inv-size">876.6 MB</span></li>
+        </ul>
+      </div>
+
+      <div class="sync-adds">
+        <div class="sync-adds-head">
+          <svg viewBox="0 0 24 24"><path d="M17 7a5 5 0 0 1 0 10H7a5 5 0 0 1 0-10 6 6 0 0 1 11.7-1A5 5 0 0 1 17 7Z"/></svg>
+          What cloud sync adds
+        </div>
+        <ul class="sync-adds-grid">
+          <li><span class="bullet"></span>Every agent shares one brain</li>
+          <li><span class="bullet"></span>Switch machines, no setup</li>
+          <li><span class="bullet"></span>Survive a dead laptop</li>
+          <li><span class="bullet"></span>Version history</li>
+          <li><span class="bullet"></span>End-to-end encrypted</li>
+          <li><span class="bullet"></span>Ready for shared spaces</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- OPTION 2: Hero + inventory + one merged "value" card -->
+    <!-- =================================================================== -->
+    <div class="option">
+      <div class="option-meta">
+        <div class="option-name">Option 2 · Hero stays, three cards become one</div>
+        <div class="option-desc">Keeps the full hero (some users do arrive curious). Inventory moves above the explanation grid. The three cards collapse into a single "Why cloud sync" card with a 2-col bullet grid. Safer middle ground.</div>
+      </div>
+
+      <div class="breadcrumb">
+        <span class="pill pill--home"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 4 9v12h6v-7h4v7h6V9z"/></svg></span>
+        <span class="pill pill--shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></span>
+        <span class="pill">● Oyster</span>
+        <span class="pill">● Tokinvest</span>
+        <span class="pill" style="font-style:italic;color:var(--text-muted)">Unsorted</span>
+      </div>
+
+      <div class="hero">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg>
+            Vault
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">Vault is your universal memory across every machine — spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6m11-11h-6m-10 0H1"/></svg> Universal memory</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+
+      <div class="inventory-section">
+        <div class="inv-head">
+          <span class="inv-label">In your vault</span>
+          <span class="inv-path">~/Oyster</span>
+          <span class="inv-rule"></span>
+          <span class="inv-total">1.45 GB</span>
+        </div>
+        <ul class="inv-list">
+          <li class="inv-row"><span class="inv-name">Spaces</span><span class="inv-desc">Your projects and workspaces</span><span class="inv-count">3 spaces</span><span class="inv-size">0 B</span></li>
+          <li class="inv-row"><span class="inv-name">Apps</span><span class="inv-desc">Installed plugin bundles</span><span class="inv-count">6 bundles</span><span class="inv-size">263.2 KB</span></li>
+          <li class="inv-row"><span class="inv-name">Database</span><span class="inv-desc">Artefacts, sessions, memories</span><span class="inv-count">156,888 rows</span><span class="inv-size">604.9 MB</span></li>
+          <li class="inv-row"><span class="inv-name">Config</span><span class="inv-desc">Agent and workspace settings</span><span class="inv-count">788 files</span><span class="inv-size">4.4 MB</span></li>
+          <li class="inv-row"><span class="inv-name">Backups</span><span class="inv-desc">Local snapshots <span class="inv-meta">· newest today</span></span><span class="inv-count">11 snapshots</span><span class="inv-size">876.6 MB</span></li>
+        </ul>
+      </div>
+
+      <div class="merged-card">
+        <div class="merged-head">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.5 4 4-1.5L16 8.5l4 1.5-4 1.5 1.5 4-4-1.5L12 18l-1.5-4-4 1.5L8 11.5 4 10l4-1.5L6.5 4.5l4 1.5z"/></svg>
+          <h3>Why cloud sync</h3>
+        </div>
+        <ul class="merged-grid">
+          <li><span class="bullet"></span>Every agent shares one brain</li>
+          <li><span class="bullet"></span>Switch machines, no setup</li>
+          <li><span class="bullet"></span>Survive a dead laptop</li>
+          <li><span class="bullet"></span>Version history</li>
+          <li><span class="bullet"></span>Ready for shared spaces</li>
+          <li><span class="bullet"></span>One account, all devices</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- OPTION 3: Two-column split — inventory on the left, marketing right -->
+    <!-- =================================================================== -->
+    <div class="option">
+      <div class="option-meta">
+        <div class="option-name">Option 3 · Two-column split</div>
+        <div class="option-desc">Hero stays. Below it, a 60/40 split: inventory dominates the left column, "Coming soon" lives as a supporting card on the right. Side-by-side balance. Compresses inventory rows at narrow widths, but reads well at standard desktop.</div>
+      </div>
+
+      <div class="breadcrumb">
+        <span class="pill pill--home"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 4 9v12h6v-7h4v7h6V9z"/></svg></span>
+        <span class="pill pill--shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></span>
+        <span class="pill">● Oyster</span>
+        <span class="pill">● Tokinvest</span>
+        <span class="pill" style="font-style:italic;color:var(--text-muted)">Unsorted</span>
+      </div>
+
+      <div class="hero">
+        <div class="hero-glow-a"></div>
+        <div class="hero-glow-b"></div>
+        <div class="hero-content">
+          <span class="eyebrow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg>
+            Vault
+            <span class="eyebrow-pill">Coming soon</span>
+          </span>
+          <div class="hero-title">Your workspace, everywhere.</div>
+          <div class="hero-sub">Vault is your universal memory across every machine — spaces, sessions, and everything Oyster has learned about your work.</div>
+          <div class="hero-chips">
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6m11-11h-6m-10 0H1"/></svg> Universal memory</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Exportable</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> End-to-end Encrypted</span>
+            <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Auto Sync</span>
+          </div>
+          <div class="hero-cta"><button class="hero-button">Join the waitlist</button></div>
+        </div>
+        <div class="hero-art">
+          <div class="ring"></div><div class="ring ring--mid"></div><div class="ring ring--inner"></div>
+          <div class="shield"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="inventory-section" style="margin-top:0">
+          <div class="inv-head">
+            <span class="inv-label">In your vault</span>
+            <span class="inv-path">~/Oyster</span>
+            <span class="inv-rule"></span>
+            <span class="inv-total">1.45 GB</span>
+          </div>
+          <ul class="inv-list">
+            <li class="inv-row" style="grid-template-columns:110px 1fr auto"><span class="inv-name">Spaces</span><span class="inv-desc">Projects &amp; workspaces</span><span class="inv-count">3</span></li>
+            <li class="inv-row" style="grid-template-columns:110px 1fr auto"><span class="inv-name">Apps</span><span class="inv-desc">Plugin bundles</span><span class="inv-count">6</span></li>
+            <li class="inv-row" style="grid-template-columns:110px 1fr auto"><span class="inv-name">Database</span><span class="inv-desc">Artefacts, sessions, memories</span><span class="inv-count">156,888</span></li>
+            <li class="inv-row" style="grid-template-columns:110px 1fr auto"><span class="inv-name">Config</span><span class="inv-desc">Agent &amp; workspace settings</span><span class="inv-count">788</span></li>
+            <li class="inv-row" style="grid-template-columns:110px 1fr auto"><span class="inv-name">Backups</span><span class="inv-desc">Local snapshots <span class="inv-meta">· today</span></span><span class="inv-count">11</span></li>
+          </ul>
+        </div>
+
+        <div class="two-col-marketing">
+          <h3>Coming soon · Cloud sync</h3>
+          <div class="chips-row">
+            <span class="chip">Universal memory</span>
+            <span class="chip">Exportable</span>
+            <span class="chip">E2E Encrypted</span>
+          </div>
+          <ul>
+            <li><span class="bullet"></span>Every agent shares one brain</li>
+            <li><span class="bullet"></span>Switch machines, no setup</li>
+            <li><span class="bullet"></span>Survive a dead laptop</li>
+            <li><span class="bullet"></span>Version history</li>
+            <li><span class="bullet"></span>Ready for shared spaces</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

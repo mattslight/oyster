@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
-import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
+import { ArrowUpRight, Brain, Folder, FolderPlus, Globe, RefreshCw, Shield } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -182,6 +182,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // registered space). Only applies in Home view; navigating to a real space
   // resets it.
   const [showElsewhere, setShowElsewhere] = useState(false);
+  // Vault info page (cloud-sync teaser). Sits next to Home in the breadcrumb;
+  // mutually exclusive with showElsewhere and resets when navigating away
+  // from Home, same lifecycle as showElsewhere.
+  const [showVault, setShowVault] = useState(false);
   // Memories collapse: long lists are noisy on Home. Default to 5 rows;
   // "Show all" expands. Resets when the user changes scope so a different
   // space starts collapsed too.
@@ -219,8 +223,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // Reset Elsewhere scope when we navigate away from Home (e.g. user clicks
   // a real space card or chat-bar pill).
   useEffect(() => {
-    if (!isHomeView) setShowElsewhere(false);
+    if (!isHomeView) {
+      setShowElsewhere(false);
+      setShowVault(false);
+    }
   }, [isHomeView]);
+
+  const showVaultPage = showVault && isHomeView;
 
   // Collapse limits + filter reset on scope change — switching from a
   // 60-item Home view to a single-space view shouldn't carry over either
@@ -399,14 +408,25 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // fall to the bottom in their original (alphabetical) order. Home and
   // Elsewhere cards are rendered around this list — always first / always
   // last regardless of activity.
+  // Stable breadcrumb order: bucket by strongest signal (green → amber →
+  // red → quiet), then alphabetise within each bucket. Sorting by
+  // last-activity caused pill order to flip every time a session updated,
+  // which made re-finding a space a chore.
   const realSpaces = useMemo(() => {
     const filtered = spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__");
+    const rank = (id: string): number => {
+      const c = sessionCountsBySpace[id] ?? EMPTY_COUNTS;
+      if (c.active > 0) return 0;
+      if (c.waiting > 0) return 1;
+      if (c.disconnected > 0) return 2;
+      return 3;
+    };
     return [...filtered].sort((a, b) => {
-      const aT = lastActivityBySpace[a.id] ?? 0;
-      const bT = lastActivityBySpace[b.id] ?? 0;
-      return bT - aT;
+      const ra = rank(a.id), rb = rank(b.id);
+      if (ra !== rb) return ra - rb;
+      return a.displayName.localeCompare(b.displayName);
     });
-  }, [spaces, lastActivityBySpace]);
+  }, [spaces, sessionCountsBySpace]);
 
   // Memories scope mirrors the server `list(space_id)` semantics: a real
   // space includes both memories explicitly tagged with that space AND
@@ -502,7 +522,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [activePanel, activeArtefact]);
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
-  const eyebrow = isHomeView ? (showElsewhere ? "Elsewhere" : "Home")
+  const eyebrow = isHomeView ? (showElsewhere ? "Unsorted" : "Home")
     : isAllView ? "All"
     : isArchivedView ? "Archived"
     : activeSpaceRow?.displayName ?? scopedSpace ?? "";
@@ -525,12 +545,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <div className="home-breadcrumb-inner">
             <button
               type="button"
-              className={`home-breadcrumb-pill home-breadcrumb-pill--home${isHomeView && !showElsewhere ? " selected" : ""}`}
-              onClick={() => { onSpaceChange("home"); setShowElsewhere(false); }}
+              className={`home-breadcrumb-pill home-breadcrumb-pill--home${isHomeView && !showElsewhere && !showVault ? " selected" : ""}`}
+              onClick={() => { onSpaceChange("home"); setShowElsewhere(false); setShowVault(false); }}
               onContextMenu={(e) => e.preventDefault()}
               title={`${totalCounts.active} active · ${totalCounts.waiting} waiting · ${totalCounts.disconnected} disconnected · ${totalCounts.done} done`}
             >
-              {isHomeView && !showElsewhere && (
+              {isHomeView && !showElsewhere && !showVault && (
                 <motion.span
                   layoutId="home-breadcrumb-bg"
                   className="home-breadcrumb-pill-bg"
@@ -540,6 +560,23 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ position: "relative", zIndex: 1 }}>
                 <path d="M11.03 2.59a1.5 1.5 0 0 1 1.94 0l7.5 6.363A1.5 1.5 0 0 1 21 10.097V19.5a2.5 2.5 0 0 1-2.5 2.5H15v-4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v4H5.5A2.5 2.5 0 0 1 3 19.5v-9.403a1.5 1.5 0 0 1 .53-1.137l7.5-6.37Z"/>
               </svg>
+            </button>
+            <button
+              type="button"
+              className={`home-breadcrumb-pill home-breadcrumb-pill--vault${showVaultPage ? " selected" : ""}`}
+              onClick={() => { onSpaceChange("home"); setShowElsewhere(false); setShowVault(true); }}
+              onContextMenu={(e) => e.preventDefault()}
+              title="Oyster Pro — coming soon"
+              aria-label="Oyster Pro"
+            >
+              {showVaultPage && (
+                <motion.span
+                  layoutId="home-breadcrumb-bg"
+                  className="home-breadcrumb-pill-bg"
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              )}
+              <Shield size={14} strokeWidth={2} fill="currentColor" aria-hidden="true" style={{ position: "relative", zIndex: 1 }} />
             </button>
             {realSpaces.map((space) => {
               const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
@@ -582,7 +619,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               <button
                 type="button"
                 className={`home-breadcrumb-pill home-breadcrumb-pill--elsewhere${showElsewhere && isHomeView ? " selected" : ""}`}
-                onClick={() => { onSpaceChange("home"); setShowElsewhere(true); }}
+                onClick={() => { onSpaceChange("home"); setShowElsewhere(true); setShowVault(false); }}
                 onContextMenu={(e) => e.preventDefault()}
                 title={[
                   orphanCounts.active > 0 && `${orphanCounts.active} active`,
@@ -603,7 +640,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                     {renderPipCounts(orphanCounts)}
                   </span>
                 )}
-                <span className="home-breadcrumb-pill-label">Elsewhere</span>
+                <span className="home-breadcrumb-pill-label">Unsorted</span>
               </button>
             )}
             </div>
@@ -611,6 +648,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           </nav>
         )}
 
+        {showVaultPage ? (
+          <VaultInfo />
+        ) : (<>
         <header className="home-header">
           {/* Eyebrow dropped — the breadcrumb above already shows the
               active scope, so a separate "HOME" / "OYSTER" label is
@@ -1006,6 +1046,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             </div>
           )}
         </section>
+        </>)}
       </div>
       <InspectorPanel active={activePanel} onClose={() => setActivePanel(null)}>
         {activePanel?.kind === "session" && (
@@ -1401,8 +1442,8 @@ function ProjectTileGrid({
             title="Native artefacts created in this space (not from a linked folder)"
           >
             <div className="home-space-card-name">
-              <span>{spaceId}</span>
               <Shield size={12} strokeWidth={2} fill="currentColor" aria-hidden="true" className="home-project-glyph" />
+              <span>{spaceId}</span>
               <span className="home-project-tag">vault</span>
             </div>
             <div className="home-space-card-counts">
@@ -1679,4 +1720,158 @@ function formatRelative(iso: string): string | null {
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d`;
   return new Date(t).toLocaleDateString();
+}
+
+function VaultInfo() {
+  return (
+    <div className="home-vault-page">
+      <section className="home-vault-hero">
+        <div className="home-vault-hero-glow" aria-hidden="true" />
+        <div className="home-vault-hero-content">
+          <div className="home-vault-hero-eyebrow">
+            <Shield size={14} strokeWidth={2} fill="currentColor" aria-hidden="true" />
+            <span>Oyster Pro</span>
+            <span className="home-vault-hero-pill">Coming soon</span>
+          </div>
+          <h2 className="home-vault-hero-title">Your Oyster, everywhere.</h2>
+          <p className="home-vault-hero-sub">
+            Your spaces, artifacts, and your AI's memory — continue anywhere,
+            in any agent. Backed up, encrypted, picked up wherever you left off.
+          </p>
+          <div className="home-vault-hero-chips">
+            <span className="home-vault-chip">
+              <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />
+              Sync
+            </span>
+            <span className="home-vault-chip">
+              <Brain size={12} strokeWidth={2} aria-hidden="true" />
+              Memory
+            </span>
+            <span className="home-vault-chip">
+              <Globe size={12} strokeWidth={2} aria-hidden="true" />
+              Publish
+            </span>
+          </div>
+          <div className="home-vault-hero-cta">
+            <button type="button" className="home-vault-hero-button" disabled>
+              Join the waitlist
+            </button>
+            <a
+              className="home-vault-hero-button home-vault-hero-button--secondary"
+              href="https://oyster.to/pricing"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Read more
+            </a>
+          </div>
+        </div>
+        <div className="home-vault-hero-art" aria-hidden="true">
+          <div className="home-vault-hero-art-ring" />
+          <div className="home-vault-hero-art-ring home-vault-hero-art-ring--mid" />
+          <div className="home-vault-hero-art-ring home-vault-hero-art-ring--inner" />
+          <Shield size={56} strokeWidth={1.5} className="home-vault-hero-art-shield" />
+        </div>
+      </section>
+
+      <VaultContents />
+
+    </div>
+  );
+}
+
+interface VaultInventoryEntry {
+  name: string;
+  label: string;
+  description: string;
+  count: number;
+  unit: string;
+  size: number;
+  exists: boolean;
+  meta?: string;
+}
+
+interface VaultInventory {
+  root: string;
+  totalSize: number;
+  entries: VaultInventoryEntry[];
+}
+
+function pluralize(n: number, unit: string): string {
+  if (n === 1) return unit;
+  if (unit.endsWith("y")) return unit.slice(0, -1) + "ies";
+  return unit + "s";
+}
+
+function VaultContents() {
+  const [inv, setInv] = useState<VaultInventory | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/vault/inventory")
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((data) => { if (!cancelled) setInv(data); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error) {
+    return (
+      <section className="home-vault-contents">
+        <div className="home-vault-contents-head">
+          <span className="home-vault-contents-label">Your Oyster</span>
+          <span className="home-vault-section-rule" />
+        </div>
+        <p className="home-vault-empty">Couldn't load: {error}</p>
+      </section>
+    );
+  }
+  if (!inv) {
+    return (
+      <section className="home-vault-contents">
+        <div className="home-vault-contents-head">
+          <span className="home-vault-contents-label">Your Oyster</span>
+          <span className="home-vault-section-rule" />
+        </div>
+        <p className="home-vault-empty">Reading your vault…</p>
+      </section>
+    );
+  }
+  return (
+    <section className="home-vault-contents">
+      <div className="home-vault-contents-head">
+        <span className="home-vault-contents-label">In your vault</span>
+        <span className="home-vault-contents-path">{inv.root}</span>
+        <span className="home-vault-section-rule" />
+      </div>
+      <ul className="home-vault-contents-list">
+        {inv.entries.map((e) => (
+          <li key={e.name} className={`home-vault-row${!e.exists ? " home-vault-row--missing" : ""}`}>
+            <span className="home-vault-row-name">{e.label}</span>
+            <span className="home-vault-row-desc">
+              {e.description}
+              {e.meta && <span className="home-vault-row-meta"> · {e.meta}</span>}
+            </span>
+            <span className="home-vault-row-count">
+              {e.exists ? `${e.count.toLocaleString()} ${pluralize(e.count, e.unit)}` : "—"}
+            </span>
+            <span className="home-vault-row-size">
+              {/* Spaces dir on disk is always empty — real spaces have repo_path
+                  elsewhere — so its 0 B is meaningless. Show the vault total
+                  in that slot instead; it lands on the topmost row, reading
+                  as the headline number for the whole inventory. */}
+              {e.name === "spaces" ? formatBytes(inv.totalSize) : (e.exists ? formatBytes(e.size) : "")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
