@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
+import { Folder, Vault } from "lucide-react";
 import type { Session, SessionState, SessionAgent } from "../data/sessions-api";
 import type { Memory } from "../data/memories-api";
 import { createMemory } from "../data/memories-api";
@@ -113,6 +114,14 @@ const AGENT_PIP_CLASS: Record<SessionAgent, string> = {
   opencode: "oc",
   codex: "codex",
 };
+
+// Collapse `/Users/<name>/...` and `/home/<name>/...` to `~/...` so
+// orphan-cwd labels read at a glance. Falls through unchanged for
+// Windows paths and anything outside the user home tree.
+function homeRelative(p: string): string {
+  const m = p.match(/^\/(?:Users|home)\/[^/]+/);
+  return m ? "~" + p.slice(m[0].length) : p;
+}
 
 // Compact pip + numeral, one per non-zero state. Same glow primitive
 // the Active-projects tile signals use, just without the trailing
@@ -612,8 +621,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange 
                   className="home-active-project-tile home-active-project-tile--orphan"
                   title={p.cwd}
                 >
-                  <div className="home-active-project-meta">unattached</div>
-                  <div className="home-active-project-name">{p.label}</div>
+                  <div className="home-active-project-name home-active-project-name--folder">
+                    <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                    <span>{homeRelative(p.cwd)}</span>
+                  </div>
                   <div className="home-active-project-counts">
                     {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
                     {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
@@ -1231,7 +1242,8 @@ function ProjectTileGrid({
             title="Native artefacts created in this space (not from a linked folder)"
           >
             <div className="home-space-card-name">
-              <span className="home-project-star">★</span> {spaceId}
+              <Vault size={14} strokeWidth={1.75} aria-hidden="true" className="home-project-glyph" />
+              <span>{spaceId}</span>
               <span className="home-project-tag">vault</span>
             </div>
             <div className="home-space-card-counts">

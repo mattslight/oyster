@@ -275,7 +275,7 @@
   align-items: flex-start;
   justify-content: flex-start;
   text-align: left;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: var(--home-surface);
   border: 1px solid var(--home-border);
   border-radius: 12px;
@@ -295,15 +295,19 @@
   box-shadow: 0 0 0 1px var(--home-border-accent) inset;
 }
 .home-space-card-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--home-accent-bright);
-  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--home-text);
+  margin-bottom: 8px;
 }
 .home-space-card-counts {
   display: flex;
-  gap: 10px;
   flex-wrap: wrap;
+  gap: 12px;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);
 }
@@ -311,13 +315,10 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: var(--home-text);
 }
 .home-space-card-counts .signal-muted {
   color: var(--home-text-muted);
-}
-.home-space-card-counts .pip {
-  width: 5px;
-  height: 5px;
 }
 /* Elsewhere card: same shape, dashed border to read as a meta-bucket
    rather than a real space. Selected state mirrors the chip-bar
@@ -990,12 +991,12 @@
   border-radius: 12px;
 }
 
-.home-project-star {
+.home-project-glyph {
   color: var(--accent-bright);
-  margin-right: 4px;
+  flex-shrink: 0;
 }
 .home-project-tag {
-  margin-left: 6px;
+  margin-left: 2px;
   font-size: 9px;
   letter-spacing: 0.1em;
   color: var(--home-text-muted);
@@ -1288,4 +1289,17 @@
 .home-active-project-tile--orphan:hover {
   background: var(--home-surface);
   border-color: var(--home-border);
+}
+/* Folder treatment for orphan tile names: muted text + folder glyph
+   so the tile reads as "a folder you ran in but isn't attached"
+   rather than a project. The home-relative path (~/Dev) is what we
+   display, full absolute path is on the tile's title attr. */
+.home-active-project-name--folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--home-text-muted);
+}
+.home-active-project-name--folder svg {
+  flex-shrink: 0;
 }
