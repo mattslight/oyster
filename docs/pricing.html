@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing — Oyster</title>
-  <meta name="description" content="Oyster is free without limits. Optional add-ons let your work follow you everywhere — Sync, Memory, Publish.">
+  <meta name="description" content="Oyster is free without limits. Optional add-ons make your work smarter and follow you everywhere — Sync, Memory, Publish.">
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -228,18 +228,19 @@
     }
     .tier-name {
       font-family: 'Barlow', sans-serif;
-      font-size: 22px; font-weight: 700;
+      font-size: 34px; font-weight: 700;
       color: #fff;
-      letter-spacing: -0.01em;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
     }
     .tier-tagline {
-      font-size: 13px; color: rgba(255, 255, 255, 0.5);
-      margin-top: 4px;
-      margin-bottom: 22px;
+      font-size: 19px; color: rgba(255, 255, 255, 0.7);
+      margin-top: 8px;
+      margin-bottom: 32px;
     }
     .tier-price {
       display: flex; align-items: baseline; gap: 8px;
-      margin-bottom: 4px;
+      margin-bottom: 16px;
     }
     .tier-price-amount {
       font-family: 'Barlow', sans-serif;
@@ -257,6 +258,18 @@
       color: rgba(255, 255, 255, 0.4);
       margin-bottom: 22px;
       letter-spacing: 0.04em;
+    }
+    .tier-pledge {
+      display: flex; flex-wrap: wrap;
+      gap: 0 14px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px; font-weight: 600;
+      color: #a99eff;
+      margin-bottom: 22px;
+      letter-spacing: 0.01em;
+    }
+    .tier-pledge .sep {
+      color: rgba(169, 158, 255, 0.45);
     }
     .tier-coming {
       display: inline-flex; align-items: center;
@@ -279,6 +292,13 @@
     .tier-features svg { flex: none; margin-top: 3px; color: #7c6bff; }
     .tier-features li.tier-features-plus { font-weight: 500; color: #fff; }
     .tier-features li.tier-features-add svg { color: #fbbf24; }
+    .tier-feature-primitive-name {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #fbbf24;
+    }
     .tier-cta {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 11px 22px; border-radius: 9999px;
@@ -327,7 +347,7 @@
       No strings attached.
     </p>
     <p class="subtitle">
-      Optional Oyster Pro adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> — your work follows you everywhere.
+      Optional Oyster Pro adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> — your work is smarter and follows you everywhere.
     </p>
   </section>
 
@@ -360,15 +380,15 @@
       </span>
       <div>
         <div class="primitive-name">Memory</div>
-        <h2>Your AI's brain, every agent.</h2>
+        <h2>One brain, every agent.</h2>
         <p class="primitive-desc">
           Claude, Cursor, Codex, the next one — every agent you use shares the same memory of your work.
           Pick up a session anywhere, switch tools mid-thought, and your AI keeps the context.
           The thing nobody else does.
         </p>
         <ul class="primitive-bullets">
-          <li>One memory, every agent</li>
-          <li>One memory, every machine</li>
+          <li>One brain, every agent</li>
+          <li>One brain, every machine</li>
           <li>Pick up where you left off</li>
           <li>Context that grows with your work</li>
         </ul>
@@ -412,16 +432,22 @@
           <span class="tier-price-amount">$0</span>
           <span class="tier-price-unit">/ month</span>
         </div>
-        <div class="tier-price-note">No sign-up. No strings. Yours to keep.</div>
+        <div class="tier-pledge">
+          <span>No sign-up</span>
+          <span class="sep">·</span>
+          <span>No strings</span>
+          <span class="sep">·</span>
+          <span>Yours to keep</span>
+        </div>
         <ul class="tier-features">
-          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Spaces &amp; artifacts</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Unlimited spaces &amp; artifacts</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Universal memory (local)</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Plugins &amp; MCP integration</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Bring any AI</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Local-only mode</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>All your data, exportable</li>
         </ul>
-        <a href="/" class="tier-cta tier-cta--ghost">Download Oyster</a>
+        <a href="/#install" class="tier-cta tier-cta--ghost">Install</a>
       </div>
 
       <div class="tier tier--featured">
@@ -435,14 +461,14 @@
         <div class="tier-price-note">or $192/year — save 20%</div>
         <ul class="tier-features">
           <li class="tier-features-plus"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Everything in Free</li>
-          <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Sync — every device</li>
-          <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Memory — every agent</li>
-          <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Publish — shareable links</li>
+          <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span><span class="tier-feature-primitive-name">Sync</span> — take your work anywhere</span></li>
+          <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span><span class="tier-feature-primitive-name">Memory</span> — centralised intelligence</span></li>
+          <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span><span class="tier-feature-primitive-name">Publish</span> — share work as a link</span></li>
           <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Continuous backup with version history</li>
           <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>End-to-end encrypted</li>
         </ul>
         <button type="button" class="tier-cta tier-cta--primary" disabled>Join the waitlist</button>
-        <span class="tier-fineprint">Private beta now · public release with 0.6.x</span>
+        <span class="tier-fineprint">Private beta now · public release with 0.7.x</span>
       </div>
 
     </div>
