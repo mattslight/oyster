@@ -1,4 +1,4 @@
-CREATE TABLE waitlist (
+CREATE TABLE IF NOT EXISTS waitlist (
   email      TEXT PRIMARY KEY,
   joined_at  INTEGER NOT NULL,
   source     TEXT,
@@ -6,4 +6,4 @@ CREATE TABLE waitlist (
   user_agent TEXT
 );
 
-CREATE INDEX idx_waitlist_joined ON waitlist (joined_at);
+CREATE INDEX IF NOT EXISTS idx_waitlist_joined ON waitlist (joined_at);

@@ -18,6 +18,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_SOURCE_LEN = 64;
 const ALLOWED_ORIGINS = new Set(["https://oyster.to", "https://www.oyster.to"]);
 
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  // wrangler dev runs on localhost — allow any localhost / 127.0.0.1 origin
+  return origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
+}
+
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -31,11 +38,11 @@ export default {
     if (url.pathname !== "/api/waitlist") return new Response("Not found", { status: 404 });
 
     const origin = req.headers.get("origin");
-    if (!origin || !ALLOWED_ORIGINS.has(origin)) {
+    if (!isAllowedOrigin(origin)) {
       return new Response("Forbidden", { status: 403 });
     }
     const corsHeaders = {
-      "access-control-allow-origin": origin,
+      "access-control-allow-origin": origin!,
       "vary": "origin",
     };
 
@@ -70,19 +77,24 @@ export default {
     const ipCountry = req.headers.get("cf-ipcountry") ?? null;
     const now = Date.now();
 
+    let inserted = false;
     try {
-      await env.DB
+      const result = await env.DB
         .prepare(
           "INSERT OR IGNORE INTO waitlist (email, joined_at, source, ip_country, user_agent) VALUES (?, ?, ?, ?, ?)"
         )
         .bind(rawEmail, now, source, ipCountry, userAgent)
         .run();
+      inserted = (result.meta?.changes ?? 0) > 0;
     } catch (err) {
       console.error("d1_insert_failed", err);
       return json({ error: "storage_failed" }, 500, corsHeaders);
     }
 
-    if (env.RESEND_API_KEY) {
+    // Only send the confirmation when a new row was actually inserted —
+    // re-submitting the same email is a quiet no-op (no double email,
+    // no leak of which addresses are already on the list).
+    if (inserted && env.RESEND_API_KEY) {
       ctx.waitUntil(sendConfirmation(rawEmail, env.RESEND_API_KEY, env.FROM_ADDRESS ?? "matt@oyster.to"));
     }
 

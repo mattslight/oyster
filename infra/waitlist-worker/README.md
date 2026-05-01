@@ -111,12 +111,12 @@ The Origin check stops casual abuse but a determined bot can still spoof headers
    - **Period**: 10 seconds
    - **Requests**: 3
    - **Then take action**: Block
-   - **Duration**: 10 minutes
+   - **Duration**: 10 seconds (Free plan max — Pro plan unlocks longer durations)
 4. Deploy
 
 Free plan includes 1 rate-limiting rule, which is exactly what we need.
 
-This caps a single IP at 3 signup attempts per 10 seconds, then blocks for 10 minutes. Real users hit it once; bots get rejected fast.
+This caps a single IP at 3 signup attempts per 10 seconds, then blocks for another 10 seconds. Real users won't hit it (you sign up once); bots get throttled hard enough that abuse isn't worthwhile.
 
 ## Day-to-day
 
@@ -144,7 +144,16 @@ npm run db:migrate:local   # one-time, creates a local D1
 npm run dev                # runs the Worker on localhost:8787
 ```
 
-POST to `http://localhost:8787/api/waitlist` to test without hitting prod.
+POST to `http://localhost:8787/api/waitlist` to test without hitting prod. The Worker auto-allows any `http://localhost:*` or `http://127.0.0.1:*` Origin, so you don't need to spoof a header — open a browser at the dev URL and the request goes through.
+
+For curl on localhost, pass any localhost Origin:
+
+```bash
+curl -X POST http://localhost:8787/api/waitlist \
+  -H 'content-type: application/json' \
+  -H 'origin: http://localhost:8787' \
+  -d '{"email":"test@example.com","source":"local"}'
+```
 
 ## Cost (as of 2026)
 

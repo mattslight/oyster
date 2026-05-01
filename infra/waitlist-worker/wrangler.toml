@@ -9,10 +9,15 @@ binding = "DB"
 database_name = "oyster-waitlist"
 database_id = "3bd4361e-5e90-4cdd-b4c0-1e232b6de842"
 
-# Route the Worker at oyster.to/api/waitlist.
-# Requires oyster.to to be a Cloudflare zone (which it now is).
+# Route the Worker at both oyster.to/api/waitlist and www.oyster.to/api/waitlist
+# so both supported origins reach the Worker (GH Pages 301-redirects www → apex,
+# but the Worker still needs to be reachable in case anyone hits www directly).
 [[routes]]
 pattern = "oyster.to/api/waitlist"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "www.oyster.to/api/waitlist"
 zone_name = "oyster.to"
 
 # Optional non-secret config — set with `wrangler deploy` reading these.

@@ -643,7 +643,7 @@
         <input type="email" name="email" placeholder="you@example.com" required autocomplete="email">
         <button type="submit" class="waitlist-submit">Join</button>
       </form>
-      <div class="waitlist-modal-status" hidden></div>
+      <div class="waitlist-modal-status" hidden role="status" aria-live="polite" aria-atomic="true"></div>
     </div>
   </div>
 
@@ -691,7 +691,11 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = input.value.trim();
-      if (!email) return;
+      if (!email) {
+        setStatus('Please enter your email address.', 'error');
+        input.focus();
+        return;
+      }
 
       submit.disabled = true;
       submit.textContent = 'Joining…';
