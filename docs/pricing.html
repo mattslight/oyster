@@ -303,6 +303,13 @@
       font-size: 56px; font-weight: 700;
       color: #fff; line-height: 1;
     }
+    .tier-price-amount::first-letter {
+      font-size: 0.55em;
+      font-weight: 600;
+      vertical-align: 0.45em;
+      margin-right: 2px;
+      color: rgba(255, 255, 255, 0.7);
+    }
     .tier-price-unit {
       font-family: 'IBM Plex Mono', monospace;
       font-size: 12px;
@@ -436,10 +443,10 @@
     .waitlist-modal-form { display: flex; gap: 8px; }
     .waitlist-modal-form input[type=email] {
       flex: 1; min-width: 0;
-      padding: 12px 14px;
+      padding: 12px 18px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
+      border-radius: 9999px;
       font-family: inherit; font-size: 14px;
       color: #fff; outline: none;
       transition: border-color 0.15s, background 0.15s;
@@ -452,7 +459,7 @@
     .waitlist-submit {
       padding: 12px 22px;
       background: #7df9ff; color: #050810;
-      border: none; border-radius: 10px;
+      border: none; border-radius: 9999px;
       font-family: inherit; font-size: 14px; font-weight: 600;
       cursor: pointer; white-space: nowrap;
       transition: background 0.15s, transform 0.05s;
@@ -627,7 +634,7 @@
           <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>End-to-end encrypted</li>
         </ul>
         <button type="button" class="tier-cta tier-cta--primary" data-waitlist-open>Join the waitlist</button>
-        <span class="tier-fineprint">Private beta now · public release with 0.7.x</span>
+        <span class="tier-fineprint">Private beta now · public release with 1.0</span>
       </div>
 
     </div>
@@ -687,6 +694,10 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.hidden) close();
     });
+
+    // Open the modal automatically when arriving via #waitlist
+    // (e.g. the in-app "Join the waitlist" CTA links here).
+    if (window.location.hash === '#waitlist') open();
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

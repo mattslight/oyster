@@ -1753,9 +1753,14 @@ function VaultInfo() {
             </span>
           </div>
           <div className="home-vault-hero-cta">
-            <button type="button" className="home-vault-hero-button" disabled>
+            <a
+              className="home-vault-hero-button"
+              href="https://oyster.to/pricing#waitlist"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Join the waitlist
-            </button>
+            </a>
             <a
               className="home-vault-hero-button home-vault-hero-button--secondary"
               href="https://oyster.to/pricing"
