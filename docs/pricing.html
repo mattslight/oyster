@@ -250,8 +250,25 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     }
     .tier--featured {
-      border-color: rgba(124, 107, 255, 0.35);
-      box-shadow: 0 8px 32px rgba(124, 107, 255, 0.12), 0 8px 32px rgba(0, 0, 0, 0.3);
+      isolation: isolate;
+      border-color: rgba(125, 249, 255, 0.45);
+      box-shadow:
+        0 0 0 1px rgba(125, 249, 255, 0.18),
+        0 0 18px rgba(125, 249, 255, 0.35),
+        0 0 48px rgba(125, 249, 255, 0.2),
+        0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    .tier--featured::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      z-index: -1;
+      background: linear-gradient(-30deg, #7df9ff, transparent 50%, #7df9ff);
+      transform: scale(1.08);
+      filter: blur(32px);
+      opacity: 0.35;
+      pointer-events: none;
     }
     .tier-name {
       font-family: 'Barlow', sans-serif;
