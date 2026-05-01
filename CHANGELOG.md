@@ -428,7 +428,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...HEAD
+[0.5.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
 [0.5.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0
 [0.4.0]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.8...v0.4.0
 [0.4.0-beta.8]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.7...v0.4.0-beta.8
