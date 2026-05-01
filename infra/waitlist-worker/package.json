@@ -1,0 +1,19 @@
+{
+  "name": "oyster-waitlist-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloudflare Worker collecting Oyster Pro waitlist signups",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "db:migrate": "wrangler d1 execute oyster-waitlist --file=migrations/0001_init.sql --remote",
+    "db:migrate:local": "wrangler d1 execute oyster-waitlist --file=migrations/0001_init.sql --local",
+    "db:dump": "wrangler d1 execute oyster-waitlist --remote --command=\"SELECT email FROM waitlist ORDER BY joined_at\""
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "typescript": "^5.4.0",
+    "wrangler": "^4.0.0"
+  }
+}

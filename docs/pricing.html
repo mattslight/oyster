@@ -372,7 +372,108 @@
     .tier-cta--primary {
       background: #7c6bff; color: #fff;
       box-shadow: 0 4px 20px rgba(124, 107, 255, 0.3);
-      opacity: 0.7; cursor: not-allowed;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s, box-shadow 0.15s;
+    }
+    .tier-cta--primary:hover {
+      background: #8d7eff;
+      box-shadow: 0 6px 24px rgba(124, 107, 255, 0.4);
+    }
+    .tier-cta--primary:active { transform: scale(0.98); }
+
+    /* Waitlist modal */
+    .waitlist-modal {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .waitlist-modal[hidden] { display: none; }
+    .waitlist-modal-backdrop {
+      position: absolute; inset: 0;
+      background: rgba(5, 8, 16, 0.72);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    }
+    .waitlist-modal-card {
+      position: relative;
+      background: #111322;
+      border: 1px solid rgba(125, 249, 255, 0.4);
+      border-radius: 18px;
+      padding: 32px 30px 28px;
+      max-width: 440px; width: 100%;
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+        0 0 0 1px rgba(125, 249, 255, 0.2),
+        0 0 24px rgba(125, 249, 255, 0.22),
+        0 24px 80px rgba(0, 0, 0, 0.6);
+      animation: waitlist-rise 0.22s ease-out;
+    }
+    @keyframes waitlist-rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .waitlist-modal-close {
+      position: absolute; top: 10px; right: 12px;
+      width: 32px; height: 32px;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.5);
+      font-family: inherit; font-size: 22px; line-height: 1;
+      cursor: pointer; border-radius: 999px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .waitlist-modal-close:hover {
+      color: #fff; background: rgba(255, 255, 255, 0.06);
+    }
+    .waitlist-modal-card h3 {
+      font-family: 'Barlow', sans-serif;
+      font-size: 22px; font-weight: 700; color: #fff;
+      margin-bottom: 8px; letter-spacing: -0.01em;
+    }
+    .waitlist-modal-blurb {
+      font-size: 14px; line-height: 1.5;
+      color: rgba(255, 255, 255, 0.55);
+      margin-bottom: 22px;
+    }
+    .waitlist-modal-form { display: flex; gap: 8px; }
+    .waitlist-modal-form input[type=email] {
+      flex: 1; min-width: 0;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      font-family: inherit; font-size: 14px;
+      color: #fff; outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .waitlist-modal-form input[type=email]::placeholder { color: rgba(255, 255, 255, 0.3); }
+    .waitlist-modal-form input[type=email]:focus {
+      border-color: rgba(125, 249, 255, 0.6);
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .waitlist-submit {
+      padding: 12px 22px;
+      background: #7df9ff; color: #050810;
+      border: none; border-radius: 10px;
+      font-family: inherit; font-size: 14px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      transition: background 0.15s, transform 0.05s;
+    }
+    .waitlist-submit:hover { background: #a5fbff; }
+    .waitlist-submit:active { transform: scale(0.98); }
+    .waitlist-submit:disabled {
+      background: rgba(125, 249, 255, 0.35);
+      color: rgba(5, 8, 16, 0.6);
+      cursor: not-allowed;
+    }
+    .waitlist-modal-status {
+      margin-top: 14px;
+      font-size: 13px; line-height: 1.5;
+      color: rgba(255, 255, 255, 0.6);
+    }
+    .waitlist-modal-status.is-success { color: #7df9ff; }
+    .waitlist-modal-status.is-error { color: #ff8a8a; }
+    @media (max-width: 480px) {
+      .waitlist-modal-form { flex-direction: column; }
+      .waitlist-submit { width: 100%; }
     }
     .tier-fineprint {
       display: block;
@@ -525,12 +626,104 @@
           <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Continuous backup with version history</li>
           <li class="tier-features-add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>End-to-end encrypted</li>
         </ul>
-        <button type="button" class="tier-cta tier-cta--primary" disabled>Join the waitlist</button>
+        <button type="button" class="tier-cta tier-cta--primary" data-waitlist-open>Join the waitlist</button>
         <span class="tier-fineprint">Private beta now · public release with 0.7.x</span>
       </div>
 
     </div>
   </section>
+
+  <div class="waitlist-modal" hidden aria-hidden="true">
+    <div class="waitlist-modal-backdrop" data-waitlist-close></div>
+    <div class="waitlist-modal-card" role="dialog" aria-modal="true" aria-labelledby="waitlist-title">
+      <button type="button" class="waitlist-modal-close" data-waitlist-close aria-label="Close">×</button>
+      <h3 id="waitlist-title">Join the Oyster Pro waitlist</h3>
+      <p class="waitlist-modal-blurb">We'll email you when Pro is ready. No newsletter or marketing.</p>
+      <form id="waitlist-form" class="waitlist-modal-form" novalidate>
+        <input type="email" name="email" placeholder="you@example.com" required autocomplete="email">
+        <button type="submit" class="waitlist-submit">Join</button>
+      </form>
+      <div class="waitlist-modal-status" hidden></div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    const trigger = document.querySelector('[data-waitlist-open]');
+    const modal = document.querySelector('.waitlist-modal');
+    if (!trigger || !modal) return;
+    const form = modal.querySelector('#waitlist-form');
+    const input = form.querySelector('input[name=email]');
+    const submit = form.querySelector('.waitlist-submit');
+    const status = modal.querySelector('.waitlist-modal-status');
+    const closers = modal.querySelectorAll('[data-waitlist-close]');
+
+    function setStatus(message, kind) {
+      status.hidden = !message;
+      status.className = 'waitlist-modal-status' + (kind ? ' is-' + kind : '');
+      status.textContent = message || '';
+    }
+    function reset() {
+      setStatus('', '');
+      submit.disabled = false;
+      submit.textContent = 'Join';
+      input.disabled = false;
+      form.hidden = false;
+      input.value = '';
+    }
+    function open() {
+      reset();
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      requestAnimationFrame(() => input.focus());
+    }
+    function close() {
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    trigger.addEventListener('click', open);
+    closers.forEach((c) => c.addEventListener('click', close));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = input.value.trim();
+      if (!email) return;
+
+      submit.disabled = true;
+      submit.textContent = 'Joining…';
+      setStatus('', '');
+
+      try {
+        const res = await fetch('/api/waitlist', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, source: 'pricing-page' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (data.error === 'invalid_email') {
+            setStatus("That doesn't look like a valid email.", 'error');
+          } else {
+            setStatus('Something went wrong. Please try again.', 'error');
+          }
+          submit.disabled = false;
+          submit.textContent = 'Join';
+          return;
+        }
+        form.hidden = true;
+        setStatus("You're on the list. Check your email for confirmation.", 'success');
+      } catch (err) {
+        setStatus('Network error. Please try again.', 'error');
+        submit.disabled = false;
+        submit.textContent = 'Join';
+      }
+    });
+  })();
+  </script>
 
 </body>
 </html>

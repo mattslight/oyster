@@ -1,0 +1,21 @@
+name = "oyster-waitlist"
+main = "src/worker.ts"
+compatibility_date = "2026-04-01"
+
+# Bind the D1 database. Run `wrangler d1 create oyster-waitlist` once,
+# then paste the returned database_id here.
+[[d1_databases]]
+binding = "DB"
+database_name = "oyster-waitlist"
+database_id = "REPLACE_WITH_D1_ID"
+
+# Route the Worker at oyster.to/api/waitlist.
+# Requires oyster.to to be a Cloudflare zone (which it now is).
+[[routes]]
+pattern = "oyster.to/api/waitlist"
+zone_name = "oyster.to"
+
+# Optional non-secret config — set with `wrangler deploy` reading these.
+# Secrets (RESEND_API_KEY) go via `wrangler secret put`.
+[vars]
+FROM_ADDRESS = "matt@oyster.to"
