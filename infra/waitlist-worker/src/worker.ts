@@ -80,23 +80,34 @@ export default {
     const ipCountry = req.headers.get("cf-ipcountry") ?? null;
     const now = Date.now();
 
-    // Insert (new signup) or update last_sent_at (existing signup, but
-    // only if the cooldown has elapsed). meta.changes > 0 means we should
-    // send a confirmation; otherwise we're inside the cooldown and stay silent.
+    // Branch on whether we have an API key to actually send. Without one,
+    // we still capture the signup but leave last_sent_at NULL so the row
+    // is eligible for a fresh confirmation once sending is configured.
+    // With one, we INSERT or UPDATE last_sent_at if the cooldown has
+    // elapsed; meta.changes > 0 means a fresh confirmation should fire.
     let shouldSend = false;
     try {
-      const result = await env.DB
-        .prepare(
-          `INSERT INTO waitlist (email, joined_at, source, ip_country, user_agent, last_sent_at)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(email) DO UPDATE SET
-             last_sent_at = excluded.last_sent_at
-           WHERE waitlist.last_sent_at IS NULL
-              OR waitlist.last_sent_at < ?`
-        )
-        .bind(rawEmail, now, source, ipCountry, userAgent, now, now - RESEND_COOLDOWN_MS)
-        .run();
-      shouldSend = (result.meta?.changes ?? 0) > 0;
+      if (env.RESEND_API_KEY) {
+        const result = await env.DB
+          .prepare(
+            `INSERT INTO waitlist (email, joined_at, source, ip_country, user_agent, last_sent_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(email) DO UPDATE SET
+               last_sent_at = excluded.last_sent_at
+             WHERE waitlist.last_sent_at IS NULL
+                OR waitlist.last_sent_at < ?`
+          )
+          .bind(rawEmail, now, source, ipCountry, userAgent, now, now - RESEND_COOLDOWN_MS)
+          .run();
+        shouldSend = (result.meta?.changes ?? 0) > 0;
+      } else {
+        await env.DB
+          .prepare(
+            "INSERT OR IGNORE INTO waitlist (email, joined_at, source, ip_country, user_agent) VALUES (?, ?, ?, ?, ?)"
+          )
+          .bind(rawEmail, now, source, ipCountry, userAgent)
+          .run();
+      }
     } catch (err) {
       console.error("d1_insert_failed", err);
       return json({ error: "storage_failed" }, 500, corsHeaders);
@@ -105,8 +116,8 @@ export default {
     // Resubmissions inside the cooldown produce no email (anti-abuse,
     // anti-enumeration), but the response is identical so the client
     // can't tell which case happened.
-    if (shouldSend && env.RESEND_API_KEY) {
-      ctx.waitUntil(sendConfirmation(rawEmail, env.RESEND_API_KEY, env.FROM_ADDRESS ?? "matt@oyster.to"));
+    if (shouldSend) {
+      ctx.waitUntil(sendConfirmation(rawEmail, env.RESEND_API_KEY!, env.FROM_ADDRESS ?? "matt@oyster.to"));
     }
 
     return json({ ok: true }, 200, corsHeaders);
@@ -114,7 +125,7 @@ export default {
 };
 
 async function sendConfirmation(email: string, apiKey: string, from: string): Promise<void> {
-  const subject = "You’re on the Oyster Pro waitlist";
+  const subject = "🦪 You’re on the Oyster Pro waitlist";
   const text =
     "Thanks for joining — you'll hear from me when Oyster Pro is ready.\n\n" +
     "That's the only email you'll get from this list. No newsletter or marketing.\n\n" +

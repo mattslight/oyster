@@ -48,11 +48,12 @@ Copy the `database_id` into `wrangler.toml` (replace `REPLACE_WITH_D1_ID`).
 ### 4. Run the schema migrations
 
 ```bash
-npm run db:migrate          # 0001 — base table
-npm run db:migrate:0002     # 0002 — adds last_sent_at for resend cooldown
+npm run db:migrate
 ```
 
-`waitlist` table created with `(email PK, joined_at, source, ip_country, user_agent, last_sent_at)`.
+Applies all migrations in order — 0001 (base table) and 0002 (adds `last_sent_at` for resend cooldown). Migrations are one-time; running again will fail at the ALTER TABLE in 0002 once `last_sent_at` already exists.
+
+`waitlist` table ends up with `(email PK, joined_at, source, ip_country, user_agent, last_sent_at)`.
 
 The Worker uses `last_sent_at` to enforce a 5-minute cooldown between confirmation emails to the same address — if a user didn't get the first email and re-submits, they get a fresh one after 5 minutes; bots/abusers spamming the same email inside that window get a silent no-op.
 

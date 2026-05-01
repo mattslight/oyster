@@ -7,10 +7,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "db:migrate": "wrangler d1 execute oyster-waitlist --file=migrations/0001_init.sql --remote",
-    "db:migrate:local": "wrangler d1 execute oyster-waitlist --file=migrations/0001_init.sql --local",
-    "db:migrate:0002": "wrangler d1 execute oyster-waitlist --file=migrations/0002_add_last_sent_at.sql --remote",
-    "db:migrate:0002:local": "wrangler d1 execute oyster-waitlist --file=migrations/0002_add_last_sent_at.sql --local",
+    "db:migrate": "wrangler d1 execute oyster-waitlist --file=migrations/0001_init.sql --remote && wrangler d1 execute oyster-waitlist --file=migrations/0002_add_last_sent_at.sql --remote",
+    "db:migrate:local": "wrangler d1 execute oyster-waitlist --file=migrations/0001_init.sql --local && wrangler d1 execute oyster-waitlist --file=migrations/0002_add_last_sent_at.sql --local",
     "db:dump": "wrangler d1 execute oyster-waitlist --remote --command=\"SELECT email FROM waitlist ORDER BY joined_at\""
   },
   "devDependencies": {
