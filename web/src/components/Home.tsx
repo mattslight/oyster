@@ -172,8 +172,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // Reset the attach form whenever scope changes so it doesn't carry
   // across spaces.
   useEffect(() => { setShowAttachForm(false); }, [sourcesSpaceId]);
-  const [stateFilter, setStateFilter] = useState<StateFilter>("live");
-  const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "icons");
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
+  const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "table");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
   const [activePanel, setActivePanel] = useState<ActivePanel | null>(null);
 

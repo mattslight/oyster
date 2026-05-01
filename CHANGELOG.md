@@ -10,6 +10,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **Sessions default to "all" + table view.** Previously a fresh install showed sessions in icon-grid view filtered to "live", which made fresh installs look empty whenever no Claude session was actively running. Now a new install lands on every session in a list view with state, title, and cwd visible at a glance. Existing users who'd switched to icon view keep their preference.
 - **Pricing page hero.** Restructured into two stanzas — Free promise (*"No sign-up. No strings. Yours to keep."*) and a gold-rule Oyster Pro section that names what Pro is and what it adds. Pro is correctly framed as the optional thing (rather than its features).
 
 ## [0.5.0-beta.1] - 2026-05-01
