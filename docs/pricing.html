@@ -6,6 +6,7 @@
   <title>Pricing — Oyster</title>
   <meta name="description" content="Oyster is free without limits — no sign-up, no strings. Oyster Pro is optional and adds Sync, Memory, and Publish for smarter work, everywhere you are.">
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/electric-border.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -138,23 +139,25 @@
       padding: 160px 24px 0;
     }
     .primitive {
-      background: rgba(17, 19, 34, 0.92);
-      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(124, 107, 255, 0.16);
-      border-radius: 18px;
-      padding: 36px;
-      box-shadow: 0 12px 50px rgba(0, 0, 0, 0.45);
+      background: rgba(17, 19, 34, 0.96);
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(124, 107, 255, 0.18);
+      border-radius: 22px;
+      padding: 48px 44px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 0 rgba(255, 255, 255, 0.03) inset;
       display: grid;
       grid-template-columns: 56px 1fr;
       gap: 28px;
       align-items: start;
+      align-content: center;
+      min-height: 56vh;
       position: sticky;
-      margin-bottom: 60px;
+      margin-bottom: 140px;
       transition: transform 0.3s ease-out;
     }
     .primitive:nth-child(1) { top: 100px; }
-    .primitive:nth-child(2) { top: 130px; }
-    .primitive:nth-child(3) { top: 160px; }
+    .primitive:nth-child(2) { top: 144px; }
+    .primitive:nth-child(3) { top: 188px; }
     .primitive:last-child { margin-bottom: 0; }
     .primitive-icon {
       width: 56px; height: 56px;
@@ -201,8 +204,9 @@
     @media (max-width: 640px) {
       .primitives { padding-top: 96px; }
       .primitive {
-        grid-template-columns: 1fr; gap: 18px; padding: 24px;
-        position: relative; top: auto !important; margin-bottom: 24px;
+        grid-template-columns: 1fr; gap: 18px; padding: 28px 24px;
+        position: relative; top: auto !important;
+        margin-bottom: 24px; min-height: 0;
       }
       .primitive-bullets { grid-template-columns: 1fr; }
     }
@@ -473,6 +477,14 @@
         <a href="/#install" class="tier-cta tier-cta--ghost">Install</a>
       </div>
 
+      <div class="electric-border" data-eb-color="#7df9ff" data-eb-speed="0.5" data-eb-chaos="0.04" data-eb-radius="16">
+        <div class="eb-canvas-container"><canvas class="eb-canvas"></canvas></div>
+        <div class="eb-layers">
+          <div class="eb-glow-1"></div>
+          <div class="eb-glow-2"></div>
+          <div class="eb-background-glow"></div>
+        </div>
+        <div class="eb-content">
       <div class="tier tier--featured">
         <div class="tier-coming">Coming soon</div>
         <div class="tier-name">Oyster Pro</div>
@@ -493,9 +505,12 @@
         <button type="button" class="tier-cta tier-cta--primary" disabled>Join the waitlist</button>
         <span class="tier-fineprint">Private beta now · public release with 0.7.x</span>
       </div>
+        </div>
+      </div>
 
     </div>
   </section>
 
+  <script src="assets/electric-border.js" defer></script>
 </body>
 </html>
