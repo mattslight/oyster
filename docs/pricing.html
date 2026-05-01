@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing — Oyster</title>
-  <meta name="description" content="Oyster is free without limits. Optional add-ons make your work smarter and follow you everywhere — Sync, Memory, Publish.">
+  <meta name="description" content="Oyster is free without limits — no sign-up, no strings. Oyster Pro is optional and adds Sync, Memory, and Publish for smarter work, everywhere you are.">
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -85,6 +85,28 @@
       font-weight: 700; line-height: 1.35;
       color: #fff;
       margin-bottom: 36px;
+    }
+    .hero-strong-tight {
+      font-family: 'Barlow', sans-serif;
+      font-size: clamp(18px, 2.4vw, 22px);
+      font-weight: 600; line-height: 1.4;
+      color: #fff;
+      margin-bottom: 14px;
+    }
+    .pro-eyebrow-rule {
+      display: flex; align-items: center; justify-content: center;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .pro-eyebrow-rule .rule {
+      flex: 1; max-width: 60px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(251, 191, 36, 0.4), transparent);
+    }
+    .pro-eyebrow-rule .label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: #fbbf24;
     }
     .subtitle {
       font-size: 16px; line-height: 1.65;
@@ -342,13 +364,14 @@
 
   <section class="hero">
     <h1><span class="headline-mark">Free without limits.</span></h1>
-    <p class="hero-strong">
-      No sign-up required.<br>
-      No strings attached.
-    </p>
-    <p class="subtitle">
-      Optional Oyster Pro adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> — your work is smarter and follows you everywhere.
-    </p>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-eyebrow-rule">
+      <span class="rule"></span>
+      <span class="label">Oyster Pro</span>
+      <span class="rule"></span>
+    </div>
+    <p class="hero-strong-tight">Smarter work, everywhere you are.</p>
+    <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
   </section>
 
   <section class="primitives">
