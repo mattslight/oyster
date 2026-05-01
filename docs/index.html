@@ -6,6 +6,7 @@
   <title>Oyster — Every AI you use, one shared brain.</title>
   <meta name="description" content="Claude Code, Cursor, Codex — every agent you use connects to one shared workspace. Their sessions, files, and memories land in one place. Built on MCP.">
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/hero-mock.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html { scroll-padding-top: 60px; }
@@ -106,6 +107,8 @@
       margin: 0 auto 0;
       display: block;
     }
+
+    /* Hero mock styles live in assets/hero-mock.css */
 
     /* Feature sections */
     .feature-section {
@@ -428,7 +431,6 @@
   <nav class="nav" id="nav">
     <img src="logo.png" alt="Oyster" class="nav-logo" />
     <a href="#install">Install</a>
-    <a href="/mcp">MCP</a>
     <a href="/plugins">Plugins</a>
     <a href="/pricing">Pricing</a>
     <a href="/changelog">Changelog</a>
@@ -438,13 +440,177 @@
   <div class="hero">
     <h1>Every agent, one shared brain.</h1>
     <p class="subtitle">
-      Claude Code, Cursor, Codex, your own. Every agent's sessions, files, and memories land in one workspace — visible, searchable, persistent across every machine. Built on MCP.
+      Every agent's sessions, files, and memories land in one workspace — visible, searchable, persistent across every machine. Built on MCP.
     </p>
     <div class="cta-row">
       <a href="#install" class="cta cta-primary">Get started</a>
       <a href="https://github.com/mattslight/oyster" class="cta cta-secondary">View on GitHub</a>
     </div>
-    <img src="screenshots/desktop.png" alt="Oyster desktop" class="hero-img">
+    <div class="hero-mock" aria-hidden="true">
+      <div class="hero-mock-chrome">
+        <span class="dot dot-r"></span>
+        <span class="dot dot-y"></span>
+        <span class="dot dot-g"></span>
+        <span class="hero-mock-chrome-title">Oyster</span>
+      </div>
+
+      <div class="hm-preview" aria-hidden="true">
+        <div class="hm-preview-chrome">
+          <span class="dot dot-r"></span>
+          <span class="dot dot-y"></span>
+          <span class="dot dot-g"></span>
+          <span class="hm-preview-title" id="hm-preview-title">Preview</span>
+        </div>
+        <div class="hm-preview-body" id="hm-preview-body"></div>
+      </div>
+
+      <div class="hm-side" aria-hidden="true">
+        <div class="hm-side-head">
+          <span class="hm-status" id="hm-side-status"></span>
+          <span class="hm-side-title" id="hm-side-title"></span>
+        </div>
+        <div class="hm-side-meta" id="hm-side-meta"></div>
+        <div id="hm-side-body"></div>
+      </div>
+      <div class="hero-mock-body">
+        <div class="hero-mock-breadcrumb">
+          <span class="hm-pill hm-pill-icon hm-pill-active" aria-label="Home">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </span>
+          <span class="hm-pill" data-space="acme-app">
+            <span class="pip pip-g"></span>
+            acme-app
+          </span>
+          <span class="hm-pill" data-space="pitch-deck">
+            <span class="pip pip-a"></span>
+            pitch-deck
+          </span>
+          <span class="hm-pill" data-space="field-notes">
+            <span class="pip pip-r"></span>
+            field-notes
+          </span>
+        </div>
+
+        <div>
+          <div class="hm-section-head">
+            <span class="hm-section-name">Sessions</span>
+            <span class="hm-chips">
+              <span class="hm-chip hm-chip-selected"><span class="pip pip-g"></span>2 active</span>
+              <span class="hm-chip"><span class="pip pip-a"></span>1 awaiting</span>
+              <span class="hm-chip"><span class="pip pip-r"></span>1 disconnected</span>
+            </span>
+          </div>
+          <div class="hm-tiles">
+            <div class="hm-tile" data-space="acme-app" data-session="s1">
+              <span class="hm-status hm-status-g"></span>
+              <div class="hm-tile-body">
+                <div class="hm-tile-title">Refactor checkout flow</div>
+                <div class="hm-tile-meta">claude-code · acme-app</div>
+              </div>
+              <span class="hm-tile-time">2m ago</span>
+            </div>
+            <div class="hm-tile" data-space="pitch-deck" data-session="s2">
+              <span class="hm-status hm-status-a"></span>
+              <div class="hm-tile-body">
+                <div class="hm-tile-title">Stakeholder pitch v3</div>
+                <div class="hm-tile-meta">cursor · pitch-deck</div>
+              </div>
+              <span class="hm-tile-time">awaiting</span>
+            </div>
+            <div class="hm-tile" data-space="acme-app" data-session="s3">
+              <span class="hm-status hm-status-r"></span>
+              <div class="hm-tile-body">
+                <div class="hm-tile-title">Investigate API latency</div>
+                <div class="hm-tile-meta">claude-code · acme-app</div>
+              </div>
+              <span class="hm-tile-time">1h ago</span>
+            </div>
+            <div class="hm-tile" data-space="field-notes" data-session="s4">
+              <span class="hm-status hm-status-d"></span>
+              <div class="hm-tile-body">
+                <div class="hm-tile-title">Weekly retro write-up</div>
+                <div class="hm-tile-meta">claude-code · field-notes</div>
+              </div>
+              <span class="hm-tile-time">yesterday</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="hm-section-head">
+            <span class="hm-section-name">Memories</span>
+            <span class="hm-section-meta">23 · 4 pinned</span>
+          </div>
+          <div class="hm-mems">
+            <div class="hm-mem" data-space="acme-app" data-memory="m1">
+              <div class="hm-mem-text">Customer prefers email summaries on Fridays — keep under 200 words and lead with decisions, not analysis.</div>
+              <div class="hm-mem-meta">
+                <span class="hm-mem-space">acme-app</span>
+                <span class="hm-mem-sep">·</span>
+                <span>claude-code</span>
+                <span class="hm-mem-sep">·</span>
+                <span>4h ago</span>
+              </div>
+            </div>
+            <div class="hm-mem" data-space="pitch-deck" data-memory="m2">
+              <div class="hm-mem-text">Pitch deck needs the revised pricing slide before Wednesday's stakeholder review.</div>
+              <div class="hm-mem-meta">
+                <span class="hm-mem-space">pitch-deck</span>
+                <span class="hm-mem-sep">·</span>
+                <span>cursor</span>
+                <span class="hm-mem-sep">·</span>
+                <span>yesterday</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="hm-section-head">
+            <span class="hm-section-name">Artefacts</span>
+            <span class="hm-section-meta">12 · across 3 spaces</span>
+          </div>
+          <div class="hm-art-grid">
+            <div class="hm-art-cell" data-space="acme-app" data-artefact="onboarding">
+              <div class="hm-art" style="background: linear-gradient(135deg, #ff9a5a, #f06d3f);">
+                <svg class="hm-art-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>
+              </div>
+              <span class="hm-art-label">Onboarding</span>
+            </div>
+            <div class="hm-art-cell" data-space="pitch-deck" data-artefact="pitch">
+              <div class="hm-art" style="background: linear-gradient(135deg, #34d4c0, #1d4ed8);">
+                <svg class="hm-art-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M9 21h6M12 17v4"/><path d="M7 12V9M11 12V8M15 12V10"/></svg>
+              </div>
+              <span class="hm-art-label">Q4 Pitch</span>
+            </div>
+            <div class="hm-art-cell" data-space="acme-app" data-artefact="auth">
+              <div class="hm-art" style="background: linear-gradient(135deg, #f472b6, #be123c);">
+                <svg class="hm-art-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="12" cy="18" r="2.6"/><path d="M7.6 8l3.4 7.5M16.4 8l-3.4 7.5"/></svg>
+              </div>
+              <span class="hm-art-label">Auth flow</span>
+            </div>
+            <div class="hm-art-cell" data-space="acme-app" data-artefact="settings">
+              <div class="hm-art" style="background: linear-gradient(135deg, #93c5fd, #0891b2);">
+                <svg class="hm-art-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 21V9"/></svg>
+              </div>
+              <span class="hm-art-label">Settings UI</span>
+            </div>
+            <div class="hm-art-cell" data-space="field-notes" data-artefact="launch">
+              <div class="hm-art" style="background: linear-gradient(135deg, #fcd34d, #ea580c);">
+                <svg class="hm-art-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h4"/></svg>
+              </div>
+              <span class="hm-art-label">Launch list</span>
+            </div>
+            <div class="hm-art-cell">
+              <div class="hm-art hm-art-more">
+                <span class="hm-art-more-text">+ 7</span>
+              </div>
+              <span class="hm-art-label" style="opacity: 0;">&nbsp;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Feature 1: See every agent at work (Sessions — shipped 0.5.0) — leads the page -->
@@ -593,6 +759,7 @@
     <div class="feature-text">
       <h3>Built on MCP. Bring Your Own Agents.</h3>
       <p>Oyster is an MCP server. That means any agent that speaks the protocol — Claude Code, Cursor, VS Code, Windsurf, or your own — can control your workspace. Create documents, organise spaces, open artefacts. One standard, every agent.</p>
+      <a href="/mcp" class="cta cta-secondary" style="margin-top: 18px; display: inline-flex;">Detailed setup →</a>
     </div>
     <div class="feature-mock">
       <div class="mock-panel" style="padding: 0; overflow: hidden;">
@@ -958,6 +1125,8 @@
     // Set initial active tab style
     document.querySelector('.mcp-tab-active').style.color = '#fff';
     document.querySelector('.mcp-tab-active').style.background = 'rgba(124,107,255,0.15)';
+
   </script>
+  <script src="assets/hero-mock.js" defer></script>
 </body>
 </html>

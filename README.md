@@ -8,13 +8,13 @@
 
 ---
 
-**🦪 The OS that understands your projects, remembers your work, and acts from one prompt. Powered by MCP — bring any AI.**
+**🦪 Every agent, one shared brain.** Oyster watches your AI sessions, captures the files they touched and the memories they wrote, and brings them all into one workspace — visible, searchable, persistent across every machine. Built on MCP.
 
 ```bash
 # 1. Install
 npm install -g oyster-os
 
-# 2. Configure & Start
+# 2. Start
 oyster
 
 # 3. Open your browser to http://localhost:4444
@@ -22,14 +22,12 @@ oyster
 
 ## Why Oyster
 
-Your work is scattered across folders, repos, docs, tabs, and chat threads. Oyster puts it all on one visual surface and lets you control it from a chat bar.
+Your AI sessions, files, and memories live in tool-shaped silos. Oyster puts every agent's work on one shared surface, organised by space.
 
-- **Open things fast** — type `/o competitor analysis` and it opens, no folder hunting
-- **Switch context instantly** — `#blunderfixer` or `#1` to jump between projects
-- **See everything at once** — docs, diagrams, apps, decks, and spreadsheets on one desktop
-- **Any AI can control it** — Oyster speaks MCP, the open standard for AI tools. Connect Claude Code, Cursor, or any MCP client and your AI can manage the surface directly
-
-![Oyster desktop](docs/screenshots/desktop.png)
+- **See every agent at work** — Oyster watches Claude Code automatically. Live transcripts, status (active / awaiting / disconnected / done), and the files each session touched, all on Home.
+- **Memory that survives sessions** — `remember` notes are first-class. Every agent's `recall` reads from the same store, so context follows you across tools and machines.
+- **Drop in any project** — point Oyster at a folder and it scans for documents, apps, and diagrams, then attributes future sessions back to the right project.
+- **Bring any agent** — Oyster is an MCP server. Claude Code, Cursor, VS Code, Windsurf, or your own — one standard, every agent.
 
 ## Quick Start
 
@@ -107,11 +105,10 @@ Browser → http://localhost:4444
 
 Early v1. Local-first. Single-user. Built for fast iteration.
 
-**Now:** MCP powered workspace, bring your own AI, prompt-driven navigation, space switching, artefact desktop, repo onboarding, persistent memory (remember/recall), 19 MCP tools, slash commands, instant UI updates via SSE.
-
-**Next:** smoother onboarding, faster artefact navigation, better repo import.
-
-**Vision:** plugins, dynamic UI that reshapes to fit the task, build & share apps.
+- **Now (`0.5.x`)** — Sessions feed (Claude Code), Memories on Home, Project tiles per space, repo onboarding, 19 MCP tools, slash commands.
+- **Next (`0.6.x`)** — Bundles. Multi-file static artefacts; agents push artefacts via MCP.
+- **Then (`0.7.x`)** — Oyster Pro. Auth, cross-device sync, end-to-end encrypted storage, shareable links. ([pricing](https://oyster.to/pricing))
+- **Then (`0.8.x`)** — Multi-agent ingestion. Cursor, Codex, OpenCode session feeds — every agent feeds the same workspace.
 
 See every shipped change in the [changelog](https://oyster.to/changelog).
 
