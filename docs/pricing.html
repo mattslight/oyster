@@ -251,28 +251,17 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     }
     .tier--featured {
-      isolation: isolate;
       background: #111322;
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
       border-color: rgba(125, 249, 255, 0.55);
       box-shadow:
         0 0 0 1px rgba(125, 249, 255, 0.3),
-        0 0 12px rgba(125, 249, 255, 0.4),
-        0 0 32px rgba(125, 249, 255, 0.22),
+        0 0 14px rgba(125, 249, 255, 0.45),
+        0 0 36px rgba(125, 249, 255, 0.3),
+        0 0 72px rgba(125, 249, 255, 0.18),
+        0 0 130px rgba(125, 249, 255, 0.1),
         0 12px 40px rgba(0, 0, 0, 0.5);
-    }
-    .tier--featured::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      z-index: -1;
-      background: linear-gradient(-30deg, #7df9ff, transparent 60%, #7df9ff);
-      transform: scale(1.06);
-      filter: blur(28px);
-      opacity: 0.3;
-      pointer-events: none;
     }
     .tier:not(.tier--featured) {
       z-index: 2;
