@@ -34,7 +34,7 @@ Original sketch was: every session row replicated, transcripts lazy-loaded from 
 | **Artefacts (manifest)** | Replicated everywhere | Lets you see what work exists across devices. |
 | **Artefacts (blobs)** | Stay on origin device + cloud cold storage. Pull on open. | Most artefact bytes never get opened on another device. |
 | **Session transcripts** | Optional cold backup. Not surfaced as a primary feature. | Anthropic will handle this. We don't compete. |
-| **Session metadata** (title, started_at, last_event_at, model, cwd, origin_device) | Replicated everywhere | Lets the cross-device session list render without dragging transcripts down. |
+| **Session metadata** (title, started_at, last_event_at, model, cwd, origin_device_id) | Replicated everywhere | Lets the cross-device session list render without dragging transcripts down. |
 
 The moat here is **memory that persists across agents** — Claude will never sync your Cursor sessions; Cursor will never sync your Claude sessions. Oyster sits one layer above all of them.
 
@@ -115,16 +115,18 @@ ALTER TABLE sessions ADD COLUMN origin_device_id TEXT;
 
 Why now: cheap to add; awkward to backfill later. Useful for diagnostics ("which machine ran this?") even before Sync.
 
-### `synced_at INTEGER NULL` on the syncable tables
+### `synced_at TEXT NULL` on the syncable tables
 
 ```sql
-ALTER TABLE sessions  ADD COLUMN synced_at INTEGER;
-ALTER TABLE memories  ADD COLUMN synced_at INTEGER;
-ALTER TABLE artefacts ADD COLUMN synced_at INTEGER;
-ALTER TABLE spaces    ADD COLUMN synced_at INTEGER;
+ALTER TABLE sessions  ADD COLUMN synced_at TEXT;
+ALTER TABLE memories  ADD COLUMN synced_at TEXT;
+ALTER TABLE artifacts ADD COLUMN synced_at TEXT;
+ALTER TABLE spaces    ADD COLUMN synced_at TEXT;
 ```
 
-Why now: lets the future Sync layer know what's been pushed. Default NULL means "not yet synced" so Sync's first run pushes everything new. Free to add today.
+`TEXT` to match the existing oyster.db convention — every other timestamp column (`created_at`, `updated_at`, `started_at`, `last_event_at`, etc.) is `TEXT NOT NULL DEFAULT (datetime('now'))`. Don't mix epoch-int with ISO-8601 strings within one DB. The Sync layer will write `datetime('now')` when it pushes a row.
+
+Why now: lets the future Sync layer know what's been pushed. Default `NULL` means "not yet synced" so Sync's first run pushes everything new. Free to add today.
 
 ### Device identity
 
@@ -162,7 +164,7 @@ Optionally let user name the device ("MacBook Pro" / "Linux desktop") — surfac
 
 3. **Does the user actually want device naming?** Or is "device 3" fine? Probably yes for power users; auto-generated for casuals (e.g. take the OS hostname).
 
-4. **What's the auth boundary?** A signed-in user owns a "tenant"; sync writes scope to that tenant. Magic-link auth from `~/Dev/oyster-crm` is the planned starting point (see `project_pro_auth_plan.md` memory).
+4. **What's the auth boundary?** A signed-in user owns a "tenant"; sync writes scope to that tenant. Magic-link login (email-link → token → session) is the intended pattern — file an auth-design doc when the work starts; don't rely on external project references.
 
 ## Summary
 
