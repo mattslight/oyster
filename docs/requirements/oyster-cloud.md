@@ -26,13 +26,13 @@ A user who signs into Oyster on a fresh machine sees their full context with no 
 
 **Variant — self-hosted continuity via a git remote.** Users may opt to use their own git remote as the durable copy instead of Oyster's managed cloud. Same R1 outcome, different transport, no trust handed to us. Treated as a first-class option, not a back-door.
 
-**Verify (variant):** with a self-hosted git remote configured on the primary machine, performing the equivalent setup on a fresh machine (install Oyster, point it at the same remote, pull) produces the same Home page as the managed-cloud path — same modulus, same no-manual-import constraint.
+**Verify (variant):** with a self-hosted git remote configured on the primary machine, performing the equivalent setup on a fresh machine (install Oyster, point it at the same remote, pull) produces the same Home page as the managed-cloud path, with the same caveats around locally-mounted folder contents and the same no-manual-import constraint.
 
 ---
 
-## R2. Conversational recall across machines
+## R2. Conversational recall
 
-A user can ask their agent in natural language about any prior conversation and get back the relevant content, regardless of which machine the original conversation happened on.
+A user can ask their agent in natural language about any prior conversation and get back the relevant content. The cross-device extension of this — *regardless of which device the original conversation happened on* — is the Pro upgrade and is captured in the tier mapping; the recall outcome itself applies to both tiers.
 
 Recall has two levels and both must work:
 
@@ -41,7 +41,9 @@ Recall has two levels and both must work:
 
 The natural-language phrasing is the canonical UX. Explicit handles (e.g. `@BLUNDERFIXER:chat-with-bharat`) are at best a power-user fallback, not the primary interface — recall keys on meaning, not literal strings.
 
-**Verify:** have a conversation on Machine A; on Machine B, query the agent in natural language about the topic; the agent responds with content traceable to A, at both levels. The verbatim case must reproduce specifics that a summary alone could not. "Pick up here" is a special case where the agent is then primed to continue the thread.
+**Verify (same-device, applies to free + Pro):** have a conversation; later — same machine, different session — ask the agent in natural language about the topic; the agent responds at both levels, with content traceable to the original. The verbatim case must reproduce specifics a summary alone could not.
+
+**Verify (cross-device, Pro):** the same query works when the original conversation happened on a different signed-in device. *Pick up here* is a special case where the agent is then primed to continue the thread.
 
 ---
 
