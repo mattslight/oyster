@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Pro waitlist signup.** *Join the waitlist* on the pricing page is now wired up — clicking opens a modal, captures an email, and stores it in a Cloudflare D1-backed Worker at `oyster.to/api/waitlist`. Confirmation email goes out via Resend. Worker source + setup steps live in `infra/waitlist-worker/`.
+
 ### Changed
 
 - **Pricing page hero.** Restructured into two stanzas — Free promise (*"No sign-up. No strings. Yours to keep."*) and a gold-rule Oyster Pro section that names what Pro is and what it adds. Pro is correctly framed as the optional thing (rather than its features).
