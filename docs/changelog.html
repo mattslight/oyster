@@ -312,7 +312,7 @@
   </div>
 
   <nav class="version-pills" aria-label="Jump to version">
-      <a class="version-pill" href="#v-0-5-0-beta-2">0.5</a>
+      <a class="version-pill" href="#v-0-5-0">0.5</a>
       <a class="version-pill" href="#v-0-4-0">0.4</a>
       <a class="version-pill" href="#v-0-3-8">0.3</a>
       <a class="version-pill" href="#v-0-2-4">0.2</a>
@@ -321,6 +321,20 @@
   </nav>
 
   <main class="entries">
+<h2 id="v-0-5-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...v0.5.0" rel="noopener noreferrer"><span class="release-version">0.5.0</span></a><span class="release-date"> — 2026-05-01</span></h2>
+<p>The 0.5.0 line is now stable. Code is identical to <code>0.5.0-beta.2</code>. Headline changes from the beta cycle:</p>
+<ul>
+<li><strong>Oyster sees your Claude Code sessions automatically.</strong> Run <code>claude</code> in any folder mapped to a space and Oyster picks the session up — no MCP wiring, no setup. Title from your first prompt, file reads/edits attributed back to artefact tiles, sessions in unregistered folders land as orphans rather than being dropped. (<a href="https://github.com/mattslight/oyster/issues/251" rel="noopener noreferrer">#251</a>)</li>
+<li><strong>Session inspector with live transcript.</strong> Click a session and a slide-panel opens with the running transcript, the artefacts the agent touched, and a <em>Copy resume command</em> button to pick the conversation back up in your terminal. Scroll near the top of long transcripts and the next 1000 older turns prepend in place — your scroll position stays pinned. Older sessions whose <code>claude</code> process finished before Oyster started watching now backfill their transcripts on boot. (<a href="https://github.com/mattslight/oyster/issues/253" rel="noopener noreferrer">#253</a>, <a href="https://github.com/mattslight/oyster/issues/274" rel="noopener noreferrer">#274</a>, <a href="https://github.com/mattslight/oyster/issues/275" rel="noopener noreferrer">#275</a>)</li>
+<li><strong>Process-aware session states.</strong> Oyster looks at running <code>claude</code> processes to tell whether a session is still alive — not just whether the JSONL has been quiet. Long thinking turns no longer flicker into red, and a finished session converges to disconnected within a minute of you closing the terminal.</li>
+<li><strong>Home as a sectioned feed.</strong> Spaces · Sessions · Artefacts replace the spatial desktop as the default surface. State chips filter sessions inline; filter chips on Artefacts split <em>mine</em> / <em>from agents</em> / <em>linked</em>. Sessions update live as your agents work. (<a href="https://github.com/mattslight/oyster/issues/252" rel="noopener noreferrer">#252</a>, <a href="https://github.com/mattslight/oyster/issues/280" rel="noopener noreferrer">#280</a>)</li>
+<li><strong>Memories on Home.</strong> Your agents&#39; <code>remember</code> notes show up as a section on Home alongside Sessions and Artefacts, scoped by the same space pills. Pick <em>tokinvest</em> and you see what each agent learned about that project, not the global pile. (<a href="https://github.com/mattslight/oyster/issues/254" rel="noopener noreferrer">#254</a>)</li>
+<li><strong>Project tiles on every space.</strong> A row of project tiles sits at the top of any space view — <em>All</em>, one tile per linked folder, plus a <em>scratchpad</em> tile for native artefacts. Click to scope; <strong>+ Attach folder</strong> opens an inline path input. Promote an orphan folder under Home → Elsewhere into its own space in one click — sessions whose cwd matches re-attribute to the new space. (<a href="https://github.com/mattslight/oyster/issues/266" rel="noopener noreferrer">#266</a>, <a href="https://github.com/mattslight/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
+<li><strong>No more silent empty-shell spaces.</strong> Removing the only folder from a space now deletes the space and sends sessions back to Elsewhere — with a confirm modal that itemises what&#39;s affected. Right-click a space pill in the breadcrumb for Rename · Delete; the empty-shell warning ends with <code>…or delete it.</code> so you always have a way out. (<a href="https://github.com/mattslight/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
+<li><strong>Oyster Pro foundations.</strong> A new shield-icon pill in the breadcrumb opens a <em>Coming Soon</em> page that names what&#39;s about to ship — <strong>Sync · Memory · Publish</strong> — and inventories your local <code>~/Oyster/</code> (Spaces, Apps, Database rows, Config, Backups). The &quot;Read more&quot; CTA links to a public pricing page at <a href="https://oyster.to/pricing" rel="noopener noreferrer">oyster.to/pricing</a>. <em>Join the waitlist</em> captures emails into a Cloudflare D1-backed Worker and confirms via Resend.</li>
+<li><strong>Local-only endpoints refuse non-loopback callers.</strong> The server now binds to <code>127.0.0.1</code> and the Origin guard rejects requests with no Origin from non-loopback addresses. Closes the gap where a non-browser client on the same WiFi could omit <code>Origin</code> and pull <code>/api/vault/inventory</code>. (<a href="https://github.com/mattslight/oyster/issues/289" rel="noopener noreferrer">#289</a>)</li>
+</ul>
+<p>See <code>0.5.0-beta.0</code> through <code>0.5.0-beta.2</code> below for per-beta detail.</p>
 <h2 id="v-0-5-0-beta-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.2</span></a><span class="release-date"> — 2026-05-01</span></h2>
 <h3>Added</h3>
 <ul>
