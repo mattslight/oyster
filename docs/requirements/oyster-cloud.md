@@ -89,6 +89,18 @@ R6 is cross-cutting: it applies to free-tier local recall and Pro cross-device r
 
 ---
 
+## R7. Artefact continuity across devices
+
+Artefacts produced or stored in the user's Oyster vault — mockups, prototypes, presentations, HTML reports, markdown plans, diagrams, decks, apps, any other typed output — are available for the user to open, edit, and continue working with on any signed-in device. Edits propagate so the user is never silently working on a stale copy.
+
+**Verify:** produce an artefact on Machine A. Sign into Machine B. Open the artefact — the contents match what was last saved on A. Edit it on B; the change is reflected on A on its next sign-in or refresh.
+
+**Compound scenario** (anchors R1, R2, R4, R5, R7 together): on Machine A, ask the agent to produce a *competitor analysis matrix* presentation in your vault. Switch to Machine B. Sign in. Ask any connected agent: *"please add a new competitor (Acme Co) to the analysis matrix presentation, then publish it as a password-protected share URL so I can present to my CEO."* The request resolves end-to-end — the agent recognises the artefact (R2/R4), opens its current contents (R7), edits it, publishes to a share URL with password mode (R5), and returns the URL. No manual file copy, no "I'll do that on my other laptop."
+
+Version history of artefact edits is **nice-to-have but not required**. Whether it's preserved depends on the storage choice (e.g. git-backed storage gives it for free); it isn't part of the verification.
+
+---
+
 ## Tier mapping
 
 How each requirement is delivered across tiers. Statements above stay tier-neutral; this is the entitlement axis.
@@ -102,6 +114,7 @@ How each requirement is delivered across tiers. Statements above stay tier-neutr
 | R4 Memory that crosses agents | — | ✓ |
 | R5 Publish & share (free has caps) | ✓ | ✓ (higher caps) |
 | R6 Traceable recall | ✓ | ✓ |
+| R7 Artefact continuity across devices | — | ✓ |
 
 The free tier is the identity-and-publishing substrate. Pro is the sync, durability, and cross-device guarantees on top of it.
 
