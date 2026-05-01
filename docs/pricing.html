@@ -251,6 +251,7 @@
     }
     .tier--featured {
       isolation: isolate;
+      background: #111322;
       border-color: rgba(125, 249, 255, 0.45);
       box-shadow:
         0 0 0 1px rgba(125, 249, 255, 0.18),
@@ -269,6 +270,9 @@
       filter: blur(32px);
       opacity: 0.35;
       pointer-events: none;
+    }
+    .tier:not(.tier--featured) {
+      z-index: 2;
     }
     .tier-name {
       font-family: 'Barlow', sans-serif;
