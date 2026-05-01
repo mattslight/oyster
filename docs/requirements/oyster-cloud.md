@@ -1,4 +1,4 @@
-# Oyster Pro — user requirements
+# Oyster Cloud — user requirements
 
 > **Status (2026-05):** Canonical. Requirements get pinned; architecture is a decision tree. This doc states what we are solving for in language that survives any implementation change.
 
@@ -9,6 +9,12 @@ Requirements describe **observable user outcomes**. They have one right shape �
 Architecture and engineering decisions are different. They're trade-offs weighed against complexity, cost, performance, reliability, and viability. There is rarely "one right answer" — there are good answers in context. Those live in `docs/plans/*.md` and evolve as we learn.
 
 If a design decision and a requirement conflict, the requirement wins (or we re-examine the requirement explicitly, not implicitly).
+
+## Two tiers, one substrate
+
+Oyster has a **free account tier** (identity, local workspace, publish/share with caps) and a **Pro tier** (cross-device sync, durability, cloud-backed semantic recall, agent-crossing memory). The requirements below describe outcomes in tier-neutral language; the tier mapping at the end maps each to where it's delivered.
+
+The substrate is the same: the same identity layer, the same cloud surface, the same artefact and memory model. Pro is an entitlement on top of the free account, not a separate product.
 
 ---
 
@@ -65,7 +71,37 @@ Any artefact — markdown plan, HTML mockup, mermaid diagram, app, deck — can 
 
 **Verify:** click *Publish* on an artefact, get a URL; opening it in a fresh browser renders correctly under each access mode. Auth-gated mode rejects viewers who aren't signed in and accepts those who are.
 
-R5 implies an **identity layer Oyster doesn't currently have**: a notion of a free Oyster account (no Pro entitlement, just identity) distinct from the local-only model today. Pro then becomes "this account + entitlement," and the auth substrate serves Pro sync, share-link viewing, and any future multi-user feature uniformly.
+R5 is the reason the **free account tier exists at all**: identity is needed both to publish and to view sign-in-gated content. Caps on free (number of published artefacts, bandwidth, etc.) are pricing detail, not a requirement.
+
+---
+
+## R6. Traceable recall
+
+Whenever Oyster surfaces a memory, session summary, decision, or artefact reference in response to a recall query, the user can see its provenance: the originating conversation, the timestamp, the space it belongs to, and any linked artefacts.
+
+Without this, recall feels magical but is untrustworthy — *"remember what we decided"* gives a confident answer the user has no way to verify. R6 is the difference between a parlour trick and a reliable memory layer.
+
+**Verify:** every recall result exposes a source link / metadata that resolves to the originating session, memory entry, or artefact. The user can click through and read the original context.
+
+R6 is cross-cutting: it applies to free-tier local recall and Pro cross-device recall alike.
+
+---
+
+## Tier mapping
+
+How each requirement is delivered across tiers. Statements above stay tier-neutral; this is the entitlement axis.
+
+| Requirement | Free account | Pro |
+|---|---|---|
+| R1 Empty-machine continuity | — | ✓ |
+| R2 Conversational recall — local-only semantic | ✓ | ✓ |
+| R2 Conversational recall — cross-device | — | ✓ |
+| R3 Durability against machine loss | — | ✓ |
+| R4 Memory that crosses agents | — | ✓ |
+| R5 Publish & share (free has caps) | ✓ | ✓ (higher caps) |
+| R6 Traceable recall | ✓ | ✓ |
+
+The free tier is the identity-and-publishing substrate. Pro is the sync, durability, and cross-device guarantees on top of it.
 
 ---
 
@@ -73,4 +109,5 @@ R5 implies an **identity layer Oyster doesn't currently have**: a notion of a fr
 
 - Before starting an architecture/plan doc, check that every decision serves at least one requirement here.
 - When proposing a design that doesn't satisfy one of these requirements, that's a flag — either the design needs changing or the requirement needs an explicit re-examination.
+- When designing a paywall / entitlement check, look at the tier mapping rather than re-deriving it from the requirement text.
 - New requirements get added here only after the same kind of grounded conversation that produced this list. Anything written without a verification clause isn't a requirement yet.
