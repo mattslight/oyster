@@ -20,11 +20,13 @@ The substrate is the same: the same identity layer, the same cloud surface, the 
 
 ## R1. Empty-machine continuity
 
-A user who signs into Oyster on a fresh machine sees their full context within seconds — every space pill renders with live counts, sessions list populates, memories are recallable, the inventory tile reflects what's in the cloud. No setup beyond sign-in.
+A user who signs into Oyster on a fresh machine sees their full context with no manual setup — every space pill renders with live counts, sessions list populates, memories are recallable, the inventory tile reflects what's in the cloud. The act of signing in is sufficient; nothing else is required of the user.
 
-**Verify:** clean install + sign-in produces the same Home page as on the user's primary machine, modulo locally-mounted folder contents and locally-ingested transcript bodies.
+**Verify:** clean install + sign-in produces the same Home page as on the user's primary machine, modulo locally-mounted folder contents and locally-ingested transcript bodies. No manual import, file copy, or configuration step is required between sign-in and the populated Home page rendering.
 
-**Variant:** users may opt for **self-hosted continuity via their own git remote** instead of Oyster's managed cloud — same R1/R3 outcome, different transport, no trust handed to us. Treated as a first-class option, not a back-door.
+**Variant — self-hosted continuity via a git remote.** Users may opt to use their own git remote as the durable copy instead of Oyster's managed cloud. Same R1 outcome, different transport, no trust handed to us. Treated as a first-class option, not a back-door.
+
+**Verify (variant):** with a self-hosted git remote configured on the primary machine, performing the equivalent setup on a fresh machine (install Oyster, point it at the same remote, pull) produces the same Home page as the managed-cloud path — same modulus, same no-manual-import constraint.
 
 ---
 
