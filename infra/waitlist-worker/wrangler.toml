@@ -7,7 +7,7 @@ compatibility_date = "2026-04-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "oyster-waitlist"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "3bd4361e-5e90-4cdd-b4c0-1e232b6de842"
 
 # Route the Worker at oyster.to/api/waitlist.
 # Requires oyster.to to be a Cloudflare zone (which it now is).
