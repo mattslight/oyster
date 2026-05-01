@@ -303,6 +303,13 @@
       font-size: 56px; font-weight: 700;
       color: #fff; line-height: 1;
     }
+    .tier-price-amount::first-letter {
+      font-size: 0.55em;
+      font-weight: 600;
+      vertical-align: 0.45em;
+      margin-right: 2px;
+      color: rgba(255, 255, 255, 0.7);
+    }
     .tier-price-unit {
       font-family: 'IBM Plex Mono', monospace;
       font-size: 12px;
@@ -687,6 +694,10 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.hidden) close();
     });
+
+    // Open the modal automatically when arriving via #waitlist
+    // (e.g. the in-app "Join the waitlist" CTA links here).
+    if (window.location.hash === '#waitlist') open();
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

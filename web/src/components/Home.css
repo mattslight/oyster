@@ -1536,22 +1536,26 @@
   border: 1px solid transparent;
   font-weight: 600;
   font-size: 13px;
-  cursor: not-allowed;
-  opacity: 0.55;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   text-decoration: none;
+  transition: background 0.15s, transform 0.05s, box-shadow 0.15s;
 }
+.home-vault-hero-button:hover {
+  background: color-mix(in oklab, var(--accent) 88%, white);
+  box-shadow: 0 6px 24px rgba(124, 107, 255, 0.32);
+}
+.home-vault-hero-button:active { transform: scale(0.98); }
 .home-vault-hero-button--secondary {
   background: transparent;
   border-color: rgba(255, 255, 255, 0.18);
   color: var(--text);
-  opacity: 1;
-  cursor: pointer;
 }
 .home-vault-hero-button--secondary:hover {
   border-color: rgba(255, 255, 255, 0.32);
   background: rgba(255, 255, 255, 0.04);
+  box-shadow: none;
 }
 .home-vault-list {
   list-style: none;
