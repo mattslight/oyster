@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing hero — alternatives</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0b14;
+      color: #e0e0e0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-bottom: 200px;
+    }
+    .bg {
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(88, 60, 180, 0.25) 0%, transparent 60%),
+        radial-gradient(ellipse at 70% 80%, rgba(40, 50, 160, 0.2) 0%, transparent 60%),
+        #0a0b14;
+      z-index: 0;
+    }
+    .page-head {
+      position: relative; z-index: 1;
+      max-width: 880px; margin: 0 auto;
+      padding: 60px 24px 0;
+      text-align: center;
+    }
+    .page-head h1 {
+      font-family: 'Barlow', sans-serif;
+      font-size: 28px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .page-head p {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.5);
+      line-height: 1.6;
+    }
+
+    /* Option label */
+    .option-label {
+      position: relative; z-index: 1;
+      max-width: 880px; margin: 80px auto 0;
+      padding: 0 24px;
+      text-align: center;
+    }
+    .option-tag {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      background: rgba(124, 107, 255, 0.12);
+      border: 1px solid rgba(124, 107, 255, 0.3);
+      border-radius: 999px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #a99eff;
+    }
+    .option-note {
+      margin-top: 12px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.45);
+      max-width: 520px; margin-left: auto; margin-right: auto;
+      line-height: 1.6;
+    }
+    .option-note em { font-style: normal; color: rgba(255, 255, 255, 0.65); }
+
+    /* ============ Real pricing styles (copied from docs/pricing.html) ============ */
+    .hero {
+      position: relative; z-index: 1;
+      max-width: 760px; margin: 0 auto;
+      padding: 60px 24px 0;
+      text-align: center;
+    }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: #fbbf24;
+      margin-bottom: 18px;
+    }
+    .eyebrow-pill {
+      padding: 2px 8px; border-radius: 999px;
+      background: rgba(124, 107, 255, 0.18);
+      color: #a99eff;
+      font-size: 9px; font-weight: 600; letter-spacing: 0.06em;
+    }
+    .eyebrow-pill-purple {
+      padding: 4px 10px; border-radius: 999px;
+      background: rgba(124, 107, 255, 0.18);
+      color: #a99eff;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    }
+    .eyebrow-pill-gold {
+      padding: 4px 10px; border-radius: 999px;
+      background: rgba(251, 191, 36, 0.12);
+      color: #fbbf24;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+      border: 1px solid rgba(251, 191, 36, 0.25);
+    }
+    h1 {
+      font-family: 'Barlow', sans-serif;
+      font-size: clamp(48px, 8vw, 80px);
+      font-weight: 700; line-height: 1.05;
+      color: #fff; margin-bottom: 28px;
+      letter-spacing: -0.02em;
+    }
+    .headline-mark {
+      display: inline-block;
+      padding-bottom: 6px;
+      border-bottom: 5px solid #7c6bff;
+      border-radius: 2px;
+    }
+    .hero-strong {
+      font-family: 'Barlow', sans-serif;
+      font-size: clamp(20px, 3vw, 28px);
+      font-weight: 700; line-height: 1.35;
+      color: #fff;
+      margin-bottom: 36px;
+    }
+    .hero-strong-tight {
+      font-family: 'Barlow', sans-serif;
+      font-size: clamp(18px, 2.4vw, 22px);
+      font-weight: 600; line-height: 1.4;
+      color: #fff;
+      margin-bottom: 36px;
+    }
+    .subtitle {
+      font-size: 16px; line-height: 1.65;
+      color: rgba(255, 255, 255, 0.55);
+      max-width: 560px; margin: 0 auto;
+    }
+    .subtitle strong { color: rgba(255, 255, 255, 0.8); font-weight: 600; }
+    .subtitle .gold {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #fbbf24;
+    }
+
+    .pro-block { margin-top: 48px; }
+    .pro-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: #fbbf24;
+      margin-bottom: 14px;
+    }
+    .pro-eyebrow svg { color: #fbbf24; }
+    .pro-eyebrow-rule {
+      display: flex; align-items: center; gap: 14px;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .pro-eyebrow-rule .rule {
+      flex: 1; max-width: 60px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(251, 191, 36, 0.4), transparent);
+    }
+    .pro-eyebrow-rule .label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: #fbbf24;
+    }
+    .pill-row {
+      display: inline-flex; gap: 10px; align-items: center;
+      margin-bottom: 28px;
+    }
+
+    /* divider */
+    .hero-divider {
+      width: 80px; height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 36px auto;
+    }
+
+    @media (max-width: 600px) {
+      .hero { padding-top: 40px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <div class="page-head">
+    <h1>Pricing hero — alternatives</h1>
+    <p>Header (<em>Free without limits.</em>) stays the same in every option. Comparing what sits below.<br>
+    <strong style="color:#a99eff">Round 2 (F · G · H) at the bottom — hybrids built from your A/B/D/E feedback.</strong></p>
+  </div>
+
+  <!-- ============================================================
+       OPTION A — Tightened current shape
+       Single-line bold tagline + gold OYSTER PRO eyebrow + sub
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option A · tightened current</span>
+    <p class="option-note">Same shape as today, just collapsed and refined. Single-line bold for the Free promise, gold <em>OYSTER PRO</em> eyebrow visually separates the upgrade story.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-block">
+      <div class="pro-eyebrow">Oyster Pro</div>
+      <p class="subtitle">Add <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> for smarter work that follows you everywhere.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       OPTION B — Two-stanza with rule-eyebrow
+       Drop "Yours to keep", separate stanzas with hairline rule eyebrow
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option B · two stanzas</span>
+    <p class="option-note">A horizontal rule + gold eyebrow visually splits the page into two stanzas: <em>here's the free promise</em>, then <em>here's what Pro adds</em>.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings.</p>
+    <div class="pro-eyebrow-rule">
+      <span class="rule"></span>
+      <span class="label">Oyster Pro</span>
+      <span class="rule"></span>
+    </div>
+    <p class="subtitle">Sync, Memory, and Publish — optional add-ons that make your work smarter and follow you everywhere.</p>
+  </section>
+
+  <!-- ============================================================
+       OPTION C — Drop the bold sub entirely
+       Lead with H1 + underline, then a single paragraph that does both jobs
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option C · single paragraph</span>
+    <p class="option-note">Drop the bold sub entirely. The H1 + purple underline does the heavy lifting. One body paragraph covers both the free promise and the Pro upsell.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="subtitle" style="font-size: 17px;">No sign-up, no strings — Oyster is yours to keep. <span class="gold">Oyster Pro</span> adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> when you want smarter work that follows you everywhere.</p>
+  </section>
+
+  <!-- ============================================================
+       OPTION D — Pill row (two tiers as chips)
+       Free chip + Pro chip side by side, then explanatory line
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option D · tier pills</span>
+    <p class="option-note">Two pills make the two tiers visually parallel — purple for Free, gold for Pro. The line below names what each one is, in one breath.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <div class="pill-row">
+      <span class="eyebrow-pill-purple">Free · forever</span>
+      <span class="eyebrow-pill-gold">Pro · optional</span>
+    </div>
+    <p class="subtitle" style="font-size: 17px;">No sign-up to start. Add <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> when you want your work to be smarter and follow you everywhere.</p>
+  </section>
+
+  <!-- ============================================================
+       OPTION E — Eyebrow above the H1, classic SaaS shape
+       Gold eyebrow leads, headline lands hard, single subtitle wraps it
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option E · eyebrow above</span>
+    <p class="option-note">Move the eyebrow <em>above</em> the H1 so it frames the headline. Classic SaaS hero shape — eyebrow → big claim → one body line. Trades two messages for sharper focus.</p>
+  </div>
+  <section class="hero">
+    <div class="pro-eyebrow" style="margin-bottom: 22px;">Free forever · Pro optional</div>
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="subtitle" style="font-size: 17px; margin-top: 8px;">No sign-up to start. <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> are optional Pro add-ons — for smarter work that follows you everywhere.</p>
+  </section>
+
+  <!-- ============================================================
+       ROUND 2 — HYBRIDS
+       ============================================================ -->
+  <div class="page-head" style="margin-top: 120px;">
+    <h1 style="font-size: 22px; color: #a99eff;">Round 2 · hybrids</h1>
+    <p>You said: <em>D and E lose "Yours to keep"; B lacks it too; A has it but the Pro framing is weaker.</em><br>These three keep the bold tagline AND give Pro real visual weight.</p>
+  </div>
+
+  <!-- ============================================================
+       OPTION F — A's bold tagline + B's stanza rule
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option F · A + B</span>
+    <p class="option-note">Keeps A's full bold tagline (<em>"Yours to keep"</em> intact). Then B's hairline rule + gold <em>OYSTER PRO</em> eyebrow opens a clean second stanza. Two beats, both with their own anchor.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-eyebrow-rule">
+      <span class="rule"></span>
+      <span class="label">Oyster Pro</span>
+      <span class="rule"></span>
+    </div>
+    <p class="subtitle">Add <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> for smarter work that follows you everywhere.</p>
+  </section>
+
+  <!-- ============================================================
+       OPTION G — A's bold tagline + D's gold pill (no Free pill)
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option G · A + D</span>
+    <p class="option-note">Bold tagline carries the Free promise (no Free pill needed — the H1 + tagline already say it loudly). A single gold pill anchors Pro as the optional second tier, then the body line.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-block" style="margin-top: 12px;">
+      <span class="eyebrow-pill-gold" style="margin-bottom: 18px; display: inline-flex;">Oyster Pro · optional</span>
+      <p class="subtitle" style="margin-top: 18px;">Add <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> when you want smarter work that follows you everywhere.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       OPTION H — Most explicit: bold + rule + bold-pro-tagline + sub
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option H · two stanzas, two bolds</span>
+    <p class="option-note">Boldest split: each stanza gets its own bold one-liner. Free promise in white, Pro promise in white with a gold eyebrow above. Mirrors the structure visually — most assertive about the two tiers being equal-weight messages.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-eyebrow-rule">
+      <span class="rule"></span>
+      <span class="label">Oyster Pro · Optional</span>
+      <span class="rule"></span>
+    </div>
+    <p class="hero-strong-tight" style="margin-bottom: 14px;">Smarter work, everywhere you are.</p>
+    <p class="subtitle">Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
+  </section>
+
+  <!-- ============================================================
+       OPTION H2 — variant: optional in the sub line, not eyebrow
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">Option H2 · same shape, different placement of "optional"</span>
+    <p class="option-note">Same as H but moves <em>"optional"</em> into the sub line as a leading clause. Eyebrow stays a clean brand mark. Tradeoff: sub gets longer, but reads as one full sentence rather than a fragment.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-eyebrow-rule">
+      <span class="rule"></span>
+      <span class="label">Oyster Pro</span>
+      <span class="rule"></span>
+    </div>
+    <p class="hero-strong-tight" style="margin-bottom: 14px;">Smarter work, everywhere you are.</p>
+    <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
+  </section>
+
+  <!-- ============================================================
+       ROUND 3 — DE-BUSY
+       Currently shipped H2 feels too busy. Three lighter variants.
+       ============================================================ -->
+  <div class="page-head" style="margin-top: 120px;">
+    <h1 style="font-size: 22px; color: #fbbf24;">Round 3 · de-busy H2</h1>
+    <p>Shipped H2 has 5 stacked elements (H1, bold, rule-eyebrow, bold-Pro, sub). These three each strip something different.<br>
+    <strong style="color:#a99eff">Pick the one that breathes best.</strong></p>
+  </div>
+
+  <!-- ============================================================
+       H3 — Drop the bold Pro tagline (keep rule eyebrow + sub)
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">H3 · drop the bold Pro line</span>
+    <p class="option-note">Removes "Smarter work, everywhere you are." entirely. Pro becomes just rule-eyebrow + sub — much lighter, still framed. The free promise stays the only bold sub line.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-eyebrow-rule">
+      <span class="rule"></span>
+      <span class="label">Oyster Pro</span>
+      <span class="rule"></span>
+    </div>
+    <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong> for smarter work, everywhere you are.</p>
+  </section>
+
+  <!-- ============================================================
+       H4 — Drop the rule (keep gold eyebrow + bold + sub)
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">H4 · drop the rule decoration</span>
+    <p class="option-note">Removes the horizontal rules around <em>Oyster Pro</em>. Same content as H2, less ornament. Reads more like a normal eyebrow.</p>
+  </div>
+  <section class="hero">
+    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-eyebrow" style="margin-bottom: 14px;">Oyster Pro</div>
+    <p class="hero-strong-tight" style="margin-bottom: 14px;">Smarter work, everywhere you are.</p>
+    <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
+  </section>
+
+  <!-- ============================================================
+       H5 — Tighten spacing only (same content as H2)
+       ============================================================ -->
+  <div class="option-label">
+    <span class="option-tag">H5 · same shape, tighter spacing</span>
+    <p class="option-note">Identical content to H2 — just compresses vertical rhythm: smaller H1 bottom margin, less gap before the rule, less gap before the bold Pro line. Same five elements, just less air between them.</p>
+  </div>
+  <section class="hero" style="--h1-mb: 18px;">
+    <h1 style="margin-bottom: 18px;"><span class="headline-mark">Free without limits.</span></h1>
+    <p class="hero-strong" style="margin-bottom: 22px;">No sign-up. No strings. Yours to keep.</p>
+    <div class="pro-eyebrow-rule" style="margin-bottom: 10px;">
+      <span class="rule"></span>
+      <span class="label">Oyster Pro</span>
+      <span class="rule"></span>
+    </div>
+    <p class="hero-strong-tight" style="margin-bottom: 8px;">Smarter work, everywhere you are.</p>
+    <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
+  </section>
+
+</body>
+</html>

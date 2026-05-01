@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Pricing page hero.** Restructured into two stanzas — Free promise (*"No sign-up. No strings. Yours to keep."*) and a gold-rule Oyster Pro section that names what Pro is and what it adds. Pro is correctly framed as the optional thing (rather than its features).
+
 ## [0.5.0-beta.1] - 2026-05-01
 
 ### Added
