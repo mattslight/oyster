@@ -22,7 +22,7 @@ The substrate is the same: the same identity layer, the same cloud surface, the 
 
 A user who signs into Oyster on a fresh machine sees their full context with no manual setup — every space pill renders with live counts, sessions list populates, memories are recallable, the inventory tile reflects what's in the cloud. The act of signing in is sufficient; nothing else is required of the user.
 
-**Verify:** clean install + sign-in produces the same Home page as on the user's primary machine, modulo locally-mounted folder contents and locally-ingested transcript bodies. No manual import, file copy, or configuration step is required between sign-in and the populated Home page rendering.
+**Verify:** clean install + sign-in produces the same Home page as on the user's primary machine, modulo locally-mounted folder contents (which require their git remote to be cloned to a local path). Transcript bodies of historical sessions are durable per R3 and are pulled on demand when their inspector is opened — they don't need to be on the new machine for the Home page to render. No manual import, file copy, or configuration step is required between sign-in and the populated Home page rendering.
 
 **Variant — self-hosted continuity via a git remote.** Users may opt to use their own git remote as the durable copy instead of Oyster's managed cloud. Same R1 outcome, different transport, no trust handed to us. Treated as a first-class option, not a back-door.
 
@@ -32,24 +32,26 @@ A user who signs into Oyster on a fresh machine sees their full context with no 
 
 ## R2. Conversational recall across machines
 
-A user can ask their agent in natural language about any prior conversation, and get back the relevant summary, memories, and artefact references — regardless of which machine the original conversation happened on.
+A user can ask their agent in natural language about any prior conversation, and get back the relevant summary, memories, artefact references, and — when needed — the verbatim transcript content, regardless of which machine the original conversation happened on.
 
-Examples that must work:
-- *"Remember that pricing conversation yesterday?"*
-- *"What did Bharat suggest about memory sync?"*
-- *"Pick up that auth thread we had on the laptop last week."*
+Recall has two levels and both must work:
+
+- **Summary-level** (the everyday case): *"Remember that pricing conversation yesterday?"* / *"What did Bharat suggest about memory sync?"* — answered from the LLM-generated summary plus relevant memories.
+- **Verbatim** (the needle-in-the-haystack case): *"What were the exact specs we agreed for the render server?"* / *"What FTS5 schema did we settle on?"* — answered from the actual transcript content, retrieved across the full transcript corpus.
 
 The natural-language phrasing is the canonical UX. Explicit handles (e.g. `@BLUNDERFIXER:chat-with-bharat`) are at best a power-user fallback, not the primary interface — the engine is meaning, not strings.
 
-**Verify:** have a conversation on Machine A; on Machine B, query the agent in natural language about the topic; the agent responds with content traceable to A. "Pick up here" is a special case where the agent is then primed to continue the thread.
+**Verify:** have a conversation on Machine A; on Machine B, query the agent in natural language about the topic; the agent responds with content traceable to A. The verbatim case must surface the specific phrasing or detail from the original transcript, not just a summary that gestures at the topic. "Pick up here" is a special case where the agent is then primed to continue the thread.
 
 ---
 
 ## R3. Durability against machine loss
 
-If a user's primary machine is destroyed, restoring Oyster on a new machine restores their memories, spaces, artefact manifests, session metadata, and configs from the cloud (or self-hosted remote per R1's variant).
+If a user's primary machine is destroyed, restoring Oyster on a new machine restores their memories, spaces, artefact manifests, session metadata, session transcript bodies, and configs from the cloud (or self-hosted remote per R1's variant).
 
-**Verify:** fresh install + sign-in restores the Home UI to within "transcripts and locally-mounted file contents" of the lost machine.
+Transcript bodies live in cold storage rather than the live-sync hot path — they are not replicated to every device on every change, but they are **durably stored** and **retrievable on demand** by any signed-in device. The transcript inspector renders the full conversation on a non-origin device by lazy-pulling the bytes from cold storage on first open.
+
+**Verify:** fresh install + sign-in restores the Home UI to within "locally-mounted folder contents" of the lost machine. Opening any session's inspector on the new machine renders the full transcript (after a one-time pull on first open per device).
 
 R3 and R1 share most of the same plumbing — if the cloud (or remote) is the durable copy, fresh-machine sign-in is just a restore of the same dataset.
 
