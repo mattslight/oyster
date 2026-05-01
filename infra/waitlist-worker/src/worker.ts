@@ -17,6 +17,9 @@ export interface Env {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_SOURCE_LEN = 64;
 const ALLOWED_ORIGINS = new Set(["https://oyster.to", "https://www.oyster.to"]);
+// Cooldown between confirmation emails to the same address.
+// Within this window: silent no-op. After: re-submitting triggers a fresh send.
+const RESEND_COOLDOWN_MS = 5 * 60 * 1000;
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
@@ -77,24 +80,32 @@ export default {
     const ipCountry = req.headers.get("cf-ipcountry") ?? null;
     const now = Date.now();
 
-    let inserted = false;
+    // Insert (new signup) or update last_sent_at (existing signup, but
+    // only if the cooldown has elapsed). meta.changes > 0 means we should
+    // send a confirmation; otherwise we're inside the cooldown and stay silent.
+    let shouldSend = false;
     try {
       const result = await env.DB
         .prepare(
-          "INSERT OR IGNORE INTO waitlist (email, joined_at, source, ip_country, user_agent) VALUES (?, ?, ?, ?, ?)"
+          `INSERT INTO waitlist (email, joined_at, source, ip_country, user_agent, last_sent_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(email) DO UPDATE SET
+             last_sent_at = excluded.last_sent_at
+           WHERE waitlist.last_sent_at IS NULL
+              OR waitlist.last_sent_at < ?`
         )
-        .bind(rawEmail, now, source, ipCountry, userAgent)
+        .bind(rawEmail, now, source, ipCountry, userAgent, now, now - RESEND_COOLDOWN_MS)
         .run();
-      inserted = (result.meta?.changes ?? 0) > 0;
+      shouldSend = (result.meta?.changes ?? 0) > 0;
     } catch (err) {
       console.error("d1_insert_failed", err);
       return json({ error: "storage_failed" }, 500, corsHeaders);
     }
 
-    // Only send the confirmation when a new row was actually inserted —
-    // re-submitting the same email is a quiet no-op (no double email,
-    // no leak of which addresses are already on the list).
-    if (inserted && env.RESEND_API_KEY) {
+    // Resubmissions inside the cooldown produce no email (anti-abuse,
+    // anti-enumeration), but the response is identical so the client
+    // can't tell which case happened.
+    if (shouldSend && env.RESEND_API_KEY) {
       ctx.waitUntil(sendConfirmation(rawEmail, env.RESEND_API_KEY, env.FROM_ADDRESS ?? "matt@oyster.to"));
     }
 
