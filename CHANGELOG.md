@@ -4,34 +4,33 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.5.0-beta.1] - 2026-05-01
+
 ### Added
 
 - **Oyster Pro page (in-app + marketing).** A new shield-icon pill in the breadcrumb opens a *Coming Soon* page that names what's about to ship — **Sync · Memory · Publish** — and inventories what's already in your local `~/Oyster/` (Spaces, Apps, Database rows, Config, Backups with newest-snapshot age). The "Read more" CTA links out to a new public pricing page at oyster.to/pricing — Free vs Pro comparison, $20/month, waitlist. Backed by a new `GET /api/vault/inventory` server endpoint that walks the userland tree and queries the SQLite/memory databases for live row counts. Local-origin only.
-- **Right-click a space pill for Rename · Delete.** The context menu that used to live on the (now-removed) chat-bar pills moved to the breadcrumb. *Delete* opens a confirm that itemises how many sessions, artefacts, and memories are in the targeted space and where each lands (sessions and memories revert to Elsewhere; artefacts move to Home grouped under the space's display name). Works on any non-meta pill, regardless of whether the space has folders attached.
-- **Empty-shell space surfaces a delete affordance.** The red "no folders attached to this space" banner now ends with `…or delete it.` — clicks open a confirm modal that names how many sessions are stuck inside and that they'll move back to Elsewhere. Closes the only path that left users with an unreachable space (post-detach) and no UI to escape.
-- **Removing the only folder from a space deletes the space.** Detach used to leave the original space behind as an empty shell with sessions stuck pointing at a soft-deleted source — visible in the chip count, hidden behind every filter, unreachable. The folder-tile menu is now *Remove folder*, and the confirm modal explains the consequences honestly: on a multi-folder space it's a normal detach, on the only folder it deletes the space and sends sessions back to Elsewhere. ([#285](https://github.com/mattslight/oyster/issues/285))
-- **Promote an Elsewhere folder to its own space — one click.** Hover any orphan project tile on Home → Elsewhere and a `＋folder` button appears top-right. Click it and Oyster creates a new space named after the folder, attaches the folder as its source, and re-attributes existing sessions whose cwd matches — so the folder's history follows it into its new space instead of staying stuck in Elsewhere. ([#285](https://github.com/mattslight/oyster/issues/285))
+- **Session inspector.** Click a session tile (or row) and a slide-panel opens with the live transcript, the artefacts the agent touched, and a *Copy resume command* button — paste it in your terminal to pick the conversation back up. Disconnected sessions show a banner with the last heartbeat. Click any artefact to see which sessions touched it, then jump back into one. The transcript updates live as the agent works. ([#253](https://github.com/mattslight/oyster/issues/253))
+- **Scroll up to load older transcript turns.** The session inspector loads the latest 1000 turns by default and shows a `1000+` badge when there's more behind them. Scroll near the top of the transcript and the next 1000 older turns prepend in place — your scroll position stays pinned to the same turn so you don't lose your place. Live updates still append to the bottom as the agent works. ([#274](https://github.com/mattslight/oyster/issues/274))
+- **Memories on Home.** Your agents' `remember` notes now show up as a section on Home alongside Sessions and Artefacts. The space pills scope all three together — pick *tokinvest* and you see what each agent learned about that project, not the global pile. Orphan memories (no space attached) live under *Elsewhere*. ([#254](https://github.com/mattslight/oyster/issues/254))
 - **Project tiles on every space.** A row of project tiles sits at the top of any space view — same visual primitive as Home's space cards. **All** is the default scope (combined session counts); each linked folder gets its own tile with its artefact count; a **scratchpad** tile collects native artefacts (manual + AI-generated) that didn't come from a linked folder. Click any tile to scope Artefacts to that project · click again to clear. Hover a linked tile and a `⋯` button appears top-right with a Detach action. **+ Attach folder** tile opens an inline path input. Spaces with zero folders attached still show a red-tinged warning so the silent-orphan trap stays visible. ([#266](https://github.com/mattslight/oyster/issues/266))
 - **Filter and collapse Artefacts on Home.** A 224-tile pile is hard to scan, so the Artefacts section now shows roughly three rows by default with *Show all N* to expand. New filter chips next to the heading split the list by where each artefact came from — *mine* (you created it), *from agents* (your AI did), or *linked* (came in via a folder scan). Selection resets when you change space so each space starts compact and at *all*. ([#280](https://github.com/mattslight/oyster/issues/280))
-- **Memories on Home.** Your agents' `remember` notes now show up as a section on Home alongside Sessions and Artefacts. The space pills scope all three together — pick *tokinvest* and you see what each agent learned about that project, not the global pile. Orphan memories (no space attached) live under *Elsewhere*. ([#254](https://github.com/mattslight/oyster/issues/254))
-- **Scroll up to load older transcript turns.** The session inspector loads the latest 1000 turns by default and shows a `1000+` badge when there's more behind them. Scroll near the top of the transcript and the next 1000 older turns prepend in place — your scroll position stays pinned to the same turn so you don't lose your place. Live updates still append to the bottom as the agent works. ([#274](https://github.com/mattslight/oyster/issues/274))
-
-### Security
-
-- **Local-only endpoints now refuse non-loopback callers.** The Oyster server used to listen on every network interface and rely on the HTTP `Origin` header alone to gate access — fine against a browser tab on `evil.com`, but a non-browser client on the same WiFi could omit `Origin` and pull `/api/vault/inventory`, `/api/memories`, etc. The server now binds to `127.0.0.1` *and* the Origin guard rejects requests with no Origin from non-loopback addresses (belt and braces). ([#289](https://github.com/mattslight/oyster/issues/289))
-
-### Fixed
-
-- **`?limit=N` on the events endpoint was silently ignored.** The route regex `$`-anchored before the query string so the parameter never reached the handler — the inspector always got the default 1000. Fixed as part of #274.
-- **Older sessions now show their transcripts.** Sessions whose `claude` process finished before Oyster started watching used to land with empty transcripts in the inspector — Oyster only ingested events appended after it was running. The watcher now backfills events from each JSONL on boot scan, so existing sessions show their full transcript on the next server restart. Idempotent across restarts. ([#275](https://github.com/mattslight/oyster/issues/275))
-
-### Added
-
-- **Session inspector.** Click a session tile (or row) and a slide-panel opens with the live transcript, the artefacts the agent touched, and a *Copy resume command* button — paste it in your terminal to pick the conversation back up. Disconnected sessions show a banner with the last heartbeat. Click any artefact to see which sessions touched it, then jump back into one. The transcript updates live as the agent works. ([#253](https://github.com/mattslight/oyster/issues/253))
+- **Promote an Elsewhere folder to its own space — one click.** Hover any orphan project tile on Home → Elsewhere and a `＋folder` button appears top-right. Click it and Oyster creates a new space named after the folder, attaches the folder as its source, and re-attributes existing sessions whose cwd matches — so the folder's history follows it into its new space instead of staying stuck in Elsewhere. ([#285](https://github.com/mattslight/oyster/issues/285))
+- **Removing the only folder from a space deletes the space.** Detach used to leave the original space behind as an empty shell with sessions stuck pointing at a soft-deleted source — visible in the chip count, hidden behind every filter, unreachable. The folder-tile menu is now *Remove folder*, and the confirm modal explains the consequences honestly: on a multi-folder space it's a normal detach, on the only folder it deletes the space and sends sessions back to Elsewhere. ([#285](https://github.com/mattslight/oyster/issues/285))
+- **Empty-shell space surfaces a delete affordance.** The red "no folders attached to this space" banner now ends with `…or delete it.` — clicks open a confirm modal that names how many sessions are stuck inside and that they'll move back to Elsewhere. Closes the only path that left users with an unreachable space (post-detach) and no UI to escape.
+- **Right-click a space pill for Rename · Delete.** The context menu that used to live on the (now-removed) chat-bar pills moved to the breadcrumb. *Delete* opens a confirm that itemises how many sessions, artefacts, and memories are in the targeted space and where each lands (sessions and memories revert to Elsewhere; artefacts move to Home grouped under the space's display name). Works on any non-meta pill, regardless of whether the space has folders attached.
 
 ### Changed
 
 - **Session states are now process-aware.** Oyster looks at the running `claude` processes on your machine to tell whether a session is still alive — not just whether the JSONL file has been quiet. New states: **active** (green, "updated recently"), **waiting** (amber, "process still open"), **disconnected** (red, "no running process found"), and **done** (grey, "inactive for 24h"). Long thinking turns no longer flicker into red, and a finished session converges to disconnected within a minute or so of you closing the terminal (active window plus the next heartbeat tick).
+
+### Fixed
+
+- **Older sessions now show their transcripts.** Sessions whose `claude` process finished before Oyster started watching used to land with empty transcripts in the inspector — Oyster only ingested events appended after it was running. The watcher now backfills events from each JSONL on boot scan, so existing sessions show their full transcript on the next server restart. Idempotent across restarts. ([#275](https://github.com/mattslight/oyster/issues/275))
+- **`?limit=N` on the events endpoint was silently ignored.** The route regex `$`-anchored before the query string so the parameter never reached the handler — the inspector always got the default 1000. Fixed as part of #274.
+
+### Security
+
+- **Local-only endpoints now refuse non-loopback callers.** The Oyster server used to listen on every network interface and rely on the HTTP `Origin` header alone to gate access — fine against a browser tab on `evil.com`, but a non-browser client on the same WiFi could omit `Origin` and pull `/api/vault/inventory`, `/api/memories`, etc. The server now binds to `127.0.0.1` *and* the Origin guard rejects requests with no Origin from non-loopback addresses (belt and braces). ([#289](https://github.com/mattslight/oyster/issues/289))
 
 ## [0.5.0-beta.0] - 2026-04-28
 
@@ -429,7 +428,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...HEAD
+[0.5.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
 [0.5.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0
 [0.4.0]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.8...v0.4.0
 [0.4.0-beta.8]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.7...v0.4.0-beta.8
