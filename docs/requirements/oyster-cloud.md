@@ -12,9 +12,9 @@ If a design decision and a requirement conflict, the requirement wins (or we re-
 
 ## Two tiers, one substrate
 
-Oyster has a **free account tier** (identity, local workspace, publish/share with caps) and a **Pro tier** (cross-device sync, durability, cloud-backed semantic recall, agent-crossing memory). The requirements below describe outcomes in tier-neutral language; the tier mapping at the end maps each to where it's delivered.
+Oyster has a **free account tier** (identity, local workspace, publish/share with caps) and a **Pro tier** (cross-device continuity, durability, recall by meaning across all your conversations, agent-crossing memory). The requirements below describe outcomes in tier-neutral language; the tier mapping at the end maps each to where it's delivered.
 
-The substrate is the same: the same identity layer, the same cloud surface, the same artefact and memory model. Pro is an entitlement on top of the free account, not a separate product.
+The substrate is the same identity layer, the same artefact and memory model, the same recall surface. Pro is an entitlement on top of the free account, not a separate product.
 
 ---
 
@@ -22,7 +22,7 @@ The substrate is the same: the same identity layer, the same cloud surface, the 
 
 A user who signs into Oyster on a fresh machine sees their full context with no manual setup — every space pill renders with live counts, sessions list populates, memories are recallable, the inventory tile reflects what's in the cloud. The act of signing in is sufficient; nothing else is required of the user.
 
-**Verify:** clean install + sign-in produces the same Home page as on the user's primary machine, modulo locally-mounted folder contents (which require their git remote to be cloned to a local path). Transcript bodies of historical sessions are durable per R3 and are pulled on demand when their inspector is opened — they don't need to be on the new machine for the Home page to render. No manual import, file copy, or configuration step is required between sign-in and the populated Home page rendering.
+**Verify:** clean install + sign-in produces the same Home page as on the user's primary machine, modulo locally-mounted folder contents — the user must still acquire the underlying files separately (e.g. clone a git remote into a local path). No manual import, file copy, or configuration step is required between sign-in and the populated Home page rendering.
 
 **Variant — self-hosted continuity via a git remote.** Users may opt to use their own git remote as the durable copy instead of Oyster's managed cloud. Same R1 outcome, different transport, no trust handed to us. Treated as a first-class option, not a back-door.
 
@@ -32,36 +32,34 @@ A user who signs into Oyster on a fresh machine sees their full context with no 
 
 ## R2. Conversational recall across machines
 
-A user can ask their agent in natural language about any prior conversation, and get back the relevant summary, memories, artefact references, and — when needed — the verbatim transcript content, regardless of which machine the original conversation happened on.
+A user can ask their agent in natural language about any prior conversation and get back the relevant content, regardless of which machine the original conversation happened on.
 
 Recall has two levels and both must work:
 
-- **Summary-level** (the everyday case): *"Remember that pricing conversation yesterday?"* / *"What did Bharat suggest about memory sync?"* — answered from the LLM-generated summary plus relevant memories.
-- **Verbatim** (the needle-in-the-haystack case): *"What were the exact specs we agreed for the render server?"* / *"What FTS5 schema did we settle on?"* — answered from the actual transcript content, retrieved across the full transcript corpus.
+- **Summary-level** (the everyday case): *"Remember that pricing conversation yesterday?"* / *"What did Bharat suggest about memory sync?"* — the answer captures the gist of what was discussed.
+- **Verbatim** (the needle-in-the-haystack case): *"What were the exact specs we agreed for the render server?"* / *"What FTS5 schema did we settle on?"* — the answer surfaces the specific phrasing or detail from the original conversation, not just a gesture at the topic.
 
-The natural-language phrasing is the canonical UX. Explicit handles (e.g. `@BLUNDERFIXER:chat-with-bharat`) are at best a power-user fallback, not the primary interface — the engine is meaning, not strings.
+The natural-language phrasing is the canonical UX. Explicit handles (e.g. `@BLUNDERFIXER:chat-with-bharat`) are at best a power-user fallback, not the primary interface — recall keys on meaning, not literal strings.
 
-**Verify:** have a conversation on Machine A; on Machine B, query the agent in natural language about the topic; the agent responds with content traceable to A. The verbatim case must surface the specific phrasing or detail from the original transcript, not just a summary that gestures at the topic. "Pick up here" is a special case where the agent is then primed to continue the thread.
+**Verify:** have a conversation on Machine A; on Machine B, query the agent in natural language about the topic; the agent responds with content traceable to A, at both levels. The verbatim case must reproduce specifics that a summary alone could not. "Pick up here" is a special case where the agent is then primed to continue the thread.
 
 ---
 
 ## R3. Durability against machine loss
 
-If a user's primary machine is destroyed, restoring Oyster on a new machine restores their memories, spaces, artefact manifests, session metadata, session transcript bodies, and configs from the cloud (or self-hosted remote per R1's variant).
+If a user's primary machine is destroyed, restoring Oyster on a new machine restores their memories, spaces, artefact manifests, session metadata, session transcripts, and configs.
 
-Transcript bodies live in cold storage rather than the live-sync hot path — they are not replicated to every device on every change, but they are **durably stored** and **retrievable on demand** by any signed-in device. The transcript inspector renders the full conversation on a non-origin device by lazy-pulling the bytes from cold storage on first open.
+**Verify:** fresh install + sign-in restores the Home UI to within "locally-mounted folder contents" of the lost machine. Opening any session's inspector on the new machine renders the full transcript of that conversation.
 
-**Verify:** fresh install + sign-in restores the Home UI to within "locally-mounted folder contents" of the lost machine. Opening any session's inspector on the new machine renders the full transcript (after a one-time pull on first open per device).
-
-R3 and R1 share most of the same plumbing — if the cloud (or remote) is the durable copy, fresh-machine sign-in is just a restore of the same dataset.
+R3 and R1 are closely related — if there is a durable copy of the user's data somewhere reachable, fresh-machine sign-in is just a restore of it.
 
 ---
 
 ## R4. Memory that crosses agents
 
-A memory written by one AI assistant (Claude, Cursor, Codex, anything MCP-connected) is recallable by any other. The moat is the layer above the agent: Claude won't sync your Cursor sessions; Cursor won't sync your Claude sessions; Oyster does.
+A memory written by one AI assistant (Claude, Cursor, Codex, anything connected to Oyster) is recallable by any other. The value is the layer above the agent: Claude won't sync your Cursor sessions; Cursor won't sync your Claude sessions; Oyster does.
 
-**Verify:** Claude writes a memory through Oyster's MCP; switch to Cursor with the Oyster MCP connected; recall surfaces it.
+**Verify:** one connected agent writes a memory through Oyster; a different connected agent (same user) issues a recall query that surfaces it.
 
 ---
 
