@@ -4,6 +4,22 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-01
+
+The 0.5.0 line is now stable. Code is identical to `0.5.0-beta.2`. Headline changes from the beta cycle:
+
+- **Oyster sees your Claude Code sessions automatically.** Run `claude` in any folder mapped to a space and Oyster picks the session up — no MCP wiring, no setup. Title from your first prompt, file reads/edits attributed back to artefact tiles, sessions in unregistered folders land as orphans rather than being dropped. ([#251](https://github.com/mattslight/oyster/issues/251))
+- **Session inspector with live transcript.** Click a session and a slide-panel opens with the running transcript, the artefacts the agent touched, and a *Copy resume command* button to pick the conversation back up in your terminal. Scroll near the top of long transcripts and the next 1000 older turns prepend in place — your scroll position stays pinned. Older sessions whose `claude` process finished before Oyster started watching now backfill their transcripts on boot. ([#253](https://github.com/mattslight/oyster/issues/253), [#274](https://github.com/mattslight/oyster/issues/274), [#275](https://github.com/mattslight/oyster/issues/275))
+- **Process-aware session states.** Oyster looks at running `claude` processes to tell whether a session is still alive — not just whether the JSONL has been quiet. Long thinking turns no longer flicker into red, and a finished session converges to disconnected within a minute of you closing the terminal.
+- **Home as a sectioned feed.** Spaces · Sessions · Artefacts replace the spatial desktop as the default surface. State chips filter sessions inline; filter chips on Artefacts split *mine* / *from agents* / *linked*. Sessions update live as your agents work. ([#252](https://github.com/mattslight/oyster/issues/252), [#280](https://github.com/mattslight/oyster/issues/280))
+- **Memories on Home.** Your agents' `remember` notes show up as a section on Home alongside Sessions and Artefacts, scoped by the same space pills. Pick *tokinvest* and you see what each agent learned about that project, not the global pile. ([#254](https://github.com/mattslight/oyster/issues/254))
+- **Project tiles on every space.** A row of project tiles sits at the top of any space view — *All*, one tile per linked folder, plus a *scratchpad* tile for native artefacts. Click to scope; **+ Attach folder** opens an inline path input. Promote an orphan folder under Home → Elsewhere into its own space in one click — sessions whose cwd matches re-attribute to the new space. ([#266](https://github.com/mattslight/oyster/issues/266), [#285](https://github.com/mattslight/oyster/issues/285))
+- **No more silent empty-shell spaces.** Removing the only folder from a space now deletes the space and sends sessions back to Elsewhere — with a confirm modal that itemises what's affected. Right-click a space pill in the breadcrumb for Rename · Delete; the empty-shell warning ends with `…or delete it.` so you always have a way out. ([#285](https://github.com/mattslight/oyster/issues/285))
+- **Oyster Pro foundations.** A new shield-icon pill in the breadcrumb opens a *Coming Soon* page that names what's about to ship — **Sync · Memory · Publish** — and inventories your local `~/Oyster/` (Spaces, Apps, Database rows, Config, Backups). The "Read more" CTA links to a public pricing page at [oyster.to/pricing](https://oyster.to/pricing). *Join the waitlist* captures emails into a Cloudflare D1-backed Worker and confirms via Resend.
+- **Local-only endpoints refuse non-loopback callers.** The server now binds to `127.0.0.1` and the Origin guard rejects requests with no Origin from non-loopback addresses. Closes the gap where a non-browser client on the same WiFi could omit `Origin` and pull `/api/vault/inventory`. ([#289](https://github.com/mattslight/oyster/issues/289))
+
+See `0.5.0-beta.0` through `0.5.0-beta.2` below for per-beta detail.
+
 ## [0.5.0-beta.2] - 2026-05-01
 
 ### Added
@@ -439,7 +455,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...v0.5.0
 [0.5.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2
 [0.5.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
 [0.5.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0
