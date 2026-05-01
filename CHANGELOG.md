@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.5.0-beta.2] - 2026-05-01
+
 ### Added
 
 - **Pro waitlist signup.** *Join the waitlist* on the pricing page is now wired up — clicking opens a modal, captures an email, and stores it in a Cloudflare D1-backed Worker at `oyster.to/api/waitlist`. Confirmation email goes out via Resend. Worker source + setup steps live in `infra/waitlist-worker/`.
@@ -437,7 +439,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...HEAD
+[0.5.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2
 [0.5.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
 [0.5.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0
 [0.4.0]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.8...v0.4.0
