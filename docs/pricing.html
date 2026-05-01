@@ -135,23 +135,27 @@
     .primitives {
       position: relative; z-index: 1;
       max-width: 980px; margin: 0 auto;
-      padding: 96px 24px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 48px;
+      padding: 160px 24px 0;
     }
     .primitive {
-      background: rgba(17, 19, 34, 0.88);
+      background: rgba(17, 19, 34, 0.92);
       backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
       border: 1px solid rgba(124, 107, 255, 0.16);
       border-radius: 18px;
       padding: 36px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 12px 50px rgba(0, 0, 0, 0.45);
       display: grid;
       grid-template-columns: 56px 1fr;
       gap: 28px;
       align-items: start;
+      position: sticky;
+      margin-bottom: 60px;
+      transition: transform 0.3s ease-out;
     }
+    .primitive:nth-child(1) { top: 100px; }
+    .primitive:nth-child(2) { top: 130px; }
+    .primitive:nth-child(3) { top: 160px; }
+    .primitive:last-child { margin-bottom: 0; }
     .primitive-icon {
       width: 56px; height: 56px;
       border-radius: 14px;
@@ -195,7 +199,11 @@
       background: #7c6bff; opacity: 0.7;
     }
     @media (max-width: 640px) {
-      .primitive { grid-template-columns: 1fr; gap: 18px; padding: 24px; }
+      .primitives { padding-top: 96px; }
+      .primitive {
+        grid-template-columns: 1fr; gap: 18px; padding: 24px;
+        position: relative; top: auto !important; margin-bottom: 24px;
+      }
       .primitive-bullets { grid-template-columns: 1fr; }
     }
 
