@@ -67,7 +67,7 @@
       font-family: 'Barlow', sans-serif;
       font-size: clamp(48px, 8vw, 80px);
       font-weight: 700; line-height: 1.05;
-      color: #fff; margin-bottom: 28px;
+      color: #fff; margin-bottom: 18px;
       letter-spacing: -0.02em;
     }
     /* Slogan accent — chunky purple underline under the headline phrase,
@@ -84,29 +84,23 @@
       font-size: clamp(20px, 3vw, 28px);
       font-weight: 700; line-height: 1.35;
       color: #fff;
-      margin-bottom: 36px;
+      margin-bottom: 0;
     }
     .hero-strong-tight {
       font-family: 'Barlow', sans-serif;
       font-size: clamp(18px, 2.4vw, 22px);
       font-weight: 600; line-height: 1.4;
       color: #fff;
-      margin-bottom: 14px;
+      margin-bottom: 10px;
     }
-    .pro-eyebrow-rule {
-      display: flex; align-items: center; justify-content: center;
-      gap: 14px;
-      margin-bottom: 14px;
+    .pro-stanza {
+      margin-top: 80px;
     }
-    .pro-eyebrow-rule .rule {
-      flex: 1; max-width: 60px;
-      height: 1px;
-      background: linear-gradient(to right, transparent, rgba(251, 191, 36, 0.4), transparent);
-    }
-    .pro-eyebrow-rule .label {
+    .pro-eyebrow-plain {
       font-family: 'IBM Plex Mono', monospace;
       font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
       color: #fbbf24;
+      margin-bottom: 12px;
     }
     .subtitle {
       font-size: 16px; line-height: 1.65;
@@ -365,13 +359,11 @@
   <section class="hero">
     <h1><span class="headline-mark">Free without limits.</span></h1>
     <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
-    <div class="pro-eyebrow-rule">
-      <span class="rule"></span>
-      <span class="label">Oyster Pro</span>
-      <span class="rule"></span>
+    <div class="pro-stanza">
+      <div class="pro-eyebrow-plain">Oyster Pro</div>
+      <p class="hero-strong-tight">Smarter work, everywhere you are.</p>
+      <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
     </div>
-    <p class="hero-strong-tight">Smarter work, everywhere you are.</p>
-    <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
   </section>
 
   <section class="primitives">
