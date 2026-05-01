@@ -158,6 +158,21 @@
     .primitive:nth-child(2) { top: 144px; }
     .primitive:nth-child(3) { top: 188px; }
     .primitive:last-child { margin-bottom: 0; }
+    .primitive-pro-tag {
+      position: absolute;
+      top: 24px; right: 24px;
+      display: inline-flex; align-items: center;
+      padding: 5px 11px;
+      border-radius: 999px;
+      background: rgba(125, 249, 255, 0.08);
+      border: 1px solid rgba(125, 249, 255, 0.32);
+      color: #7df9ff;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
     .primitive-icon {
       width: 56px; height: 56px;
       border-radius: 14px;
@@ -208,6 +223,7 @@
         margin-bottom: 24px; min-height: 0;
       }
       .primitive-bullets { grid-template-columns: 1fr; }
+      .primitive-pro-tag { top: 16px; right: 16px; }
     }
 
     /* Pricing */
@@ -393,6 +409,7 @@
   <section class="primitives">
 
     <article class="primitive" id="sync">
+      <span class="primitive-pro-tag">Included in Pro</span>
       <span class="primitive-icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
       </span>
@@ -414,6 +431,7 @@
     </article>
 
     <article class="primitive" id="memory">
+      <span class="primitive-pro-tag">Included in Pro</span>
       <span class="primitive-icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v.5a3 3 0 0 0-3 3v.5a3 3 0 0 0-2 2.83V13a3 3 0 0 0 2 2.83V18a3 3 0 0 0 3 3 3 3 0 0 0 3-3v0a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-2.17A3 3 0 0 0 20 13v-1.17a3 3 0 0 0-2-2.83V8.5a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/></svg>
       </span>
@@ -435,6 +453,7 @@
     </article>
 
     <article class="primitive" id="publish">
+      <span class="primitive-pro-tag">Included in Pro</span>
       <span class="primitive-icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
       </span>
