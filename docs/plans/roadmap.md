@@ -34,7 +34,7 @@ The earlier 0.6.0 (bundles polish), 0.7.0 (auth + sync + publish, all together),
 
 **Ships:**
 
-- Free account identity (magic-link sign-in, reusing the `~/Dev/oyster-crm` pattern). Account state surfaced in-app.
+- Free account identity (magic-link sign-in). Account state surfaced in-app.
 - Publish artefact (R5) — built on `push_artifact` from 0.6.0 — with three access modes: open / password-protected / sign-in-required (free Oyster account).
 - Public viewer for published artefacts.
 - Entitlement / caps model — free tier has caps (count, bandwidth); Pro tier unlocks higher caps. The substrate that all later Pro features ride on.
@@ -74,11 +74,11 @@ The pricing page promise of "Sync · Memory · Publish" begins being delivered w
 
 Everything else. Concrete actions:
 
-**Close as superseded by Cloud direction** (link to `docs/requirements/oyster-cloud.md`):
+**Close as superseded by Cloud direction** (link to [`docs/requirements/oyster-cloud.md`](../requirements/oyster-cloud.md)):
 
 - #94, #186 — old portable-workspace / sync-export tickets.
 - #11 — host Oyster over the internet (was P:Low, superseded by entitlement model + free-account substrate).
-- #12 — multi-user auth / account isolation (Cloud is single-user multi-device; multi-user is out-of-scope per `sync-direction.md`).
+- #12 — multi-user auth / account isolation (Cloud is single-user multi-device; multi-user is out-of-scope per [`sync-direction.md`](./sync-direction.md)).
 - #20 — agent sandbox / containerise OpenCode (built on cloud-multi-tenant-runtime assumption that's no longer the direction).
 - #176 — cross-agent provenance design fork (resolved by R4 + memory-first stance).
 - #177 — `register_agent` MCP tool (folds into #298).
