@@ -35,6 +35,14 @@ export interface RecallInput {
   recalling_session_id?: string | null;
 }
 
+/** A memory pulled into a session — Memory + when *this session* most
+ *  recently recalled it. The recall timestamp is what the inspector
+ *  should surface on the "Pulled into this session" list; the memory's
+ *  own created_at can be days/weeks older than the recall event. */
+export interface RecalledMemory extends Memory {
+  recalled_at: string;
+}
+
 export interface MemoryProvider {
   init(): Promise<void>;
   remember(input: RememberInput): Promise<Memory>;
@@ -45,8 +53,9 @@ export interface MemoryProvider {
   importMemories(memories: Memory[]): Promise<void>;
   // R6: memories *written* during the given session.
   getBySourceSession(sessionId: string): Promise<Memory[]>;
-  // R6: memories the given session pulled via recall().
-  getRecalledBySession(sessionId: string): Promise<Memory[]>;
+  // R6: memories the given session pulled via recall(). Each row carries
+  // recalled_at = MAX(memory_recalls.ts) for that (memory, session).
+  getRecalledBySession(sessionId: string): Promise<RecalledMemory[]>;
   close(): void;
 }
 
@@ -213,8 +222,10 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       ),
       recalledBySession: this.db.prepare(
         // De-dupe: a session can recall the same memory many times; we want
-        // each memory once, ordered by most-recent recall.
-        `SELECT m.*
+        // each memory once, ordered by most-recent recall. last_ts is
+        // projected so the inspector can show "pulled <relative time>"
+        // rather than the memory's own created_at.
+        `SELECT m.*, r.last_ts AS recalled_at
          FROM memories m
          JOIN (
            SELECT memory_id, MAX(ts) AS last_ts
@@ -307,9 +318,9 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     return rows.map(rowToMemory);
   }
 
-  async getRecalledBySession(sessionId: string): Promise<Memory[]> {
-    const rows = this.stmts.recalledBySession.all(sessionId) as MemoryRow[];
-    return rows.map(rowToMemory);
+  async getRecalledBySession(sessionId: string): Promise<RecalledMemory[]> {
+    const rows = this.stmts.recalledBySession.all(sessionId) as Array<MemoryRow & { recalled_at: string }>;
+    return rows.map((row) => ({ ...rowToMemory(row), recalled_at: row.recalled_at }));
   }
 
   async forget(id: string): Promise<void> {

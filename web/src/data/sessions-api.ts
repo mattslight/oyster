@@ -69,6 +69,10 @@ export interface SessionMemoryEntry {
   created_at: string;
   source_session_id: string | null;
   source_session_title: string | null;
+  /** When *this session* recalled this memory. Only present on rows in
+   *  the `pulled` list — the memory's own created_at can be days/weeks
+   *  older than the recall event. Undefined for `written` rows. */
+  recalled_at?: string;
 }
 
 export interface SessionMemory {

@@ -95,6 +95,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
   const [memory, setMemory] = useState<SessionMemory | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("transcript");
   // True if the bootstrap fetch returned a full page — i.e. there are older
@@ -125,23 +126,25 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
     setEvents(null);
     setArtefacts(null);
     setMemory(null);
+    setMemoryError(null);
     setTab("transcript");
     setHasMoreOlder(false);
     setLoadingOlder(false);
     setBootstrapDone(false);
     const ac = new AbortController();
+
+    // Bootstrap: the three fetches that gate "session is loaded enough
+    // to render". A failure on any of these blocks the inspector.
     Promise.all([
       fetchSession(sessionId, ac.signal),
       fetchSessionEvents(sessionId, { signal: ac.signal }),
       fetchSessionArtifacts(sessionId, ac.signal),
-      fetchSessionMemory(sessionId, ac.signal),
     ])
-      .then(([s, ev, art, mem]) => {
+      .then(([s, ev, art]) => {
         if (reqId !== latestReqId.current) return;
         setSession(s);
         setEvents(ev);
         setArtefacts(art);
-        setMemory(mem);
         setHasMoreOlder(ev.length >= PAGE_SIZE);
         setBootstrapDone(true);
       })
@@ -152,6 +155,20 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
           return;
         }
         setError(err instanceof Error ? err.message : String(err));
+      });
+
+    // Memory loads in parallel but on its own track. A 500 here must
+    // never block the inspector — the Memory tab is auxiliary, the
+    // transcript and artefacts come first. Failure surfaces inside the
+    // tab as an error message.
+    fetchSessionMemory(sessionId, ac.signal)
+      .then((mem) => {
+        if (reqId !== latestReqId.current) return;
+        setMemory(mem);
+      })
+      .catch((err) => {
+        if (reqId !== latestReqId.current || ac.signal.aborted) return;
+        setMemoryError(err instanceof Error ? err.message : String(err));
       });
     return () => ac.abort();
   }, [sessionId]);
@@ -297,6 +314,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         events={events}
         artefacts={artefacts}
         memory={memory}
+        memoryError={memoryError}
         onSwitchTo={onSwitchTo}
         sessionId={sessionId}
         agent={session.agent}
@@ -317,13 +335,14 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
  * to read history, leave them there.
  */
 function TranscriptBody({
-  tab, events, artefacts, memory, onSwitchTo, sessionId, agent,
+  tab, events, artefacts, memory, memoryError, onSwitchTo, sessionId, agent,
   hasMoreOlder, loadingOlder, onLoadOlder,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
   artefacts: SessionArtifactJoined[] | null;
   memory: SessionMemory | null;
+  memoryError: string | null;
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
   agent: SessionAgent;
@@ -420,7 +439,7 @@ function TranscriptBody({
           </>
         )}
         {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
-        {tab === "memory" && <MemoryTab memory={memory} onSwitchTo={onSwitchTo} sessionId={sessionId} />}
+        {tab === "memory" && <MemoryTab memory={memory} memoryError={memoryError} onSwitchTo={onSwitchTo} sessionId={sessionId} />}
       </div>
     </>
   );
@@ -601,34 +620,39 @@ function Tabs({
 }
 
 function MemoryTab({
-  memory, onSwitchTo, sessionId,
+  memory, memoryError, onSwitchTo, sessionId,
 }: {
   memory: SessionMemory | null;
+  memoryError: string | null;
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
 }) {
-  if (memory === null) return <div className="inspector-empty">Loading memory…</div>;
-  const { written, pulled } = memory;
-  if (written.length === 0 && pulled.length === 0) {
+  if (memoryError) {
     return (
       <div className="inspector-empty">
-        No memory traffic in this session yet. As the agent calls <code>remember</code> or <code>recall</code>, entries will appear here.
+        Couldn't load memory traffic: {memoryError}
       </div>
     );
   }
+  if (memory === null) return <div className="inspector-empty">Loading memory…</div>;
+  // Both sections always render with their badges, even when empty —
+  // keeps the structure stable so a 0-count is a real "the agent hasn't
+  // written/pulled anything here" signal, not a missing affordance.
   return (
     <div className="memory-tab">
       <MemorySection
         title="Written by this session"
-        emptyHint="No memories were written by this session."
-        items={written}
+        emptyHint="No memories were written by this session yet."
+        timestampOf={(m) => m.created_at}
+        items={memory.written}
         sessionId={sessionId}
         onSwitchTo={onSwitchTo}
       />
       <MemorySection
         title="Pulled into this session"
-        emptyHint="No memories were recalled in this session."
-        items={pulled}
+        emptyHint="No memories were recalled in this session yet."
+        timestampOf={(m) => m.recalled_at ?? m.created_at}
+        items={memory.pulled}
         sessionId={sessionId}
         onSwitchTo={onSwitchTo}
       />
@@ -637,13 +661,14 @@ function MemoryTab({
 }
 
 function MemorySection({
-  title, emptyHint, items, sessionId, onSwitchTo,
+  title, emptyHint, items, sessionId, onSwitchTo, timestampOf,
 }: {
   title: string;
   emptyHint: string;
   items: SessionMemoryEntry[];
   sessionId: string;
   onSwitchTo: (next: ActivePanel) => void;
+  timestampOf: (m: SessionMemoryEntry) => string;
 }) {
   return (
     <section className="memory-section">
@@ -653,7 +678,13 @@ function MemorySection({
       ) : (
         <ul className="memory-list">
           {items.map((m) => (
-            <MemoryRow key={m.id} memory={m} currentSessionId={sessionId} onSwitchTo={onSwitchTo} />
+            <MemoryRow
+              key={m.id}
+              memory={m}
+              displayTs={timestampOf(m)}
+              currentSessionId={sessionId}
+              onSwitchTo={onSwitchTo}
+            />
           ))}
         </ul>
       )}
@@ -662,9 +693,10 @@ function MemorySection({
 }
 
 function MemoryRow({
-  memory, currentSessionId, onSwitchTo,
+  memory, displayTs, currentSessionId, onSwitchTo,
 }: {
   memory: SessionMemoryEntry;
+  displayTs: string;
   currentSessionId: string;
   onSwitchTo: (next: ActivePanel) => void;
 }) {
@@ -690,7 +722,7 @@ function MemoryRow({
             from {memory.source_session_title ?? memory.source_session_id!.slice(0, 8)}
           </button>
         )}
-        <span className="memory-row-ts">{formatTs(memory.created_at)}</span>
+        <span className="memory-row-ts">{formatTs(displayTs)}</span>
       </div>
     </li>
   );
