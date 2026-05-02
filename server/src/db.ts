@@ -341,15 +341,32 @@ export function initDb(userlandDir: string): Database.Database {
     END;
   `);
 
-  // Backfill the FTS index if rows pre-date it. The 'rebuild' command
-  // wipes + repopulates from the content table — cheap on first run,
-  // no-op-cost-wise on subsequent runs (we only invoke when the index
-  // looks empty alongside non-empty content).
+  // Backfill the FTS index if it's stale relative to the content table.
+  //
+  // The naive "rebuild only when ftsCount === 0" check is wrong: a hot-
+  // reload during dev can leave the FTS table partially populated by the
+  // INSERT triggers (count(*) reports 164k rows because docsize entries
+  // exist) while the inverted index is still empty or sparse. The result
+  // is searches that match a handful of recent rows but miss everything
+  // historical.
+  //
+  // Instead, sample a guaranteed-frequent token. SQLite's default
+  // unicode61 tokenizer has no stop-word list, so a single-char token
+  // like 'a' is indexed everywhere it appears. If hit volume is well
+  // below event volume, the index is broken and needs a full rebuild.
+  // 'rebuild' is idempotent — clears + re-populates from content — so
+  // it's safe to run.
   {
     const eventCount = (db.prepare("SELECT COUNT(*) as n FROM session_events").get() as { n: number }).n;
-    const ftsCount = (db.prepare("SELECT COUNT(*) as n FROM session_events_fts").get() as { n: number }).n;
-    if (eventCount > 0 && ftsCount === 0) {
-      db.exec("INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild')");
+    if (eventCount > 0) {
+      const sampleHits = (db.prepare(
+        "SELECT count(*) as n FROM session_events_fts WHERE session_events_fts MATCH 'a'"
+      ).get() as { n: number }).n;
+      // Threshold is generous — even pathological transcripts will have
+      // 'a' in well over 50% of events. < 25% indicates a broken index.
+      if (sampleHits * 4 < eventCount) {
+        db.exec("INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild')");
+      }
     }
   }
 
