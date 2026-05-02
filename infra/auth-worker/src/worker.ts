@@ -1,6 +1,8 @@
 // Oyster auth worker — Cloudflare-native magic-link auth and (in PR 3)
 // device-flow bridge to the local server at localhost:4444. See
 // docs/plans/auth.md for the full design.
+
+import { pkceVerifier, codeChallengeS256, pickPrimaryVerifiedEmail, type GitHubEmail } from "./oauth-helpers";
 //
 // PR 2 endpoints:
 //   GET  /auth/sign-in       HTML form (also accepts ?d=<user_code> for the device flow)
@@ -38,6 +40,8 @@ const MAX_TOKEN_LEN = 100;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const OAUTH_STATE_TTL_MS = 5 * 60 * 1000;
+const MAX_USER_CODE_LEN = 32;
 // Per-email cap: count of valid (non-expired) magic-link tokens for the user.
 // Window = TTL so a single SQL count answers both questions ("issued in the
 // last N minutes" ≡ "still valid"). Locks for the full TTL once 3 are out;
@@ -244,6 +248,24 @@ const SIGN_IN_ERROR_HTML = (message: string) => `<!doctype html>
 <h1>Sign in failed</h1>
 <p>${htmlEscape(message)}</p>
 <p><a href="/auth/sign-in">Try again</a></p>
+</body></html>`;
+
+const SIGN_IN_EXPIRED_HTML = (hadLocalHandoff: boolean) => `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign-in request expired</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 28rem; margin: 6rem auto; padding: 0 1.5rem; line-height: 1.5; text-align: center; }
+  h1 { font-size: 1.5rem; }
+  button, .btn { padding: 0.6rem 1rem; font-size: 1rem; font-weight: 600; border: 0; border-radius: 0.4rem; background: #6750a4; color: #fff; cursor: pointer; text-decoration: none; display: inline-block; }
+</style>
+</head><body>
+<h1>Sign-in request expired</h1>
+${hadLocalHandoff
+  ? "<p>Return to the Oyster app and start sign-in again.</p><button onclick=\"window.close()\" class=\"btn\">Close this window</button>"
+  : "<p>This sign-in link is no longer valid.</p><a href=\"/auth/sign-in\" class=\"btn\">Sign in again</a>"}
 </body></html>`;
 
 async function sendMagicLink(env: Env, email: string, link: string): Promise<void> {
@@ -471,6 +493,10 @@ const DEVICE_CODE_TTL_MS = 10 * 60 * 1000;
 // enough to be paste-friendly even if the auto-open browser fails.
 const USER_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
+function randomState(): string {
+  return randomToken(32);  // existing helper produces 43-char base64url; reusable as state.
+}
+
 function randomUserCode(): string {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
@@ -610,12 +636,374 @@ async function handleWhoami(req: Request, env: Env, host: string): Promise<Respo
   return json({ id: lookup.user.id, email: lookup.user.email }, 200, NO_STORE);
 }
 
-async function handleGithubStart(_req: Request, env: Env): Promise<Response> {
+async function handleGithubStart(req: Request, env: Env, url: URL): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
     return json({ error: "oauth_not_configured" }, 503, NO_STORE);
   }
-  // Phase 2 wires the real start flow.
-  return json({ error: "not_implemented" }, 501, NO_STORE);
+
+  // Per-IP gate. Reuses MAGIC_LINK_LIMIT — same auth-attempt budget as
+  // /auth/magic-link and /auth/device-init.
+  const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
+  const ipGate = await env.MAGIC_LINK_LIMIT.limit({ key: ip });
+  if (!ipGate.success) {
+    return htmlResponse(
+      SIGN_IN_ERROR_HTML("Too many sign-in attempts. Please try again shortly."),
+      429,
+      NO_STORE,
+    );
+  }
+
+  const userCode = url.searchParams.get("d");
+  const now = Date.now();
+
+  // If ?d= is present, validate before redirecting to GitHub. Saves a
+  // wasted OAuth round-trip when the local handoff is already dead.
+  if (userCode) {
+    if (userCode.length > MAX_USER_CODE_LEN) {
+      return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
+    }
+    const dc = await env.DB
+      .prepare("SELECT device_code, session_id, claimed_at, expires_at FROM device_codes WHERE user_code = ?")
+      .bind(userCode)
+      .first<{ device_code: string; session_id: string | null; claimed_at: number | null; expires_at: number }>();
+    if (!dc || dc.expires_at <= now || dc.session_id !== null || dc.claimed_at !== null) {
+      return htmlResponse(SIGN_IN_EXPIRED_HTML(true), 400, NO_STORE);
+    }
+  }
+
+  const state = randomState();
+  const verifier = pkceVerifier();
+  const challenge = await codeChallengeS256(verifier);
+
+  await env.DB
+    .prepare(
+      "INSERT INTO oauth_states (state, provider, pkce_verifier, user_code, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(state, "github", verifier, userCode, now, now + OAUTH_STATE_TTL_MS)
+    .run();
+
+  const githubUrl = new URL("https://github.com/login/oauth/authorize");
+  githubUrl.searchParams.set("client_id", env.GITHUB_OAUTH_CLIENT_ID);
+  githubUrl.searchParams.set("redirect_uri", `${url.origin}/auth/github/callback`);
+  githubUrl.searchParams.set("scope", "user:email");
+  githubUrl.searchParams.set("state", state);
+  githubUrl.searchParams.set("code_challenge", challenge);
+  githubUrl.searchParams.set("code_challenge_method", "S256");
+  githubUrl.searchParams.set("allow_signup", "true");
+
+  return new Response(null, {
+    status: 302,
+    headers: { location: githubUrl.toString(), ...NO_STORE },
+  });
+}
+
+interface GitHubUser {
+  id: number;
+  login: string;
+}
+
+async function exchangeGithubCode(env: Env, code: string, verifier: string, redirectUri: string): Promise<string | null> {
+  const res = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      client_id: env.GITHUB_OAUTH_CLIENT_ID,
+      client_secret: env.GITHUB_OAUTH_CLIENT_SECRET,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+    }),
+  });
+  if (!res.ok) {
+    console.error("github_token_exchange_failed", res.status);
+    return null;
+  }
+  const body = await res.json().catch(() => null) as { access_token?: string } | null;
+  return body?.access_token ?? null;
+}
+
+async function fetchGithubUser(token: string): Promise<GitHubUser | null> {
+  const res = await fetch("https://api.github.com/user", {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "user-agent": "oyster-auth",
+      accept: "application/vnd.github+json",
+    },
+  });
+  if (!res.ok) {
+    console.error("github_user_fetch_failed", res.status);
+    return null;
+  }
+  const body = await res.json().catch(() => null) as { id?: number; login?: string } | null;
+  if (!body || typeof body.id !== "number" || typeof body.login !== "string") return null;
+  return { id: body.id, login: body.login };
+}
+
+async function fetchGithubEmails(token: string): Promise<GitHubEmail[] | null> {
+  const res = await fetch("https://api.github.com/user/emails", {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "user-agent": "oyster-auth",
+      accept: "application/vnd.github+json",
+    },
+  });
+  if (!res.ok) {
+    console.error("github_emails_fetch_failed", res.status);
+    return null;
+  }
+  const body = await res.json().catch(() => null);
+  if (!Array.isArray(body)) return null;
+  return body as GitHubEmail[];
+}
+
+interface ResolvedIdentity {
+  user_id: string;
+  email_for_session: string;  // the email we'll show on the welcome page (current users.email after STEP 1's update)
+}
+
+async function resolveIdentity(
+  db: D1Database,
+  provider: string,
+  providerUserId: string,
+  providerEmail: string,
+  now: number,
+): Promise<ResolvedIdentity> {
+  // STEP 1 — identity match. provider_user_id is the truth.
+  const identityRow = await db
+    .prepare("SELECT user_id FROM user_identities WHERE provider = ? AND provider_user_id = ?")
+    .bind(provider, providerUserId)
+    .first<{ user_id: string }>();
+
+  if (identityRow) {
+    await db
+      .prepare(
+        "UPDATE user_identities SET provider_email = ?, last_seen_at = ? WHERE provider = ? AND provider_user_id = ?",
+      )
+      .bind(providerEmail, now, provider, providerUserId)
+      .run();
+
+    // Try to update users.email to the current verified primary. If
+    // another users row already owns this email, keep ours unchanged
+    // and log the conflict — sign-in still succeeds.
+    let emailForSession = providerEmail;
+    try {
+      const updateRes = await db
+        .prepare("UPDATE users SET email = ?, last_seen_at = ? WHERE id = ?")
+        .bind(providerEmail, now, identityRow.user_id)
+        .run();
+      // Note: D1 lets the UPDATE succeed even if the new value equals
+      // the old; meta.changes reflects rows actually changed by storage.
+      // We don't need to branch on that.
+      void updateRes;
+    } catch (err) {
+      const message = (err as Error)?.message ?? String(err);
+      if (/UNIQUE constraint failed/.test(message)) {
+        const conflictRow = await db
+          .prepare("SELECT id, email FROM users WHERE email = ?")
+          .bind(providerEmail)
+          .first<{ id: string; email: string }>();
+        const ourRow = await db
+          .prepare("SELECT email FROM users WHERE id = ?")
+          .bind(identityRow.user_id)
+          .first<{ email: string }>();
+        console.warn(JSON.stringify({
+          kind: "oauth_email_conflict",
+          provider,
+          provider_user_id: providerUserId,
+          user_id: identityRow.user_id,
+          conflicting_user_id: conflictRow?.id ?? null,
+          attempted_email: providerEmail,
+          kept_email: ourRow?.email ?? null,
+        }));
+        emailForSession = ourRow?.email ?? providerEmail;
+      } else {
+        throw err;
+      }
+    }
+
+    return { user_id: identityRow.user_id, email_for_session: emailForSession };
+  }
+
+  // STEP 2 — first-time link, email match. With a short retry on the
+  // STEP 3 INSERT to handle the rare concurrent first-link race for
+  // the same email.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const userRow = await db
+      .prepare("SELECT id FROM users WHERE email = ?")
+      .bind(providerEmail)
+      .first<{ id: string }>();
+
+    if (userRow) {
+      // Existing user — link the GitHub identity to it. INSERT OR
+      // IGNORE so two concurrent callbacks for the same GitHub account
+      // (rare double-click race) both succeed: one inserts, the other
+      // no-ops. Both arrive at the same returned user_id.
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO user_identities
+             (provider, provider_user_id, user_id, provider_email, linked_at, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(provider, providerUserId, userRow.id, providerEmail, now, now)
+        .run();
+      return { user_id: userRow.id, email_for_session: providerEmail };
+    }
+
+    // STEP 3 — first-time link, no existing user.
+    const newUserId = crypto.randomUUID();
+    try {
+      await db.batch([
+        db.prepare("INSERT INTO users (id, email, created_at, last_seen_at) VALUES (?, ?, ?, ?)")
+          .bind(newUserId, providerEmail, now, now),
+        db.prepare(
+          `INSERT INTO user_identities
+             (provider, provider_user_id, user_id, provider_email, linked_at, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+        ).bind(provider, providerUserId, newUserId, providerEmail, now, now),
+      ]);
+      return { user_id: newUserId, email_for_session: providerEmail };
+    } catch (err) {
+      const message = (err as Error)?.message ?? String(err);
+      if (!/UNIQUE constraint failed/.test(message)) throw err;
+      // Concurrent first-link by email — retry, STEP 2 will hit this time.
+    }
+  }
+
+  throw new Error("identity_resolution_failed_after_retries");
+}
+
+async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<Response> {
+  if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
+    return json({ error: "oauth_not_configured" }, 503, NO_STORE);
+  }
+
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  if (!code || !state || state.length > 200) {
+    return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
+  }
+
+  const now = Date.now();
+
+  // Atomic state consume. Two concurrent callbacks for the same state
+  // cannot both pass — only one sees the RETURNING row. Scope by
+  // provider in the WHERE clause so a state minted by a future
+  // /auth/<other-provider>/start can never be consumed here, even if
+  // an attacker forces a callback URL collision.
+  const stateRow = await env.DB
+    .prepare(
+      `UPDATE oauth_states
+          SET consumed_at = ?
+        WHERE state = ? AND provider = ? AND consumed_at IS NULL AND expires_at > ?
+        RETURNING pkce_verifier, user_code`,
+    )
+    .bind(now, state, "github", now)
+    .first<{ pkce_verifier: string; user_code: string | null }>();
+
+  if (!stateRow) {
+    return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
+  }
+
+  const redirectUri = `${url.origin}/auth/github/callback`;
+  const accessToken = await exchangeGithubCode(env, code, stateRow.pkce_verifier, redirectUri);
+  if (!accessToken) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 502, NO_STORE);
+  }
+
+  const ghUser = await fetchGithubUser(accessToken);
+  if (!ghUser) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 502, NO_STORE);
+  }
+
+  const ghEmails = await fetchGithubEmails(accessToken);
+  if (!ghEmails) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 502, NO_STORE);
+  }
+
+  const primaryEmail = pickPrimaryVerifiedEmail(ghEmails);
+  if (!primaryEmail) {
+    return htmlResponse(
+      SIGN_IN_ERROR_HTML("GitHub didn't return a verified primary email. Add and verify a primary email at github.com/settings/emails, or sign in with the email link below."),
+      400,
+      NO_STORE,
+    );
+  }
+
+  let resolved: ResolvedIdentity;
+  try {
+    resolved = await resolveIdentity(env.DB, "github", String(ghUser.id), primaryEmail, now);
+  } catch (err) {
+    console.error("resolve_identity_failed", err);
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 503, NO_STORE);
+  }
+
+  const sessionId = crypto.randomUUID();
+  const sessionExpires = now + SESSION_TTL_MS;
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
+      .bind(sessionId, resolved.user_id, now, sessionExpires),
+    env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now, resolved.user_id),
+  ]);
+
+  // If the original /start carried a user_code, attach the new session
+  // to that device_codes row. Atomic UPDATE — if 0 rows changed, the
+  // device_codes TTL ran out during the OAuth round-trip.
+  let attachedDeviceCode = false;
+  if (stateRow.user_code) {
+    const dc = await env.DB
+      .prepare("SELECT device_code FROM device_codes WHERE user_code = ?")
+      .bind(stateRow.user_code)
+      .first<{ device_code: string }>();
+    if (dc) {
+      const attachRes = await env.DB
+        .prepare(
+          "UPDATE device_codes SET session_id = ? WHERE device_code = ? AND session_id IS NULL AND expires_at > ?",
+        )
+        .bind(sessionId, dc.device_code, now)
+        .run();
+      attachedDeviceCode = (attachRes.meta?.changes ?? 0) === 1;
+      if (!attachedDeviceCode) {
+        // Race: device_codes TTL'd during the OAuth round-trip. Session
+        // is valid for the browser cookie; the local app missed the
+        // window. Surface the error rather than silent split-brain.
+        const cookie = sessionCookie(sessionId, url.host);
+        return htmlResponse(SIGN_IN_EXPIRED_HTML(true), 400, {
+          "set-cookie": cookie,
+          ...NO_STORE,
+        });
+      }
+    } else {
+      // user_code disappeared (TTL'd and gc'd) — same UX outcome.
+      const cookie = sessionCookie(sessionId, url.host);
+      return htmlResponse(SIGN_IN_EXPIRED_HTML(true), 400, {
+        "set-cookie": cookie,
+        ...NO_STORE,
+      });
+    }
+  }
+
+  const cookie = sessionCookie(sessionId, url.host);
+
+  // Browser-only: 302 to /auth/welcome (matches handleVerify shape).
+  // Local-handoff: render WELCOME_HTML directly with the "you can close
+  // this window" copy so the user doesn't see a flash of /auth/welcome.
+  if (attachedDeviceCode) {
+    return htmlResponse(WELCOME_HTML(resolved.email_for_session, true), 200, {
+      "set-cookie": cookie,
+      ...NO_STORE,
+    });
+  }
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: "/auth/welcome",
+      "set-cookie": cookie,
+      ...NO_STORE,
+    },
+  });
 }
 
 export default {
@@ -641,7 +1029,10 @@ export default {
         return await handleWhoami(req, env, url.host);
       }
       if (url.pathname === "/auth/github/start" && req.method === "GET") {
-        return await handleGithubStart(req, env);
+        return await handleGithubStart(req, env, url);
+      }
+      if (url.pathname === "/auth/github/callback" && req.method === "GET") {
+        return await handleGithubCallback(req, env, url);
       }
       if (url.pathname === "/auth/device-init" && req.method === "POST") {
         return await handleDeviceInit(req, env);
