@@ -679,8 +679,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (await tryHandleAuthRoute(req, res, url, ctx, { authService })) return;
 
   // /oauth/*, /.well-known/oauth-*, /mcp/*, /api/mcp/status
+  // Pass the actually-bound `port`, not PREFERRED_PORT — findPort() may
+  // have rolled forward (e.g. main repo's dev server already on 3333),
+  // and the OAuth discovery + redirect URLs must advertise the real port.
   if (await tryHandleOAuthMcpRoute(req, res, url, ctx, {
-    preferredPort: PREFERRED_PORT,
+    port,
     store, artifactService, iconGenerator, spaceService, memoryProvider,
     sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir: USERLAND_DIR,

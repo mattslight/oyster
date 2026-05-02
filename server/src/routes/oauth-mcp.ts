@@ -29,7 +29,10 @@ import type { UiCommand } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
 
 export interface OAuthMcpRouteDeps {
-  preferredPort: number;
+  /** The actual bound port (not OYSTER_PORT / PREFERRED_PORT — the
+   *  preferred port may already be taken). The OAuth discovery URLs
+   *  and the /mcp CORS fallback must advertise the real listener. */
+  port: number;
   store: ArtifactStore;
   artifactService: ArtifactService;
   iconGenerator: IconGenerator;
@@ -49,13 +52,13 @@ export async function tryHandleOAuthMcpRoute(
   ctx: RouteCtx,
   deps: OAuthMcpRouteDeps,
 ): Promise<boolean> {
-  const { sendJson, rejectIfNonLocalOrigin } = ctx;
+  const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
   const {
-    preferredPort, store, artifactService, iconGenerator, spaceService,
+    port, store, artifactService, iconGenerator, spaceService,
     memoryProvider, sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir, getNativeSourcePath,
   } = deps;
-  const BASE = `http://localhost:${preferredPort}`;
+  const BASE = `http://localhost:${port}`;
 
   // ── No-op OAuth for MCP SDK (localhost only, no real auth) ──
 
@@ -77,19 +80,27 @@ export async function tryHandleOAuthMcpRoute(
     return true;
   }
   if (url === "/oauth/register" && req.method === "POST") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    let parsed: { client_name?: string };
-    try { parsed = JSON.parse(body || "{}"); } catch { sendJson({ error: "Invalid JSON body" }, 400); return true; }
-    sendJson({ client_id: "oyster-local", client_name: parsed.client_name || "oyster", client_secret: "none", redirect_uris: ["http://localhost"] }, 201);
+    try {
+      const parsed = await readJsonBody();
+      const clientName = typeof parsed.client_name === "string" ? parsed.client_name : "oyster";
+      sendJson({ client_id: "oyster-local", client_name: clientName, client_secret: "none", redirect_uris: ["http://localhost"] }, 201);
+    } catch (err) {
+      sendError(err);
+    }
     return true;
   }
   if (url.startsWith("/oauth/authorize")) {
     const params = new URL(url, BASE).searchParams;
     const redirect = params.get("redirect_uri") || `${BASE}/`;
     const state = params.get("state") || "";
-    const sep = redirect.includes("?") ? "&" : "?";
-    res.writeHead(302, { Location: `${redirect}${sep}code=oyster-local-code&state=${state}` });
+    // Build the redirect via URL so reserved characters in `state`
+    // (`&`, `#`, `=`, etc.) are properly percent-encoded — concatenating
+    // raw would silently produce a malformed Location and lets a caller
+    // inject extra query parameters into the redirect target.
+    const target = new URL(redirect);
+    target.searchParams.set("code", "oyster-local-code");
+    target.searchParams.set("state", state);
+    res.writeHead(302, { Location: target.toString() });
     res.end();
     return true;
   }
@@ -107,7 +118,7 @@ export async function tryHandleOAuthMcpRoute(
       return true;
     }
     // Override the wildcard CORS header set at the top of handleHttpRequest
-    res.setHeader("Access-Control-Allow-Origin", origin || `http://localhost:${preferredPort}`);
+    res.setHeader("Access-Control-Allow-Origin", origin || `http://localhost:${port}`);
 
     // `?internal=1` = Oyster's own embedded OpenCode subprocess; anything
     // else is an external agent (Claude Code / Cursor / etc.). The query
