@@ -1110,7 +1110,12 @@ body {
   inset: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 100;
+  /* Above inspector panel (5000) so opening a file from the session
+     inspector lifts the viewer onto the foreground without forcing the
+     panel to close. Stays below Spotlight (5500) and ConfirmModal
+     (10000). pointer-events:none on the layer means clicks fall through
+     to the inspector backdrop where no viewer covers it. */
+  z-index: 5100;
 }
 
 .windows-layer > div {

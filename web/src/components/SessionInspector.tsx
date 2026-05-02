@@ -19,6 +19,7 @@ import type {
 } from "../data/sessions-api";
 import { KindThumb } from "./KindThumb";
 import type { ActivePanel } from "./InspectorPanel";
+import type { Artifact } from "../data/artifacts-api";
 
 interface Props {
   sessionId: string;
@@ -33,6 +34,11 @@ interface Props {
    *  (#332). */
   initialSearchQuery?: string;
   onSwitchTo: (next: ActivePanel) => void;
+  /** Open an artefact directly in the file viewer (closes this panel).
+   *  Clicking an artefact in the Artefacts tab routes here rather than
+   *  through the ArtefactInspector — users want the file, not a metadata
+   *  sidebar on top of a metadata sidebar. */
+  onOpenArtefact: (artefact: Artifact) => void;
   onClose: () => void;
   onNotFound: () => void;
 }
@@ -100,7 +106,7 @@ function saveVisibleCategories(set: Set<RoleCategory>) {
   } catch { /* ignore */ }
 }
 
-export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onClose, onNotFound }: Props) {
+export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onOpenArtefact, onClose, onNotFound }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
@@ -334,6 +340,7 @@ export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, 
         focusEventId={focusEventId}
         initialSearchQuery={initialSearchQuery}
         onSwitchTo={onSwitchTo}
+        onOpenArtefact={onOpenArtefact}
         sessionId={sessionId}
         agent={session.agent}
         hasMoreOlder={hasMoreOlder}
@@ -354,7 +361,7 @@ export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, 
  */
 function TranscriptBody({
   tab, events, artefacts, memory, memoryError, focusEventId, initialSearchQuery,
-  onSwitchTo, sessionId, agent, hasMoreOlder, loadingOlder, onLoadOlder,
+  onSwitchTo, onOpenArtefact, sessionId, agent, hasMoreOlder, loadingOlder, onLoadOlder,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
@@ -364,6 +371,7 @@ function TranscriptBody({
   focusEventId: number | undefined;
   initialSearchQuery: string | undefined;
   onSwitchTo: (next: ActivePanel) => void;
+  onOpenArtefact: (artefact: Artifact) => void;
   sessionId: string;
   agent: SessionAgent;
   hasMoreOlder: boolean;
@@ -650,7 +658,7 @@ function TranscriptBody({
             />
           </>
         )}
-        {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
+        {tab === "artefacts" && <Artefacts items={artefacts} onOpenArtefact={onOpenArtefact} />}
         {tab === "memory" && <MemoryTab memory={memory} memoryError={memoryError} onSwitchTo={onSwitchTo} sessionId={sessionId} />}
       </div>
       {tab === "transcript" && showScrollBottom && (
@@ -1209,10 +1217,10 @@ function dedupeTouches(items: SessionArtifactJoined[]): SessionArtifactJoined[] 
 }
 
 function Artefacts({
-  items, onSwitchTo,
+  items, onOpenArtefact,
 }: {
   items: SessionArtifactJoined[] | null;
-  onSwitchTo: (next: ActivePanel) => void;
+  onOpenArtefact: (artefact: Artifact) => void;
 }) {
   if (items === null) return <div className="inspector-empty">Loading artefacts…</div>;
   const deduped = dedupeTouches(items);
@@ -1226,7 +1234,7 @@ function Artefacts({
           type="button"
           key={item.artifact.id}
           className="link-row"
-          onClick={() => onSwitchTo({ kind: "artefact", id: item.artifact.id })}
+          onClick={() => onOpenArtefact(item.artifact)}
         >
           <KindThumb kind={item.artifact.artifactKind} />
           <div className="link-body">
