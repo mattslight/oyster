@@ -316,6 +316,43 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
+  // ── R2 verbatim recall (#311): FTS5 over session_events.text ──
+  // Lives after the state-rename rebuild block (which DROPs and rebuilds
+  // session_events) so the virtual table + triggers always end up
+  // attached to the final concrete table. We index `text` only — `raw`
+  // is the original JSONL with metadata + JSON syntax, which would
+  // bloat the index and pollute matches.
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS session_events_fts USING fts5(
+      text,
+      content=session_events,
+      content_rowid=id
+    );
+
+    CREATE TRIGGER IF NOT EXISTS session_events_ai AFTER INSERT ON session_events BEGIN
+      INSERT INTO session_events_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS session_events_ad AFTER DELETE ON session_events BEGIN
+      INSERT INTO session_events_fts(session_events_fts, rowid, text) VALUES('delete', old.id, old.text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS session_events_au AFTER UPDATE ON session_events BEGIN
+      INSERT INTO session_events_fts(session_events_fts, rowid, text) VALUES('delete', old.id, old.text);
+      INSERT INTO session_events_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+  `);
+
+  // Backfill the FTS index if rows pre-date it. The 'rebuild' command
+  // wipes + repopulates from the content table — cheap on first run,
+  // no-op-cost-wise on subsequent runs (we only invoke when the index
+  // looks empty alongside non-empty content).
+  {
+    const eventCount = (db.prepare("SELECT COUNT(*) as n FROM session_events").get() as { n: number }).n;
+    const ftsCount = (db.prepare("SELECT COUNT(*) as n FROM session_events_fts").get() as { n: number }).n;
+    if (eventCount > 0 && ftsCount === 0) {
+      db.exec("INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild')");
+    }
+  }
+
   // One-time seed: populate spaces from artifact space_ids only if the table is empty.
   // Using INSERT OR IGNORE on an existing table would resurrect deleted spaces on restart.
   const spaceCount = (db.prepare("SELECT COUNT(*) as n FROM spaces").get() as { n: number }).n;

@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Verbatim transcript recall.** Ask your agent *"what FTS5 schema did we settle on?"* or *"what did Bharat say about memory sync?"* and it now searches your past conversations directly, not just the memory layer. Same-device, full-text indexed via SQLite FTS5; the agent picks the right tool by intent (gist → `recall`; exact phrasing → `recall_transcripts`). Cross-device verbatim recall comes with cloud transcripts in 0.8.0. ([#311](https://github.com/mattslight/oyster/issues/311))
+
 ## [0.5.0] - 2026-05-01
 
 The 0.5.0 line is now stable. Code is identical to `0.5.0-beta.2`. Headline changes from the beta cycle:

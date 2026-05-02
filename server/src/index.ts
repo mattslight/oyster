@@ -966,6 +966,39 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // GET /api/sessions/search?q=…&session_id=…&limit=…
+  // R2 verbatim recall (#311). FTS5 over session_events.text. Mirrors the
+  // MCP `recall_transcripts` tool surface for the web UI.
+  // Local-origin only — transcripts are private user content.
+  {
+    const searchPath = url.split("?")[0];
+    if (searchPath === "/api/sessions/search" && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const parsed = new URL(req.url ?? "/", "http://localhost");
+      const q = parsed.searchParams.get("q") ?? "";
+      const scopeSession = parsed.searchParams.get("session_id") ?? undefined;
+      const limitRaw = parsed.searchParams.get("limit");
+      const limit = limitRaw ? Math.max(1, Math.min(50, Number(limitRaw))) : undefined;
+      try {
+        const hits = sessionStore.searchEvents(q, { sessionId: scopeSession, limit });
+        // Slim the response: drop `raw` (full JSONL line, often kilobytes
+        // of metadata) and `text` (snippet covers what the UI needs to
+        // show). Click-through to the inspector loads the full event.
+        sendJson(hits.map((h) => ({
+          event_id: h.id,
+          session_id: h.session_id,
+          session_title: h.session_title,
+          role: h.role,
+          ts: h.ts,
+          snippet: h.snippet,
+        })));
+      } catch (err) {
+        sendError(err, 500);
+      }
+      return;
+    }
+  }
+
   // GET /api/sessions/:id — single session row (or 404)
   {
     const m = url.match(/^\/api\/sessions\/([^/]+)$/);
@@ -1901,6 +1934,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       iconGenerator,
       spaceService,
       memoryProvider,
+      sessionStore,
       pendingReveals,
       broadcastUiEvent,
       clientContext: isInternal ? { isInternal: true } : { isInternal: false, userAgent: externalUa ?? "unknown" },
