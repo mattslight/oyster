@@ -13,18 +13,26 @@ export interface Memory {
   space_id: string | null;
   tags: string[];
   created_at: string;
+  // R6 traceable recall: which session produced this memory. NULL for
+  // legacy rows and for writes that arrive without a known session
+  // (e.g. internal calls outside the agent watcher's coverage).
+  source_session_id: string | null;
 }
 
 export interface RememberInput {
   content: string;
   space_id?: string;
   tags?: string[];
+  source_session_id?: string | null;
 }
 
 export interface RecallInput {
   query: string;
   space_id?: string;
   limit?: number;
+  // The session asking; logged to memory_recalls so the inspector can
+  // render "Pulled into this session". NULL leaves recall unattributed.
+  recalling_session_id?: string | null;
 }
 
 export interface MemoryProvider {
@@ -35,6 +43,10 @@ export interface MemoryProvider {
   list(space_id?: string): Promise<Memory[]>;
   exportMemories(): Promise<Memory[]>;
   importMemories(memories: Memory[]): Promise<void>;
+  // R6: memories *written* during the given session.
+  getBySourceSession(sessionId: string): Promise<Memory[]>;
+  // R6: memories the given session pulled via recall().
+  getRecalledBySession(sessionId: string): Promise<Memory[]>;
   close(): void;
 }
 
@@ -49,6 +61,7 @@ interface MemoryRow {
   superseded_by: string | null;
   created_at: string;
   updated_at: string;
+  source_session_id: string | null;
 }
 
 function rowToMemory(row: MemoryRow): Memory {
@@ -58,6 +71,7 @@ function rowToMemory(row: MemoryRow): Memory {
     space_id: row.space_id,
     tags: JSON.parse(row.tags),
     created_at: row.created_at,
+    source_session_id: row.source_session_id ?? null,
   };
 }
 
@@ -72,7 +86,13 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     getById: Database.Statement;
     incrementAccess: Database.Statement;
     exportAll: Database.Statement;
+    logRecall: Database.Statement;
+    bySourceSession: Database.Statement;
+    recalledBySession: Database.Statement;
   };
+  // Wraps the per-row access-bump + recall-log inserts in a single
+  // transaction so a 50-row recall is one fsync, not 100.
+  private postRecallTxn!: (rows: MemoryRow[], recallerId: string | null) => void;
   private storagePath: string;
 
   constructor(storagePath: string) {
@@ -101,6 +121,33 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
     this.db.exec(`CREATE INDEX IF NOT EXISTS memories_space_id ON memories(space_id)`);
     this.db.exec(`CREATE INDEX IF NOT EXISTS memories_active ON memories(superseded_by) WHERE superseded_by IS NULL`);
+
+    // R6 traceable recall (#310): each memory remembers the session that
+    // produced it; each recall logs the session that pulled it. Schema is
+    // additive so legacy rows survive (source_session_id NULL = unknown).
+    try {
+      this.db.exec(`ALTER TABLE memories ADD COLUMN source_session_id TEXT`);
+    } catch (err) {
+      // Only swallow the idempotent-rerun case ("duplicate column name").
+      // DB-lock / I/O / corruption errors must surface.
+      if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+    }
+    this.db.exec(`CREATE INDEX IF NOT EXISTS memories_source_session ON memories(source_session_id)`);
+
+    // Grows monotonically — one row per recall result per call. At expected
+    // single-digit recalls/min during active use this stays small for
+    // months. Pruning lives in the 0.8.0 sync work where we'll need a
+    // retention policy anyway (cloud cost). For v1, accept unbounded.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_recalls (
+        id          INTEGER PRIMARY KEY,
+        memory_id   TEXT NOT NULL,
+        session_id  TEXT NOT NULL,
+        ts          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS memory_recalls_session ON memory_recalls(session_id);
+      CREATE INDEX IF NOT EXISTS memory_recalls_memory ON memory_recalls(memory_id);
+    `);
 
     // FTS5 virtual table
     this.db.exec(`
@@ -131,8 +178,8 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     // Prepared statements
     this.stmts = {
       insert: this.db.prepare(
-        `INSERT INTO memories (id, space_id, content, tags, created_at, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        `INSERT INTO memories (id, space_id, content, tags, source_session_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       ),
       findExact: this.db.prepare(
         `SELECT * FROM memories
@@ -156,7 +203,38 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       exportAll: this.db.prepare(
         `SELECT * FROM memories WHERE superseded_by IS NULL ORDER BY created_at ASC`,
       ),
+      logRecall: this.db.prepare(
+        `INSERT INTO memory_recalls (memory_id, session_id) VALUES (?, ?)`,
+      ),
+      bySourceSession: this.db.prepare(
+        `SELECT * FROM memories
+         WHERE source_session_id = ? AND superseded_by IS NULL
+         ORDER BY created_at ASC`,
+      ),
+      recalledBySession: this.db.prepare(
+        // De-dupe: a session can recall the same memory many times; we want
+        // each memory once, ordered by most-recent recall.
+        `SELECT m.*
+         FROM memories m
+         JOIN (
+           SELECT memory_id, MAX(ts) AS last_ts
+           FROM memory_recalls
+           WHERE session_id = ?
+           GROUP BY memory_id
+         ) r ON r.memory_id = m.id
+         WHERE m.superseded_by IS NULL
+         ORDER BY r.last_ts DESC`,
+      ),
     };
+
+    const incrementAccess = this.stmts.incrementAccess;
+    const logRecall = this.stmts.logRecall;
+    this.postRecallTxn = this.db.transaction((rows: MemoryRow[], recallerId: string | null) => {
+      for (const row of rows) {
+        incrementAccess.run(row.id);
+        if (recallerId) logRecall.run(row.id, recallerId);
+      }
+    });
   }
 
   findExact(content: string, spaceId?: string): boolean {
@@ -167,6 +245,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
   async remember(input: RememberInput): Promise<Memory> {
     const spaceId = input.space_id ?? null;
     const tags = JSON.stringify(input.tags ?? []);
+    const sourceSessionId = input.source_session_id ?? null;
 
     // Conservative dedupe: exact content match in same scope
     const existing = this.stmts.findExact.get(input.content, spaceId, spaceId) as MemoryRow | undefined;
@@ -175,7 +254,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     }
 
     const id = crypto.randomUUID();
-    this.stmts.insert.run(id, spaceId, input.content, tags);
+    this.stmts.insert.run(id, spaceId, input.content, tags, sourceSessionId);
     const row = this.stmts.getById.get(id) as MemoryRow;
     return rowToMemory(row);
   }
@@ -215,11 +294,21 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
     const rows = this.db.prepare(sql).all(...params) as MemoryRow[];
 
-    // Increment access counts
-    for (const row of rows) {
-      this.stmts.incrementAccess.run(row.id);
-    }
+    // Increment access counts; log the (memory, session) pair when we
+    // know which session is asking (R6 traceable recall). One transaction
+    // per recall so a 50-row result is one fsync, not 100.
+    this.postRecallTxn(rows, input.recalling_session_id ?? null);
 
+    return rows.map(rowToMemory);
+  }
+
+  async getBySourceSession(sessionId: string): Promise<Memory[]> {
+    const rows = this.stmts.bySourceSession.all(sessionId) as MemoryRow[];
+    return rows.map(rowToMemory);
+  }
+
+  async getRecalledBySession(sessionId: string): Promise<Memory[]> {
+    const rows = this.stmts.recalledBySession.all(sessionId) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
@@ -243,12 +332,19 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
   async importMemories(memories: Memory[]): Promise<void> {
     const insertOrIgnore = this.db.prepare(
-      `INSERT OR IGNORE INTO memories (id, space_id, content, tags, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      `INSERT OR IGNORE INTO memories (id, space_id, content, tags, source_session_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
     );
     const tx = this.db.transaction((items: Memory[]) => {
       for (const m of items) {
-        insertOrIgnore.run(m.id, m.space_id, m.content, JSON.stringify(m.tags), m.created_at);
+        insertOrIgnore.run(
+          m.id,
+          m.space_id,
+          m.content,
+          JSON.stringify(m.tags),
+          m.source_session_id ?? null,
+          m.created_at,
+        );
       }
     });
     tx(memories);
@@ -261,7 +357,14 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
 // ── MCP tool registration ─────────────────────────────────────
 
-export function registerMemoryTools(server: McpServer, provider: MemoryProvider): void {
+export function registerMemoryTools(
+  server: McpServer,
+  provider: MemoryProvider,
+  // R6: returns the session id of the agent making this request, or null
+  // when we can't attribute (no matching active session, internal-only call,
+  // unknown user-agent). Stamps memories at write time and logs recalls.
+  resolveActiveSessionId: () => string | null = () => null,
+): void {
   server.tool(
     "remember",
     "Store a memory for future sessions. Use when the user says 'remember this', shares a preference, or makes a decision worth preserving. Do not auto-remember — only store when explicitly asked or when the fact is clearly durable.",
@@ -272,7 +375,12 @@ export function registerMemoryTools(server: McpServer, provider: MemoryProvider)
     },
     async ({ content, space_id, tags }) => {
       try {
-        const memory = await provider.remember({ content, space_id, tags });
+        const memory = await provider.remember({
+          content,
+          space_id,
+          tags,
+          source_session_id: resolveActiveSessionId(),
+        });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(memory, null, 2) }],
         };
@@ -292,7 +400,12 @@ export function registerMemoryTools(server: McpServer, provider: MemoryProvider)
     },
     async ({ query, space_id, limit }) => {
       try {
-        const memories = await provider.recall({ query, space_id, limit });
+        const memories = await provider.recall({
+          query,
+          space_id,
+          limit,
+          recalling_session_id: resolveActiveSessionId(),
+        });
         if (memories.length === 0) {
           return { content: [{ type: "text" as const, text: "No memories found." }] };
         }

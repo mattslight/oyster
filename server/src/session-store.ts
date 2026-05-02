@@ -84,6 +84,8 @@ export interface SessionStore {
   // sessions
   getAll(): SessionRow[];
   getById(id: string): SessionRow | undefined;
+  /** Most-recently-active session for the given agent (R6 attribution). */
+  getMostRecentActiveByAgent(agent: SessionAgent): SessionRow | undefined;
   insertSession(row: InsertSession): void;
   upsertSession(row: InsertSession): void;
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void;
@@ -114,6 +116,7 @@ export class SqliteSessionStore implements SessionStore {
   private stmts: {
     getAll: Database.Statement;
     getById: Database.Statement;
+    getMostRecentActiveByAgent: Database.Statement;
     insertSession: Database.Statement;
     upsertSession: Database.Statement;
     updateSessionState: Database.Statement;
@@ -136,6 +139,17 @@ export class SqliteSessionStore implements SessionStore {
     this.stmts = {
       getAll: db.prepare("SELECT * FROM sessions ORDER BY last_event_at DESC"),
       getById: db.prepare("SELECT * FROM sessions WHERE id = ?"),
+      // R6 (#310): attribute MCP writes to the most recent active session of
+      // the calling agent. Falls through 'active' → 'waiting' so a session
+      // that's been quiet for a few seconds still gets the credit; 'done' /
+      // 'disconnected' are excluded so we don't stamp memories on something
+      // the user has clearly moved on from.
+      getMostRecentActiveByAgent: db.prepare(`
+        SELECT * FROM sessions
+        WHERE agent = ? AND state IN ('active','waiting')
+        ORDER BY last_event_at DESC
+        LIMIT 1
+      `),
       insertSession: db.prepare(`
         INSERT INTO sessions (id, space_id, source_id, cwd, agent, title, state, started_at, model, last_event_at)
         VALUES (
@@ -229,6 +243,10 @@ export class SqliteSessionStore implements SessionStore {
 
   getById(id: string): SessionRow | undefined {
     return this.stmts.getById.get(id) as SessionRow | undefined;
+  }
+
+  getMostRecentActiveByAgent(agent: SessionAgent): SessionRow | undefined {
+    return this.stmts.getMostRecentActiveByAgent.get(agent) as SessionRow | undefined;
   }
 
   insertSession(row: InsertSession): void {

@@ -136,6 +136,13 @@ interface McpDeps {
    * action log with its own calls).
    */
   clientContext: { isInternal: true } | { isInternal: false; userAgent: string };
+  /**
+   * R6 traceable recall: returns the session id this MCP request should be
+   * attributed to (the most recent active session of the matching agent),
+   * or null when no plausible session exists. Resolved per-call so a long-
+   * lived MCP connection still reflects the current active session.
+   */
+  resolveActiveSessionId: () => string | null;
 }
 
 function buildContext(userlandDir: string): string {
@@ -887,7 +894,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
   );
 
   // ── Memory tools ──
-  registerMemoryTools(server, deps.memoryProvider);
+  registerMemoryTools(server, deps.memoryProvider, deps.resolveActiveSessionId);
 
   return server;
 }
