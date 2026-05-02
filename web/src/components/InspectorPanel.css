@@ -373,7 +373,10 @@ button.link-row:focus-visible {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  /* Match the 28px horizontal padding shared by inspector-tabs,
+     transcript-filter, and inspector-body so the input + chevrons
+     align with everything above and below. */
+  padding: 8px 28px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.02);
 }
