@@ -17,13 +17,22 @@ function json(body: unknown, status = 200): Response {
 }
 
 export default {
-  async fetch(req: Request, _env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname === "/auth/whoami" && req.method === "GET") {
       // Wired in PR 2 once the session cookie is being set. Until then,
-      // the endpoint exists so the deploy is verifiable end-to-end:
-      // `curl -i https://oyster.to/auth/whoami` returns 401.
+      // the endpoint exists so the deploy is verifiable end-to-end.
+      // The throwaway COUNT(*) on users isn't part of the eventual
+      // implementation — it's here so the smoke test exercises the D1
+      // binding and the applied migration, not just route wiring.
+      // PR 2 replaces this body with the real session lookup.
+      try {
+        await env.DB.prepare("SELECT count(*) FROM users").first();
+      } catch (err) {
+        console.error("d1_unavailable", err);
+        return json({ error: "database_unavailable" }, 503);
+      }
       return json({ error: "unauthenticated" }, 401);
     }
 

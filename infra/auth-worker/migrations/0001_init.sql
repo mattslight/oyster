@@ -6,7 +6,11 @@
 
 CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,                  -- ulid
-  email         TEXT NOT NULL UNIQUE,              -- lowercased on insert
+  -- COLLATE NOCASE makes the UNIQUE constraint case-insensitive at the
+  -- DB layer so User@example.com and user@example.com are the same row,
+  -- without relying on every code path to .toLowerCase() first. Queries
+  -- against this column also become case-insensitive automatically.
+  email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
   created_at    INTEGER NOT NULL,                  -- unix ms
   last_seen_at  INTEGER NOT NULL                   -- unix ms; bump on session activity
 );
