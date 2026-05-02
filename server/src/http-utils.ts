@@ -31,8 +31,10 @@ export interface RouteCtx {
    *  status; everything else falls back to the supplied default (400). */
   sendError: (err: unknown, fallback?: number) => void;
   /** Read and parse a JSON request body. Throws HttpError(413) if it
-   *  exceeds MAX_MUTATION_BODY, HttpError(400) if it isn't valid JSON. */
-  readJsonBody: () => Promise<Record<string, unknown>>;
+   *  exceeds the cap (default MAX_MUTATION_BODY), HttpError(400) if it
+   *  isn't valid JSON. Pass `{ maxBytes }` for endpoints that legitimately
+   *  accept larger payloads (e.g. /api/import/* takes pasted AI output). */
+  readJsonBody: (opts?: { maxBytes?: number }) => Promise<Record<string, unknown>>;
   /** Refuse callers from non-loopback origins. Sets the CORS allow-origin
    *  to the request's origin on success. Returns true if the request was
    *  rejected (caller should `return` immediately). */
@@ -50,14 +52,15 @@ export function makeRouteCtx(req: IncomingMessage, res: ServerResponse): RouteCt
     else sendJson({ error: err instanceof Error ? err.message : String(err) }, fallback);
   };
 
-  async function readJsonBody(): Promise<Record<string, unknown>> {
+  async function readJsonBody(opts?: { maxBytes?: number }): Promise<Record<string, unknown>> {
+    const maxBytes = opts?.maxBytes ?? MAX_MUTATION_BODY;
     let body = "";
     for await (const chunk of req) {
       body += chunk;
-      if (body.length > MAX_MUTATION_BODY) {
+      if (body.length > maxBytes) {
         // Destroy the socket so we stop reading further bytes from an
         // oversized payload — unlike a plain throw, which lets the rest
-        // of the stream keep draining. Matches the /api/import/* pattern.
+        // of the stream keep draining.
         req.destroy();
         throw new HttpError("Payload too large", 413);
       }
