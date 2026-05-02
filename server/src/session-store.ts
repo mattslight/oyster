@@ -49,6 +49,21 @@ export interface SessionArtifactRow {
   when_at: string;
 }
 
+/** A transcript-search hit. Slim by design — full `text`/`raw` would
+ *  bloat the result for callers that just want to render a snippet
+ *  list. Click-through to the inspector loads the full event via
+ *  getEventById. */
+export interface SessionEventSearchHit {
+  id: number;
+  session_id: string;
+  /** The session this event belongs to, denormalised for display convenience. */
+  session_title: string | null;
+  role: SessionEventRole;
+  ts: string;
+  /** Highlighted excerpt with `[…]` ellipsis around the match. */
+  snippet: string;
+}
+
 // ── Insert shapes (let SQLite supply timestamps + auto-id) ──
 
 export interface InsertSession {
@@ -108,6 +123,10 @@ export interface SessionStore {
   // last_offset — JSONL bytes already ingested for this session.
   getLastOffset(sessionId: string): number;
   setLastOffset(sessionId: string, offset: number): void;
+  /** R2 verbatim recall (#311): FTS5 search across all session_events.text.
+   *  `query` is natural language; tokenised to OR-joined terms inside the
+   *  implementation. `sessionId` optionally scopes to one session. */
+  searchEvents(query: string, opts?: { limit?: number; sessionId?: string }): SessionEventSearchHit[];
 }
 
 // ── SQLite implementation ──
@@ -361,5 +380,47 @@ export class SqliteSessionStore implements SessionStore {
 
   setLastOffset(sessionId: string, offset: number): void {
     this.stmts.setLastOffset.run(offset, sessionId);
+  }
+
+  searchEvents(
+    query: string,
+    opts: { limit?: number; sessionId?: string } = {},
+  ): SessionEventSearchHit[] {
+    // Mirror the memory-store tokenisation: strip punctuation, drop
+    // 1-char tokens, OR-join. Keeps natural-language queries forgiving
+    // ("what did we decide about pricing?") without making the agent
+    // learn FTS5 query syntax. Phrase matching is a follow-up.
+    const terms = query
+      .replace(/[^\w\s]/g, "")
+      .split(/\s+/)
+      .filter((t) => t.length > 1);
+    if (terms.length === 0) return [];
+    const ftsQuery = terms.join(" OR ");
+    const limit = opts.limit ?? 20;
+
+    // Only project columns the result type actually needs — full text and
+    // raw JSONL can be hundreds of KB per row, and every caller today
+    // slims them out anyway.
+    const cols = `e.id, e.session_id, e.role, e.ts,
+                  s.title AS session_title,
+                  snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet`;
+    const sql = opts.sessionId
+      ? `SELECT ${cols}
+         FROM session_events e
+         JOIN session_events_fts fts ON e.id = fts.rowid
+         JOIN sessions s             ON s.id = e.session_id
+         WHERE session_events_fts MATCH ? AND e.session_id = ?
+         ORDER BY fts.rank
+         LIMIT ?`
+      : `SELECT ${cols}
+         FROM session_events e
+         JOIN session_events_fts fts ON e.id = fts.rowid
+         JOIN sessions s             ON s.id = e.session_id
+         WHERE session_events_fts MATCH ?
+         ORDER BY fts.rank
+         LIMIT ?`;
+
+    const params = opts.sessionId ? [ftsQuery, opts.sessionId, limit] : [ftsQuery, limit];
+    return this.db.prepare(sql).all(...params) as SessionEventSearchHit[];
   }
 }

@@ -316,6 +316,60 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
+  // ── R2 verbatim recall (#311): FTS5 over session_events.text ──
+  // Lives after the state-rename rebuild block (which DROPs and rebuilds
+  // session_events) so the virtual table + triggers always end up
+  // attached to the final concrete table. We index `text` only — `raw`
+  // is the original JSONL with metadata + JSON syntax, which would
+  // bloat the index and pollute matches.
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS session_events_fts USING fts5(
+      text,
+      content=session_events,
+      content_rowid=id
+    );
+
+    CREATE TRIGGER IF NOT EXISTS session_events_ai AFTER INSERT ON session_events BEGIN
+      INSERT INTO session_events_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS session_events_ad AFTER DELETE ON session_events BEGIN
+      INSERT INTO session_events_fts(session_events_fts, rowid, text) VALUES('delete', old.id, old.text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS session_events_au AFTER UPDATE ON session_events BEGIN
+      INSERT INTO session_events_fts(session_events_fts, rowid, text) VALUES('delete', old.id, old.text);
+      INSERT INTO session_events_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+  `);
+
+  // Backfill the FTS index if it's stale relative to the content table.
+  //
+  // The naive "rebuild only when ftsCount === 0" check is wrong: a hot-
+  // reload during dev can leave the FTS table partially populated by the
+  // INSERT triggers (count(*) reports 164k rows because docsize entries
+  // exist) while the inverted index is still empty or sparse. The result
+  // is searches that match a handful of recent rows but miss everything
+  // historical.
+  //
+  // Instead, sample a guaranteed-frequent token. SQLite's default
+  // unicode61 tokenizer has no stop-word list, so a single-char token
+  // like 'a' is indexed everywhere it appears. If hit volume is well
+  // below event volume, the index is broken and needs a full rebuild.
+  // 'rebuild' is idempotent — clears + re-populates from content — so
+  // it's safe to run.
+  {
+    const eventCount = (db.prepare("SELECT COUNT(*) as n FROM session_events").get() as { n: number }).n;
+    if (eventCount > 0) {
+      const sampleHits = (db.prepare(
+        "SELECT count(*) as n FROM session_events_fts WHERE session_events_fts MATCH 'a'"
+      ).get() as { n: number }).n;
+      // Threshold is generous — even pathological transcripts will have
+      // 'a' in well over 50% of events. < 25% indicates a broken index.
+      if (sampleHits * 4 < eventCount) {
+        db.exec("INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild')");
+      }
+    }
+  }
+
   // One-time seed: populate spaces from artifact space_ids only if the table is empty.
   // Using INSERT OR IGNORE on an existing table would resurrect deleted spaces on restart.
   const spaceCount = (db.prepare("SELECT COUNT(*) as n FROM spaces").get() as { n: number }).n;

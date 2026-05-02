@@ -8,6 +8,7 @@ import type { IconGenerator } from "./icon-generator.js";
 import type { SpaceService } from "./space-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
+import type { SessionStore } from "./session-store.js";
 import type { ArtifactKind } from "../../shared/types.js";
 import { debug } from "./debug.js";
 import { slugify } from "./utils.js";
@@ -128,6 +129,7 @@ interface McpDeps {
   iconGenerator: IconGenerator;
   spaceService: SpaceService;
   memoryProvider: MemoryProvider;
+  sessionStore: SessionStore;
   pendingReveals: Set<string>;
   broadcastUiEvent: (event: UiCommand) => void;
   /**
@@ -895,6 +897,44 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   // ── Memory tools ──
   registerMemoryTools(server, deps.memoryProvider, deps.resolveActiveSessionId);
+
+  // ── Transcript search (R2 verbatim, #311) ──
+  // Distinct from `recall` (which searches the memory layer). Returns
+  // transcript events instead of memories — different result shape, so
+  // the agent picks the right tool by intent: gist → recall; exact
+  // phrasing → recall_transcripts.
+  server.tool(
+    "recall_transcripts",
+    "Search across past conversation transcripts by natural-language query. Use when the user asks about specific phrasing, exact decisions, or details that wouldn't necessarily be in a saved memory — e.g. 'what FTS5 schema did we settle on', 'what specs did we agree for the render server'. Returns matched transcript events with a highlighted snippet, ordered by relevance.",
+    {
+      query: z.string().describe("Natural language search query"),
+      session_id: z.string().optional().describe("Scope search to a single session (omit to search across all)"),
+      limit: z.number().int().min(1).max(50).optional().describe("Max results (default 20)"),
+    },
+    async ({ query, session_id, limit }) => {
+      try {
+        const hits = deps.sessionStore.searchEvents(query, { sessionId: session_id, limit });
+        if (hits.length === 0) {
+          return { content: [{ type: "text" as const, text: "No transcript matches." }] };
+        }
+        // Slim the response: agents don't need the raw JSONL line on
+        // every hit; full event is a click-through away in the inspector.
+        const slim = hits.map((h) => ({
+          session_id: h.session_id,
+          session_title: h.session_title,
+          role: h.role,
+          ts: h.ts,
+          snippet: h.snippet,
+          event_id: h.id,
+        }));
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(slim, null, 2) }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      }
+    },
+  );
 
   return server;
 }

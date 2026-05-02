@@ -966,6 +966,47 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // GET /api/sessions/search?q=…&session_id=…&limit=…
+  // R2 verbatim recall (#311). FTS5 over session_events.text. Mirrors the
+  // MCP `recall_transcripts` tool surface for the web UI.
+  // Local-origin only — transcripts are private user content.
+  {
+    const searchPath = url.split("?")[0];
+    if (searchPath === "/api/sessions/search" && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      const parsed = new URL(req.url ?? "/", "http://localhost");
+      const q = parsed.searchParams.get("q") ?? "";
+      const scopeSession = parsed.searchParams.get("session_id") ?? undefined;
+      const limitRaw = parsed.searchParams.get("limit");
+      // Validate before clamping — Number("foo") is NaN, which Math.min/max
+      // propagate. Treat anything non-finite or non-positive as "use the
+      // store's default" rather than 400'ing.
+      let limit: number | undefined;
+      if (limitRaw !== null) {
+        const parsedLimit = Number(limitRaw);
+        if (Number.isFinite(parsedLimit) && parsedLimit >= 1) {
+          limit = Math.min(50, Math.floor(parsedLimit));
+        }
+      }
+      try {
+        const hits = sessionStore.searchEvents(q, { sessionId: scopeSession, limit });
+        // Rename `id` → `event_id` for the wire format (the web UI's
+        // ambient `id` is artefact id; explicit naming avoids confusion).
+        sendJson(hits.map((h) => ({
+          event_id: h.id,
+          session_id: h.session_id,
+          session_title: h.session_title,
+          role: h.role,
+          ts: h.ts,
+          snippet: h.snippet,
+        })));
+      } catch (err) {
+        sendError(err, 500);
+      }
+      return;
+    }
+  }
+
   // GET /api/sessions/:id — single session row (or 404)
   {
     const m = url.match(/^\/api\/sessions\/([^/]+)$/);
@@ -1901,6 +1942,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       iconGenerator,
       spaceService,
       memoryProvider,
+      sessionStore,
       pendingReveals,
       broadcastUiEvent,
       clientContext: isInternal ? { isInternal: true } : { isInternal: false, userAgent: externalUa ?? "unknown" },
