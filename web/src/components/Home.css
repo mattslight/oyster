@@ -790,6 +790,22 @@
   font-size: 11px;
 }
 
+.home-memory-source {
+  appearance: none;
+  background: rgba(110, 231, 168, 0.12);
+  color: #6ee7a8;
+  border: none;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  font-family: inherit;
+}
+.home-memory-source:hover {
+  background: rgba(110, 231, 168, 0.22);
+}
+
 /* ── Add-memory form ── */
 .home-memories-add-btn {
   background: transparent;

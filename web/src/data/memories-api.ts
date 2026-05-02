@@ -7,6 +7,9 @@ export interface Memory {
   space_id: string | null;
   tags: string[];
   created_at: string;
+  /** R6 traceable recall (#310): originating session, NULL for legacy
+   *  rows or memories written outside an attributable session. */
+  source_session_id: string | null;
 }
 
 export async function fetchMemories(spaceId?: string | null, signal?: AbortSignal): Promise<Memory[]> {
