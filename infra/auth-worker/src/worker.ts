@@ -457,9 +457,147 @@ async function handleWelcome(req: Request, env: Env, host: string): Promise<Resp
   return htmlResponse(WELCOME_HTML(lookup.user.email, false), 200, NO_STORE);
 }
 
-async function handleWhoami(req: Request, env: Env, host: string): Promise<Response> {
+// Device-flow handoff window: how long a device_code is valid for. Matches
+// docs/plans/auth.md (10 min — long enough for a slow inbox, short enough
+// that abandoned codes don't litter the table).
+const DEVICE_CODE_TTL_MS = 10 * 60 * 1000;
+
+// 8 chars, base32-Crockford-ish (no confusable I/L/O/0/1). Rendered to
+// the user as `XXXX-XXXX` in the sign-in URL — readable and short
+// enough to be paste-friendly even if the auto-open browser fails.
+const USER_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+function randomUserCode(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    out += USER_CODE_ALPHABET[bytes[i] % USER_CODE_ALPHABET.length];
+    if (i === 3) out += "-";
+  }
+  return out;
+}
+
+async function handleDeviceInit(req: Request, env: Env): Promise<Response> {
+  // Per-IP gate. Reuses the same rate-limit binding as /auth/magic-link —
+  // both endpoints are auth-attempt surface and an abuser hitting either
+  // is the same problem. Cap is 20/hour per IP across both.
+  const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
+  const ipGate = await env.MAGIC_LINK_LIMIT.limit({ key: ip });
+  if (!ipGate.success) return json({ error: "rate_limited" }, 429, NO_STORE);
+
+  const now = Date.now();
+  const expiresAt = now + DEVICE_CODE_TTL_MS;
+
+  // Opportunistic GC: delete a small batch of expired rows on every
+  // init. Bounded LIMIT so a single request never spends too long; over
+  // many requests the table stays trimmed without a separate cron Worker.
+  await env.DB
+    .prepare("DELETE FROM device_codes WHERE expires_at < ? LIMIT 100")
+    .bind(now)
+    .run()
+    .catch((err) => console.error("device_codes_gc_failed", err));
+
+  // user_code has UNIQUE — retry on the rare collision rather than
+  // letting a duplicate slip through.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const deviceCode = randomToken(32);
+    const userCode = randomUserCode();
+    try {
+      await env.DB
+        .prepare("INSERT INTO device_codes (device_code, user_code, expires_at) VALUES (?, ?, ?)")
+        .bind(deviceCode, userCode, expiresAt)
+        .run();
+      return json({
+        device_code: deviceCode,
+        user_code: userCode,
+        expires_in: Math.floor(DEVICE_CODE_TTL_MS / 1000),
+      }, 200, NO_STORE);
+    } catch (err) {
+      if (attempt === 3) throw err;
+      // UNIQUE collision on user_code or device_code; retry.
+    }
+  }
+  return json({ error: "device_init_failed" }, 500, NO_STORE);
+}
+
+async function handleDevicePoll(env: Env, deviceCode: string): Promise<Response> {
+  if (!deviceCode || deviceCode.length > MAX_TOKEN_LEN) {
+    return json({ error: "invalid_device_code" }, 400, NO_STORE);
+  }
+  const now = Date.now();
+
+  // Load the user FIRST. The previous version marked claimed_at before
+  // fetching the user row; if the user fetch (or any subsequent step)
+  // failed, the row was burnt — every retry returned 410 already_claimed
+  // and the login was lost. Now: read everything we need to respond,
+  // *then* race to claim. A failed read returns the same status the
+  // poller already handles (404 → "unknown" → 410); only the atomic
+  // UPDATE+meta.changes is the gate.
+  const candidate = await env.DB
+    .prepare(
+      `SELECT d.session_id, d.claimed_at, d.expires_at, u.id AS user_id, u.email
+       FROM device_codes d
+       LEFT JOIN sessions s ON s.id = d.session_id AND s.revoked_at IS NULL AND s.expires_at > ?
+       LEFT JOIN users u ON u.id = s.user_id
+       WHERE d.device_code = ?`
+    )
+    .bind(now, deviceCode)
+    .first<{ session_id: string | null; claimed_at: number | null; expires_at: number; user_id: string | null; email: string | null }>();
+
+  if (!candidate) return json({ error: "unknown_device_code" }, 410, NO_STORE);
+  if (candidate.claimed_at !== null) return json({ error: "already_claimed" }, 410, NO_STORE);
+  if (candidate.expires_at <= now) return json({ error: "expired" }, 410, NO_STORE);
+  if (candidate.session_id === null) return json({ status: "pending" }, 202, NO_STORE);
+  if (!candidate.user_id || !candidate.email) {
+    // Session was revoked between verify and poll. Don't burn the row.
+    return json({ error: "session_unavailable" }, 410, NO_STORE);
+  }
+
+  // Atomic claim. Only one concurrent poll wins.
+  const res = await env.DB
+    .prepare(
+      "UPDATE device_codes SET claimed_at = ? WHERE device_code = ? AND claimed_at IS NULL AND session_id = ?"
+    )
+    .bind(now, deviceCode, candidate.session_id)
+    .run();
+  if ((res.meta?.changes ?? 0) !== 1) {
+    return json({ error: "already_claimed" }, 410, NO_STORE);
+  }
+
+  return json(
+    { session_token: candidate.session_id, user: { id: candidate.user_id, email: candidate.email } },
+    200,
+    NO_STORE,
+  );
+}
+
+async function handleSignOut(req: Request, env: Env, host: string): Promise<Response> {
+  // Accept the session token from either the cookie (browser) or a
+  // Bearer header (local server / CLI). Either revokes the same row.
   const cookies = parseCookies(req);
-  const sid = cookies[COOKIE_NAME];
+  const fromCookie = cookies[COOKIE_NAME];
+  const auth = req.headers.get("authorization") ?? "";
+  const fromBearer = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  const sid = fromCookie || fromBearer;
+  if (!sid) {
+    return json({ ok: true }, 200, { "set-cookie": clearedCookie(host), ...NO_STORE });
+  }
+  await env.DB
+    .prepare("UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
+    .bind(Date.now(), sid)
+    .run();
+  return json({ ok: true }, 200, { "set-cookie": clearedCookie(host), ...NO_STORE });
+}
+
+async function handleWhoami(req: Request, env: Env, host: string): Promise<Response> {
+  // Accept either the browser cookie or a Bearer header from the local
+  // server. Same session row backs both.
+  const cookies = parseCookies(req);
+  const fromCookie = cookies[COOKIE_NAME];
+  const auth = req.headers.get("authorization") ?? "";
+  const fromBearer = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  const sid = fromCookie || fromBearer;
   if (!sid) return json({ error: "unauthenticated" }, 401, NO_STORE);
   const lookup = await getSession(env.DB, sid, Date.now());
   if (!lookup) {
@@ -489,6 +627,16 @@ export default {
       }
       if (url.pathname === "/auth/whoami" && req.method === "GET") {
         return await handleWhoami(req, env, url.host);
+      }
+      if (url.pathname === "/auth/device-init" && req.method === "POST") {
+        return await handleDeviceInit(req, env);
+      }
+      const deviceMatch = url.pathname.match(/^\/auth\/device\/([^/]+)$/);
+      if (deviceMatch && req.method === "GET") {
+        return await handleDevicePoll(env, decodeURIComponent(deviceMatch[1]));
+      }
+      if (url.pathname === "/auth/sign-out" && req.method === "POST") {
+        return await handleSignOut(req, env, url.host);
       }
       return new Response("Not found", { status: 404 });
     } catch (err) {

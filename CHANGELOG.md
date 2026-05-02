@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Sign in to Oyster.** A free account in three clicks — enter email, click the link, you're signed in. The badge in the top-right corner shows your address; sign-out is one click. The same identity will unlock Publish & share artefacts later in 0.7.0 and cross-device continuity in 0.8.0. ([#295](https://github.com/mattslight/oyster/issues/295))
+
 ## [0.6.0] - 2026-05-02
 
 Trustworthy recall — every memory traceable, every conversation searchable.

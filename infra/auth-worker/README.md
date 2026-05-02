@@ -3,14 +3,15 @@
 Cloudflare Worker that handles magic-link sign-in for the free Oyster account, plus the device-flow bridge that lets the local server at `localhost:4444` see the signed-in state. Design: [`docs/plans/auth.md`](../../docs/plans/auth.md).
 
 ```
-GET  /auth/sign-in        HTML form (browser entry point)
-POST /auth/magic-link     {email, user_code?} → email a sign-in link
-GET  /auth/verify?t=...   consume token, set session cookie, redirect to /auth/welcome
-GET  /auth/welcome        landing page after verify (shows the signed-in email)
-GET  /auth/whoami         {id, email} for a valid session, 401 otherwise
+GET  /auth/sign-in              HTML form (browser entry point; ?d=<user_code> for device flow)
+POST /auth/magic-link           {email, user_code?} → email a sign-in link
+GET  /auth/verify?t=...         consume token, set session cookie, redirect to /auth/welcome
+GET  /auth/welcome              landing page after verify (shows the signed-in email)
+GET  /auth/whoami               {id, email} for a valid session, 401 otherwise (cookie OR Bearer)
+POST /auth/device-init          → {device_code, user_code, expires_in} for the local-server bridge
+GET  /auth/device/<device_code> 202 pending / 200 with session_token / 410 gone — polled by local server
+POST /auth/sign-out             revokes the session, clears the cookie (cookie OR Bearer)
 ```
-
-PR 3 will add `/auth/device-init`, `/auth/device/<code>`, `/auth/sign-out`, and the local-server bridge that writes `~/Oyster/config/auth.json`.
 
 ## One-time setup
 

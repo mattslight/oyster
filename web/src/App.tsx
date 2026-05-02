@@ -6,6 +6,7 @@ import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
 import { OnboardingDock } from "./components/OnboardingDock";
+import { AuthBadge } from "./components/AuthBadge";
 import { windowsReducer } from "./stores/windows";
 import {
   type Artifact,
@@ -364,6 +365,7 @@ export default function App() {
 
   return (
     <div className="oyster-shell">
+      <AuthBadge />
       {!connected && (
         <div className="connection-banner">
           <span>Oyster server not connected</span>
