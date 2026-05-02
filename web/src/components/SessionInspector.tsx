@@ -418,12 +418,16 @@ function TranscriptBody({
 
   // Compute matches from the loaded events. Substring on lowercased
   // text — robust against punctuation FTS5 strips (e.g. literal "0.6.0").
+  // Only runs when the bar is open: closing the bar via the magnifying
+  // glass preserves the query for next-open but suppresses the inline
+  // highlights and scroll-anchoring while hidden.
   const trimmedQuery = searchQuery.trim();
+  const isSearching = searchOpen && trimmedQuery.length > 0;
   const matchIds = useMemo<number[]>(() => {
-    if (!events || !trimmedQuery) return [];
+    if (!events || !isSearching) return [];
     const q = trimmedQuery.toLowerCase();
     return events.filter((e) => e.text.toLowerCase().includes(q)).map((e) => e.id);
-  }, [events, trimmedQuery]);
+  }, [events, isSearching, trimmedQuery]);
   // Clamp idx if the match list shrinks under us (e.g. user typed more).
   useEffect(() => {
     if (matchIds.length === 0) { setSearchMatchIdx(0); return; }
@@ -575,7 +579,7 @@ function TranscriptBody({
           visible={visible}
           onToggle={toggleCategory}
           agent={agent}
-          onToggleSearch={() => searchOpen ? closeSearch() : setSearchOpen(true)}
+          onToggleSearch={() => setSearchOpen((v) => !v)}
           searchActive={searchOpen}
         />
       )}
@@ -603,7 +607,7 @@ function TranscriptBody({
               sessionId={sessionId}
               agent={agent}
               flashEventId={flashEventId}
-              highlightQuery={trimmedQuery}
+              highlightQuery={isSearching ? trimmedQuery : ""}
             />
           </>
         )}
