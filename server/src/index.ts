@@ -29,6 +29,7 @@ import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
+import { tryHandleAuthRoute } from "./routes/auth.js";
 import type { UiCommand } from "../../shared/types.js";
 import {
   scanExistingArtifacts,
@@ -680,6 +681,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/memories
   if (await tryHandleMemoryRoute(req, res, url, ctx, { memoryProvider })) return;
 
+  // /api/auth/* — local glue (whoami / startSignIn / signOut). Real auth
+  // (magic-link, OAuth) lives in the Cloudflare Worker.
+  if (await tryHandleAuthRoute(req, res, url, ctx, { authService })) return;
+
   // GET /api/resolve-path?url=...  — resolve a serving URL to a filesystem path
   if (url.startsWith("/api/resolve-path")) {
     const params = new URL(url, "http://localhost").searchParams;
@@ -768,35 +773,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // `mcp_tool_called` events (connected-agent telemetry), which a
   // cross-origin page in the same browser must not be able to observe
   // by opening an EventSource against a running local Oyster.
-  if (url === "/api/auth/whoami" && req.method === "GET") {
-    if (rejectIfNonLocalOrigin()) return;
-    const state = authService.getState();
-    sendJson({ user: state.user });
-    return;
-  }
-  if (url === "/api/auth/login" && req.method === "POST") {
-    if (rejectIfNonLocalOrigin()) return;
-    try {
-      const result = await authService.startSignIn();
-      sendJson(result);
-    } catch (err) {
-      console.error("[auth] /api/auth/login failed:", err);
-      sendJson({ error: "auth_unavailable" }, 503);
-    }
-    return;
-  }
-  if (url === "/api/auth/logout" && req.method === "POST") {
-    if (rejectIfNonLocalOrigin()) return;
-    try {
-      await authService.signOut();
-      sendJson({ ok: true });
-    } catch (err) {
-      console.error("[auth] /api/auth/logout failed:", err);
-      sendJson({ error: "logout_failed" }, 500);
-    }
-    return;
-  }
-
   if (url === "/api/ui/events") {
     if (rejectIfNonLocalOrigin()) return;
     res.writeHead(200, {
