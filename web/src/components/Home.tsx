@@ -1082,6 +1082,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             focusEventId={activePanel.focusEventId}
             initialSearchQuery={activePanel.initialSearchQuery}
             onSwitchTo={setActivePanel}
+            onOpenArtefact={(a) => desktopProps.onArtifactClick(a)}
             onClose={() => setActivePanel(null)}
             onNotFound={() => {
               setActivePanel(null);

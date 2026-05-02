@@ -1110,7 +1110,12 @@ body {
   inset: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 100;
+  /* Above inspector panel (5000) so opening a file from the session
+     inspector lifts the viewer onto the foreground without forcing the
+     panel to close. Stays below Spotlight (5500) and ConfirmModal
+     (10000). pointer-events:none on the layer means clicks fall through
+     to the inspector backdrop where no viewer covers it. */
+  z-index: 5100;
 }
 
 .windows-layer > div {
@@ -1410,8 +1415,9 @@ body {
 .confirm-modal-overlay {
   position: fixed;
   inset: 0;
-  /* Sits above everything — chat bar (900), spotlight (200), viewer windows
-     (1000), tooltips (9999). Modal dialogs must beat all of them. */
+  /* Sits above everything — chat bar (90), inspector (4999/5000), viewer
+     windows (5100), spotlight (5500), tooltips (9999). Modal dialogs must
+     beat all of them. */
   z-index: 10000;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
