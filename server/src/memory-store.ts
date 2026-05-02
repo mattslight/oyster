@@ -49,6 +49,10 @@ export interface MemoryProvider {
   recall(input: RecallInput): Promise<Memory[]>;
   forget(id: string): Promise<void>;
   list(space_id?: string): Promise<Memory[]>;
+  /** Synchronous existence check used by the import flow's dedupe — true
+   *  when an active memory with this exact (content, space_id) already
+   *  exists. Implementations are expected to do a single equality lookup. */
+  findExact(content: string, spaceId?: string): boolean;
   exportMemories(): Promise<Memory[]>;
   importMemories(memories: Memory[]): Promise<void>;
   // R6: memories *written* during the given session.
