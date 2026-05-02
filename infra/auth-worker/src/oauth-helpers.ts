@@ -23,3 +23,19 @@ export async function codeChallengeS256(verifier: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   return bytesToBase64Url(new Uint8Array(buf));
 }
+
+export interface GitHubEmail {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+  visibility: string | null;
+}
+
+export function pickPrimaryVerifiedEmail(emails: GitHubEmail[]): string | null {
+  for (const e of emails) {
+    if (e?.primary === true && e?.verified === true && typeof e.email === "string") {
+      return e.email.toLowerCase();
+    }
+  }
+  return null;
+}
