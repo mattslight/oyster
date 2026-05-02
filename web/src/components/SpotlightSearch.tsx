@@ -43,8 +43,11 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
       .slice(0, ARTEFACTS_LIMIT);
   }, [query, artifacts]);
 
-  // Debounced transcript search. Aborts in-flight requests so a fast
-  // typist doesn't waterfall stale results into the dropdown.
+  // Debounced transcript search. AbortController cancels the request,
+  // but a fetch that has already resolved before we abort can still
+  // run its .then() with stale results. The reqIdRef guard rejects any
+  // result that doesn't match the most recently issued request.
+  const reqIdRef = useRef(0);
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -53,15 +56,17 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
       return;
     }
     setTranscriptsLoading(true);
+    const reqId = ++reqIdRef.current;
     const ac = new AbortController();
     const timer = setTimeout(() => {
       searchTranscripts(trimmed, { limit: TRANSCRIPTS_LIMIT, signal: ac.signal })
         .then((hits) => {
+          if (reqId !== reqIdRef.current) return;
           setTranscriptHits(hits);
           setTranscriptsLoading(false);
         })
         .catch((err) => {
-          if (ac.signal.aborted) return;
+          if (ac.signal.aborted || reqId !== reqIdRef.current) return;
           console.warn("[Spotlight] transcript search failed:", err);
           setTranscriptHits([]);
           setTranscriptsLoading(false);
@@ -114,6 +119,12 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") { onClose(); return; }
+    // Arrow keys are no-ops on an empty list — without this guard,
+    // ArrowDown's Math.min(s+1, -1) would set selected to -1.
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && flatHits.length === 0) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelected((s) => Math.min(s + 1, flatHits.length - 1));

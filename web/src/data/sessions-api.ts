@@ -33,10 +33,11 @@ export interface FetchSessionEventsOpts {
   // only events newer than the cursor (live append). Mutually exclusive.
   before?: number;
   after?: number;
-  /** Centred window: half-limit events on each side of the target, plus
-   *  the target itself. Used to deep-link into the middle of a long
-   *  transcript (e.g. Spotlight click-through, #329). Mutually exclusive
-   *  with before/after. */
+  /** Centred window: returns up to `limit` events centred on the
+   *  target. The target itself is included (counted within the older
+   *  half). Used to deep-link into the middle of a long transcript
+   *  (e.g. Spotlight click-through, #329). Mutually exclusive with
+   *  before/after. */
   around?: number;
   // Server caps at 1000 default; pass to override (max 10_000).
   limit?: number;

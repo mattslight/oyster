@@ -517,11 +517,6 @@ function TranscriptBody({
   const focusScrolledRef = useRef(false);
   useEffect(() => { focusScrolledRef.current = false; }, [sessionId, focusEventId]);
 
-  // The effective scroll target each render: in-transcript-search match
-  // takes precedence (the user is actively stepping through), with the
-  // deep-link target as fallback for the very first render.
-  const effectiveFocusId = currentMatchEventId ?? focusEventId;
-
   // Run BEFORE paint so the scroll restore is invisible to the user. A
   // post-paint useEffect would briefly show the jumped position.
   useLayoutEffect(() => {
