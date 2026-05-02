@@ -86,6 +86,29 @@ export async function fetchSessionMemory(id: string, signal?: AbortSignal): Prom
   return res.json();
 }
 
+/** A transcript-search hit returned by GET /api/sessions/search.
+ *  Slim by design — snippet already covers what the UI renders, and
+ *  click-through loads the full event from the inspector. */
+export interface TranscriptHit {
+  event_id: number;
+  session_id: string;
+  session_title: string | null;
+  role: string;
+  ts: string;
+  snippet: string;
+}
+
+export async function searchTranscripts(
+  query: string,
+  opts: { limit?: number; signal?: AbortSignal } = {},
+): Promise<TranscriptHit[]> {
+  const params = new URLSearchParams({ q: query });
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  const res = await fetch(`/api/sessions/search?${params.toString()}`, { signal: opts.signal });
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
+  return res.json();
+}
+
 // The list endpoint strips `raw` from every event to keep the payload
 // reasonable on long sessions (raw can be megabytes per tool result).
 // Use this to lazy-fetch one event's raw on-demand — e.g. when the user
