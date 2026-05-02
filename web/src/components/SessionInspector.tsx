@@ -27,6 +27,11 @@ interface Props {
    *  scrolled into view + flashed for ~3s. Used by Spotlight transcript
    *  click-through (#329). */
   focusEventId?: number;
+  /** Pre-fills the in-transcript find bar so the user sees inline
+   *  match highlights and can step through other matches in this
+   *  session. Used by Spotlight click-through alongside focusEventId
+   *  (#332). */
+  initialSearchQuery?: string;
   onSwitchTo: (next: ActivePanel) => void;
   onClose: () => void;
   onNotFound: () => void;
@@ -95,7 +100,7 @@ function saveVisibleCategories(set: Set<RoleCategory>) {
   } catch { /* ignore */ }
 }
 
-export function SessionInspector({ sessionId, focusEventId, onSwitchTo, onClose, onNotFound }: Props) {
+export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onClose, onNotFound }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
@@ -327,6 +332,7 @@ export function SessionInspector({ sessionId, focusEventId, onSwitchTo, onClose,
         memory={memory}
         memoryError={memoryError}
         focusEventId={focusEventId}
+        initialSearchQuery={initialSearchQuery}
         onSwitchTo={onSwitchTo}
         sessionId={sessionId}
         agent={session.agent}
@@ -347,8 +353,8 @@ export function SessionInspector({ sessionId, focusEventId, onSwitchTo, onClose,
  * to read history, leave them there.
  */
 function TranscriptBody({
-  tab, events, artefacts, memory, memoryError, focusEventId, onSwitchTo, sessionId, agent,
-  hasMoreOlder, loadingOlder, onLoadOlder,
+  tab, events, artefacts, memory, memoryError, focusEventId, initialSearchQuery,
+  onSwitchTo, sessionId, agent, hasMoreOlder, loadingOlder, onLoadOlder,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
@@ -356,6 +362,7 @@ function TranscriptBody({
   memory: SessionMemory | null;
   memoryError: string | null;
   focusEventId: number | undefined;
+  initialSearchQuery: string | undefined;
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
   agent: SessionAgent;
@@ -370,9 +377,23 @@ function TranscriptBody({
   // already-loaded events. Compared with the FTS5-backed Spotlight, this
   // is forgiving on punctuation (literal "0.6.0" works) and highlights
   // the matched substring inline. Caps at the loaded window.
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  //
+  // Spotlight click-through (#329) pre-fills via initialSearchQuery so
+  // the user lands inside an already-active find session — inline
+  // highlights visible, ↑/↓ available to walk other matches.
+  const [searchOpen, setSearchOpen] = useState(!!initialSearchQuery);
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery ?? "");
   const [searchMatchIdx, setSearchMatchIdx] = useState(0);
+  // Re-initialise the find bar when the inspector swaps to a new
+  // deep-link target (e.g. user clicks a different Spotlight hit
+  // without closing the panel between).
+  useEffect(() => {
+    if (initialSearchQuery !== undefined) {
+      setSearchQuery(initialSearchQuery);
+      setSearchOpen(initialSearchQuery.length > 0);
+      setSearchMatchIdx(0);
+    }
+  }, [initialSearchQuery, sessionId]);
   // When set to a number (saved scrollHeight), the layout effect below
   // restores the user's scroll position after a load-older prepend. Cleared
   // after restore so live appends continue to behave normally.
@@ -408,6 +429,23 @@ function TranscriptBody({
     if (matchIds.length === 0) { setSearchMatchIdx(0); return; }
     if (searchMatchIdx >= matchIds.length) setSearchMatchIdx(0);
   }, [matchIds.length, searchMatchIdx]);
+
+  // Align the find bar's current match to the Spotlight-clicked event
+  // once both the matches and the focus id are known. Without this,
+  // Cmd+K → "ruth" → click third hit could land on the FIRST loaded
+  // match for "ruth" instead of the one the user actually clicked.
+  // Runs once per (session, focusEventId) pair via a ref guard.
+  const alignedFocusRef = useRef<{ sid: string; fid: number | undefined } | null>(null);
+  useEffect(() => {
+    if (focusEventId === undefined || matchIds.length === 0) return;
+    const last = alignedFocusRef.current;
+    if (last && last.sid === sessionId && last.fid === focusEventId) return;
+    const idx = matchIds.indexOf(focusEventId);
+    if (idx >= 0) {
+      setSearchMatchIdx(idx);
+      alignedFocusRef.current = { sid: sessionId, fid: focusEventId };
+    }
+  }, [focusEventId, matchIds, sessionId]);
   const currentMatchEventId = matchIds[searchMatchIdx];
 
   // Always include deep-link / search targets in the rendered list, even
