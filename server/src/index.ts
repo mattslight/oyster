@@ -25,7 +25,7 @@ import { SpaceService } from "./space-service.js";
 import { slugify } from "./utils.js";
 import { IconGenerator } from "./icon-generator.js";
 import { injectBridge } from "./error-bridge.js";
-import { HttpError, makeRouteCtx } from "./http-utils.js";
+import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import type { UiCommand } from "../../shared/types.js";
 import {

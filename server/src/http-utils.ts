@@ -67,12 +67,12 @@ export function makeRouteCtx(req: IncomingMessage, res: ServerResponse): RouteCt
     catch { throw new HttpError("Invalid JSON body", 400); }
   }
 
-  // Artifact endpoints (both reads and mutations) are localhost-only. A
-  // browser tab on some other site could otherwise fetch user data or
-  // trigger destructive actions via http://localhost:<port>/api/…. Mirrors
-  // the /mcp handler pattern: reject non-local origins outright; echo the
-  // origin back for local ones to override the wildcard CORS header set
-  // by the top-level handler.
+  // Localhost-only guard for /api/* routes (and anything else that calls
+  // it). A browser tab on some other site could otherwise fetch user data
+  // or trigger destructive actions via http://localhost:<port>/api/….
+  // Mirrors the /mcp handler pattern: reject non-local origins outright;
+  // echo the origin back for local ones to override the wildcard CORS
+  // header set by the top-level handler.
   const rejectIfNonLocalOrigin = (): boolean => {
     const origin = req.headers.origin;
     if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
