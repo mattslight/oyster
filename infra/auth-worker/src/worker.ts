@@ -23,6 +23,10 @@ export interface Env {
   RESEND_API_KEY?: string;
   FROM_ADDRESS?: string;
   REPLY_TO?: string;
+  // GitHub OAuth. Both empty until the OAuth App is registered; handlers
+  // check both and 503 if either is missing (handled in Phase 2).
+  GITHUB_OAUTH_CLIENT_ID?: string;
+  GITHUB_OAUTH_CLIENT_SECRET?: string;
 }
 
 // Magic-link tokens are always 43 chars (32 bytes base64url, no padding).
