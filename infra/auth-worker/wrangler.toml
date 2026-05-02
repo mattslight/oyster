@@ -33,4 +33,4 @@ simple = { limit = 20, period = 3600 }
 [vars]
 FROM_ADDRESS = "noreply@oyster.to"
 REPLY_TO = "matthew@slight.me"
-GITHUB_OAUTH_CLIENT_ID = ""
+GITHUB_OAUTH_CLIENT_ID = "Ov23liGyjoJzH1wyYIwk"
