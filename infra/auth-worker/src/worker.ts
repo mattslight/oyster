@@ -18,10 +18,18 @@ interface RateLimit {
 export interface Env {
   DB: D1Database;
   MAGIC_LINK_LIMIT: RateLimit;
-  RESEND_API_KEY: string;
+  // Optional so wrangler dev works without a Resend secret — sendMagicLink()
+  // logs the verify URL to the Worker console when this is unset.
+  RESEND_API_KEY?: string;
   FROM_ADDRESS?: string;
   REPLY_TO?: string;
 }
+
+// Magic-link tokens are always 43 chars (32 bytes base64url, no padding).
+// Cap the input well above that to keep `?t=<huge>` from wasting CPU on
+// the sha256, but loose enough to tolerate URL-encoding wraps and future
+// token-length changes.
+const MAX_TOKEN_LEN = 100;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
@@ -351,7 +359,7 @@ async function handleMagicLink(req: Request, env: Env, ctx: ExecutionContext, ur
 
 async function handleVerify(env: Env, url: URL): Promise<Response> {
   const raw = url.searchParams.get("t");
-  if (!raw) {
+  if (!raw || raw.length > MAX_TOKEN_LEN) {
     return htmlResponse(SIGN_IN_ERROR_HTML("Missing or invalid sign-in link."), 400, NO_STORE);
   }
 
@@ -463,23 +471,33 @@ async function handleWhoami(req: Request, env: Env, host: string): Promise<Respo
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
-
-    if (url.pathname === "/auth/sign-in" && req.method === "GET") {
-      return htmlResponse(SIGN_IN_HTML(url.searchParams.get("d")));
+    try {
+      if (url.pathname === "/auth/sign-in" && req.method === "GET") {
+        // /auth/sign-in carries an optional ?d=<user_code> for the device
+        // flow; no-store stops browsers and intermediaries from caching a
+        // URL that contains a login-related code.
+        return htmlResponse(SIGN_IN_HTML(url.searchParams.get("d")), 200, NO_STORE);
+      }
+      if (url.pathname === "/auth/magic-link" && req.method === "POST") {
+        return await handleMagicLink(req, env, ctx, url);
+      }
+      if (url.pathname === "/auth/verify" && req.method === "GET") {
+        return await handleVerify(env, url);
+      }
+      if (url.pathname === "/auth/welcome" && req.method === "GET") {
+        return await handleWelcome(req, env, url.host);
+      }
+      if (url.pathname === "/auth/whoami" && req.method === "GET") {
+        return await handleWhoami(req, env, url.host);
+      }
+      return new Response("Not found", { status: 404 });
+    } catch (err) {
+      // Single-point catch so a transient D1 error or thrown exception
+      // returns a structured 503 instead of an unstructured 500. The
+      // most common failure mode at this layer is D1 being unreachable;
+      // service_unavailable is the honest shape.
+      console.error("worker_unhandled", url.pathname, err);
+      return json({ error: "service_unavailable" }, 503);
     }
-    if (url.pathname === "/auth/magic-link" && req.method === "POST") {
-      return handleMagicLink(req, env, ctx, url);
-    }
-    if (url.pathname === "/auth/verify" && req.method === "GET") {
-      return handleVerify(env, url);
-    }
-    if (url.pathname === "/auth/welcome" && req.method === "GET") {
-      return handleWelcome(req, env, url.host);
-    }
-    if (url.pathname === "/auth/whoami" && req.method === "GET") {
-      return handleWhoami(req, env, url.host);
-    }
-
-    return new Response("Not found", { status: 404 });
   },
 };
