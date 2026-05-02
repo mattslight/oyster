@@ -610,6 +610,14 @@ async function handleWhoami(req: Request, env: Env, host: string): Promise<Respo
   return json({ id: lookup.user.id, email: lookup.user.email }, 200, NO_STORE);
 }
 
+async function handleGithubStart(_req: Request, env: Env): Promise<Response> {
+  if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
+    return json({ error: "oauth_not_configured" }, 503, NO_STORE);
+  }
+  // Phase 2 wires the real start flow.
+  return json({ error: "not_implemented" }, 503, NO_STORE);
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
@@ -631,6 +639,9 @@ export default {
       }
       if (url.pathname === "/auth/whoami" && req.method === "GET") {
         return await handleWhoami(req, env, url.host);
+      }
+      if (url.pathname === "/auth/github/start" && req.method === "GET") {
+        return await handleGithubStart(req, env);
       }
       if (url.pathname === "/auth/device-init" && req.method === "POST") {
         return await handleDeviceInit(req, env);
