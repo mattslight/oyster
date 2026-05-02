@@ -72,6 +72,39 @@ export function AuthBadge() {
     };
   }, []);
 
+  // Polling fallback: in Vite dev, the SSE proxy can buffer or drop the
+  // auth_changed event during the OAuth round-trip (the user switches tabs
+  // to authorize and comes back). Production installs don't have this
+  // paper cut, but the fallback is cheap and keeps dev sane. SSE remains
+  // the fast path; polling only fires while we're waiting for sign-in.
+  useEffect(() => {
+    if (phase !== "signing-in" || !pending) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch("/api/auth/whoami");
+        if (!res.ok) return;
+        const body = (await res.json()) as { user: AuthUser | null };
+        if (cancelled) return;
+        if (body.user) {
+          // Same effect as a successful auth_changed SSE — flip to signed-in.
+          setUser(body.user);
+          setPending(null);
+          clearAbortTimeout();
+          setPhase("signed-in");
+        }
+      } catch {
+        // Network blip; next tick will retry.
+      }
+    };
+    const interval = setInterval(tick, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [phase, pending]);
+
   const handleSignIn = async () => {
     // If a previous flow is still pending, restart cleanly. The local
     // server's startSignIn() also aborts the old poll on its end.

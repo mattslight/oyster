@@ -155,7 +155,13 @@ function clearedCookie(host: string): string {
 
 const NO_STORE: Record<string, string> = { "cache-control": "no-store" };
 
-const SIGN_IN_HTML = (userCode: string | null) => `<!doctype html>
+const GITHUB_MARK_SVG = `<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="vertical-align: -4px; margin-right: 0.5rem;"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.4 3-.405 1.02.005 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`;
+
+const SIGN_IN_HTML = (userCode: string | null) => {
+  const githubHref = userCode
+    ? `/auth/github/start?d=${encodeURIComponent(userCode)}`
+    : "/auth/github/start";
+  return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -164,20 +170,26 @@ const SIGN_IN_HTML = (userCode: string | null) => `<!doctype html>
   :root { color-scheme: light dark; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 28rem; margin: 6rem auto; padding: 0 1.5rem; line-height: 1.5; }
   h1 { font-size: 1.5rem; margin: 0 0 1.5rem; }
+  .gh-button { display: flex; align-items: center; justify-content: center; padding: 0.7rem 1rem; font-size: 1rem; font-weight: 600; border: 0; border-radius: 0.4rem; background: #24292f; color: #ffffff; text-decoration: none; cursor: pointer; }
+  .gh-button:hover { background: #32383f; }
+  .divider { display: flex; align-items: center; gap: 0.75rem; margin: 1.5rem 0; font-size: 0.85rem; opacity: 0.6; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.25; }
   form { display: flex; flex-direction: column; gap: 0.75rem; }
   label { font-size: 0.85rem; opacity: 0.7; }
   input[type=email] { padding: 0.6rem 0.75rem; font-size: 1rem; border: 1px solid #888; border-radius: 0.4rem; background: transparent; color: inherit; }
-  button { padding: 0.6rem 0.75rem; font-size: 1rem; font-weight: 600; border: 0; border-radius: 0.4rem; background: #6750a4; color: #fff; cursor: pointer; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button[type=submit] { padding: 0.6rem 0.75rem; font-size: 1rem; font-weight: 500; border: 0; border-radius: 0.4rem; background: transparent; color: inherit; border: 1px solid #888; cursor: pointer; }
+  button[type=submit]:disabled { opacity: 0.5; cursor: not-allowed; }
   #status { margin-top: 1rem; font-size: 0.9rem; }
   .ok { color: #2e7d32; }
   .err { color: #c62828; }
 </style>
 </head><body>
 <h1>Sign in to Oyster</h1>
+<a class="gh-button" href="${githubHref}">${GITHUB_MARK_SVG}Continue with GitHub</a>
+<div class="divider">or use email</div>
 <form id="f">
   <label for="email">Email</label>
-  <input id="email" name="email" type="email" required autofocus autocomplete="email">
+  <input id="email" name="email" type="email" required autocomplete="email">
   <button type="submit">Send magic link</button>
 </form>
 <p id="status" hidden></p>
@@ -219,6 +231,7 @@ f.addEventListener('submit', async (e) => {
 });
 </script>
 </body></html>`;
+};
 
 const WELCOME_HTML = (email: string, deviceLogin: boolean) => `<!doctype html>
 <html lang="en"><head>

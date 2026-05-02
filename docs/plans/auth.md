@@ -4,7 +4,7 @@
 
 ## Decision
 
-**Cloudflare-native magic-link auth.** D1 for users + sessions, a Worker at `oyster.to/auth/*` for the flow, Resend for transactional email, OAuth device-authorization-grant pattern to bridge the browser sign-in to the local server at `localhost:4444`. No passwords. No OAuth providers in 0.7.0. No MFA in 0.7.0.
+**Cloudflare-native auth.** D1 for users + sessions, a Worker at `oyster.to/auth/*` for the flow, Resend for transactional email, an Oyster-internal device-code handoff to bridge the browser sign-in to the local server at `localhost:4444`. **GitHub OAuth is the primary sign-in path** as of #340 (see [`auth-oauth.md`](./auth-oauth.md)); magic-link is the secondary fallback documented below. No passwords. No MFA in 0.7.0.
 
 ```
 Browser (oyster.to/sign-in)
@@ -149,9 +149,13 @@ Resend, because (a) it runs on Cloudflare itself (lower hop), (b) the Workers SD
 
 The from address starts as `noreply@oyster.to` with `Reply-To: matthew@slight.me` so a confused user can email us. Subject: `Sign in to Oyster`. Body: short HTML, one button, six-hour quiet.
 
+## Providers
+
+GitHub OAuth is the primary sign-in path. The full design — endpoints, schema delta (`user_identities`, `oauth_states`), identity-resolution rules, and PR sequencing — lives in [`auth-oauth.md`](./auth-oauth.md). The magic-link substrate documented in this doc is unchanged; OAuth ships alongside it as the primary CTA, with magic-link as the secondary fallback.
+
 ## What 0.7.0 does NOT include
 
-- **OAuth providers (Google/GitHub).** Magic-link is the funnel; Google sign-in is a launch optimisation that can land later as `/auth/google` on the same Worker without schema changes.
+- **Google sign-in.** Deferred until GitHub lands cleanly. Same Worker, same schema, same identity-resolution rule — adds `/auth/google/start` and `/auth/google/callback`. See [`auth-oauth.md`](./auth-oauth.md) for the OAuth design.
 - **MFA.** Not a free-tier requirement.
 - **Password reset.** No passwords.
 - **Account deletion.** Cap on the user table is an entitlement question for 0.7.0; the GDPR-shape "delete my account" can land as a one-shot Worker endpoint when the first user requests it.
