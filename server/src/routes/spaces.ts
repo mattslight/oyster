@@ -33,6 +33,7 @@ export async function tryHandleSpaceRoute(
 
   // GET /api/spaces — list all spaces
   if (url === "/api/spaces" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return true;
     sendJson(spaceService.listSpaces());
     return true;
   }
@@ -40,6 +41,7 @@ export async function tryHandleSpaceRoute(
   // POST /api/spaces/from-folder — convert a folder group (under home) into
   // its own space. Used by the desktop right-click "Move folder to space" flow.
   if (url === "/api/spaces/from-folder" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return true;
     try {
       const body = await readJsonBody();
       const folderName = typeof body.folderName === "string" ? body.folderName : null;
@@ -172,6 +174,7 @@ export async function tryHandleSpaceRoute(
   {
     const m = url.match(/^\/api\/spaces\/([^/]+)$/);
     if (m && req.method === "PATCH") {
+      if (rejectIfNonLocalOrigin()) return true;
       const spaceId = safeDecode(m[1]);
       if (spaceId === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
       try {
@@ -186,6 +189,7 @@ export async function tryHandleSpaceRoute(
       return true;
     }
     if (m && req.method === "DELETE") {
+      if (rejectIfNonLocalOrigin()) return true;
       const spaceId = safeDecode(m[1]);
       if (spaceId === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
       try {
