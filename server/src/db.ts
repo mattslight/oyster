@@ -125,6 +125,23 @@ export function initDb(userlandDir: string): Database.Database {
     `);
   } catch { /* already exists */ }
 
+  // R5 publish & share (#314). Turn an artifact into a shareable URL.
+  // share_token gets a UNIQUE index in a separate statement — SQLite
+  // ADD COLUMN doesn't allow UNIQUE inline. NULL tokens are treated as
+  // distinct under SQL UNIQUE, so unpublished rows coexist freely.
+  // published_at / unpublished_at are INTEGER unix-ms per the ticket
+  // (viewer Workers want Date.now() directly, no iso8601 round-trip).
+  for (const sql of [
+    "ALTER TABLE artifacts ADD COLUMN share_token TEXT",
+    "ALTER TABLE artifacts ADD COLUMN share_mode TEXT CHECK (share_mode IS NULL OR share_mode IN ('open','password','signin'))",
+    "ALTER TABLE artifacts ADD COLUMN share_password_hash TEXT",
+    "ALTER TABLE artifacts ADD COLUMN published_at INTEGER",
+    "ALTER TABLE artifacts ADD COLUMN unpublished_at INTEGER",
+  ]) {
+    try { db.exec(sql); } catch { /* already exists */ }
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS artifacts_share_token_uq ON artifacts(share_token)");
+
   // Sessions arc (0.5.0). Three tables that capture agent activity (claude-code,
   // opencode, codex) read from external session logs. See
   // docs/plans/sessions-arc.md for the design.
