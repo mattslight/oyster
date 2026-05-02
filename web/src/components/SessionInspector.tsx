@@ -388,7 +388,13 @@ function TranscriptBody({
     });
   }
 
-  const filteredEvents = events ? events.filter((e) => visible.has(categoryOf(e))) : null;
+  // Always include the deep-link target in the rendered list, even if
+  // its category is filtered out. Otherwise a Spotlight click on a
+  // tool_result while the user has Tools off lands on no DOM target —
+  // the scroll-into-view fails silently and the user sees nothing.
+  const filteredEvents = events
+    ? events.filter((e) => visible.has(categoryOf(e)) || e.id === focusEventId)
+    : null;
   const filteredLen = filteredEvents?.length ?? 0;
 
   useEffect(() => {
