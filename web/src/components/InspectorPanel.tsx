@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import "./InspectorPanel.css";
 
 export type ActivePanel =
-  | { kind: "session"; id: string }
+  | {
+      kind: "session";
+      id: string;
+      /** Optional event id to scroll to + highlight on open (#329).
+       *  Used by Spotlight transcript-hit click-through. */
+      focusEventId?: number;
+    }
   | { kind: "artefact"; id: string };
 
 interface Props {

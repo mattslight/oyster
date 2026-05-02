@@ -97,9 +97,10 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
     } else {
       // Bridge to Home's activePanel via a window event — Spotlight is
       // mounted at App level and doesn't have direct access to Home's
-      // setActivePanel.
+      // setActivePanel. eventId asks the inspector to scroll to + flash
+      // that turn after open.
       window.dispatchEvent(new CustomEvent("oyster:open-session", {
-        detail: { id: hit.hit.session_id },
+        detail: { id: hit.hit.session_id, eventId: hit.hit.event_id },
       }));
     }
     onClose();

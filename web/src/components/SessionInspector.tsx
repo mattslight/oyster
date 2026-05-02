@@ -22,6 +22,11 @@ import type { ActivePanel } from "./InspectorPanel";
 
 interface Props {
   sessionId: string;
+  /** When set, the bootstrap fetches a window of events centred on
+   *  this id (rather than the latest 1000) and the matching turn is
+   *  scrolled into view + flashed for ~3s. Used by Spotlight transcript
+   *  click-through (#329). */
+  focusEventId?: number;
   onSwitchTo: (next: ActivePanel) => void;
   onClose: () => void;
   onNotFound: () => void;
@@ -90,7 +95,7 @@ function saveVisibleCategories(set: Set<RoleCategory>) {
   } catch { /* ignore */ }
 }
 
-export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }: Props) {
+export function SessionInspector({ sessionId, focusEventId, onSwitchTo, onClose, onNotFound }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
@@ -135,9 +140,15 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
 
     // Bootstrap: the three fetches that gate "session is loaded enough
     // to render". A failure on any of these blocks the inspector.
+    // When focusEventId is set, fetch a window centred on that event
+    // rather than the latest page — the deep-link target may be
+    // thousands of events older than the tail.
+    const eventsOpts = focusEventId !== undefined
+      ? { around: focusEventId, signal: ac.signal }
+      : { signal: ac.signal };
     Promise.all([
       fetchSession(sessionId, ac.signal),
-      fetchSessionEvents(sessionId, { signal: ac.signal }),
+      fetchSessionEvents(sessionId, eventsOpts),
       fetchSessionArtifacts(sessionId, ac.signal),
     ])
       .then(([s, ev, art]) => {
@@ -315,6 +326,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         artefacts={artefacts}
         memory={memory}
         memoryError={memoryError}
+        focusEventId={focusEventId}
         onSwitchTo={onSwitchTo}
         sessionId={sessionId}
         agent={session.agent}
@@ -335,7 +347,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
  * to read history, leave them there.
  */
 function TranscriptBody({
-  tab, events, artefacts, memory, memoryError, onSwitchTo, sessionId, agent,
+  tab, events, artefacts, memory, memoryError, focusEventId, onSwitchTo, sessionId, agent,
   hasMoreOlder, loadingOlder, onLoadOlder,
 }: {
   tab: Tab;
@@ -343,6 +355,7 @@ function TranscriptBody({
   artefacts: SessionArtifactJoined[] | null;
   memory: SessionMemory | null;
   memoryError: string | null;
+  focusEventId: number | undefined;
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
   agent: SessionAgent;
@@ -407,6 +420,11 @@ function TranscriptBody({
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Track whether we've already handled the focus scroll for this open
+  // — only fire it once per inspector mount, not on every render.
+  const focusScrolledRef = useRef(false);
+  useEffect(() => { focusScrolledRef.current = false; }, [sessionId, focusEventId]);
+
   // Run BEFORE paint so the scroll restore is invisible to the user. A
   // post-paint useEffect would briefly show the jumped position.
   useLayoutEffect(() => {
@@ -417,10 +435,22 @@ function TranscriptBody({
       restoreFromBottomRef.current = null;
       return;
     }
+    // Deep-link from Spotlight: scroll the focused turn into view on
+    // first render. Centred so the matched line lands mid-pane rather
+    // than stuck at the top edge.
+    if (focusEventId !== undefined && !focusScrolledRef.current && filteredLen > 0) {
+      const target = el.querySelector(`[data-event-id="${focusEventId}"]`) as HTMLElement | null;
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        focusScrolledRef.current = true;
+        wasNearBottomRef.current = false; // suppress the auto-tail behaviour
+        return;
+      }
+    }
     if (wasNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [filteredLen, tab]);
+  }, [filteredLen, tab, focusEventId]);
 
   return (
     <>
@@ -435,7 +465,7 @@ function TranscriptBody({
                 Loading older…
               </div>
             )}
-            <Transcript events={filteredEvents} sessionId={sessionId} agent={agent} />
+            <Transcript events={filteredEvents} sessionId={sessionId} agent={agent} focusEventId={focusEventId} />
           </>
         )}
         {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
@@ -729,8 +759,13 @@ function MemoryRow({
 }
 
 function Transcript({
-  events, sessionId, agent,
-}: { events: SessionEvent[] | null; sessionId: string; agent: SessionAgent }) {
+  events, sessionId, agent, focusEventId,
+}: {
+  events: SessionEvent[] | null;
+  sessionId: string;
+  agent: SessionAgent;
+  focusEventId: number | undefined;
+}) {
   if (events === null) return <div className="inspector-empty">Loading transcript…</div>;
   if (events.length === 0) {
     return <div className="inspector-empty">No transcript yet. Live updates active.</div>;
@@ -738,32 +773,43 @@ function Transcript({
   return (
     <>
       {events.map((e) => (
-        <Turn key={e.id} event={e} sessionId={sessionId} agent={agent} />
+        <Turn
+          key={e.id}
+          event={e}
+          sessionId={sessionId}
+          agent={agent}
+          flash={e.id === focusEventId}
+        />
       ))}
     </>
   );
 }
 
 function Turn({
-  event, sessionId, agent,
-}: { event: SessionEvent; sessionId: string; agent: SessionAgent }) {
+  event, sessionId, agent, flash,
+}: {
+  event: SessionEvent;
+  sessionId: string;
+  agent: SessionAgent;
+  flash: boolean;
+}) {
   const isToolish =
     event.role === "tool"
     || event.role === "tool_result"
     || (event.role === "assistant" && TOOL_ONLY_RE.test(event.text.trim()));
   if (isToolish) {
-    return <ToolTurn event={event} sessionId={sessionId} />;
+    return <ToolTurn event={event} sessionId={sessionId} flash={flash} />;
   }
   const label = event.role === "assistant" ? agent.toUpperCase() : event.role.toUpperCase();
   return (
-    <div className={`turn ${event.role}`}>
+    <div className={`turn ${event.role}${flash ? " turn-flash" : ""}`} data-event-id={event.id}>
       <div className="turn-role">{label}</div>
       <div className="turn-text">{event.text || "(empty)"}</div>
     </div>
   );
 }
 
-function ToolTurn({ event, sessionId }: { event: SessionEvent; sessionId: string }) {
+function ToolTurn({ event, sessionId, flash }: { event: SessionEvent; sessionId: string; flash: boolean }) {
   const [open, setOpen] = useState(false);
   // The list endpoint omits raw to keep payloads small. We lazy-fetch
   // it the first time the user expands this turn, and cache it locally.
@@ -787,7 +833,7 @@ function ToolTurn({ event, sessionId }: { event: SessionEvent; sessionId: string
 
   const { display, truncated, totalBytes } = capRaw(raw ?? "");
   return (
-    <div className={`turn ${event.role}`}>
+    <div className={`turn ${event.role}${flash ? " turn-flash" : ""}`} data-event-id={event.id}>
       <div className="turn-role">{event.role}</div>
       <div className="turn-tool-summary" onClick={toggle}>
         {open ? "▾" : "▸"} {summary}

@@ -1063,12 +1063,28 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         : 1000;
       const beforeParam = parsed.searchParams.get("before");
       const afterParam = parsed.searchParams.get("after");
+      const aroundParam = parsed.searchParams.get("around");
       const before = beforeParam && Number.isFinite(Number(beforeParam))
         ? Number(beforeParam) : null;
       const after = afterParam && Number.isFinite(Number(afterParam))
         ? Number(afterParam) : null;
+      const around = aroundParam && Number.isFinite(Number(aroundParam))
+        ? Number(aroundParam) : null;
       let events;
-      if (before !== null) {
+      if (around !== null) {
+        // Centred window: half the limit on each side of the target,
+        // re-merged in chronological order. Used by Spotlight to land
+        // a transcript-hit click in the middle of context, even if the
+        // target is thousands of events older than the latest. The
+        // target itself is included via `<= around` on the older half.
+        // Sort the merged window ASC by id so the transcript renders
+        // in chronological order regardless of how the underlying
+        // statements ordered their result sets.
+        const half = Math.max(1, Math.floor(limit / 2));
+        const older = sessionStore.getEventsBeforeBySession(m[1], around + 1, half);
+        const newer = sessionStore.getEventsAfterBySession(m[1], around, half);
+        events = [...older, ...newer].sort((a, b) => a.id - b.id);
+      } else if (before !== null) {
         events = sessionStore.getEventsBeforeBySession(m[1], before, limit);
       } else if (after !== null) {
         events = sessionStore.getEventsAfterBySession(m[1], after, limit);

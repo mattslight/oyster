@@ -389,11 +389,17 @@ export class SqliteSessionStore implements SessionStore {
     // Mirror the memory-store tokenisation: strip punctuation, drop
     // 1-char tokens, OR-join. Keeps natural-language queries forgiving
     // ("what did we decide about pricing?") without making the agent
-    // learn FTS5 query syntax. Phrase matching is a follow-up.
+    // learn FTS5 query syntax.
+    //
+    // Trailing `*` enables prefix matching so an incremental search
+    // (Spotlight typing "ruth") matches "ruthless" before the user has
+    // finished the word. FTS5 prefix matching is O(log n) on the
+    // index — no scan penalty.
     const terms = query
       .replace(/[^\w\s]/g, "")
       .split(/\s+/)
-      .filter((t) => t.length > 1);
+      .filter((t) => t.length > 1)
+      .map((t) => `${t}*`);
     if (terms.length === 0) return [];
     const ftsQuery = terms.join(" OR ");
     const limit = opts.limit ?? 20;

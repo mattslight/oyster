@@ -526,9 +526,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // the App→Home prop boundary just for this one cross-cutting hook.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ id?: string }>).detail;
+      const detail = (e as CustomEvent<{ id?: string; eventId?: number }>).detail;
       if (detail && typeof detail.id === "string") {
-        setActivePanel({ kind: "session", id: detail.id });
+        setActivePanel({
+          kind: "session",
+          id: detail.id,
+          focusEventId: typeof detail.eventId === "number" ? detail.eventId : undefined,
+        });
       }
     };
     window.addEventListener("oyster:open-session", handler);
@@ -1072,6 +1076,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
         {activePanel?.kind === "session" && (
           <SessionInspector
             sessionId={activePanel.id}
+            focusEventId={activePanel.focusEventId}
             onSwitchTo={setActivePanel}
             onClose={() => setActivePanel(null)}
             onNotFound={() => {

@@ -33,6 +33,11 @@ export interface FetchSessionEventsOpts {
   // only events newer than the cursor (live append). Mutually exclusive.
   before?: number;
   after?: number;
+  /** Centred window: half-limit events on each side of the target, plus
+   *  the target itself. Used to deep-link into the middle of a long
+   *  transcript (e.g. Spotlight click-through, #329). Mutually exclusive
+   *  with before/after. */
+  around?: number;
   // Server caps at 1000 default; pass to override (max 10_000).
   limit?: number;
   signal?: AbortSignal;
@@ -45,6 +50,7 @@ export async function fetchSessionEvents(
   const params = new URLSearchParams();
   if (opts.before !== undefined) params.set("before", String(opts.before));
   if (opts.after !== undefined) params.set("after", String(opts.after));
+  if (opts.around !== undefined) params.set("around", String(opts.around));
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
   const qs = params.toString();
   const url = `/api/sessions/${encodeURIComponent(id)}/events${qs ? `?${qs}` : ""}`;
