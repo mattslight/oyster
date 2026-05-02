@@ -113,18 +113,31 @@ async function getSession(db: D1Database, sessionId: string, now: number): Promi
   };
 }
 
-function sessionCookie(sessionId: string): string {
-  // Domain=.oyster.to so the cookie is visible on the apex and any
-  // subdomain the publish/viewer flows might end up on. HttpOnly blocks
-  // JS reads; SameSite=Lax allows the magic-link redirect to carry the
-  // cookie back; Secure means HTTPS-only.
+function isLocalHost(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1" || host.startsWith("localhost:") || host.startsWith("127.0.0.1:");
+}
+
+// Cookie shape adapts to the request host so wrangler dev (http://localhost:8787)
+// can exercise the cookie flow. Production: Domain=.oyster.to + Secure so the
+// cookie is visible on the apex and any subdomain the publish/viewer flows
+// might end up on. Localhost: omit Domain (browsers reject Domain= on
+// localhost) and omit Secure (no HTTPS). HttpOnly + SameSite=Lax stay on both.
+function sessionCookie(sessionId: string, host: string): string {
   const maxAge = Math.floor(SESSION_TTL_MS / 1000);
+  if (isLocalHost(host)) {
+    return `${COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+  }
   return `${COOKIE_NAME}=${sessionId}; Domain=.oyster.to; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
-function clearedCookie(): string {
+function clearedCookie(host: string): string {
+  if (isLocalHost(host)) {
+    return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  }
   return `${COOKIE_NAME}=; Domain=.oyster.to; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
+
+const NO_STORE: Record<string, string> = { "cache-control": "no-store" };
 
 const SIGN_IN_HTML = (userCode: string | null) => `<!doctype html>
 <html lang="en"><head>
@@ -222,6 +235,13 @@ const SIGN_IN_ERROR_HTML = (message: string) => `<!doctype html>
 </body></html>`;
 
 async function sendMagicLink(env: Env, email: string, link: string): Promise<void> {
+  // Dev fallback: no Resend key configured → log the verify URL so a
+  // local maintainer can complete the flow without Resend setup.
+  // Never trips in production because deploy fails without the secret.
+  if (!env.RESEND_API_KEY) {
+    console.log(`[magic-link] no RESEND_API_KEY; verify URL for ${email}: ${link}`);
+    return;
+  }
   const from = env.FROM_ADDRESS ?? "noreply@oyster.to";
   const replyTo = env.REPLY_TO ?? "matthew@slight.me";
   const subject = "Sign in to Oyster";
@@ -257,7 +277,7 @@ async function sendMagicLink(env: Env, email: string, link: string): Promise<voi
   }
 }
 
-async function handleMagicLink(req: Request, env: Env, url: URL): Promise<Response> {
+async function handleMagicLink(req: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
   // Per-IP gate first — cheapest reject path. The Workers Rate Limit
   // binding does the bookkeeping at the edge; no D1 row needed.
   const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
@@ -313,120 +333,151 @@ async function handleMagicLink(req: Request, env: Env, url: URL): Promise<Respon
     .run();
 
   const verifyUrl = `${url.origin}/auth/verify?t=${encodeURIComponent(rawToken)}`;
-  try {
-    await sendMagicLink(env, rawEmail, verifyUrl);
-  } catch {
-    // We've already written the token row; failing the response would
-    // make the client retry and burn the per-email cap. Log and ack ok.
-    return json({ ok: true });
-  }
-
+  // Fire the email asynchronously so the response doesn't block on Resend.
+  // On failure, delete the token row — otherwise a failed send burns a
+  // slot in the per-email cap until the 15-min TTL clears.
+  ctx.waitUntil(
+    sendMagicLink(env, rawEmail, verifyUrl).catch(async (err) => {
+      console.error("send_failed", err);
+      await env.DB
+        .prepare("DELETE FROM magic_link_tokens WHERE token_hash = ?")
+        .bind(tokenHash)
+        .run()
+        .catch((cleanupErr) => console.error("cleanup_failed", cleanupErr));
+    })
+  );
   return json({ ok: true });
 }
 
 async function handleVerify(env: Env, url: URL): Promise<Response> {
   const raw = url.searchParams.get("t");
-  if (!raw) return htmlResponse(SIGN_IN_ERROR_HTML("Missing or invalid sign-in link."), 400);
+  if (!raw) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Missing or invalid sign-in link."), 400, NO_STORE);
+  }
 
   const tokenHash = await sha256Hex(raw);
   const now = Date.now();
-  const tokenRow = await env.DB
-    .prepare(
-      `SELECT t.token_hash, t.user_id, t.device_code, t.expires_at, t.consumed_at, u.email
-       FROM magic_link_tokens t JOIN users u ON u.id = t.user_id
-       WHERE t.token_hash = ?`
-    )
-    .bind(tokenHash)
-    .first<{ token_hash: string; user_id: string; device_code: string | null; expires_at: number; consumed_at: number | null; email: string }>();
 
-  if (!tokenRow) {
-    return htmlResponse(SIGN_IN_ERROR_HTML("This sign-in link is not valid."), 400);
+  // Atomic consume. The WHERE clause is the gate: only an unconsumed,
+  // unexpired token marks itself as used here. RETURNING gives us the
+  // user_id / device_code in one round-trip — the email comes from a
+  // separate SELECT below since RETURNING in SQLite can't join.
+  // Two concurrent verify requests can't both pass: only one will see
+  // meta.changes === 1 (or the RETURNING row); the other races and
+  // sees nothing back.
+  const consumed = await env.DB
+    .prepare(
+      `UPDATE magic_link_tokens
+         SET consumed_at = ?
+       WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?
+       RETURNING user_id, device_code`
+    )
+    .bind(now, tokenHash, now)
+    .first<{ user_id: string; device_code: string | null }>();
+
+  if (!consumed) {
+    return htmlResponse(
+      SIGN_IN_ERROR_HTML("This sign-in link is invalid, expired, or has already been used. Sign-in links are single-use and valid for 15 minutes."),
+      400,
+      NO_STORE,
+    );
   }
-  if (tokenRow.consumed_at !== null) {
-    return htmlResponse(SIGN_IN_ERROR_HTML("This sign-in link has already been used. Magic links are single-use."), 400);
-  }
-  if (tokenRow.expires_at <= now) {
-    return htmlResponse(SIGN_IN_ERROR_HTML("This sign-in link has expired. Sign-in links are valid for 15 minutes."), 400);
+
+  const userRow = await env.DB
+    .prepare("SELECT email FROM users WHERE id = ?")
+    .bind(consumed.user_id)
+    .first<{ email: string }>();
+  if (!userRow) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Account not found."), 400, NO_STORE);
   }
 
   const sessionId = crypto.randomUUID();
   const sessionExpires = now + SESSION_TTL_MS;
   await env.DB.batch([
-    env.DB.prepare("UPDATE magic_link_tokens SET consumed_at = ? WHERE token_hash = ?").bind(now, tokenHash),
     env.DB.prepare("INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-      .bind(sessionId, tokenRow.user_id, now, sessionExpires),
-    env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now, tokenRow.user_id),
+      .bind(sessionId, consumed.user_id, now, sessionExpires),
+    env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now, consumed.user_id),
   ]);
 
   // If this token was issued via the device flow, attach the session
   // to the device_codes row so the local server's poller (PR 3) can
-  // pick it up.
-  if (tokenRow.device_code) {
+  // pick it up. The expires_at predicate prevents claiming a stale
+  // device-code row that was abandoned past its 10-min window.
+  if (consumed.device_code) {
     await env.DB
-      .prepare("UPDATE device_codes SET session_id = ? WHERE device_code = ? AND session_id IS NULL")
-      .bind(sessionId, tokenRow.device_code)
+      .prepare(
+        "UPDATE device_codes SET session_id = ? WHERE device_code = ? AND session_id IS NULL AND expires_at > ?"
+      )
+      .bind(sessionId, consumed.device_code, now)
       .run();
   }
+
+  const cookie = sessionCookie(sessionId, url.host);
 
   // Browser-only logins: redirect to /auth/welcome with the cookie set.
   // Device-flow logins: render the welcome page directly so the user
   // sees the "you can close this window" copy without an extra hop.
-  if (tokenRow.device_code) {
-    return htmlResponse(WELCOME_HTML(tokenRow.email, true), 200, { "set-cookie": sessionCookie(sessionId) });
+  if (consumed.device_code) {
+    return htmlResponse(WELCOME_HTML(userRow.email, true), 200, {
+      "set-cookie": cookie,
+      ...NO_STORE,
+    });
   }
   return new Response(null, {
     status: 302,
     headers: {
       location: "/auth/welcome",
-      "set-cookie": sessionCookie(sessionId),
+      "set-cookie": cookie,
+      ...NO_STORE,
     },
   });
 }
 
-async function handleWelcome(req: Request, env: Env): Promise<Response> {
+async function handleWelcome(req: Request, env: Env, host: string): Promise<Response> {
   const cookies = parseCookies(req);
   const sid = cookies[COOKIE_NAME];
   if (!sid) {
-    return htmlResponse(SIGN_IN_ERROR_HTML("No active session — sign in to continue."), 401);
+    return htmlResponse(SIGN_IN_ERROR_HTML("No active session — sign in to continue."), 401, NO_STORE);
   }
   const lookup = await getSession(env.DB, sid, Date.now());
   if (!lookup) {
     return htmlResponse(SIGN_IN_ERROR_HTML("Your session has expired. Sign in again."), 401, {
-      "set-cookie": clearedCookie(),
+      "set-cookie": clearedCookie(host),
+      ...NO_STORE,
     });
   }
-  return htmlResponse(WELCOME_HTML(lookup.user.email, false));
+  return htmlResponse(WELCOME_HTML(lookup.user.email, false), 200, NO_STORE);
 }
 
-async function handleWhoami(req: Request, env: Env): Promise<Response> {
+async function handleWhoami(req: Request, env: Env, host: string): Promise<Response> {
   const cookies = parseCookies(req);
   const sid = cookies[COOKIE_NAME];
-  if (!sid) return json({ error: "unauthenticated" }, 401);
+  if (!sid) return json({ error: "unauthenticated" }, 401, NO_STORE);
   const lookup = await getSession(env.DB, sid, Date.now());
   if (!lookup) {
-    return json({ error: "unauthenticated" }, 401, { "set-cookie": clearedCookie() });
+    return json({ error: "unauthenticated" }, 401, { "set-cookie": clearedCookie(host), ...NO_STORE });
   }
-  return json({ id: lookup.user.id, email: lookup.user.email });
+  return json({ id: lookup.user.id, email: lookup.user.email }, 200, NO_STORE);
 }
 
 export default {
-  async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname === "/auth/sign-in" && req.method === "GET") {
       return htmlResponse(SIGN_IN_HTML(url.searchParams.get("d")));
     }
     if (url.pathname === "/auth/magic-link" && req.method === "POST") {
-      return handleMagicLink(req, env, url);
+      return handleMagicLink(req, env, ctx, url);
     }
     if (url.pathname === "/auth/verify" && req.method === "GET") {
       return handleVerify(env, url);
     }
     if (url.pathname === "/auth/welcome" && req.method === "GET") {
-      return handleWelcome(req, env);
+      return handleWelcome(req, env, url.host);
     }
     if (url.pathname === "/auth/whoami" && req.method === "GET") {
-      return handleWhoami(req, env);
+      return handleWhoami(req, env, url.host);
     }
 
     return new Response("Not found", { status: 404 });

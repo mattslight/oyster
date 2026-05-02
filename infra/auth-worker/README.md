@@ -93,8 +93,6 @@ npm run dev         # local Worker on localhost:8787 with a local D1
 npm run tail        # stream Worker logs from production
 ```
 
-`wrangler dev` won't actually send email unless `RESEND_API_KEY` is in `.dev.vars`; absent that the Worker logs the failure but still returns `{ ok: true }` so the rest of the flow is testable. To exercise sending locally, drop the key into `infra/auth-worker/.dev.vars` (gitignored).
-
 ## Local development
 
 ```bash
@@ -102,6 +100,16 @@ npm run db:migrate:local   # one-time, creates a local D1
 npm run dev                # runs the Worker on localhost:8787
 # Open http://localhost:8787/auth/sign-in
 ```
+
+The Worker detects the `localhost` host and drops `Domain=` and `Secure` from the session cookie, so the cookie flow works end-to-end on `http://localhost:8787` — no HTTPS or hosts-file aliasing required.
+
+Without `RESEND_API_KEY` set, `/auth/magic-link` still returns `{ ok: true }` and writes the token row, but logs the verify URL to the Worker console instead of sending an email:
+
+```
+[magic-link] no RESEND_API_KEY; verify URL for you@example.com: http://localhost:8787/auth/verify?t=...
+```
+
+Watch `npm run dev`'s output, paste the URL into the same browser, and the cookie + welcome page flow works without Resend setup. To exercise real sending locally, drop the key into `infra/auth-worker/.dev.vars` (gitignored).
 
 ## Cost (as of 2026)
 
