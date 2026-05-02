@@ -4,12 +4,17 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-02
+
+Trustworthy recall — make every memory traceable, every conversation searchable. R6 (traceable recall) and R2 same-device verbatim, both delivered.
+
 ### Added
 
 - **Find within a session.** Press Cmd+F with the session inspector open and a search bar appears above the transcript. Type a phrase, see every match highlighted in place; ↑/↓ (or Enter / Shift+Enter) walks through them with the current match scrolled into view. Robust against punctuation FTS5 strips — literal `0.6.0` and `memory_recalls` work. Esc closes. ([#332](https://github.com/mattslight/oyster/issues/332))
-- **Spotlight searches transcripts too.** Open Cmd+K (or Ctrl+K) and the dropdown now surfaces matching transcript turns alongside artefacts — type any phrase from a past conversation and it'll find the exact moment, with the matched terms highlighted. Click through to open the source session inspector at that exact turn. Same FTS5 backend that powers `mcp__oyster__recall_transcripts`, just exposed to the keyboard. ([#329](https://github.com/mattslight/oyster/issues/329))
+- **Spotlight searches transcripts too.** Open Cmd+K (or Ctrl+K) and the dropdown now surfaces matching transcript turns alongside artefacts — type any phrase from a past conversation and it'll find the exact moment, with the matched terms highlighted. Click through to open the source session inspector at that exact turn with the find bar pre-populated. Same FTS5 backend that powers `mcp__oyster__recall_transcripts`, just exposed to the keyboard. ([#329](https://github.com/mattslight/oyster/issues/329))
 - **Verbatim transcript recall.** Ask your agent *"what FTS5 schema did we settle on?"* or *"what did Bharat say about memory sync?"* and it now searches your past conversations directly, not just the memory layer. Same-device, full-text indexed via SQLite FTS5; the agent picks the right tool by intent (gist → `recall`; exact phrasing → `recall_transcripts`). Cross-device verbatim recall comes with cloud transcripts in 0.8.0. ([#311](https://github.com/mattslight/oyster/issues/311))
 - **Memory tab on the session inspector.** Every session now shows the memories it *wrote* (via `remember`) and the memories it *pulled* (via `recall`). Each entry can click through to the session that originally wrote it, so you can trace any recalled memory back to the conversation that produced it. The Home memories list grows the same affordance — every memory with a known source session has a *from session* button that opens that session's inspector. ([#310](https://github.com/mattslight/oyster/issues/310))
+- **Floating scroll-to-bottom arrow** in the session inspector. Appears when you've scrolled materially above the tail; click to snap back to the latest turn and re-arm auto-tail.
 
 ## [0.5.0] - 2026-05-01
 
