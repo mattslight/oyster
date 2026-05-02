@@ -168,29 +168,25 @@
 }
 
 /* Find button — sits to the left of the role chips, opens the
-   in-transcript search bar (#332). Sized to match a chip's height
-   so the row reads as one consistent control strip. */
+   in-transcript search bar (#332). Plain icon, no chip frame. */
 .transcript-filter-search {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
+  border: 0;
+  background: transparent;
   color: var(--text-dim);
   cursor: pointer;
+  padding: 0;
   margin-right: 4px;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease;
 }
 .transcript-filter-search:hover {
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.16);
 }
 .transcript-filter-search.active {
-  background: rgba(124, 107, 255, 0.16);
-  border-color: rgba(124, 107, 255, 0.5);
   color: var(--accent-bright);
 }
 
