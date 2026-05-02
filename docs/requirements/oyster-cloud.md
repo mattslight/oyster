@@ -124,6 +124,40 @@ The free tier is the identity-and-publishing substrate. Pro is the sync, durabil
 
 ---
 
+## Pinned architectural principle: agent-facing memory API
+
+The agent-facing API for memory is **MCP, on the local Oyster server** — today and going forward. Cloud doesn't change that. What changes when Pro lands is what's wired behind the MCP tool, not what the agents call.
+
+```
+Agent (Claude Code / Cursor / Codex / …)
+   │
+   │  MCP — `remember`, `recall`, `forget`, `list_memories`
+   ▼
+Local Oyster server (always running on the user's machine)
+   │
+   │  free / today: SqliteFtsMemoryProvider → ~/Oyster/db/memory.db
+   │  Pro (0.8.0+):  CloudMemoryProvider → Cloudflare D1 + Vectorize
+   ▼
+Cloud (Pro only)
+```
+
+**Why this is pinned:**
+
+- **R4 (memory crosses agents)** is delivered structurally by every connected agent talking to the same MCP. A skill, a CLI, a per-agent HTTP integration would need re-implementing per agent.
+- **R2 (recall)** needs FTS + vector queries that aren't realistic over a flat file scan. The MCP boundary lets us put the index where it has to go without leaking that detail to agents.
+- **Pro turns on without agent reconfiguration.** Magic-link sign-in (R5 / R1 prereq) flips the local provider from local-SQLite to cloud-backed. Agents see no difference.
+- **Offline behaviour is the local server's job.** Writes queue locally; reads serve from local cache. Agents don't need their own retry logic.
+
+**What skills are, and why they're complementary not alternative.** Skills are prompt-layer instructions that tell an agent *when* and *how* to use a tool. They sit on top of an actual transport (MCP, Bash, Read/Write). A skill called *"oyster-memory"* might tell Claude *"when the user shares a durable preference, call `mcp__oyster__remember`"* — useful, and we may publish one alongside the package. But the I/O still goes over MCP.
+
+**What about file-based memory** (the markdown-files-synced-via-git pattern). Real merits — git-syncable, vim-editable, no infrastructure — but as the *agent-facing API* it loses on R2 (no realistic semantic / verbatim recall over a file scan), R4 concurrency (no locking between agents), and Pro mirroring (file-tree-sync vs cloud DB). It can live as an alternative `MemoryProvider` implementation *behind* the MCP surface for power users who want it. It does not replace MCP as the contract.
+
+**Non-MCP consumers** (the local web UI, future CLI scripts, integrations) hit the local HTTP API on top of the same store. Same provider, same consistency, no separate path.
+
+This principle applies to memory specifically; it's the load-bearing decision behind 0.8.0's R4 delivery and worth pinning here so design docs don't re-litigate it.
+
+---
+
 ## How to use this doc
 
 - Before starting an architecture/plan doc, check that every decision serves at least one requirement here.
