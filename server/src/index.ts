@@ -4,7 +4,6 @@ import { homedir } from "node:os";
 import { basename, extname, join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, renderMermaid } from "./renderers.js";
-import { handleSpacesRequest } from "./spaces-routes.js";
 import {
   startApp,
   stopApp,
@@ -28,6 +27,7 @@ import { injectBridge } from "./error-bridge.js";
 import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
+import { tryHandleSpaceRoute } from "./routes/spaces.js";
 import type { UiCommand } from "../../shared/types.js";
 import {
   scanExistingArtifacts,
@@ -670,6 +670,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR,
   })) return;
 
+  // /api/spaces/* — collapsed from the legacy spaces-routes.ts and the
+  // inline /api/spaces/:id/sources* + /api/spaces/from-path handlers.
+  if (await tryHandleSpaceRoute(req, res, url, ctx, {
+    spaceService, broadcastUiEvent,
+  })) return;
+
   // GET /api/resolve-path?url=...  — resolve a serving URL to a filesystem path
   if (url.startsWith("/api/resolve-path")) {
     const params = new URL(url, "http://localhost").searchParams;
@@ -721,100 +727,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         }); } catch { return []; }
       })(),
     }));
-    return;
-  }
-
-  // /api/spaces/:id/sources — active sources (linked folders) for a
-  // space. Local-origin only: paths leak the user's home directory.
-  // Surfaces #266 plus attach/detach from the Folders section.
-  {
-    const sourcesPath = url.split("?")[0];
-    const m = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources$/);
-    if (m && req.method === "GET") {
-      if (rejectIfNonLocalOrigin()) return;
-      try {
-        sendJson(spaceService.getSources(m[1]));
-      } catch (err) {
-        sendError(err, 500);
-      }
-      return;
-    }
-    // POST /api/spaces/:id/sources — { path } attaches a folder. Mirrors
-    // the chat-bar `onboard_space` flow: addSource then scan so artefacts
-    // surface in the same round-trip.
-    if (m && req.method === "POST") {
-      if (rejectIfNonLocalOrigin()) return;
-      try {
-        const body = await readJsonBody();
-        const path = typeof body.path === "string" ? body.path.trim() : "";
-        if (!path) {
-          sendJson({ error: "path is required" }, 400);
-          return;
-        }
-        const source = spaceService.addSource(m[1], path);
-        // Fire scan but don't block the response — tiles surface via SSE
-        // as the watcher / scanner picks them up. A long scan would
-        // otherwise hang the Folders UI for many seconds on a big repo.
-        spaceService.scanSpace(m[1]).catch((err) => {
-          console.warn("[attach-source] scan failed:", err instanceof Error ? err.message : err);
-        });
-        sendJson(source, 201);
-      } catch (err) {
-        sendError(err);
-      }
-      return;
-    }
-    // DELETE /api/spaces/:id/sources/:source_id — detach a folder.
-    // Soft-deletes the source row AND every artifact that came from it.
-    const dm = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources\/([^/]+)$/);
-    if (dm && req.method === "DELETE") {
-      if (rejectIfNonLocalOrigin()) return;
-      try {
-        const [, spaceId, sourceId] = dm;
-        const source = spaceService.getSourceById(sourceId);
-        if (!source || source.space_id !== spaceId) {
-          sendJson({ error: "source not found in this space" }, 404);
-          return;
-        }
-        spaceService.removeSource(sourceId);
-        res.writeHead(204);
-        res.end();
-      } catch (err) {
-        sendError(err);
-      }
-      return;
-    }
-  }
-
-  // POST /api/spaces/from-path — one-shot "promote folder to space": create
-  // a new space named after the folder, attach the path as its sole source,
-  // and re-attribute orphan sessions whose cwd matches. Local-origin gated +
-  // size-capped — it accepts a filesystem path so it inherits the same
-  // hardening as /api/spaces/:id/sources POST.
-  if (url === "/api/spaces/from-path" && req.method === "POST") {
-    if (rejectIfNonLocalOrigin()) return;
-    try {
-      const body = await readJsonBody();
-      const path = typeof body.path === "string" ? body.path.trim() : "";
-      const name = typeof body.name === "string" ? body.name.trim() : undefined;
-      if (!path) {
-        sendJson({ error: "path is required" }, 400);
-        return;
-      }
-      const { space } = spaceService.createSpaceFromPath({ path, name });
-      // Tell connected clients to refetch sessions — the backfill just
-      // moved orphan rows from `(NULL, NULL)` to `(space, source)` and the
-      // hook only otherwise refreshes when the watcher fires.
-      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-      // Trigger an initial scan in the background so artefacts surface via
-      // SSE — same UX as /api/spaces/:id/sources POST.
-      spaceService.scanSpace(space.id).catch((err) => {
-        console.warn("[from-path] scan failed:", err instanceof Error ? err.message : err);
-      });
-      sendJson(space, 201);
-    } catch (err) {
-      sendError(err);
-    }
     return;
   }
 
@@ -1119,12 +1031,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     }
     return;
   }
-
-  // ── Spaces API ──
-
-  if (await handleSpacesRequest(url, req, res, spaceService, () => {
-    broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-  })) return;
 
   // ── Import routes ──
 
