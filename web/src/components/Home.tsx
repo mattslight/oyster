@@ -521,6 +521,27 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     }
   }, [activePanel, activeArtefact]);
 
+  // Allow App-level surfaces (Spotlight, etc.) to request a session
+  // inspector via a window event — saves threading a callback through
+  // the App→Home prop boundary just for this one cross-cutting hook.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ id?: string; eventId?: number; query?: string }>).detail;
+      if (detail && typeof detail.id === "string") {
+        setActivePanel({
+          kind: "session",
+          id: detail.id,
+          focusEventId: typeof detail.eventId === "number" ? detail.eventId : undefined,
+          initialSearchQuery: typeof detail.query === "string" && detail.query.length > 0
+            ? detail.query
+            : undefined,
+        });
+      }
+    };
+    window.addEventListener("oyster:open-session", handler);
+    return () => window.removeEventListener("oyster:open-session", handler);
+  }, []);
+
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
   const eyebrow = isHomeView ? (showElsewhere ? "Unsorted" : "Home")
     : isAllView ? "All"
@@ -1058,6 +1079,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
         {activePanel?.kind === "session" && (
           <SessionInspector
             sessionId={activePanel.id}
+            focusEventId={activePanel.focusEventId}
+            initialSearchQuery={activePanel.initialSearchQuery}
             onSwitchTo={setActivePanel}
             onClose={() => setActivePanel(null)}
             onNotFound={() => {

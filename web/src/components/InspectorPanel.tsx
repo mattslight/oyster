@@ -3,7 +3,18 @@ import { createPortal } from "react-dom";
 import "./InspectorPanel.css";
 
 export type ActivePanel =
-  | { kind: "session"; id: string }
+  | {
+      kind: "session";
+      id: string;
+      /** Optional event id to scroll to + highlight on open (#329).
+       *  Used by Spotlight transcript-hit click-through. */
+      focusEventId?: number;
+      /** Optional query to pre-fill the in-transcript find bar (#332).
+       *  When set together with focusEventId, the inspector opens with
+       *  the bar already populated and the focused match highlighted
+       *  inline alongside any other matches in the loaded window. */
+      initialSearchQuery?: string;
+    }
   | { kind: "artefact"; id: string };
 
 interface Props {

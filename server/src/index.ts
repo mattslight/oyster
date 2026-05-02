@@ -1063,12 +1063,28 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
         : 1000;
       const beforeParam = parsed.searchParams.get("before");
       const afterParam = parsed.searchParams.get("after");
+      const aroundParam = parsed.searchParams.get("around");
       const before = beforeParam && Number.isFinite(Number(beforeParam))
         ? Number(beforeParam) : null;
       const after = afterParam && Number.isFinite(Number(afterParam))
         ? Number(afterParam) : null;
+      const around = aroundParam && Number.isFinite(Number(aroundParam))
+        ? Number(aroundParam) : null;
       let events;
-      if (before !== null) {
+      if (around !== null) {
+        // Centred window: split the budget so the merged result is at
+        // most `limit` events. The target is included in the "older"
+        // half (id <= around), so olderLimit gets the ceil. Sort ASC
+        // by id so the transcript renders chronologically regardless
+        // of how the underlying statements ordered their result sets.
+        const olderLimit = Math.max(1, Math.ceil(limit / 2));
+        const newerLimit = Math.max(0, limit - olderLimit);
+        const older = sessionStore.getEventsBeforeBySession(m[1], around + 1, olderLimit);
+        const newer = newerLimit > 0
+          ? sessionStore.getEventsAfterBySession(m[1], around, newerLimit)
+          : [];
+        events = [...older, ...newer].sort((a, b) => a.id - b.id);
+      } else if (before !== null) {
         events = sessionStore.getEventsBeforeBySession(m[1], before, limit);
       } else if (after !== null) {
         events = sessionStore.getEventsAfterBySession(m[1], after, limit);

@@ -1536,7 +1536,9 @@ body {
 .spotlight-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  /* Sits above the inspector panel (z-index 5000) so Cmd+K stays
+     reachable while a session is open. */
+  z-index: 5500;
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1659,6 +1661,58 @@ body {
   font-size: 0.82rem;
   color: rgba(232, 233, 240, 0.3);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ── Transcript hits in spotlight (#329) ── */
+.spotlight-section-label {
+  padding: 10px 16px 4px;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(232, 233, 240, 0.35);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 4px;
+}
+.spotlight-section-loading {
+  padding: 10px 16px;
+  font-size: 0.78rem;
+  color: rgba(232, 233, 240, 0.35);
+}
+.spotlight-result--transcript {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+}
+.spotlight-result-snippet {
+  font-size: 0.82rem;
+  color: rgba(232, 233, 240, 0.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spotlight-snippet-mark {
+  background: rgba(124, 107, 255, 0.22);
+  color: #c8bfff;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.spotlight-result-session {
+  font-size: 0.7rem;
+  color: rgba(232, 233, 240, 0.5);
+  font-family: var(--font-mono);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spotlight-result-role {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 233, 240, 0.35);
+  font-family: var(--font-mono);
 }
 
 /* ── Hardcore Gate Modal ── */

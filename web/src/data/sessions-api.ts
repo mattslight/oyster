@@ -33,6 +33,12 @@ export interface FetchSessionEventsOpts {
   // only events newer than the cursor (live append). Mutually exclusive.
   before?: number;
   after?: number;
+  /** Centred window: returns up to `limit` events centred on the
+   *  target. The target itself is included (counted within the older
+   *  half). Used to deep-link into the middle of a long transcript
+   *  (e.g. Spotlight click-through, #329). Mutually exclusive with
+   *  before/after. */
+  around?: number;
   // Server caps at 1000 default; pass to override (max 10_000).
   limit?: number;
   signal?: AbortSignal;
@@ -45,6 +51,7 @@ export async function fetchSessionEvents(
   const params = new URLSearchParams();
   if (opts.before !== undefined) params.set("before", String(opts.before));
   if (opts.after !== undefined) params.set("after", String(opts.after));
+  if (opts.around !== undefined) params.set("around", String(opts.around));
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
   const qs = params.toString();
   const url = `/api/sessions/${encodeURIComponent(id)}/events${qs ? `?${qs}` : ""}`;
@@ -82,6 +89,29 @@ export interface SessionMemory {
 
 export async function fetchSessionMemory(id: string, signal?: AbortSignal): Promise<SessionMemory> {
   const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/memory`, { signal });
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
+  return res.json();
+}
+
+/** A transcript-search hit returned by GET /api/sessions/search.
+ *  Slim by design — snippet already covers what the UI renders, and
+ *  click-through loads the full event from the inspector. */
+export interface TranscriptHit {
+  event_id: number;
+  session_id: string;
+  session_title: string | null;
+  role: string;
+  ts: string;
+  snippet: string;
+}
+
+export async function searchTranscripts(
+  query: string,
+  opts: { limit?: number; signal?: AbortSignal } = {},
+): Promise<TranscriptHit[]> {
+  const params = new URLSearchParams({ q: query });
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  const res = await fetch(`/api/sessions/search?${params.toString()}`, { signal: opts.signal });
   if (!res.ok) throw new Error(`Server returned ${res.status}`);
   return res.json();
 }

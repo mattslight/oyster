@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   fetchSession,
   fetchSessionEvents,
@@ -22,6 +22,16 @@ import type { ActivePanel } from "./InspectorPanel";
 
 interface Props {
   sessionId: string;
+  /** When set, the bootstrap fetches a window of events centred on
+   *  this id (rather than the latest 1000) and the matching turn is
+   *  scrolled into view + flashed for ~3s. Used by Spotlight transcript
+   *  click-through (#329). */
+  focusEventId?: number;
+  /** Pre-fills the in-transcript find bar so the user sees inline
+   *  match highlights and can step through other matches in this
+   *  session. Used by Spotlight click-through alongside focusEventId
+   *  (#332). */
+  initialSearchQuery?: string;
   onSwitchTo: (next: ActivePanel) => void;
   onClose: () => void;
   onNotFound: () => void;
@@ -90,7 +100,7 @@ function saveVisibleCategories(set: Set<RoleCategory>) {
   } catch { /* ignore */ }
 }
 
-export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }: Props) {
+export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onClose, onNotFound }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
@@ -135,9 +145,15 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
 
     // Bootstrap: the three fetches that gate "session is loaded enough
     // to render". A failure on any of these blocks the inspector.
+    // When focusEventId is set, fetch a window centred on that event
+    // rather than the latest page — the deep-link target may be
+    // thousands of events older than the tail.
+    const eventsOpts = focusEventId !== undefined
+      ? { around: focusEventId, signal: ac.signal }
+      : { signal: ac.signal };
     Promise.all([
       fetchSession(sessionId, ac.signal),
-      fetchSessionEvents(sessionId, { signal: ac.signal }),
+      fetchSessionEvents(sessionId, eventsOpts),
       fetchSessionArtifacts(sessionId, ac.signal),
     ])
       .then(([s, ev, art]) => {
@@ -315,6 +331,8 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         artefacts={artefacts}
         memory={memory}
         memoryError={memoryError}
+        focusEventId={focusEventId}
+        initialSearchQuery={initialSearchQuery}
         onSwitchTo={onSwitchTo}
         sessionId={sessionId}
         agent={session.agent}
@@ -335,14 +353,16 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
  * to read history, leave them there.
  */
 function TranscriptBody({
-  tab, events, artefacts, memory, memoryError, onSwitchTo, sessionId, agent,
-  hasMoreOlder, loadingOlder, onLoadOlder,
+  tab, events, artefacts, memory, memoryError, focusEventId, initialSearchQuery,
+  onSwitchTo, sessionId, agent, hasMoreOlder, loadingOlder, onLoadOlder,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
   artefacts: SessionArtifactJoined[] | null;
   memory: SessionMemory | null;
   memoryError: string | null;
+  focusEventId: number | undefined;
+  initialSearchQuery: string | undefined;
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
   agent: SessionAgent;
@@ -353,6 +373,27 @@ function TranscriptBody({
   const ref = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
   const [visible, setVisible] = useState<Set<RoleCategory>>(loadVisibleCategories);
+  // In-transcript search (#332). Client-side substring match over the
+  // already-loaded events. Compared with the FTS5-backed Spotlight, this
+  // is forgiving on punctuation (literal "0.6.0" works) and highlights
+  // the matched substring inline. Caps at the loaded window.
+  //
+  // Spotlight click-through (#329) pre-fills via initialSearchQuery so
+  // the user lands inside an already-active find session — inline
+  // highlights visible, ↑/↓ available to walk other matches.
+  const [searchOpen, setSearchOpen] = useState(!!initialSearchQuery);
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery ?? "");
+  const [searchMatchIdx, setSearchMatchIdx] = useState(0);
+  // Re-initialise the find bar when the inspector swaps to a new
+  // deep-link target (e.g. user clicks a different Spotlight hit
+  // without closing the panel between).
+  useEffect(() => {
+    if (initialSearchQuery !== undefined) {
+      setSearchQuery(initialSearchQuery);
+      setSearchOpen(initialSearchQuery.length > 0);
+      setSearchMatchIdx(0);
+    }
+  }, [initialSearchQuery, sessionId]);
   // When set to a number (saved scrollHeight), the layout effect below
   // restores the user's scroll position after a load-older prepend. Cleared
   // after restore so live appends continue to behave normally.
@@ -375,7 +416,71 @@ function TranscriptBody({
     });
   }
 
-  const filteredEvents = events ? events.filter((e) => visible.has(categoryOf(e))) : null;
+  // Compute matches from the loaded events. Substring on lowercased
+  // text — robust against punctuation FTS5 strips (e.g. literal "0.6.0").
+  // Only runs when the bar is open: closing the bar via the magnifying
+  // glass preserves the query for next-open but suppresses the inline
+  // highlights and scroll-anchoring while hidden.
+  const trimmedQuery = searchQuery.trim();
+  const isSearching = searchOpen && trimmedQuery.length > 0;
+  const matchIds = useMemo<number[]>(() => {
+    if (!events || !isSearching) return [];
+    const q = trimmedQuery.toLowerCase();
+    return events.filter((e) => e.text.toLowerCase().includes(q)).map((e) => e.id);
+  }, [events, isSearching, trimmedQuery]);
+  // Clamp idx if the match list shrinks under us (e.g. user typed
+  // more). Gated on isSearching so closing the bar (which empties
+  // matchIds via the isSearching gate above) doesn't reset the
+  // user's position — re-opening returns them to the same match.
+  useEffect(() => {
+    if (!isSearching) return;
+    if (matchIds.length === 0) { setSearchMatchIdx(0); return; }
+    if (searchMatchIdx >= matchIds.length) setSearchMatchIdx(0);
+  }, [isSearching, matchIds.length, searchMatchIdx]);
+
+  // Action-driven scroll: only scroll to the current match when the
+  // user explicitly navigated (clicked ↑/↓ or arrived via Spotlight),
+  // not when they merely toggled the bar open. Without this, hiding
+  // and reopening the bar via the magnifying glass would yank the
+  // transcript back to the current match every time, fighting the
+  // user's scroll position.
+  const pendingMatchScrollRef = useRef(false);
+
+  // Align the find bar's current match to the Spotlight-clicked event
+  // once both the matches and the focus id are known. Without this,
+  // Cmd+K → "ruth" → click third hit could land on the FIRST loaded
+  // match for "ruth" instead of the one the user actually clicked.
+  // Runs once per (session, focusEventId) pair via a ref guard.
+  const alignedFocusRef = useRef<{ sid: string; fid: number | undefined } | null>(null);
+  useEffect(() => {
+    if (focusEventId === undefined || matchIds.length === 0) return;
+    const last = alignedFocusRef.current;
+    if (last && last.sid === sessionId && last.fid === focusEventId) return;
+    const idx = matchIds.indexOf(focusEventId);
+    if (idx >= 0) {
+      setSearchMatchIdx(idx);
+      pendingMatchScrollRef.current = true; // initial deep-link should scroll
+      alignedFocusRef.current = { sid: sessionId, fid: focusEventId };
+    }
+  }, [focusEventId, matchIds, sessionId]);
+  const currentMatchEventId = matchIds[searchMatchIdx];
+  // O(1) lookup for the filter pass below — Array.includes would make
+  // the per-render filter O(n×m) on long transcripts with many matches.
+  const matchIdSet = useMemo(() => new Set(matchIds), [matchIds]);
+
+  // Always include deep-link / search targets in the rendered list, even
+  // if their category is filtered out. Otherwise a Spotlight click on a
+  // tool_result with Tools off lands on no DOM target. Same for
+  // in-transcript search hits — strip them and the user can't see what
+  // they searched for.
+  const filteredEvents = useMemo(() => events
+    ? events.filter((e) =>
+        visible.has(categoryOf(e))
+        || e.id === focusEventId
+        || matchIdSet.has(e.id),
+      )
+    : null,
+  [events, visible, focusEventId, matchIdSet]);
   const filteredLen = filteredEvents?.length ?? 0;
 
   useEffect(() => {
@@ -407,6 +512,11 @@ function TranscriptBody({
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Track whether we've already handled the focus scroll for this open
+  // — only fire it once per inspector mount, not on every render.
+  const focusScrolledRef = useRef(false);
+  useEffect(() => { focusScrolledRef.current = false; }, [sessionId, focusEventId]);
+
   // Run BEFORE paint so the scroll restore is invisible to the user. A
   // post-paint useEffect would briefly show the jumped position.
   useLayoutEffect(() => {
@@ -417,15 +527,111 @@ function TranscriptBody({
       restoreFromBottomRef.current = null;
       return;
     }
+    // In-transcript search: scroll the current match into view ONLY
+    // when the user just navigated (↑/↓ or initial Spotlight arrival).
+    // pendingMatchScrollRef gates this so toggling the bar open doesn't
+    // yank the transcript back to the current match each time.
+    if (pendingMatchScrollRef.current && currentMatchEventId !== undefined && filteredLen > 0) {
+      const target = el.querySelector(`[data-event-id="${currentMatchEventId}"]`) as HTMLElement | null;
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        pendingMatchScrollRef.current = false;
+        wasNearBottomRef.current = false;
+        return;
+      }
+    }
+    // Deep-link from Spotlight: scroll the focused turn into view on
+    // first render only (focusScrolledRef guards re-entry).
+    if (focusEventId !== undefined && !focusScrolledRef.current && filteredLen > 0) {
+      const target = el.querySelector(`[data-event-id="${focusEventId}"]`) as HTMLElement | null;
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        focusScrolledRef.current = true;
+        wasNearBottomRef.current = false;
+        return;
+      }
+    }
     if (wasNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [filteredLen, tab]);
+  }, [filteredLen, tab, focusEventId, currentMatchEventId]);
+
+  // Cmd+F (Ctrl+F on non-Mac) opens the search bar. Handled at the
+  // window level only when this inspector is the active session view —
+  // tab gating below ensures it doesn't fire in the artefacts/memory
+  // tabs where the search would have no targets.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isFind = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f";
+      if (isFind && tab === "transcript") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tab]);
+
+  function stepMatch(delta: number) {
+    if (matchIds.length === 0) return;
+    pendingMatchScrollRef.current = true;
+    setSearchMatchIdx((i) => (i + delta + matchIds.length) % matchIds.length);
+  }
+  function closeSearch() {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchMatchIdx(0);
+  }
+
+  // Floating "scroll to bottom" affordance. Visible when the user is
+  // not within 80px of the bottom (matches the auto-tail threshold).
+  // Tracked via state so the button can show/hide; we read scrollTop
+  // on the body's scroll handler that already exists for load-older.
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // Hide when essentially at the bottom; show when materially above.
+      setShowScrollBottom(fromBottom > 200);
+    };
+    el.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => el.removeEventListener("scroll", update);
+  }, [tab]);
+  function scrollToBottom() {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    wasNearBottomRef.current = true;
+  }
+
+  // Highlight applies to whichever event is the current scroll target —
+  // search-match takes priority, deep-link target falls back.
+  const flashEventId = currentMatchEventId ?? focusEventId;
 
   return (
     <>
       {tab === "transcript" && (
-        <TranscriptFilter visible={visible} onToggle={toggleCategory} agent={agent} />
+        <TranscriptFilter
+          visible={visible}
+          onToggle={toggleCategory}
+          agent={agent}
+          onToggleSearch={() => setSearchOpen((v) => !v)}
+          searchActive={searchOpen}
+        />
+      )}
+      {tab === "transcript" && searchOpen && (
+        <TranscriptSearchBar
+          query={searchQuery}
+          matchCount={matchIds.length}
+          matchIdx={searchMatchIdx}
+          onChange={setSearchQuery}
+          onNext={() => stepMatch(1)}
+          onPrev={() => stepMatch(-1)}
+          onClose={closeSearch}
+        />
       )}
       <div className="inspector-body" ref={ref}>
         {tab === "transcript" && (
@@ -435,22 +641,111 @@ function TranscriptBody({
                 Loading older…
               </div>
             )}
-            <Transcript events={filteredEvents} sessionId={sessionId} agent={agent} />
+            <Transcript
+              events={filteredEvents}
+              sessionId={sessionId}
+              agent={agent}
+              flashEventId={flashEventId}
+              highlightQuery={isSearching ? trimmedQuery : ""}
+            />
           </>
         )}
         {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
         {tab === "memory" && <MemoryTab memory={memory} memoryError={memoryError} onSwitchTo={onSwitchTo} sessionId={sessionId} />}
       </div>
+      {tab === "transcript" && showScrollBottom && (
+        <button
+          type="button"
+          className="transcript-scroll-bottom"
+          onClick={scrollToBottom}
+          aria-label="Scroll to bottom of transcript"
+          title="Scroll to bottom"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <polyline points="19 12 12 19 5 12" />
+          </svg>
+        </button>
+      )}
     </>
   );
 }
 
+function TranscriptSearchBar({
+  query, matchCount, matchIdx, onChange, onNext, onPrev, onClose,
+}: {
+  query: string;
+  matchCount: number;
+  matchIdx: number;
+  onChange: (v: string) => void;
+  onNext: () => void;
+  onPrev: () => void;
+  onClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.shiftKey ? onPrev() : onNext();
+      return;
+    }
+  }
+  const counter = query.trim()
+    ? (matchCount === 0 ? "0" : `${matchIdx + 1}/${matchCount}`)
+    : "";
+  return (
+    <div className="transcript-search">
+      <input
+        ref={inputRef}
+        className="transcript-search-input"
+        placeholder="Find in transcript…"
+        value={query}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+      />
+      <span className="transcript-search-count">{counter}</span>
+      <button
+        type="button"
+        className="transcript-search-step"
+        onClick={onPrev}
+        disabled={matchCount === 0}
+        aria-label="Previous match"
+        title="Previous match (Shift+Enter)"
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        className="transcript-search-step"
+        onClick={onNext}
+        disabled={matchCount === 0}
+        aria-label="Next match"
+        title="Next match (Enter)"
+      >
+        ↓
+      </button>
+      <button
+        type="button"
+        className="transcript-search-close"
+        onClick={onClose}
+        aria-label="Close search (Esc)"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function TranscriptFilter({
-  visible, onToggle, agent,
+  visible, onToggle, agent, onToggleSearch, searchActive,
 }: {
   visible: Set<RoleCategory>;
   onToggle: (cat: RoleCategory) => void;
   agent: SessionAgent;
+  onToggleSearch: () => void;
+  searchActive: boolean;
 }) {
   const labels: Array<[RoleCategory, string]> = [
     ["user", "User"],
@@ -461,6 +756,19 @@ function TranscriptFilter({
   ];
   return (
     <div className="transcript-filter" role="group" aria-label="Filter transcript by role">
+      <button
+        type="button"
+        className={`transcript-filter-search${searchActive ? " active" : ""}`}
+        onClick={onToggleSearch}
+        aria-label={searchActive ? "Close search" : "Find in transcript"}
+        aria-pressed={searchActive}
+        title={searchActive ? "Close search (Esc)" : "Find in transcript (Cmd+F)"}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </button>
       {labels.map(([cat, label]) => (
         <button
           key={cat}
@@ -729,8 +1037,14 @@ function MemoryRow({
 }
 
 function Transcript({
-  events, sessionId, agent,
-}: { events: SessionEvent[] | null; sessionId: string; agent: SessionAgent }) {
+  events, sessionId, agent, flashEventId, highlightQuery,
+}: {
+  events: SessionEvent[] | null;
+  sessionId: string;
+  agent: SessionAgent;
+  flashEventId: number | undefined;
+  highlightQuery: string;
+}) {
   if (events === null) return <div className="inspector-empty">Loading transcript…</div>;
   if (events.length === 0) {
     return <div className="inspector-empty">No transcript yet. Live updates active.</div>;
@@ -738,32 +1052,84 @@ function Transcript({
   return (
     <>
       {events.map((e) => (
-        <Turn key={e.id} event={e} sessionId={sessionId} agent={agent} />
+        <Turn
+          key={e.id}
+          event={e}
+          sessionId={sessionId}
+          agent={agent}
+          flash={e.id === flashEventId}
+          highlightQuery={highlightQuery}
+        />
       ))}
     </>
   );
 }
 
 function Turn({
-  event, sessionId, agent,
-}: { event: SessionEvent; sessionId: string; agent: SessionAgent }) {
+  event, sessionId, agent, flash, highlightQuery,
+}: {
+  event: SessionEvent;
+  sessionId: string;
+  agent: SessionAgent;
+  flash: boolean;
+  highlightQuery: string;
+}) {
   const isToolish =
     event.role === "tool"
     || event.role === "tool_result"
     || (event.role === "assistant" && TOOL_ONLY_RE.test(event.text.trim()));
   if (isToolish) {
-    return <ToolTurn event={event} sessionId={sessionId} />;
+    return <ToolTurn event={event} sessionId={sessionId} flash={flash} highlightQuery={highlightQuery} />;
   }
   const label = event.role === "assistant" ? agent.toUpperCase() : event.role.toUpperCase();
   return (
-    <div className={`turn ${event.role}`}>
+    <div className={`turn ${event.role}${flash ? " turn-flash" : ""}`} data-event-id={event.id}>
       <div className="turn-role">{label}</div>
-      <div className="turn-text">{event.text || "(empty)"}</div>
+      <div className="turn-text">
+        {event.text
+          ? <Highlighted text={event.text} query={highlightQuery} />
+          : "(empty)"}
+      </div>
     </div>
   );
 }
 
-function ToolTurn({ event, sessionId }: { event: SessionEvent; sessionId: string }) {
+/** Renders text with case-insensitive substring matches wrapped in
+ *  <mark> spans. Used by the in-transcript find-box (#332) to make the
+ *  match visible inline, not just as a turn-level flash. */
+function Highlighted({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const parts: Array<{ text: string; mark: boolean }> = [];
+  let i = 0;
+  while (i < text.length) {
+    const found = lower.indexOf(q, i);
+    if (found === -1) {
+      parts.push({ text: text.slice(i), mark: false });
+      break;
+    }
+    if (found > i) parts.push({ text: text.slice(i, found), mark: false });
+    parts.push({ text: text.slice(found, found + q.length), mark: true });
+    i = found + q.length;
+  }
+  return (
+    <>
+      {parts.map((p, idx) => p.mark
+        ? <mark key={idx} className="turn-text-match">{p.text}</mark>
+        : <span key={idx}>{p.text}</span>)}
+    </>
+  );
+}
+
+function ToolTurn({
+  event, sessionId, flash, highlightQuery,
+}: {
+  event: SessionEvent;
+  sessionId: string;
+  flash: boolean;
+  highlightQuery: string;
+}) {
   const [open, setOpen] = useState(false);
   // The list endpoint omits raw to keep payloads small. We lazy-fetch
   // it the first time the user expands this turn, and cache it locally.
@@ -787,16 +1153,16 @@ function ToolTurn({ event, sessionId }: { event: SessionEvent; sessionId: string
 
   const { display, truncated, totalBytes } = capRaw(raw ?? "");
   return (
-    <div className={`turn ${event.role}`}>
+    <div className={`turn ${event.role}${flash ? " turn-flash" : ""}`} data-event-id={event.id}>
       <div className="turn-role">{event.role}</div>
       <div className="turn-tool-summary" onClick={toggle}>
-        {open ? "▾" : "▸"} {summary}
+        {open ? "▾" : "▸"} <Highlighted text={summary} query={highlightQuery} />
       </div>
       {open && rawLoading && <div className="turn-tool-truncated">Loading…</div>}
       {open && rawError && <div className="turn-tool-truncated">Couldn't load: {rawError}</div>}
       {open && !rawLoading && !rawError && raw && (
         <>
-          <pre className="turn-tool-raw">{display}</pre>
+          <pre className="turn-tool-raw"><Highlighted text={display} query={highlightQuery} /></pre>
           {truncated && (
             <div className="turn-tool-truncated">
               …truncated, {totalBytes - RAW_CAP_BYTES} more bytes
@@ -804,7 +1170,9 @@ function ToolTurn({ event, sessionId }: { event: SessionEvent; sessionId: string
           )}
         </>
       )}
-      {!raw && !rawLoading && event.text && <div className="turn-text">{event.text}</div>}
+      {!raw && !rawLoading && event.text && (
+        <div className="turn-text"><Highlighted text={event.text} query={highlightQuery} /></div>
+      )}
     </div>
   );
 }
