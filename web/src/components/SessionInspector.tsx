@@ -34,7 +34,9 @@ interface Props {
    *  (#332). */
   initialSearchQuery?: string;
   onSwitchTo: (next: ActivePanel) => void;
-  /** Open an artefact directly in the file viewer (closes this panel).
+  /** Open an artefact directly in the file viewer. The session inspector
+   *  stays mounted behind the viewer (windows-layer renders above
+   *  inspector-panel) so the user returns to it when the viewer closes.
    *  Clicking an artefact in the Artefacts tab routes here rather than
    *  through the ArtefactInspector — users want the file, not a metadata
    *  sidebar on top of a metadata sidebar. */

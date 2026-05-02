@@ -1415,8 +1415,9 @@ body {
 .confirm-modal-overlay {
   position: fixed;
   inset: 0;
-  /* Sits above everything — chat bar (900), spotlight (200), viewer windows
-     (1000), tooltips (9999). Modal dialogs must beat all of them. */
+  /* Sits above everything — chat bar (90), inspector (4999/5000), viewer
+     windows (5100), spotlight (5500), tooltips (9999). Modal dialogs must
+     beat all of them. */
   z-index: 10000;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);

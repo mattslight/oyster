@@ -5,7 +5,9 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
-  /* Above ChatBar (90), viewer windows (1000); below ConfirmModal (10000). */
+  /* Above ChatBar (90); below viewer windows (5100), Spotlight (5500),
+     ConfirmModal (10000). Viewer sits above so an artefact opened from
+     the inspector layers on top of the panel. */
   z-index: 4999;
 }
 .inspector-backdrop.open {
