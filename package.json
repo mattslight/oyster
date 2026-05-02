@@ -44,7 +44,7 @@
     "@fal-ai/client": "^1.9.4",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "better-sqlite3": "^12.8.0",
-    "chokidar": "^4.0.3",
+    "chokidar": "^5.0.0",
     "marked": "^18.0.2",
     "opencode-ai": "^1.2.26",
     "ws": "^8.18.0"
