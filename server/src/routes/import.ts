@@ -45,7 +45,7 @@ export async function tryHandleImportRoute(
   ctx: RouteCtx,
   deps: ImportRouteDeps,
 ): Promise<boolean> {
-  const { sendJson, sendError, readJsonBody } = ctx;
+  const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
   const {
     store, spaceStore, spaceService, artifactService, memoryProvider,
     getNativeSourcePath, getOpenCodePort,
@@ -64,7 +64,13 @@ export async function tryHandleImportRoute(
     );
   };
 
+  // Strip query string before path matching — preview/execute callers
+  // could harmlessly add `?t=…` cache-busters, and exact equality would
+  // silently fall through.
+  const path = url.split("?")[0];
+
   if (url.startsWith("/api/import/prompt") && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return true;
     const params = new URL(url, "http://localhost").searchParams;
     const provider = params.get("provider") || "chatgpt";
     const spaceId = params.get("spaceId");
@@ -92,7 +98,8 @@ export async function tryHandleImportRoute(
     return true;
   }
 
-  if (url === "/api/import/preview" && req.method === "POST") {
+  if (path === "/api/import/preview" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return true;
     try {
       const body = await readJsonBody({ maxBytes: 500_000 });
       const raw = typeof body.raw === "string" ? body.raw : "";
@@ -112,6 +119,11 @@ export async function tryHandleImportRoute(
             headers: { "Content-Type": "application/json" },
             body: "{}",
           });
+          if (!sessRes.ok) {
+            const errBody = await sessRes.text().catch(() => "");
+            console.error(`[import] OpenCode /session ${sessRes.status}:`, errBody.slice(0, 300));
+            return null;
+          }
           const sess = await sessRes.json() as { id: string };
           console.log("[import] OpenCode session:", sess.id);
 
@@ -122,6 +134,11 @@ export async function tryHandleImportRoute(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ parts: [{ type: "text", text: prompt }], agent: "oyster" }),
           });
+          if (!msgRes.ok) {
+            const errBody = await msgRes.text().catch(() => "");
+            console.error(`[import] OpenCode /session/:id/message ${msgRes.status}:`, errBody.slice(0, 300));
+            return null;
+          }
 
           const resBody = await msgRes.json() as {
             info?: { error?: unknown };
@@ -181,7 +198,8 @@ export async function tryHandleImportRoute(
     return true;
   }
 
-  if (url === "/api/import/execute" && req.method === "POST") {
+  if (path === "/api/import/execute" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return true;
     try {
       const body = await readJsonBody({ maxBytes: 100_000 });
       const plan_id = typeof body.plan_id === "string" ? body.plan_id : "";

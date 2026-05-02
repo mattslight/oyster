@@ -54,18 +54,27 @@ export function makeRouteCtx(req: IncomingMessage, res: ServerResponse): RouteCt
 
   async function readJsonBody(opts?: { maxBytes?: number }): Promise<Record<string, unknown>> {
     const maxBytes = opts?.maxBytes ?? MAX_MUTATION_BODY;
-    let body = "";
+    // Track bytes, not characters. The previous shape (body += chunk +
+    // body.length > maxBytes) coerced each Buffer chunk to a string and
+    // counted code units, which under-counts multi-byte UTF-8 — a payload
+    // of N maxBytes-allowed code units could be 4× that in actual bytes.
+    // Buffer.length is the byte count.
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
     for await (const chunk of req) {
-      body += chunk;
-      if (body.length > maxBytes) {
+      const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+      totalBytes += buf.length;
+      if (totalBytes > maxBytes) {
         // Destroy the socket so we stop reading further bytes from an
         // oversized payload — unlike a plain throw, which lets the rest
         // of the stream keep draining.
         req.destroy();
         throw new HttpError("Payload too large", 413);
       }
+      chunks.push(buf);
     }
-    if (!body) return {};
+    if (totalBytes === 0) return {};
+    const body = Buffer.concat(chunks).toString("utf8");
     try { return JSON.parse(body) as Record<string, unknown>; }
     catch { throw new HttpError("Invalid JSON body", 400); }
   }
