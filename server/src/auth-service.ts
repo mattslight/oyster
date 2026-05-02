@@ -46,7 +46,6 @@ interface DevicePollSuccess {
 
 const AUTH_WORKER_BASE = process.env.OYSTER_AUTH_BASE ?? "https://oyster.to/auth";
 const POLL_INTERVAL_MS = 2_000;
-const POLL_MAX_AGE_MS = 10 * 60 * 1000; // matches device_code TTL on the Worker
 
 export type AuthChangedListener = (state: AuthState) => void;
 
@@ -70,12 +69,13 @@ export class AuthService {
     return () => this.listeners.delete(listener);
   }
 
-  // Kick off a sign-in flow. Returns the user_code so the UI can show
-  // a fallback ("Open https://oyster.to/auth/sign-in?d=ABCD-1234 if your
-  // browser didn't open") and the URL it tried to open. Idempotent: if
-  // there's already an active poll, abort the old one first so a stale
-  // device_code doesn't keep claiming the slot when the user retries.
-  async startSignIn(): Promise<{ user_code: string; sign_in_url: string }> {
+  // Kick off a sign-in flow. Returns the user_code, the URL the browser
+  // was directed to, and the expires_in window so the UI can run a
+  // matching client-side timeout (badge flips back to signed-out if the
+  // poll ages out without producing a session). Idempotent: an existing
+  // active poll is aborted first so a stale device_code doesn't keep
+  // claiming the slot when the user retries.
+  async startSignIn(): Promise<{ user_code: string; sign_in_url: string; expires_in: number }> {
     if (this.activePoll) {
       this.activePoll.abort.abort();
       this.activePoll = null;
@@ -83,8 +83,36 @@ export class AuthService {
     const init = await this.fetchJson<DeviceInitResponse>("/device-init", { method: "POST" });
     const signInUrl = `${AUTH_WORKER_BASE}/sign-in?d=${encodeURIComponent(init.user_code)}`;
     this.openBrowser(signInUrl);
-    this.beginPolling(init.device_code);
-    return { user_code: init.user_code, sign_in_url: signInUrl };
+    this.beginPolling(init.device_code, init.expires_in * 1000);
+    return { user_code: init.user_code, sign_in_url: signInUrl, expires_in: init.expires_in };
+  }
+
+  // Validate the persisted session against the cloud Worker. If the
+  // server was offline when the session was revoked elsewhere (sign-out
+  // on another device, manual D1 revoke), the local cache shows
+  // signed-in until next refresh — this catches that on startup.
+  // Network failure leaves the state alone (don't punish offline users
+  // by signing them out on every flaky boot).
+  async validatePersistedSession(): Promise<void> {
+    const token = this.state.sessionToken;
+    if (!token) return;
+    try {
+      const res = await fetch(`${AUTH_WORKER_BASE}/whoami`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        console.warn("[auth] persisted session is no longer valid; clearing");
+        this.setState({ user: null, sessionToken: null, signedInAt: null });
+        try { if (existsSync(this.authJsonPath)) unlinkSync(this.authJsonPath); }
+        catch (err) { console.error("[auth] failed to delete auth.json:", err); }
+        return;
+      }
+      // 200 or any other status: leave state untouched. 5xx / network
+      // errors are handled the same as success here — we trust the disk
+      // cache until the Worker tells us otherwise (401).
+    } catch (err) {
+      console.error("[auth] startup whoami probe failed (offline?); keeping cached session:", err);
+    }
   }
 
   // Local sign-out: revoke on the cloud side (best-effort), then clear
@@ -97,14 +125,22 @@ export class AuthService {
     }
     if (token) {
       try {
-        await fetch(`${AUTH_WORKER_BASE}/sign-out`, {
+        const res = await fetch(`${AUTH_WORKER_BASE}/sign-out`, {
           method: "POST",
           headers: { authorization: `Bearer ${token}` },
         });
+        if (!res.ok) {
+          // Cloud reachable but rejected the call (5xx / 503 / DB
+          // transient). The local sign-out still completes, but the
+          // cloud row remains valid until validatePersistedSession()
+          // hits a 401 on next start. Log so it's visible in dev.
+          const detail = await res.text().catch(() => "");
+          console.error(`[auth] cloud sign-out non-ok ${res.status}: ${detail}`);
+        }
       } catch (err) {
-        // Cloud unreachable: revoke happens on the Worker side eventually
-        // when we next call /whoami. Local sign-out still completes.
-        console.error("[auth] cloud sign-out failed:", err);
+        // Cloud unreachable. Same caveat as the !res.ok branch — local
+        // sign-out completes, cloud cleanup deferred to next whoami probe.
+        console.error("[auth] cloud sign-out threw:", err);
       }
     }
     this.setState({ user: null, sessionToken: null, signedInAt: null });
@@ -156,14 +192,14 @@ export class AuthService {
     }
   }
 
-  private beginPolling(deviceCode: string): void {
+  private beginPolling(deviceCode: string, maxAgeMs: number): void {
     const abort = new AbortController();
     this.activePoll = { deviceCode, abort };
     const startedAt = Date.now();
 
     const tick = async (): Promise<void> => {
       if (abort.signal.aborted) return;
-      if (Date.now() - startedAt > POLL_MAX_AGE_MS) {
+      if (Date.now() - startedAt > maxAgeMs) {
         if (this.activePoll?.deviceCode === deviceCode) this.activePoll = null;
         return;
       }
@@ -212,12 +248,14 @@ export class AuthService {
 
   private openBrowser(url: string): void {
     // Best-effort. If the spawn fails (e.g. headless env), the UI still
-    // shows the user_code + URL for manual paste. Same pattern bin/oyster.mjs
-    // uses for opening localhost:4444 on first launch.
+    // shows the user_code + URL for manual paste. Windows note: `start`
+    // treats the first quoted argument as the window title — passing
+    // an empty title placeholder before the URL is the documented fix
+    // (otherwise the URL itself becomes the title and nothing opens).
     try {
       if (process.platform === "darwin") execSync(`open ${JSON.stringify(url)}`);
       else if (process.platform === "linux") execSync(`xdg-open ${JSON.stringify(url)}`);
-      else if (process.platform === "win32") execSync(`start ${JSON.stringify(url)}`);
+      else if (process.platform === "win32") execSync(`start "" ${JSON.stringify(url)}`);
     } catch {
       // ignored — user can paste the URL from the UI
     }

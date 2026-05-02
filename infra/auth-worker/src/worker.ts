@@ -478,9 +478,26 @@ function randomUserCode(): string {
   return out;
 }
 
-async function handleDeviceInit(env: Env): Promise<Response> {
+async function handleDeviceInit(req: Request, env: Env): Promise<Response> {
+  // Per-IP gate. Reuses the same rate-limit binding as /auth/magic-link —
+  // both endpoints are auth-attempt surface and an abuser hitting either
+  // is the same problem. Cap is 20/hour per IP across both.
+  const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
+  const ipGate = await env.MAGIC_LINK_LIMIT.limit({ key: ip });
+  if (!ipGate.success) return json({ error: "rate_limited" }, 429, NO_STORE);
+
   const now = Date.now();
   const expiresAt = now + DEVICE_CODE_TTL_MS;
+
+  // Opportunistic GC: delete a small batch of expired rows on every
+  // init. Bounded LIMIT so a single request never spends too long; over
+  // many requests the table stays trimmed without a separate cron Worker.
+  await env.DB
+    .prepare("DELETE FROM device_codes WHERE expires_at < ? LIMIT 100")
+    .bind(now)
+    .run()
+    .catch((err) => console.error("device_codes_gc_failed", err));
+
   // user_code has UNIQUE — retry on the rare collision rather than
   // letting a duplicate slip through.
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -509,50 +526,50 @@ async function handleDevicePoll(env: Env, deviceCode: string): Promise<Response>
     return json({ error: "invalid_device_code" }, 400, NO_STORE);
   }
   const now = Date.now();
-  // Atomic claim: a successful UPDATE returns the session bits exactly
-  // once. Subsequent polls see no rows and return 410. Pre-claim polls
-  // (session_id IS NULL but expires_at > now) return 202 to keep the
-  // local poller in its loop.
-  const claimed = await env.DB
-    .prepare(
-      `UPDATE device_codes
-         SET claimed_at = ?
-       WHERE device_code = ? AND session_id IS NOT NULL AND claimed_at IS NULL AND expires_at > ?
-       RETURNING session_id`
-    )
-    .bind(now, deviceCode, now)
-    .first<{ session_id: string }>();
 
-  if (claimed) {
-    const userRow = await env.DB
-      .prepare(
-        `SELECT u.id, u.email FROM sessions s
-         JOIN users u ON u.id = s.user_id
-         WHERE s.id = ? AND s.revoked_at IS NULL AND s.expires_at > ?`
-      )
-      .bind(claimed.session_id, now)
-      .first<{ id: string; email: string }>();
-    if (!userRow) {
-      // Session was revoked between verify and poll. Surface a clean 410
-      // so the local poller stops; user can retry from the start.
-      return json({ error: "session_unavailable" }, 410, NO_STORE);
-    }
-    return json(
-      { session_token: claimed.session_id, user: { id: userRow.id, email: userRow.email } },
-      200,
-      NO_STORE,
-    );
+  // Load the user FIRST. The previous version marked claimed_at before
+  // fetching the user row; if the user fetch (or any subsequent step)
+  // failed, the row was burnt — every retry returned 410 already_claimed
+  // and the login was lost. Now: read everything we need to respond,
+  // *then* race to claim. A failed read returns the same status the
+  // poller already handles (404 → "unknown" → 410); only the atomic
+  // UPDATE+meta.changes is the gate.
+  const candidate = await env.DB
+    .prepare(
+      `SELECT d.session_id, d.claimed_at, d.expires_at, u.id AS user_id, u.email
+       FROM device_codes d
+       LEFT JOIN sessions s ON s.id = d.session_id AND s.revoked_at IS NULL AND s.expires_at > ?
+       LEFT JOIN users u ON u.id = s.user_id
+       WHERE d.device_code = ?`
+    )
+    .bind(now, deviceCode)
+    .first<{ session_id: string | null; claimed_at: number | null; expires_at: number; user_id: string | null; email: string | null }>();
+
+  if (!candidate) return json({ error: "unknown_device_code" }, 410, NO_STORE);
+  if (candidate.claimed_at !== null) return json({ error: "already_claimed" }, 410, NO_STORE);
+  if (candidate.expires_at <= now) return json({ error: "expired" }, 410, NO_STORE);
+  if (candidate.session_id === null) return json({ status: "pending" }, 202, NO_STORE);
+  if (!candidate.user_id || !candidate.email) {
+    // Session was revoked between verify and poll. Don't burn the row.
+    return json({ error: "session_unavailable" }, 410, NO_STORE);
   }
 
-  // No claim — distinguish "still waiting" (202) from "gone" (410).
-  const row = await env.DB
-    .prepare("SELECT session_id, claimed_at, expires_at FROM device_codes WHERE device_code = ?")
-    .bind(deviceCode)
-    .first<{ session_id: string | null; claimed_at: number | null; expires_at: number }>();
-  if (!row) return json({ error: "unknown_device_code" }, 410, NO_STORE);
-  if (row.claimed_at !== null) return json({ error: "already_claimed" }, 410, NO_STORE);
-  if (row.expires_at <= now) return json({ error: "expired" }, 410, NO_STORE);
-  return json({ status: "pending" }, 202, NO_STORE);
+  // Atomic claim. Only one concurrent poll wins.
+  const res = await env.DB
+    .prepare(
+      "UPDATE device_codes SET claimed_at = ? WHERE device_code = ? AND claimed_at IS NULL AND session_id = ?"
+    )
+    .bind(now, deviceCode, candidate.session_id)
+    .run();
+  if ((res.meta?.changes ?? 0) !== 1) {
+    return json({ error: "already_claimed" }, 410, NO_STORE);
+  }
+
+  return json(
+    { session_token: candidate.session_id, user: { id: candidate.user_id, email: candidate.email } },
+    200,
+    NO_STORE,
+  );
 }
 
 async function handleSignOut(req: Request, env: Env, host: string): Promise<Response> {
@@ -612,7 +629,7 @@ export default {
         return await handleWhoami(req, env, url.host);
       }
       if (url.pathname === "/auth/device-init" && req.method === "POST") {
-        return await handleDeviceInit(env);
+        return await handleDeviceInit(req, env);
       }
       const deviceMatch = url.pathname.match(/^\/auth\/device\/([^/]+)$/);
       if (deviceMatch && req.method === "GET") {

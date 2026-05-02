@@ -541,6 +541,9 @@ await memoryProvider.init();
 
 // Auth bridge to oyster.to/auth/*. Reads ~/Oyster/config/auth.json on
 // startup so a previously-signed-in user is recognised across restarts.
+// validatePersistedSession() then re-checks the cloud session in the
+// background — clears local state if the cloud reports 401 (revoked
+// elsewhere), keeps it if the cloud is unreachable.
 const authService = new AuthService(CONFIG_DIR);
 authService.onAuthChanged((state) => {
   broadcastUiEvent({
@@ -549,6 +552,7 @@ authService.onAuthChanged((state) => {
     payload: { user: state.user },
   });
 });
+void authService.validatePersistedSession();
 
 // ── Initialize subsystems ──
 

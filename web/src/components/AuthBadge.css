@@ -77,3 +77,27 @@
 .auth-badge__menu-item:hover {
   background: var(--icon-hover);
 }
+
+.auth-badge__cancel {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.auth-badge__cancel:hover {
+  color: var(--text);
+  background: var(--icon-hover);
+}
+
+.auth-badge__error {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #f87171;
+}
