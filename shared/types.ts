@@ -138,3 +138,15 @@ export interface Space {
   createdAt: string;
   updatedAt: string;
 }
+
+/** SSE message broadcast on /api/ui/events. The web app subscribes via
+ *  subscribeUiEvents and routes by `command`. The `version` field is
+ *  reserved for future envelope evolution — today's client (ui-events.ts)
+ *  uses a narrower `{command, payload}` shape and doesn't gate on version,
+ *  so any non-additive change still requires a coordinated client update. */
+export interface UiCommand {
+  version: 1;
+  command: string;
+  payload: unknown;
+  correlationId?: string;
+}

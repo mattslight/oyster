@@ -14,18 +14,23 @@ import type {
   SessionEvent,
   SessionArtifactJoined,
 } from "../../../shared/types";
+import { ApiError, getJson } from "./http";
 
 export async function fetchSessions(): Promise<Session[]> {
-  const res = await fetch("/api/sessions");
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  return res.json();
+  return getJson<Session[]>("/api/sessions");
 }
 
 export async function fetchSession(id: string, signal?: AbortSignal): Promise<Session> {
-  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { signal });
-  if (res.status === 404) throw new SessionNotFoundError(id);
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  return res.json();
+  try {
+    return await getJson<Session>(`/api/sessions/${encodeURIComponent(id)}`, signal);
+  } catch (err) {
+    // Callers (SessionInspector) branch on this to render a "no longer
+    // available" state vs. a generic error banner.
+    if (err instanceof ApiError && err.status === 404) {
+      throw new SessionNotFoundError(id);
+    }
+    throw err;
+  }
 }
 
 export interface FetchSessionEventsOpts {
@@ -55,15 +60,11 @@ export async function fetchSessionEvents(
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
   const qs = params.toString();
   const url = `/api/sessions/${encodeURIComponent(id)}/events${qs ? `?${qs}` : ""}`;
-  const res = await fetch(url, { signal: opts.signal });
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  return res.json();
+  return getJson<SessionEvent[]>(url, opts.signal);
 }
 
 export async function fetchSessionArtifacts(id: string, signal?: AbortSignal): Promise<SessionArtifactJoined[]> {
-  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/artifacts`, { signal });
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  return res.json();
+  return getJson<SessionArtifactJoined[]>(`/api/sessions/${encodeURIComponent(id)}/artifacts`, signal);
 }
 
 /** R6 traceable recall: memories tied to this session — written by it
@@ -88,9 +89,7 @@ export interface SessionMemory {
 }
 
 export async function fetchSessionMemory(id: string, signal?: AbortSignal): Promise<SessionMemory> {
-  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/memory`, { signal });
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  return res.json();
+  return getJson<SessionMemory>(`/api/sessions/${encodeURIComponent(id)}/memory`, signal);
 }
 
 /** A transcript-search hit returned by GET /api/sessions/search.
@@ -111,9 +110,7 @@ export async function searchTranscripts(
 ): Promise<TranscriptHit[]> {
   const params = new URLSearchParams({ q: query });
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
-  const res = await fetch(`/api/sessions/search?${params.toString()}`, { signal: opts.signal });
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  return res.json();
+  return getJson<TranscriptHit[]>(`/api/sessions/search?${params.toString()}`, opts.signal);
 }
 
 // The list endpoint strips `raw` from every event to keep the payload
@@ -125,18 +122,18 @@ export async function fetchSessionEventRaw(
   eventId: number,
   signal?: AbortSignal,
 ): Promise<string | null> {
-  const res = await fetch(
+  const ev = await getJson<SessionEvent>(
     `/api/sessions/${encodeURIComponent(sessionId)}/events/${eventId}`,
-    { signal },
+    signal,
   );
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  const ev = (await res.json()) as SessionEvent;
   return ev.raw;
 }
 
 export class SessionNotFoundError extends Error {
-  constructor(public sessionId: string) {
+  sessionId: string;
+  constructor(sessionId: string) {
     super(`Session not found: ${sessionId}`);
+    this.sessionId = sessionId;
     this.name = "SessionNotFoundError";
   }
 }

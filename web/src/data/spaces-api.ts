@@ -1,48 +1,26 @@
 import type { Space } from "../../../shared/types";
+import { getJson, patchJson, postJson, del } from "./http";
 
 export async function fetchSpaces(): Promise<Space[]> {
-  const res = await fetch("/api/spaces");
-  if (!res.ok) return [];
-  return res.json();
+  // Returns [] on failure rather than throwing — callers (App bootstrap)
+  // expect a list, and a missing /api/spaces shouldn't crash the surface.
+  try {
+    return await getJson<Space[]>("/api/spaces");
+  } catch {
+    return [];
+  }
 }
 
 export async function updateSpace(spaceId: string, fields: { displayName?: string; color?: string }): Promise<Space> {
-  const res = await fetch(`/api/spaces/${spaceId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(fields),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
+  return patchJson<Space>(`/api/spaces/${spaceId}`, fields);
 }
 
 export async function convertFolderToSpace(folderName: string, sourceSpaceId: string = "home", merge?: boolean): Promise<Space> {
-  const res = await fetch("/api/spaces/from-folder", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folderName, sourceSpaceId, merge }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
+  return postJson<Space>("/api/spaces/from-folder", { folderName, sourceSpaceId, merge });
 }
 
 export async function promoteFolderToSpace(path: string, name?: string): Promise<Space> {
-  const res = await fetch("/api/spaces/from-path", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, name }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
+  return postJson<Space>("/api/spaces/from-path", { path, name });
 }
 
 // Sources = linked folders attached to a space. The UI can list, attach,
@@ -59,46 +37,17 @@ export interface SpaceSource {
 }
 
 export async function fetchSpaceSources(spaceId: string, signal?: AbortSignal): Promise<SpaceSource[]> {
-  const res = await fetch(`/api/spaces/${encodeURIComponent(spaceId)}/sources`, { signal });
-  if (!res.ok) throw new Error(`Server returned ${res.status}`);
-  return res.json();
-}
-
-async function readErr(res: Response): Promise<string> {
-  try {
-    const body = await res.json() as { error?: string };
-    if (typeof body.error === "string") return body.error;
-  } catch { /* not JSON */ }
-  return `HTTP ${res.status}`;
+  return getJson<SpaceSource[]>(`/api/spaces/${encodeURIComponent(spaceId)}/sources`, signal);
 }
 
 export async function addSpaceSource(spaceId: string, path: string): Promise<SpaceSource> {
-  const res = await fetch(`/api/spaces/${encodeURIComponent(spaceId)}/sources`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  if (!res.ok) throw new Error(await readErr(res));
-  return res.json();
+  return postJson<SpaceSource>(`/api/spaces/${encodeURIComponent(spaceId)}/sources`, { path });
 }
 
 export async function removeSpaceSource(spaceId: string, sourceId: string): Promise<void> {
-  const res = await fetch(
-    `/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(sourceId)}`,
-    { method: "DELETE" },
-  );
-  if (!res.ok) throw new Error(await readErr(res));
+  return del(`/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(sourceId)}`);
 }
 
 export async function deleteSpace(spaceId: string, folderName?: string): Promise<void> {
-  const opts: RequestInit = { method: "DELETE" };
-  if (folderName) {
-    opts.headers = { "Content-Type": "application/json" };
-    opts.body = JSON.stringify({ folderName });
-  }
-  const res = await fetch(`/api/spaces/${spaceId}`, opts);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
+  return del(`/api/spaces/${spaceId}`, folderName ? { folderName } : undefined);
 }
