@@ -615,7 +615,7 @@ async function handleGithubStart(_req: Request, env: Env): Promise<Response> {
     return json({ error: "oauth_not_configured" }, 503, NO_STORE);
   }
   // Phase 2 wires the real start flow.
-  return json({ error: "not_implemented" }, 503, NO_STORE);
+  return json({ error: "not_implemented" }, 501, NO_STORE);
 }
 
 export default {

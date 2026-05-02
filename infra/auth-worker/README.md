@@ -19,6 +19,8 @@ Done in your terminal from inside `infra/auth-worker/`.
 
 ### 1. Install deps
 
+Requires Node ≥22 (wrangler@4.x's minimum).
+
 ```bash
 npm install
 ```
