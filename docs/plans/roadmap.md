@@ -10,7 +10,7 @@
 
 The free account tier is the **identity and publishing substrate**. Pro is the **sync, durability, and cross-device layer** on top.
 
-Each milestone from here is a single requirement (or pair) being made true. Polish, refactors, and clever local features may still happen — they ride on top of the spine, not in front of it.
+Each milestone from here delivers one or more requirements. Polish, refactors, and clever local features may still happen — they ride on top of the spine, not in front of it.
 
 ## 0.6.0 — Trustworthy recall
 
