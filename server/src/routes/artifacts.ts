@@ -12,8 +12,8 @@ import { join, resolve, sep } from "node:path";
 import type { SessionStore } from "../session-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { IconGenerator } from "../icon-generator.js";
-import type { ArtifactKind } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
+import { safeDecode } from "../http-utils.js";
 
 export interface ArtifactRouteDeps {
   artifactService: ArtifactService;
@@ -94,9 +94,7 @@ export async function tryHandleArtifactRoute(
     const artifacts = await artifactService.getAllArtifacts((id) => clearSeenArtifact(id));
     const revealed = new Set(pendingReveals);
     pendingReveals.clear();
-    const response = artifacts.map((a) => revealed.has(a.id) ? { ...a, pendingReveal: true } : a);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(response));
+    sendJson(artifacts.map((a) => revealed.has(a.id) ? { ...a, pendingReveal: true } : a));
     return true;
   }
 
@@ -126,7 +124,8 @@ export async function tryHandleArtifactRoute(
   const artifactMatch = url.match(/^\/api\/artifacts\/([^/]+)$/);
   if (artifactMatch && req.method === "PATCH") {
     if (rejectIfNonLocalOrigin()) return true;
-    const id = decodeURIComponent(artifactMatch[1]);
+    const id = safeDecode(artifactMatch[1]);
+    if (id === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
     try {
       const body = await readJsonBody();
       const fields: { label?: string; group_name?: string | null } = {};
@@ -158,7 +157,8 @@ export async function tryHandleArtifactRoute(
   const restoreMatch = url.match(/^\/api\/artifacts\/([^/]+)\/restore$/);
   if (restoreMatch && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
-    const id = decodeURIComponent(restoreMatch[1]);
+    const id = safeDecode(restoreMatch[1]);
+    if (id === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
     try {
       artifactService.restoreArtifact(id);
       sendJson({ id, restored: true });
@@ -171,7 +171,8 @@ export async function tryHandleArtifactRoute(
   const archiveMatch = url.match(/^\/api\/artifacts\/([^/]+)\/archive$/);
   if (archiveMatch && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
-    const id = decodeURIComponent(archiveMatch[1]);
+    const id = safeDecode(archiveMatch[1]);
+    if (id === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
     try {
       artifactService.removeArtifact(id);
       sendJson({ id, archived: true });
@@ -212,7 +213,8 @@ export async function tryHandleArtifactRoute(
   const iconRegenMatch = url.match(/^\/api\/artifacts\/([^/]+)\/icon\/regenerate$/);
   if (iconRegenMatch && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
-    const id = decodeURIComponent(iconRegenMatch[1]);
+    const id = safeDecode(iconRegenMatch[1]);
+    if (id === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
 
     let label: string | undefined;
     let artifactKind: string | undefined;
@@ -291,7 +293,7 @@ export async function tryHandleArtifactRoute(
     }
 
     mkdirSync(artifactDir!, { recursive: true });
-    const queued = iconGenerator.forceEnqueue(id, label!, artifactKind! as ArtifactKind, artifactDir!);
+    const queued = iconGenerator.forceEnqueue(id, label!, artifactKind!, artifactDir!);
     if (!queued) {
       sendJson({ error: "Icon generation is disabled on this install (FAL_KEY not configured)" }, 503);
       return true;
@@ -308,7 +310,8 @@ export async function tryHandleArtifactRoute(
   const pluginUninstallMatch = url.match(/^\/api\/plugins\/([^/]+)\/uninstall$/);
   if (pluginUninstallMatch && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
-    const id = decodeURIComponent(pluginUninstallMatch[1]);
+    const id = safeDecode(pluginUninstallMatch[1]);
+    if (id === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
       sendJson({ error: `Invalid plugin id '${id}'` }, 400);
       return true;
