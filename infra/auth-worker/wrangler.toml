@@ -7,7 +7,7 @@ compatibility_date = "2026-04-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "oyster-auth"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "44086805-fbfa-4446-8626-126af7e2ec19"
 
 # Auth flow lives under /auth on the apex. Both apex and www are routed
 # so the Worker is reachable from either origin (GH Pages 301-redirects

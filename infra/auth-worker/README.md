@@ -27,25 +27,9 @@ npx wrangler login
 
 Opens a browser to authorise the CLI against your CF account. Same login the waitlist worker uses — already done if you've deployed that.
 
-### 3. Create the D1 database
+### 3. Run the schema migration
 
-```bash
-npx wrangler d1 create oyster-auth
-```
-
-Output looks like:
-
-```
-✅ Successfully created DB 'oyster-auth'
-[[d1_databases]]
-binding = "DB"
-database_name = "oyster-auth"
-database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-```
-
-Copy the `database_id` into `wrangler.toml` (replace `REPLACE_WITH_D1_ID`).
-
-### 4. Run the schema migration
+The D1 database (`oyster-auth`) is already provisioned and its `database_id` is committed in `wrangler.toml`.
 
 ```bash
 npm run db:migrate
@@ -53,7 +37,7 @@ npm run db:migrate
 
 Applies `migrations/0001_init.sql` — creates `users`, `sessions`, `device_codes`, `magic_link_tokens`. Re-running is safe (every `CREATE TABLE` and `CREATE INDEX` has `IF NOT EXISTS`).
 
-### 5. Deploy
+### 4. Deploy
 
 ```bash
 npm run deploy
@@ -61,7 +45,7 @@ npm run deploy
 
 Worker is now live at `https://oyster.to/auth/*`.
 
-### 6. Smoke test
+### 5. Smoke test
 
 ```bash
 curl -i https://oyster.to/auth/whoami
