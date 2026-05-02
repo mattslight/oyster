@@ -759,6 +759,119 @@ async function fetchGithubEmails(token: string): Promise<GitHubEmail[] | null> {
   return body as GitHubEmail[];
 }
 
+interface ResolvedIdentity {
+  user_id: string;
+  email_for_session: string;  // the email we'll show on the welcome page (current users.email after STEP 1's update)
+}
+
+async function resolveIdentity(
+  db: D1Database,
+  provider: string,
+  providerUserId: string,
+  providerEmail: string,
+  now: number,
+): Promise<ResolvedIdentity> {
+  // STEP 1 — identity match. provider_user_id is the truth.
+  const identityRow = await db
+    .prepare("SELECT user_id FROM user_identities WHERE provider = ? AND provider_user_id = ?")
+    .bind(provider, providerUserId)
+    .first<{ user_id: string }>();
+
+  if (identityRow) {
+    await db
+      .prepare(
+        "UPDATE user_identities SET provider_email = ?, last_seen_at = ? WHERE provider = ? AND provider_user_id = ?",
+      )
+      .bind(providerEmail, now, provider, providerUserId)
+      .run();
+
+    // Try to update users.email to the current verified primary. If
+    // another users row already owns this email, keep ours unchanged
+    // and log the conflict — sign-in still succeeds.
+    let emailForSession = providerEmail;
+    try {
+      const updateRes = await db
+        .prepare("UPDATE users SET email = ?, last_seen_at = ? WHERE id = ?")
+        .bind(providerEmail, now, identityRow.user_id)
+        .run();
+      // Note: D1 lets the UPDATE succeed even if the new value equals
+      // the old; meta.changes reflects rows actually changed by storage.
+      // We don't need to branch on that.
+      void updateRes;
+    } catch (err) {
+      const message = (err as Error)?.message ?? String(err);
+      if (/UNIQUE constraint failed/.test(message)) {
+        const conflictRow = await db
+          .prepare("SELECT id, email FROM users WHERE email = ?")
+          .bind(providerEmail)
+          .first<{ id: string; email: string }>();
+        const ourRow = await db
+          .prepare("SELECT email FROM users WHERE id = ?")
+          .bind(identityRow.user_id)
+          .first<{ email: string }>();
+        console.warn(JSON.stringify({
+          kind: "oauth_email_conflict",
+          provider,
+          provider_user_id: providerUserId,
+          user_id: identityRow.user_id,
+          conflicting_user_id: conflictRow?.id ?? null,
+          attempted_email: providerEmail,
+          kept_email: ourRow?.email ?? null,
+        }));
+        emailForSession = ourRow?.email ?? providerEmail;
+      } else {
+        throw err;
+      }
+    }
+
+    return { user_id: identityRow.user_id, email_for_session: emailForSession };
+  }
+
+  // STEP 2 — first-time link, email match. With a short retry on the
+  // STEP 3 INSERT to handle the rare concurrent first-link race for
+  // the same email.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const userRow = await db
+      .prepare("SELECT id FROM users WHERE email = ?")
+      .bind(providerEmail)
+      .first<{ id: string }>();
+
+    if (userRow) {
+      // Existing user — link the GitHub identity to it.
+      await db
+        .prepare(
+          `INSERT INTO user_identities
+             (provider, provider_user_id, user_id, provider_email, linked_at, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(provider, providerUserId, userRow.id, providerEmail, now, now)
+        .run();
+      return { user_id: userRow.id, email_for_session: providerEmail };
+    }
+
+    // STEP 3 — first-time link, no existing user.
+    const newUserId = crypto.randomUUID();
+    try {
+      await db.batch([
+        db.prepare("INSERT INTO users (id, email, created_at, last_seen_at) VALUES (?, ?, ?, ?)")
+          .bind(newUserId, providerEmail, now, now),
+        db.prepare(
+          `INSERT INTO user_identities
+             (provider, provider_user_id, user_id, provider_email, linked_at, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+        ).bind(provider, providerUserId, newUserId, providerEmail, now, now),
+      ]);
+      return { user_id: newUserId, email_for_session: providerEmail };
+    } catch (err) {
+      const message = (err as Error)?.message ?? String(err);
+      if (!/UNIQUE constraint failed/.test(message)) throw err;
+      // Concurrent first-link by email — retry, STEP 2 will hit this time.
+    }
+  }
+
+  throw new Error("identity_resolution_failed_after_retries");
+}
+
 async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
     return json({ error: "oauth_not_configured" }, 503, NO_STORE);
@@ -813,14 +926,78 @@ async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<R
     );
   }
 
-  // TASK 2.3 fills in identity resolution, session creation, and the
-  // device-code attach. For now, return a placeholder so the type-check
-  // passes and integration can be tested step-by-step.
-  return json(
-    { stage: "callback_pre_resolve", provider_user_id: String(ghUser.id), primary_email: primaryEmail, has_user_code: stateRow.user_code !== null },
-    200,
-    NO_STORE,
-  );
+  let resolved: ResolvedIdentity;
+  try {
+    resolved = await resolveIdentity(env.DB, "github", String(ghUser.id), primaryEmail, now);
+  } catch (err) {
+    console.error("resolve_identity_failed", err);
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 503, NO_STORE);
+  }
+
+  const sessionId = crypto.randomUUID();
+  const sessionExpires = now + SESSION_TTL_MS;
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
+      .bind(sessionId, resolved.user_id, now, sessionExpires),
+    env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now, resolved.user_id),
+  ]);
+
+  // If the original /start carried a user_code, attach the new session
+  // to that device_codes row. Atomic UPDATE — if 0 rows changed, the
+  // device_codes TTL ran out during the OAuth round-trip.
+  let attachedDeviceCode = false;
+  if (stateRow.user_code) {
+    const dc = await env.DB
+      .prepare("SELECT device_code FROM device_codes WHERE user_code = ?")
+      .bind(stateRow.user_code)
+      .first<{ device_code: string }>();
+    if (dc) {
+      const attachRes = await env.DB
+        .prepare(
+          "UPDATE device_codes SET session_id = ? WHERE device_code = ? AND session_id IS NULL AND expires_at > ?",
+        )
+        .bind(sessionId, dc.device_code, now)
+        .run();
+      attachedDeviceCode = (attachRes.meta?.changes ?? 0) === 1;
+      if (!attachedDeviceCode) {
+        // Race: device_codes TTL'd during the OAuth round-trip. Session
+        // is valid for the browser cookie; the local app missed the
+        // window. Surface the error rather than silent split-brain.
+        const cookie = sessionCookie(sessionId, url.host);
+        return htmlResponse(SIGN_IN_EXPIRED_HTML(true), 400, {
+          "set-cookie": cookie,
+          ...NO_STORE,
+        });
+      }
+    } else {
+      // user_code disappeared (TTL'd and gc'd) — same UX outcome.
+      const cookie = sessionCookie(sessionId, url.host);
+      return htmlResponse(SIGN_IN_EXPIRED_HTML(true), 400, {
+        "set-cookie": cookie,
+        ...NO_STORE,
+      });
+    }
+  }
+
+  const cookie = sessionCookie(sessionId, url.host);
+
+  // Browser-only: 302 to /auth/welcome (matches handleVerify shape).
+  // Local-handoff: render WELCOME_HTML directly with the "you can close
+  // this window" copy so the user doesn't see a flash of /auth/welcome.
+  if (attachedDeviceCode) {
+    return htmlResponse(WELCOME_HTML(resolved.email_for_session, true), 200, {
+      "set-cookie": cookie,
+      ...NO_STORE,
+    });
+  }
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: "/auth/welcome",
+      "set-cookie": cookie,
+      ...NO_STORE,
+    },
+  });
 }
 
 export default {
