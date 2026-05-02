@@ -25,6 +25,7 @@ import { SpaceService } from "./space-service.js";
 import { slugify } from "./utils.js";
 import { IconGenerator } from "./icon-generator.js";
 import { injectBridge } from "./error-bridge.js";
+import type { UiCommand } from "../../shared/types.js";
 import {
   scanExistingArtifacts,
   startGenerationTimer,
@@ -622,13 +623,6 @@ process.on("unhandledRejection", (err) => {
 });
 
 // ── UI push events (SSE) ──
-
-interface UiCommand {
-  version: 1;
-  command: string;
-  payload: unknown;
-  correlationId?: string;
-}
 
 const uiClients = new Set<ServerResponse>();
 

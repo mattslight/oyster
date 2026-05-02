@@ -9,7 +9,7 @@ import type { SpaceService } from "./space-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { SessionStore } from "./session-store.js";
-import type { ArtifactKind } from "../../shared/types.js";
+import type { ArtifactKind, UiCommand } from "../../shared/types.js";
 import { debug } from "./debug.js";
 import { slugify } from "./utils.js";
 import { recordToolCall } from "./mcp-client-tracker.js";
@@ -106,13 +106,6 @@ function gatherRepoContext(repoPath: string): { content: string; suggestions: Ar
   const header = `# Repo context: ${root}\nFiles included: ${includedPaths.length} / ${allFiles.length} (${skippedCount} skipped — over budget or unreadable)\n\n`;
 
   return { content: header + sections.join("\n\n"), suggestions };
-}
-
-interface UiCommand {
-  version: 1;
-  command: string;
-  payload: unknown;
-  correlationId?: string;
 }
 
 interface McpDeps {

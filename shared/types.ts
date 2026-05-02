@@ -138,3 +138,13 @@ export interface Space {
   createdAt: string;
   updatedAt: string;
 }
+
+/** SSE message broadcast on /api/ui/events. The web app subscribes via
+ *  subscribeUiEvents and routes by `command`. Versioned so we can evolve
+ *  the envelope without breaking older browsers mid-session. */
+export interface UiCommand {
+  version: 1;
+  command: string;
+  payload: unknown;
+  correlationId?: string;
+}

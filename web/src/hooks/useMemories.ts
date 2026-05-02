@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import { fetchMemories } from "../data/memories-api";
 import type { Memory } from "../data/memories-api";
-import { subscribeUiEvents } from "../data/ui-events";
+import { useFetched } from "./useFetched";
 
 // Mirror of useSessions. Memories list rarely changes during a session —
 // they're written by an agent calling `remember`, infrequent — so a single
@@ -17,36 +16,10 @@ export function useMemories(): {
   error: Error | null;
   refresh: () => void;
 } {
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [tick, setTick] = useState(0);
-  const latestReqId = useRef(0);
-
-  useEffect(() => {
-    const reqId = ++latestReqId.current;
-    setLoading(true);
-    fetchMemories()
-      .then((rows) => {
-        if (reqId !== latestReqId.current) return;
-        setMemories(rows);
-        setError(null);
-      })
-      .catch((err) => {
-        if (reqId !== latestReqId.current) return;
-        setError(err instanceof Error ? err : new Error(String(err)));
-      })
-      .finally(() => {
-        if (reqId !== latestReqId.current) return;
-        setLoading(false);
-      });
-  }, [tick]);
-
-  useEffect(() => {
-    return subscribeUiEvents((event) => {
-      if (event.command === "memory_changed") setTick((n) => n + 1);
-    });
-  }, []);
-
-  return { memories, loading, error, refresh: () => setTick((n) => n + 1) };
+  const { data, loading, error, refresh } = useFetched<Memory[]>(
+    () => fetchMemories(),
+    [],
+    { ssEvent: "memory_changed" },
+  );
+  return { memories: data, loading, error, refresh };
 }
