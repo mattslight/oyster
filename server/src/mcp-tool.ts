@@ -40,8 +40,16 @@ function isToolResponse(v: unknown): v is ToolResponse {
  *  - string → { content: [{ type: "text", text }] }
  *  - already a ToolResponse → passed through (handler opted into structuredContent
  *    or chose its own isError shape — typically the few create/update tools)
- *  - anything else → JSON.stringify into a text content block */
+ *  - anything else → JSON.stringify into a text content block
+ *
+ *  Throws on `undefined` — `JSON.stringify(undefined)` returns the literal
+ *  undefined value (not a JSON string), which would emit a malformed
+ *  CallToolResult and silently break the SDK contract. The fail-fast surfaces
+ *  the bug at the right layer: a handler missing a `return` statement. */
 function toResponse(value: unknown): ToolResponse {
+  if (value === undefined) {
+    throw new Error("tool handler returned undefined — return a string, an object, or a ToolResponse");
+  }
   if (typeof value === "string") {
     return { content: [{ type: "text", text: value }] };
   }
