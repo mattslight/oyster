@@ -837,10 +837,13 @@ async function resolveIdentity(
       .first<{ id: string }>();
 
     if (userRow) {
-      // Existing user — link the GitHub identity to it.
+      // Existing user — link the GitHub identity to it. INSERT OR
+      // IGNORE so two concurrent callbacks for the same GitHub account
+      // (rare double-click race) both succeed: one inserts, the other
+      // no-ops. Both arrive at the same returned user_id.
       await db
         .prepare(
-          `INSERT INTO user_identities
+          `INSERT OR IGNORE INTO user_identities
              (provider, provider_user_id, user_id, provider_email, linked_at, last_seen_at)
              VALUES (?, ?, ?, ?, ?, ?)`,
         )
@@ -886,18 +889,21 @@ async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<R
   const now = Date.now();
 
   // Atomic state consume. Two concurrent callbacks for the same state
-  // cannot both pass — only one sees the RETURNING row.
+  // cannot both pass — only one sees the RETURNING row. Scope by
+  // provider in the WHERE clause so a state minted by a future
+  // /auth/<other-provider>/start can never be consumed here, even if
+  // an attacker forces a callback URL collision.
   const stateRow = await env.DB
     .prepare(
       `UPDATE oauth_states
           SET consumed_at = ?
-        WHERE state = ? AND consumed_at IS NULL AND expires_at > ?
-        RETURNING provider, pkce_verifier, user_code`,
+        WHERE state = ? AND provider = ? AND consumed_at IS NULL AND expires_at > ?
+        RETURNING pkce_verifier, user_code`,
     )
-    .bind(now, state, now)
-    .first<{ provider: string; pkce_verifier: string; user_code: string | null }>();
+    .bind(now, state, "github", now)
+    .first<{ pkce_verifier: string; user_code: string | null }>();
 
-  if (!stateRow || stateRow.provider !== "github") {
+  if (!stateRow) {
     return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
   }
 
