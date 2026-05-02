@@ -215,9 +215,13 @@ f.addEventListener('submit', async (e) => {
       s.className = 'ok';
       s.textContent = 'Check your inbox for a sign-in link. The link expires in 15 minutes.';
     } else {
+      let errorCode = '';
+      try { errorCode = ((await res.json()) || {}).error || ''; } catch {}
       s.hidden = false;
       s.className = 'err';
-      s.textContent = 'Could not send the link. Check the email and try again.';
+      s.textContent = errorCode === 'handoff_expired'
+        ? 'This sign-in request expired. Return to the Oyster app and start sign-in again.'
+        : 'Could not send the link. Check the email and try again.';
       btn.disabled = false;
       btn.textContent = 'Send magic link';
     }
@@ -360,15 +364,24 @@ async function handleMagicLink(req: Request, env: Env, ctx: ExecutionContext, ur
     return json({ ok: true });
   }
 
-  // Resolve user_code → device_code if present. Unknown user_codes are
-  // ignored silently (degrades gracefully to a non-device login).
+  // Resolve user_code → device_code if present. Mirrors the fail-closed
+  // rule on /auth/github/start: an invalid/expired/already-attached/
+  // already-claimed user_code aborts here with handoff_expired rather
+  // than degrading to a non-device login (which would split-brain the
+  // browser-says-success / local-keeps-polling UX).
   let deviceCode: string | null = null;
   if (userCode) {
+    if (userCode.length > MAX_USER_CODE_LEN) {
+      return json({ error: "handoff_expired" }, 400, NO_STORE);
+    }
     const dc = await env.DB
-      .prepare("SELECT device_code FROM device_codes WHERE user_code = ? AND expires_at > ? AND session_id IS NULL")
-      .bind(userCode, now)
-      .first<{ device_code: string }>();
-    deviceCode = dc?.device_code ?? null;
+      .prepare("SELECT device_code, session_id, claimed_at, expires_at FROM device_codes WHERE user_code = ?")
+      .bind(userCode)
+      .first<{ device_code: string; session_id: string | null; claimed_at: number | null; expires_at: number }>();
+    if (!dc || dc.expires_at <= now || dc.session_id !== null || dc.claimed_at !== null) {
+      return json({ error: "handoff_expired" }, 400, NO_STORE);
+    }
+    deviceCode = dc.device_code;
   }
 
   const rawToken = randomToken(32);
@@ -800,12 +813,14 @@ async function resolveIdentity(
 
     // Try to update users.email to the current verified primary. If
     // another users row already owns this email, keep ours unchanged
-    // and log the conflict — sign-in still succeeds.
+    // and log the conflict — sign-in still succeeds. last_seen_at is
+    // bumped by the session-create batch in handleGithubCallback, not
+    // here, so this UPDATE is email-only.
     let emailForSession = providerEmail;
     try {
       const updateRes = await db
-        .prepare("UPDATE users SET email = ?, last_seen_at = ? WHERE id = ?")
-        .bind(providerEmail, now, identityRow.user_id)
+        .prepare("UPDATE users SET email = ? WHERE id = ?")
+        .bind(providerEmail, identityRow.user_id)
         .run();
       // Note: D1 lets the UPDATE succeed even if the new value equals
       // the old; meta.changes reflects rows actually changed by storage.
