@@ -81,7 +81,7 @@ npm run build:changelog  # renders CHANGELOG.md → docs/changelog.html
 - Never write to SQLite directly from agent — use MCP tools
 - `source_origin: 'ai_generated'` on all agent-created artifacts
 - SQLite migrations are additive `ALTER TABLE ... ADD COLUMN` with try/catch (idempotent)
-- User workspace lives at `~/Oyster/` (installed) or `./userland/` (dev), split into `db/`, `config/`, `apps/`, `backups/`, `spaces/`. See `docs/plans/userland-layout.md` for the full layout.
+- User workspace lives at `~/Oyster/` (installed) or `./userland/` (dev), split into `db/`, `config/`, `apps/`, `backups/`, `spaces/`. See `docs/plans/archived/userland-layout.md` for the full layout.
 - Always use feature branches, never commit to main directly
 - Add a `CHANGELOG.md` entry in the same PR as any user-visible change; run `npm run build:changelog` to refresh `docs/changelog.html` (also auto-runs via the `version` lifecycle on `npm run release`)
 
