@@ -457,9 +457,130 @@ async function handleWelcome(req: Request, env: Env, host: string): Promise<Resp
   return htmlResponse(WELCOME_HTML(lookup.user.email, false), 200, NO_STORE);
 }
 
-async function handleWhoami(req: Request, env: Env, host: string): Promise<Response> {
+// Device-flow handoff window: how long a device_code is valid for. Matches
+// docs/plans/auth.md (10 min — long enough for a slow inbox, short enough
+// that abandoned codes don't litter the table).
+const DEVICE_CODE_TTL_MS = 10 * 60 * 1000;
+
+// 8 chars, base32-Crockford-ish (no confusable I/L/O/0/1). Rendered to
+// the user as `XXXX-XXXX` in the sign-in URL — readable and short
+// enough to be paste-friendly even if the auto-open browser fails.
+const USER_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+function randomUserCode(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    out += USER_CODE_ALPHABET[bytes[i] % USER_CODE_ALPHABET.length];
+    if (i === 3) out += "-";
+  }
+  return out;
+}
+
+async function handleDeviceInit(env: Env): Promise<Response> {
+  const now = Date.now();
+  const expiresAt = now + DEVICE_CODE_TTL_MS;
+  // user_code has UNIQUE — retry on the rare collision rather than
+  // letting a duplicate slip through.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const deviceCode = randomToken(32);
+    const userCode = randomUserCode();
+    try {
+      await env.DB
+        .prepare("INSERT INTO device_codes (device_code, user_code, expires_at) VALUES (?, ?, ?)")
+        .bind(deviceCode, userCode, expiresAt)
+        .run();
+      return json({
+        device_code: deviceCode,
+        user_code: userCode,
+        expires_in: Math.floor(DEVICE_CODE_TTL_MS / 1000),
+      }, 200, NO_STORE);
+    } catch (err) {
+      if (attempt === 3) throw err;
+      // UNIQUE collision on user_code or device_code; retry.
+    }
+  }
+  return json({ error: "device_init_failed" }, 500, NO_STORE);
+}
+
+async function handleDevicePoll(env: Env, deviceCode: string): Promise<Response> {
+  if (!deviceCode || deviceCode.length > MAX_TOKEN_LEN) {
+    return json({ error: "invalid_device_code" }, 400, NO_STORE);
+  }
+  const now = Date.now();
+  // Atomic claim: a successful UPDATE returns the session bits exactly
+  // once. Subsequent polls see no rows and return 410. Pre-claim polls
+  // (session_id IS NULL but expires_at > now) return 202 to keep the
+  // local poller in its loop.
+  const claimed = await env.DB
+    .prepare(
+      `UPDATE device_codes
+         SET claimed_at = ?
+       WHERE device_code = ? AND session_id IS NOT NULL AND claimed_at IS NULL AND expires_at > ?
+       RETURNING session_id`
+    )
+    .bind(now, deviceCode, now)
+    .first<{ session_id: string }>();
+
+  if (claimed) {
+    const userRow = await env.DB
+      .prepare(
+        `SELECT u.id, u.email FROM sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.id = ? AND s.revoked_at IS NULL AND s.expires_at > ?`
+      )
+      .bind(claimed.session_id, now)
+      .first<{ id: string; email: string }>();
+    if (!userRow) {
+      // Session was revoked between verify and poll. Surface a clean 410
+      // so the local poller stops; user can retry from the start.
+      return json({ error: "session_unavailable" }, 410, NO_STORE);
+    }
+    return json(
+      { session_token: claimed.session_id, user: { id: userRow.id, email: userRow.email } },
+      200,
+      NO_STORE,
+    );
+  }
+
+  // No claim — distinguish "still waiting" (202) from "gone" (410).
+  const row = await env.DB
+    .prepare("SELECT session_id, claimed_at, expires_at FROM device_codes WHERE device_code = ?")
+    .bind(deviceCode)
+    .first<{ session_id: string | null; claimed_at: number | null; expires_at: number }>();
+  if (!row) return json({ error: "unknown_device_code" }, 410, NO_STORE);
+  if (row.claimed_at !== null) return json({ error: "already_claimed" }, 410, NO_STORE);
+  if (row.expires_at <= now) return json({ error: "expired" }, 410, NO_STORE);
+  return json({ status: "pending" }, 202, NO_STORE);
+}
+
+async function handleSignOut(req: Request, env: Env, host: string): Promise<Response> {
+  // Accept the session token from either the cookie (browser) or a
+  // Bearer header (local server / CLI). Either revokes the same row.
   const cookies = parseCookies(req);
-  const sid = cookies[COOKIE_NAME];
+  const fromCookie = cookies[COOKIE_NAME];
+  const auth = req.headers.get("authorization") ?? "";
+  const fromBearer = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  const sid = fromCookie || fromBearer;
+  if (!sid) {
+    return json({ ok: true }, 200, { "set-cookie": clearedCookie(host), ...NO_STORE });
+  }
+  await env.DB
+    .prepare("UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
+    .bind(Date.now(), sid)
+    .run();
+  return json({ ok: true }, 200, { "set-cookie": clearedCookie(host), ...NO_STORE });
+}
+
+async function handleWhoami(req: Request, env: Env, host: string): Promise<Response> {
+  // Accept either the browser cookie or a Bearer header from the local
+  // server. Same session row backs both.
+  const cookies = parseCookies(req);
+  const fromCookie = cookies[COOKIE_NAME];
+  const auth = req.headers.get("authorization") ?? "";
+  const fromBearer = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  const sid = fromCookie || fromBearer;
   if (!sid) return json({ error: "unauthenticated" }, 401, NO_STORE);
   const lookup = await getSession(env.DB, sid, Date.now());
   if (!lookup) {
@@ -489,6 +610,16 @@ export default {
       }
       if (url.pathname === "/auth/whoami" && req.method === "GET") {
         return await handleWhoami(req, env, url.host);
+      }
+      if (url.pathname === "/auth/device-init" && req.method === "POST") {
+        return await handleDeviceInit(env);
+      }
+      const deviceMatch = url.pathname.match(/^\/auth\/device\/([^/]+)$/);
+      if (deviceMatch && req.method === "GET") {
+        return await handleDevicePoll(env, decodeURIComponent(deviceMatch[1]));
+      }
+      if (url.pathname === "/auth/sign-out" && req.method === "POST") {
+        return await handleSignOut(req, env, url.host);
       }
       return new Response("Not found", { status: 404 });
     } catch (err) {

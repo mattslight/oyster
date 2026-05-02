@@ -63,6 +63,7 @@ import {
   lastConnectedAt,
 } from "./mcp-client-tracker.js";
 import { SqliteFtsMemoryProvider } from "./memory-store.js";
+import { AuthService } from "./auth-service.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 // ── Config ──
@@ -537,6 +538,17 @@ function resolveSpaceRow(name: string) {
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
 await memoryProvider.init();
+
+// Auth bridge to oyster.to/auth/*. Reads ~/Oyster/config/auth.json on
+// startup so a previously-signed-in user is recognised across restarts.
+const authService = new AuthService(CONFIG_DIR);
+authService.onAuthChanged((state) => {
+  broadcastUiEvent({
+    version: 1,
+    command: "auth_changed",
+    payload: { user: state.user },
+  });
+});
 
 // ── Initialize subsystems ──
 
@@ -1521,6 +1533,35 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // `mcp_tool_called` events (connected-agent telemetry), which a
   // cross-origin page in the same browser must not be able to observe
   // by opening an EventSource against a running local Oyster.
+  if (url === "/api/auth/whoami" && req.method === "GET") {
+    if (rejectIfNonLocalOrigin()) return;
+    const state = authService.getState();
+    sendJson({ user: state.user });
+    return;
+  }
+  if (url === "/api/auth/login" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    try {
+      const result = await authService.startSignIn();
+      sendJson(result);
+    } catch (err) {
+      console.error("[auth] /api/auth/login failed:", err);
+      sendJson({ error: "auth_unavailable" }, 503);
+    }
+    return;
+  }
+  if (url === "/api/auth/logout" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return;
+    try {
+      await authService.signOut();
+      sendJson({ ok: true });
+    } catch (err) {
+      console.error("[auth] /api/auth/logout failed:", err);
+      sendJson({ error: "logout_failed" }, 500);
+    }
+    return;
+  }
+
   if (url === "/api/ui/events") {
     if (rejectIfNonLocalOrigin()) return;
     res.writeHead(200, {
