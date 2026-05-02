@@ -10,7 +10,7 @@
 Browser (oyster.to/sign-in)
    │   email entry
    ▼
-Cloudflare Worker (auth.oyster.to)
+Cloudflare Worker (oyster.to/auth/*)
    │   POST /auth/magic-link  →  D1 tokens row, Resend send
    ▼
 User's mailbox  →  click link
@@ -42,7 +42,7 @@ The full A/B/C tradeoff was worked through in conversation; this doc records the
 
 ## D1 schema
 
-Three tables. Additive only — D1 supports `ALTER TABLE ADD COLUMN` so future fields (display_name, plan, etc.) can land without rebuilds.
+Four tables. Additive only — D1 supports `ALTER TABLE ADD COLUMN` so future fields (display_name, plan, etc.) can land without rebuilds.
 
 ```sql
 CREATE TABLE users (
@@ -55,7 +55,7 @@ CREATE TABLE users (
 CREATE TABLE magic_link_tokens (
   token_hash      TEXT PRIMARY KEY,                  -- sha256 of the random token; raw token never stored
   user_id         TEXT NOT NULL REFERENCES users(id),
-  device_code     TEXT,                              -- nullable; set when login originated from a device-flow
+  device_code     TEXT REFERENCES device_codes(device_code),  -- nullable; set when login originated from a device-flow
   expires_at      INTEGER NOT NULL,                  -- unix ms; default +15 min
   consumed_at     INTEGER                            -- unix ms; set on verify, single-use
 );
@@ -70,12 +70,15 @@ CREATE TABLE sessions (
 );
 CREATE INDEX sessions_user ON sessions(user_id);
 
--- Optional but recommended: device-flow handoff table.
--- A device_code is what local Oyster polls for; once the magic-link-verify
--- endpoint runs, it writes the session id keyed by device_code so the local
--- poller can claim it exactly once.
+-- Device-flow handoff. RFC 8628 shape: `device_code` is the long opaque token
+-- the local server polls with (private to the device); `user_code` is the
+-- short readable token that travels through the browser URL. Storing both
+-- keeps the lookup direction unambiguous: browser submits `user_code` →
+-- Worker resolves to `device_code` row → magic-link-verify writes
+-- `session_id` → local poller reads by `device_code`.
 CREATE TABLE device_codes (
-  code            TEXT PRIMARY KEY,                  -- 8-char base32, user-readable for QR / fallback
+  device_code     TEXT PRIMARY KEY,                  -- 32-char base64url; what the local server polls with
+  user_code       TEXT NOT NULL UNIQUE,              -- 8-char base32 (e.g. BHRT-9KQ2); what the user sees in the URL
   session_id      TEXT REFERENCES sessions(id),      -- null until verify; set once
   expires_at      INTEGER NOT NULL,                  -- 10 min
   claimed_at      INTEGER                            -- set when local poller picks up the token
@@ -90,16 +93,16 @@ CREATE TABLE device_codes (
 
 All endpoints live on a `oyster.to/auth/*` route group. The Worker owns its own `wrangler.toml`; deploy is independent of the local server.
 
-- `POST /auth/magic-link  { email, device_code? }`
-  Looks up or creates the user (idempotent on email). Generates a 32-byte random token (base64url, ~43 chars), stores `sha256(token)`, sends email via Resend with link `https://oyster.to/auth/verify?t=<raw>`. If `device_code` is present, attach it to the token row. Rate limit: 3 sends per email per 10 minutes (D1 row count check). Returns `{ ok: true }` regardless of whether the email exists, so the endpoint can't be used to enumerate accounts.
+- `POST /auth/magic-link  { email, user_code? }`
+  Looks up or creates the user (idempotent on email). Generates a 32-byte random magic-link token (base64url, ~43 chars), stores `sha256(token)`, sends email via Resend with link `https://oyster.to/auth/verify?t=<raw>`. If `user_code` is present, resolves it to the row in `device_codes` and writes that row's `device_code` onto `magic_link_tokens.device_code` so verify can later attach the resulting session to the right poller. Per-email rate limit (3 sends per 10 minutes) is a D1 row-count over `magic_link_tokens`; per-IP rate limit (20 magic-link requests per hour) uses Cloudflare's [Workers Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) keyed on `cf.connecting_ip` — the schema deliberately doesn't store IPs. Returns `{ ok: true }` regardless of whether the email exists, so the endpoint can't be used to enumerate accounts.
 
 - `GET /auth/verify?t=<token>`
   Hashes `t`, looks up the token row, checks `expires_at > now AND consumed_at IS NULL`, marks `consumed_at`, creates a session, then:
   - If the token had no `device_code`: `Set-Cookie session=<session_id>; Domain=.oyster.to; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000` and 302 to `/`.
   - If the token had a `device_code`: write `sessions.id` to `device_codes.session_id`, render a "you can close this window" page. The cookie is *also* set so the same browser can use the publish UI.
 
-- `GET /auth/device/<code>`
-  Polled by the local server. Returns `{ session_token: <id>, user: { id, email } }` once `device_codes.session_id` is set, then marks `claimed_at`. Subsequent calls return 410. Pre-claim returns 202.
+- `GET /auth/device/<device_code>`
+  Polled by the local server using the long opaque `device_code` (not `user_code`). Returns `{ session_token: <id>, user: { id, email } }` once `device_codes.session_id` is set, then marks `claimed_at`. Subsequent calls return 410. Pre-claim returns 202.
 
 - `POST /auth/sign-out  Cookie: session=...`
   Sets `sessions.revoked_at`, clears the cookie. Returns 204.
@@ -120,20 +123,23 @@ Same session row in D1 backs both. Sign-out from one surface revokes the other o
 
 The browser cookie can't reach `localhost:4444` (different origin, no shared cookie). And we don't want a copy-paste UX. Industry standard for this is OAuth 2.0 device authorization grant — what `gh auth login`, `stripe login`, and `vercel login` use.
 
-Sequence:
+Sequence (RFC 8628 shape):
 
 1. User clicks **Sign in** in the local Oyster UI (or runs `oyster auth login`).
-2. Local server calls `POST oyster.to/auth/device-init` → receives `{ device_code, user_code, expires_in }` and stores them.
-3. Local server opens `https://oyster.to/sign-in?device=<user_code>` in the system browser.
-4. The sign-in page captures `user_code` from the query string and includes it on the `POST /auth/magic-link` request as `device_code`.
-5. User receives email, clicks the link, hits `/auth/verify`, which writes the session into both the cookie and the `device_codes` row.
-6. Local server polls `GET /auth/device/<code>` every 2 seconds. On 200, it persists `~/Oyster/config/auth.json` and stops polling. Total flow ≤ ~30s of user time after they click the email.
+2. Local server calls `POST oyster.to/auth/device-init` → Worker creates a `device_codes` row and returns `{ device_code, user_code, expires_in }`. `device_code` is the long opaque key the device polls with; `user_code` is the short readable form that travels through the browser URL.
+3. Local server opens `https://oyster.to/sign-in?d=<user_code>` in the system browser. The local server keeps the long `device_code` private.
+4. The sign-in page reads `user_code` from the query string and submits `POST /auth/magic-link { email, user_code }`. The Worker resolves `user_code` → `device_code` via `device_codes` and writes that `device_code` onto `magic_link_tokens.device_code`.
+5. User receives email, clicks the link, hits `/auth/verify`. The Worker creates the session, sets the `.oyster.to` cookie, and — if the consumed token has a `device_code` — writes `sessions.id` to `device_codes.session_id`.
+6. Local server polls `GET /auth/device/<device_code>` every 2 seconds. On 200, it persists `~/Oyster/config/auth.json` and stops polling. Total flow ≤ ~30s of user time after they click the email.
 
-`user_code` (8-char base32, e.g. `BHRT-9KQ2`) is the user-readable form that goes in the URL; the longer opaque `device_code` is what the local server polls with — same shape as RFC 8628.
+The browser only ever sees `user_code`; the local server only ever sees `device_code`. `device_codes` is the lookup table that bridges them.
 
 ## Rate limiting / abuse
 
-D1 row counts are the rate limiter. Per-email cap (3 magic-links per 10 min) prevents mail-bombing a target. Per-IP cap (20 magic-link requests per hour) prevents enumeration spray. Both queries are O(1) on indexed columns. No KV / DO needed at this scale.
+Two layers, two storage shapes:
+
+- **Per-email** — D1 row count over `magic_link_tokens` for the user, capped at 3 sends per 10 minutes. O(1) on the `magic_link_tokens_user_expires` index. Prevents mail-bombing a target.
+- **Per-IP** — [Workers Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) keyed on `cf.connecting_ip`, capped at 20 magic-link requests per hour. Edge-counted, no D1 row needed; the schema deliberately doesn't store IPs (no log/PII concern). Prevents enumeration spray.
 
 Magic-link tokens expire after 15 minutes. Sessions expire after 30 days, sliding (every authenticated request bumps `expires_at` to `now + 30d` if it's <7d away — avoids hot-write per request).
 
@@ -155,7 +161,7 @@ The from address starts as `noreply@oyster.to` with `Reply-To: matthew@slight.me
 
 ## Open questions to settle in implementation PRs
 
-- **Worker layout.** One Worker for `auth.*` and a second for the public viewer route, or one Worker handling both via path-based routing? Likely one Worker for now — fewer deploys, less Wrangler config — split if the viewer's bundle grows.
+- **Worker layout.** Both auth and the viewer route live on `oyster.to` (path-based). Open question is whether one Worker handles `/auth/*` + `/s/*`, or each path gets its own Worker assigned to the same hostname via separate route patterns. Likely one Worker for now — fewer deploys, less Wrangler config — split if the viewer's bundle grows.
 - **D1 schema migration tooling.** Cloudflare's `wrangler d1 migrations` is the obvious pick; settle when the first migration lands.
 - **`device_code` polling cadence.** Currently 2s; could back off after 10s to 5s. Settle by feel during local testing.
 - **Cookie name collision.** `session` is generic; if oyster.to ever hosts a non-Oyster service the cookie name would collide. Prefix with `oyster_` to be safe.
@@ -165,7 +171,7 @@ The from address starts as `noreply@oyster.to` with `Reply-To: matthew@slight.me
 
 Three PRs, smallest first:
 
-1. **D1 schema + Worker scaffold.** `wrangler.toml`, three table migrations, `whoami` endpoint that always returns 401. Verifiable in isolation: deploy the Worker, hit the endpoint, see 401.
+1. **D1 schema + Worker scaffold.** `wrangler.toml`, four table migrations (`users`, `magic_link_tokens`, `sessions`, `device_codes`), `whoami` endpoint that always returns 401. Verifiable in isolation: deploy the Worker, hit the endpoint, see 401.
 2. **Magic-link send + verify.** `POST /magic-link`, `GET /verify`, Resend integration, cookie issue. Verifiable: enter email, receive email, click link, browser is signed in, `whoami` returns the user.
 3. **Device flow + local bridge.** `device-init`, `device/<code>`, `/auth/sign-out`, `~/Oyster/config/auth.json` writer in the local server, sign-in button in the local UI. Verifiable: click sign-in in Oyster, complete flow, local UI shows signed-in state.
 
