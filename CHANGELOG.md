@@ -20,15 +20,12 @@ Trustworthy recall — every memory traceable, every conversation searchable.
 
 Identical to `0.5.0-beta.2`. Headline changes from the beta cycle:
 
-- **Oyster sees your Claude Code sessions.** Run `claude` in any folder mapped to a space and Oyster picks the session up — title, file edits, and state, no MCP wiring. ([#251](https://github.com/mattslight/oyster/issues/251))
-- **Session inspector with live transcript.** Click a session for the running transcript, touched artefacts, and a *Copy resume command* to pick the conversation back up. Older sessions backfill on boot. ([#253](https://github.com/mattslight/oyster/issues/253), [#274](https://github.com/mattslight/oyster/issues/274), [#275](https://github.com/mattslight/oyster/issues/275))
-- **Process-aware session states.** State is derived from running `claude` processes, not JSONL silence — no more spurious red on long thinking turns.
-- **Home as a sectioned feed.** Spaces · Sessions · Artefacts replace the spatial desktop as the default surface; chips filter sessions and artefacts inline. ([#252](https://github.com/mattslight/oyster/issues/252), [#280](https://github.com/mattslight/oyster/issues/280))
-- **Memories on Home.** Each space surfaces its agents' `remember` notes alongside Sessions and Artefacts. ([#254](https://github.com/mattslight/oyster/issues/254))
-- **Project tiles on every space.** Scope a space to one linked folder; promote an Elsewhere folder to its own space in one click. ([#266](https://github.com/mattslight/oyster/issues/266), [#285](https://github.com/mattslight/oyster/issues/285))
-- **No more silent empty-shell spaces.** Removing the only folder deletes the space; right-click any space pill for Rename · Delete. ([#285](https://github.com/mattslight/oyster/issues/285))
+- **Oyster sees your Claude Code sessions.** Run `claude` in any folder mapped to a space and Oyster picks it up — title, file edits, and live state, with no MCP wiring. ([#251](https://github.com/mattslight/oyster/issues/251))
+- **Session inspector.** Click a session for the live transcript, touched artefacts, and a *Copy resume command* — and process-aware state means no spurious red on long thinking turns. ([#253](https://github.com/mattslight/oyster/issues/253), [#274](https://github.com/mattslight/oyster/issues/274), [#275](https://github.com/mattslight/oyster/issues/275))
+- **Home is a sectioned feed.** Spaces · Sessions · Artefacts · Memories replace the spatial desktop as the default surface; chips filter inline and live-update as agents work. ([#252](https://github.com/mattslight/oyster/issues/252), [#254](https://github.com/mattslight/oyster/issues/254), [#280](https://github.com/mattslight/oyster/issues/280))
+- **Project tiles on every space.** Scope a space to one linked folder, promote an Elsewhere folder into its own space in one click, and removing the only folder cleanly deletes the space. ([#266](https://github.com/mattslight/oyster/issues/266), [#285](https://github.com/mattslight/oyster/issues/285))
 - **Oyster Pro foundations.** Coming-soon page with local vault inventory and waitlist signup at [oyster.to/pricing](https://oyster.to/pricing).
-- **Local-only endpoints refuse non-loopback callers.** Server binds to `127.0.0.1` and rejects no-Origin requests from non-loopback addresses. ([#289](https://github.com/mattslight/oyster/issues/289))
+- **Local-only endpoints refuse non-loopback callers.** Closes a same-WiFi gap where a non-browser client could pull local APIs. ([#289](https://github.com/mattslight/oyster/issues/289))
 
 See `0.5.0-beta.0` through `0.5.0-beta.2` below for per-beta detail.
 
@@ -36,7 +33,7 @@ See `0.5.0-beta.0` through `0.5.0-beta.2` below for per-beta detail.
 
 ### Added
 
-- **Pro waitlist signup.** *Join the waitlist* on the pricing page captures emails into a Cloudflare Worker; confirmation via Resend.
+- **Pro waitlist signup.** *Join the waitlist* on the pricing page captures your email and sends a confirmation.
 
 ### Changed
 
@@ -47,7 +44,7 @@ See `0.5.0-beta.0` through `0.5.0-beta.2` below for per-beta detail.
 
 ### Added
 
-- **Oyster Pro coming-soon page.** Shield-icon pill in the breadcrumb opens a page naming what's about to ship — Sync · Memory · Publish — and inventories your local `~/Oyster/`. CTA links to a public pricing page at [oyster.to/pricing](https://oyster.to/pricing).
+- **Oyster Pro coming-soon page.** Shield-icon pill in the breadcrumb opens a page naming what's about to ship — Sync · Memory · Publish — and inventories your local workspace. CTA links to a public pricing page at [oyster.to/pricing](https://oyster.to/pricing).
 - **Session inspector.** Click a session for the live transcript, touched artefacts, and a *Copy resume command* button. Disconnected sessions show a last-heartbeat banner. ([#253](https://github.com/mattslight/oyster/issues/253))
 - **Scroll up to load older transcript turns.** 1000-turn window with a `1000+` badge; older turns prepend in place, scroll position pinned. ([#274](https://github.com/mattslight/oyster/issues/274))
 - **Memories on Home.** Agents' `remember` notes show alongside Sessions and Artefacts, scoped by space pills. ([#254](https://github.com/mattslight/oyster/issues/254))
@@ -64,8 +61,7 @@ See `0.5.0-beta.0` through `0.5.0-beta.2` below for per-beta detail.
 
 ### Fixed
 
-- **Older sessions show their transcripts.** Watcher backfills events from each JSONL on boot scan. ([#275](https://github.com/mattslight/oyster/issues/275))
-- **`?limit=N` on the events endpoint was silently ignored.**
+- **Older sessions show their transcripts.** Sessions whose `claude` process finished before Oyster started watching now backfill on the next boot scan. ([#275](https://github.com/mattslight/oyster/issues/275))
 
 ### Security
 
@@ -467,7 +463,8 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[Unreleased]: https://github.com/mattslight/oyster/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/mattslight/oyster/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/mattslight/oyster/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...v0.5.0
 [0.5.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2
 [0.5.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
