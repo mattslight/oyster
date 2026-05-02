@@ -96,3 +96,12 @@ export function makeRouteCtx(req: IncomingMessage, res: ServerResponse): RouteCt
 
   return { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin };
 }
+
+/** Safely percent-decode a URL path segment. `decodeURIComponent` throws
+ *  `URIError` on malformed encoding (e.g. `/api/artifacts/%E0%A4%A`); an
+ *  unguarded throw inside a route handler would crash the server process.
+ *  Returns null on failure so callers can respond with 400 instead. */
+export function safeDecode(encoded: string): string | null {
+  try { return decodeURIComponent(encoded); }
+  catch { return null; }
+}
