@@ -1876,9 +1876,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     // R6 (#310): map the calling MCP client to the session it's most likely
     // running inside, so memory writes/recalls get attributed. Internal
     // (?internal=1) is Oyster's own OpenCode subprocess → opencode session.
-    // External claude-code agents → claude-code session. Other UAs return
-    // null today (the watcher only covers claude-code/opencode), and the
-    // memory store falls back to NULL attribution gracefully.
+    // External claude-code / codex agents map to their respective sessions.
+    // Codex attribution is best-effort today: there's no codex watcher yet
+    // (#298 — that's the 0.9.0 multi-agent ingestion epic), so the lookup
+    // will typically return no row and resolveActiveSessionId yields null.
+    // The memory store falls back to NULL attribution gracefully. Other
+    // UAs (Cursor, etc.) likewise fall through to null.
     const ua = externalUa ?? "";
     const attributableAgent: import("./session-store.js").SessionAgent | null =
       isInternal ? "opencode"

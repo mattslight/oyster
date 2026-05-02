@@ -90,6 +90,9 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     bySourceSession: Database.Statement;
     recalledBySession: Database.Statement;
   };
+  // Wraps the per-row access-bump + recall-log inserts in a single
+  // transaction so a 50-row recall is one fsync, not 100.
+  private postRecallTxn!: (rows: MemoryRow[], recallerId: string | null) => void;
   private storagePath: string;
 
   constructor(storagePath: string) {
@@ -124,9 +127,17 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     // additive so legacy rows survive (source_session_id NULL = unknown).
     try {
       this.db.exec(`ALTER TABLE memories ADD COLUMN source_session_id TEXT`);
-    } catch { /* already exists */ }
+    } catch (err) {
+      // Only swallow the idempotent-rerun case ("duplicate column name").
+      // DB-lock / I/O / corruption errors must surface.
+      if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+    }
     this.db.exec(`CREATE INDEX IF NOT EXISTS memories_source_session ON memories(source_session_id)`);
 
+    // Grows monotonically — one row per recall result per call. At expected
+    // single-digit recalls/min during active use this stays small for
+    // months. Pruning lives in the 0.8.0 sync work where we'll need a
+    // retention policy anyway (cloud cost). For v1, accept unbounded.
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS memory_recalls (
         id          INTEGER PRIMARY KEY,
@@ -215,6 +226,15 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
          ORDER BY r.last_ts DESC`,
       ),
     };
+
+    const incrementAccess = this.stmts.incrementAccess;
+    const logRecall = this.stmts.logRecall;
+    this.postRecallTxn = this.db.transaction((rows: MemoryRow[], recallerId: string | null) => {
+      for (const row of rows) {
+        incrementAccess.run(row.id);
+        if (recallerId) logRecall.run(row.id, recallerId);
+      }
+    });
   }
 
   findExact(content: string, spaceId?: string): boolean {
@@ -275,12 +295,9 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     const rows = this.db.prepare(sql).all(...params) as MemoryRow[];
 
     // Increment access counts; log the (memory, session) pair when we
-    // know which session is asking (R6 traceable recall).
-    const recallerId = input.recalling_session_id ?? null;
-    for (const row of rows) {
-      this.stmts.incrementAccess.run(row.id);
-      if (recallerId) this.stmts.logRecall.run(row.id, recallerId);
-    }
+    // know which session is asking (R6 traceable recall). One transaction
+    // per recall so a 50-row result is one fsync, not 100.
+    this.postRecallTxn(rows, input.recalling_session_id ?? null);
 
     return rows.map(rowToMemory);
   }
