@@ -49,12 +49,19 @@ export interface SessionArtifactRow {
   when_at: string;
 }
 
-/** A transcript-search hit: an event row + a snippet for highlighting. */
-export interface SessionEventSearchHit extends SessionEventRow {
-  /** Highlighted excerpt — `text` content with `[…]` ellipsis around the match. */
-  snippet: string;
+/** A transcript-search hit. Slim by design — full `text`/`raw` would
+ *  bloat the result for callers that just want to render a snippet
+ *  list. Click-through to the inspector loads the full event via
+ *  getEventById. */
+export interface SessionEventSearchHit {
+  id: number;
+  session_id: string;
   /** The session this event belongs to, denormalised for display convenience. */
   session_title: string | null;
+  role: SessionEventRole;
+  ts: string;
+  /** Highlighted excerpt with `[…]` ellipsis around the match. */
+  snippet: string;
 }
 
 // ── Insert shapes (let SQLite supply timestamps + auto-id) ──
@@ -391,17 +398,21 @@ export class SqliteSessionStore implements SessionStore {
     const ftsQuery = terms.join(" OR ");
     const limit = opts.limit ?? 20;
 
+    // Only project columns the result type actually needs — full text and
+    // raw JSONL can be hundreds of KB per row, and every caller today
+    // slims them out anyway.
+    const cols = `e.id, e.session_id, e.role, e.ts,
+                  s.title AS session_title,
+                  snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet`;
     const sql = opts.sessionId
-      ? `SELECT e.*, s.title AS session_title,
-                snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet
+      ? `SELECT ${cols}
          FROM session_events e
          JOIN session_events_fts fts ON e.id = fts.rowid
          JOIN sessions s             ON s.id = e.session_id
          WHERE session_events_fts MATCH ? AND e.session_id = ?
          ORDER BY fts.rank
          LIMIT ?`
-      : `SELECT e.*, s.title AS session_title,
-                snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet
+      : `SELECT ${cols}
          FROM session_events e
          JOIN session_events_fts fts ON e.id = fts.rowid
          JOIN sessions s             ON s.id = e.session_id

@@ -978,12 +978,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       const q = parsed.searchParams.get("q") ?? "";
       const scopeSession = parsed.searchParams.get("session_id") ?? undefined;
       const limitRaw = parsed.searchParams.get("limit");
-      const limit = limitRaw ? Math.max(1, Math.min(50, Number(limitRaw))) : undefined;
+      // Validate before clamping — Number("foo") is NaN, which Math.min/max
+      // propagate. Treat anything non-finite or non-positive as "use the
+      // store's default" rather than 400'ing.
+      let limit: number | undefined;
+      if (limitRaw !== null) {
+        const parsedLimit = Number(limitRaw);
+        if (Number.isFinite(parsedLimit) && parsedLimit >= 1) {
+          limit = Math.min(50, Math.floor(parsedLimit));
+        }
+      }
       try {
         const hits = sessionStore.searchEvents(q, { sessionId: scopeSession, limit });
-        // Slim the response: drop `raw` (full JSONL line, often kilobytes
-        // of metadata) and `text` (snippet covers what the UI needs to
-        // show). Click-through to the inspector loads the full event.
+        // Rename `id` → `event_id` for the wire format (the web UI's
+        // ambient `id` is artefact id; explicit naming avoids confusion).
         sendJson(hits.map((h) => ({
           event_id: h.id,
           session_id: h.session_id,
