@@ -386,22 +386,31 @@ export class SqliteSessionStore implements SessionStore {
     query: string,
     opts: { limit?: number; sessionId?: string } = {},
   ): SessionEventSearchHit[] {
-    // Mirror the memory-store tokenisation: strip punctuation, drop
-    // 1-char tokens, OR-join. Keeps natural-language queries forgiving
-    // ("what did we decide about pricing?") without making the agent
-    // learn FTS5 query syntax.
+    // Two query shapes:
+    //   - Single plain alphanumeric word → prefix match, so an
+    //     incremental search ("ruth") finds "ruthless".
+    //   - Anything else (whitespace, dots, dashes, underscores) →
+    //     FTS5 phrase query, so "0.6.0" finds the version string
+    //     instead of stripping dots → 060* → prefix-matching commit
+    //     hashes, and "memory_recalls" finds the literal identifier
+    //     instead of matching adjacent free-floating "memory" /
+    //     "recalls" tokens.
     //
-    // Trailing `*` enables prefix matching so an incremental search
-    // (Spotlight typing "ruth") matches "ruthless" before the user has
-    // finished the word. FTS5 prefix matching is O(log n) on the
-    // index — no scan penalty.
-    const terms = query
-      .replace(/[^\w\s]/g, "")
-      .split(/\s+/)
-      .filter((t) => t.length > 1)
-      .map((t) => `${t}*`);
-    if (terms.length === 0) return [];
-    const ftsQuery = terms.join(" OR ");
+    // FTS5 unicode61 (default tokeniser) strips punctuation in the
+    // index too, so phrase "0.6.0" tokenises identically on both sides
+    // — the indexed text "0.6.0" is stored as adjacent tokens 0/6/0,
+    // and the query parses to the same adjacent-tokens phrase.
+    const trimmed = query.trim();
+    if (trimmed.length === 0) return [];
+    const isPlainWord = /^[A-Za-z0-9]+$/.test(trimmed);
+    let ftsQuery: string;
+    if (isPlainWord) {
+      if (trimmed.length < 2) return [];
+      ftsQuery = `${trimmed}*`;
+    } else {
+      // FTS5 escapes embedded double-quotes by doubling them.
+      ftsQuery = `"${trimmed.replace(/"/g, '""')}"`;
+    }
     const limit = opts.limit ?? 20;
 
     // Only project columns the result type actually needs — full text and
