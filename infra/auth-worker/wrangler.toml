@@ -19,3 +19,17 @@ zone_name = "oyster.to"
 [[routes]]
 pattern = "www.oyster.to/auth/*"
 zone_name = "oyster.to"
+
+# Per-IP rate limit on /auth/magic-link, keyed on cf.connecting_ip.
+# namespace_id is local to this Worker — any unused integer works.
+# 20 requests per hour matches docs/plans/auth.md.
+[[unsafe.bindings]]
+name = "MAGIC_LINK_LIMIT"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 3600 }
+
+# Non-secret config. Secrets (RESEND_API_KEY) go via `wrangler secret put`.
+[vars]
+FROM_ADDRESS = "noreply@oyster.to"
+REPLY_TO = "matthew@slight.me"

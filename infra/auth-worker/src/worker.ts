@@ -1,39 +1,432 @@
-// Oyster auth worker — Cloudflare-native magic-link auth and device-flow
-// bridge to the local server at localhost:4444. See docs/plans/auth.md
-// for the full design.
+// Oyster auth worker — Cloudflare-native magic-link auth and (in PR 3)
+// device-flow bridge to the local server at localhost:4444. See
+// docs/plans/auth.md for the full design.
 //
-// PR 1 scaffold: only `GET /auth/whoami` is wired, and it always 401s.
-// Magic-link send/verify and the device-flow endpoints land in PR 2 + PR 3.
+// PR 2 endpoints:
+//   GET  /auth/sign-in       HTML form (also accepts ?d=<user_code> for the device flow)
+//   POST /auth/magic-link    {email, user_code?} — send the email
+//   GET  /auth/verify?t=...  consume the token, set the session cookie, redirect
+//   GET  /auth/welcome       landing page after verify (shows the signed-in email)
+//   GET  /auth/whoami        {id, email} for a valid session, 401 otherwise
+//
+// PR 3 will add /auth/device-init, /auth/device/<code>, /auth/sign-out.
+
+interface RateLimit {
+  limit(opts: { key: string }): Promise<{ success: boolean }>;
+}
 
 export interface Env {
   DB: D1Database;
+  MAGIC_LINK_LIMIT: RateLimit;
+  RESEND_API_KEY: string;
+  FROM_ADDRESS?: string;
+  REPLY_TO?: string;
 }
 
-function json(body: unknown, status = 200): Response {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Per-email cap: count of valid (non-expired) magic-link tokens for the user.
+// Window = TTL so a single SQL count answers both questions ("issued in the
+// last N minutes" ≡ "still valid"). Locks for the full TTL once 3 are out;
+// any expiry frees a slot.
+const PER_EMAIL_CAP = 3;
+const COOKIE_NAME = "oyster_session";
+
+function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...extra },
   });
+}
+
+function htmlResponse(body: string, status = 200, extra: Record<string, string> = {}): Response {
+  return new Response(body, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8", ...extra },
+  });
+}
+
+function htmlEscape(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>
+  )[c]!);
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function randomToken(byteLen = 32): string {
+  const bytes = new Uint8Array(byteLen);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function parseCookies(req: Request): Record<string, string> {
+  const out: Record<string, string> = {};
+  const header = req.headers.get("cookie") ?? "";
+  for (const part of header.split(/;\s*/)) {
+    const eq = part.indexOf("=");
+    if (eq > 0) out[part.slice(0, eq)] = part.slice(eq + 1);
+  }
+  return out;
+}
+
+interface UserRow { id: string; email: string }
+interface SessionRow { id: string; user_id: string; expires_at: number; revoked_at: number | null }
+
+async function findOrCreateUser(db: D1Database, email: string, now: number): Promise<UserRow> {
+  // INSERT OR IGNORE then SELECT — D1 supports RETURNING, but the two-step
+  // form is more portable across SQLite-likes and the SELECT is required
+  // anyway when the row already exists.
+  const id = crypto.randomUUID();
+  await db
+    .prepare("INSERT OR IGNORE INTO users (id, email, created_at, last_seen_at) VALUES (?, ?, ?, ?)")
+    .bind(id, email, now, now)
+    .run();
+  const row = await db
+    .prepare("SELECT id, email FROM users WHERE email = ?")
+    .bind(email)
+    .first<UserRow>();
+  if (!row) throw new Error("user upsert failed");
+  return row;
+}
+
+async function getSession(db: D1Database, sessionId: string, now: number): Promise<{ session: SessionRow; user: UserRow } | null> {
+  const row = await db
+    .prepare(
+      `SELECT s.id, s.user_id, s.expires_at, s.revoked_at, u.email
+       FROM sessions s JOIN users u ON u.id = s.user_id
+       WHERE s.id = ? AND s.revoked_at IS NULL AND s.expires_at > ?`
+    )
+    .bind(sessionId, now)
+    .first<SessionRow & { email: string }>();
+  if (!row) return null;
+  return {
+    session: { id: row.id, user_id: row.user_id, expires_at: row.expires_at, revoked_at: row.revoked_at },
+    user: { id: row.user_id, email: row.email },
+  };
+}
+
+function sessionCookie(sessionId: string): string {
+  // Domain=.oyster.to so the cookie is visible on the apex and any
+  // subdomain the publish/viewer flows might end up on. HttpOnly blocks
+  // JS reads; SameSite=Lax allows the magic-link redirect to carry the
+  // cookie back; Secure means HTTPS-only.
+  const maxAge = Math.floor(SESSION_TTL_MS / 1000);
+  return `${COOKIE_NAME}=${sessionId}; Domain=.oyster.to; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+function clearedCookie(): string {
+  return `${COOKIE_NAME}=; Domain=.oyster.to; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+const SIGN_IN_HTML = (userCode: string | null) => `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in to Oyster</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 28rem; margin: 6rem auto; padding: 0 1.5rem; line-height: 1.5; }
+  h1 { font-size: 1.5rem; margin: 0 0 1.5rem; }
+  form { display: flex; flex-direction: column; gap: 0.75rem; }
+  label { font-size: 0.85rem; opacity: 0.7; }
+  input[type=email] { padding: 0.6rem 0.75rem; font-size: 1rem; border: 1px solid #888; border-radius: 0.4rem; background: transparent; color: inherit; }
+  button { padding: 0.6rem 0.75rem; font-size: 1rem; font-weight: 600; border: 0; border-radius: 0.4rem; background: #6750a4; color: #fff; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #status { margin-top: 1rem; font-size: 0.9rem; }
+  .ok { color: #2e7d32; }
+  .err { color: #c62828; }
+</style>
+</head><body>
+<h1>Sign in to Oyster</h1>
+<form id="f">
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" required autofocus autocomplete="email">
+  <button type="submit">Send magic link</button>
+</form>
+<p id="status" hidden></p>
+<script>
+const f = document.getElementById('f');
+const s = document.getElementById('status');
+const userCode = ${userCode ? JSON.stringify(userCode) : "null"};
+f.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = f.email.value.trim();
+  const btn = f.querySelector('button');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const res = await fetch('/auth/magic-link', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, user_code: userCode }),
+    });
+    if (res.ok) {
+      f.style.display = 'none';
+      s.hidden = false;
+      s.className = 'ok';
+      s.textContent = 'Check your inbox for a sign-in link. The link expires in 15 minutes.';
+    } else {
+      s.hidden = false;
+      s.className = 'err';
+      s.textContent = 'Could not send the link. Check the email and try again.';
+      btn.disabled = false;
+      btn.textContent = 'Send magic link';
+    }
+  } catch {
+    s.hidden = false;
+    s.className = 'err';
+    s.textContent = 'Network error. Try again.';
+    btn.disabled = false;
+    btn.textContent = 'Send magic link';
+  }
+});
+</script>
+</body></html>`;
+
+const WELCOME_HTML = (email: string, deviceLogin: boolean) => `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signed in to Oyster</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 28rem; margin: 6rem auto; padding: 0 1.5rem; line-height: 1.5; text-align: center; }
+  h1 { font-size: 1.5rem; }
+  code { background: rgba(127,127,127,0.15); padding: 0.1em 0.3em; border-radius: 0.25rem; }
+</style>
+</head><body>
+<h1>You're signed in</h1>
+<p>Signed in as <code>${htmlEscape(email)}</code>.</p>
+${deviceLogin
+  ? "<p>You can close this window — your local Oyster app will pick up the session automatically.</p>"
+  : "<p><a href=\"https://oyster.to/\">← Back to Oyster</a></p>"}
+</body></html>`;
+
+const SIGN_IN_ERROR_HTML = (message: string) => `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Sign in failed</title>
+<style>body { font-family: system-ui, sans-serif; max-width: 28rem; margin: 6rem auto; padding: 0 1.5rem; }</style>
+</head><body>
+<h1>Sign in failed</h1>
+<p>${htmlEscape(message)}</p>
+<p><a href="/auth/sign-in">Try again</a></p>
+</body></html>`;
+
+async function sendMagicLink(env: Env, email: string, link: string): Promise<void> {
+  const from = env.FROM_ADDRESS ?? "noreply@oyster.to";
+  const replyTo = env.REPLY_TO ?? "matthew@slight.me";
+  const subject = "Sign in to Oyster";
+  const text =
+    "Click the link below to sign in to Oyster. The link is single-use and expires in 15 minutes.\n\n" +
+    `${link}\n\n` +
+    "If you didn't request this, ignore this email — no account changes were made.";
+  const html =
+    `<p>Click the link below to sign in to Oyster. The link is single-use and expires in 15 minutes.</p>` +
+    `<p><a href="${htmlEscape(link)}" style="display:inline-block;padding:0.6rem 1rem;background:#6750a4;color:#fff;text-decoration:none;border-radius:0.4rem;font-weight:600;">Sign in to Oyster</a></p>` +
+    `<p style="font-size:0.85rem;color:#666;">Or paste this URL into your browser:<br><code>${htmlEscape(link)}</code></p>` +
+    `<p style="font-size:0.85rem;color:#666;">If you didn't request this, ignore this email — no account changes were made.</p>`;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `Oyster <${from}>`,
+      to: email,
+      reply_to: replyTo,
+      subject,
+      text,
+      html,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error("resend_failed", res.status, detail);
+    throw new Error(`resend ${res.status}`);
+  }
+}
+
+async function handleMagicLink(req: Request, env: Env, url: URL): Promise<Response> {
+  // Per-IP gate first — cheapest reject path. The Workers Rate Limit
+  // binding does the bookkeeping at the edge; no D1 row needed.
+  const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
+  const ipGate = await env.MAGIC_LINK_LIMIT.limit({ key: ip });
+  if (!ipGate.success) return json({ error: "rate_limited" }, 429);
+
+  let payload: { email?: unknown; user_code?: unknown };
+  try {
+    payload = await req.json();
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  const rawEmail = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+  if (!EMAIL_RE.test(rawEmail) || rawEmail.length > 254) {
+    return json({ error: "invalid_email" }, 400);
+  }
+  const userCode =
+    typeof payload.user_code === "string" && payload.user_code.length > 0
+      ? payload.user_code
+      : null;
+
+  const now = Date.now();
+  const user = await findOrCreateUser(env.DB, rawEmail, now);
+
+  // Per-email cap: count of still-valid tokens for this user.
+  const live = await env.DB
+    .prepare("SELECT count(*) AS n FROM magic_link_tokens WHERE user_id = ? AND consumed_at IS NULL AND expires_at > ?")
+    .bind(user.id, now)
+    .first<{ n: number }>();
+  if ((live?.n ?? 0) >= PER_EMAIL_CAP) {
+    // Silent no-op — return ok so the response is identical regardless
+    // of whether the email is mid-flood. No leak about cap state.
+    return json({ ok: true });
+  }
+
+  // Resolve user_code → device_code if present. Unknown user_codes are
+  // ignored silently (degrades gracefully to a non-device login).
+  let deviceCode: string | null = null;
+  if (userCode) {
+    const dc = await env.DB
+      .prepare("SELECT device_code FROM device_codes WHERE user_code = ? AND expires_at > ? AND session_id IS NULL")
+      .bind(userCode, now)
+      .first<{ device_code: string }>();
+    deviceCode = dc?.device_code ?? null;
+  }
+
+  const rawToken = randomToken(32);
+  const tokenHash = await sha256Hex(rawToken);
+  const expiresAt = now + MAGIC_LINK_TTL_MS;
+  await env.DB
+    .prepare("INSERT INTO magic_link_tokens (token_hash, user_id, device_code, expires_at) VALUES (?, ?, ?, ?)")
+    .bind(tokenHash, user.id, deviceCode, expiresAt)
+    .run();
+
+  const verifyUrl = `${url.origin}/auth/verify?t=${encodeURIComponent(rawToken)}`;
+  try {
+    await sendMagicLink(env, rawEmail, verifyUrl);
+  } catch {
+    // We've already written the token row; failing the response would
+    // make the client retry and burn the per-email cap. Log and ack ok.
+    return json({ ok: true });
+  }
+
+  return json({ ok: true });
+}
+
+async function handleVerify(env: Env, url: URL): Promise<Response> {
+  const raw = url.searchParams.get("t");
+  if (!raw) return htmlResponse(SIGN_IN_ERROR_HTML("Missing or invalid sign-in link."), 400);
+
+  const tokenHash = await sha256Hex(raw);
+  const now = Date.now();
+  const tokenRow = await env.DB
+    .prepare(
+      `SELECT t.token_hash, t.user_id, t.device_code, t.expires_at, t.consumed_at, u.email
+       FROM magic_link_tokens t JOIN users u ON u.id = t.user_id
+       WHERE t.token_hash = ?`
+    )
+    .bind(tokenHash)
+    .first<{ token_hash: string; user_id: string; device_code: string | null; expires_at: number; consumed_at: number | null; email: string }>();
+
+  if (!tokenRow) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("This sign-in link is not valid."), 400);
+  }
+  if (tokenRow.consumed_at !== null) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("This sign-in link has already been used. Magic links are single-use."), 400);
+  }
+  if (tokenRow.expires_at <= now) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("This sign-in link has expired. Sign-in links are valid for 15 minutes."), 400);
+  }
+
+  const sessionId = crypto.randomUUID();
+  const sessionExpires = now + SESSION_TTL_MS;
+  await env.DB.batch([
+    env.DB.prepare("UPDATE magic_link_tokens SET consumed_at = ? WHERE token_hash = ?").bind(now, tokenHash),
+    env.DB.prepare("INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
+      .bind(sessionId, tokenRow.user_id, now, sessionExpires),
+    env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now, tokenRow.user_id),
+  ]);
+
+  // If this token was issued via the device flow, attach the session
+  // to the device_codes row so the local server's poller (PR 3) can
+  // pick it up.
+  if (tokenRow.device_code) {
+    await env.DB
+      .prepare("UPDATE device_codes SET session_id = ? WHERE device_code = ? AND session_id IS NULL")
+      .bind(sessionId, tokenRow.device_code)
+      .run();
+  }
+
+  // Browser-only logins: redirect to /auth/welcome with the cookie set.
+  // Device-flow logins: render the welcome page directly so the user
+  // sees the "you can close this window" copy without an extra hop.
+  if (tokenRow.device_code) {
+    return htmlResponse(WELCOME_HTML(tokenRow.email, true), 200, { "set-cookie": sessionCookie(sessionId) });
+  }
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: "/auth/welcome",
+      "set-cookie": sessionCookie(sessionId),
+    },
+  });
+}
+
+async function handleWelcome(req: Request, env: Env): Promise<Response> {
+  const cookies = parseCookies(req);
+  const sid = cookies[COOKIE_NAME];
+  if (!sid) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("No active session — sign in to continue."), 401);
+  }
+  const lookup = await getSession(env.DB, sid, Date.now());
+  if (!lookup) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Your session has expired. Sign in again."), 401, {
+      "set-cookie": clearedCookie(),
+    });
+  }
+  return htmlResponse(WELCOME_HTML(lookup.user.email, false));
+}
+
+async function handleWhoami(req: Request, env: Env): Promise<Response> {
+  const cookies = parseCookies(req);
+  const sid = cookies[COOKIE_NAME];
+  if (!sid) return json({ error: "unauthenticated" }, 401);
+  const lookup = await getSession(env.DB, sid, Date.now());
+  if (!lookup) {
+    return json({ error: "unauthenticated" }, 401, { "set-cookie": clearedCookie() });
+  }
+  return json({ id: lookup.user.id, email: lookup.user.email });
 }
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
+    if (url.pathname === "/auth/sign-in" && req.method === "GET") {
+      return htmlResponse(SIGN_IN_HTML(url.searchParams.get("d")));
+    }
+    if (url.pathname === "/auth/magic-link" && req.method === "POST") {
+      return handleMagicLink(req, env, url);
+    }
+    if (url.pathname === "/auth/verify" && req.method === "GET") {
+      return handleVerify(env, url);
+    }
+    if (url.pathname === "/auth/welcome" && req.method === "GET") {
+      return handleWelcome(req, env);
+    }
     if (url.pathname === "/auth/whoami" && req.method === "GET") {
-      // Wired in PR 2 once the session cookie is being set. Until then,
-      // the endpoint exists so the deploy is verifiable end-to-end.
-      // The throwaway COUNT(*) on users isn't part of the eventual
-      // implementation — it's here so the smoke test exercises the D1
-      // binding and the applied migration, not just route wiring.
-      // PR 2 replaces this body with the real session lookup.
-      try {
-        await env.DB.prepare("SELECT count(*) FROM users").first();
-      } catch (err) {
-        console.error("d1_unavailable", err);
-        return json({ error: "database_unavailable" }, 503);
-      }
-      return json({ error: "unauthenticated" }, 401);
+      return handleWhoami(req, env);
     }
 
     return new Response("Not found", { status: 404 });
