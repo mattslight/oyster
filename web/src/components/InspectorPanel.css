@@ -367,3 +367,87 @@ button.link-row:focus-visible {
 .role-chip.create { background: rgba(74, 222, 128, 0.12); color: #6ee7a8; }
 .role-chip.modify { background: rgba(251, 191, 36, 0.12); color: #fbbf24; }
 .role-chip.read   { background: rgba(255, 255, 255, 0.06); color: var(--text-dim); }
+
+/* ── Memory tab (R6 traceable recall, #310) ── */
+.memory-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.memory-section-title {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 8px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.memory-section-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-style: italic;
+}
+.memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.memory-row {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.memory-row-content {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.memory-row-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.memory-row-space,
+.memory-row-tag {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(124, 107, 255, 0.12);
+  color: var(--accent-bright);
+  font-family: var(--font-mono);
+}
+.memory-row-tag {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+}
+.memory-row-source {
+  appearance: none;
+  background: rgba(110, 231, 168, 0.12);
+  color: #6ee7a8;
+  border: none;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.memory-row-source:hover {
+  background: rgba(110, 231, 168, 0.22);
+}
+.memory-row-ts {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+}

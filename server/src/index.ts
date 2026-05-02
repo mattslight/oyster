@@ -1138,6 +1138,50 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     }
   }
 
+  // GET /api/sessions/:id/memory — memories associated with this session.
+  // R6 traceable recall (#310): returns {written, pulled} where written
+  // are memories whose source_session_id == :id and pulled are memories
+  // this session retrieved via recall(). Each memory has its source
+  // session title resolved across the memory↔sessions DB boundary so
+  // the UI can render "from <title>" without a second round trip.
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/memory$/);
+    if (m && req.method === "GET") {
+      if (rejectIfNonLocalOrigin()) return;
+      try {
+        const [written, pulled] = await Promise.all([
+          memoryProvider.getBySourceSession(m[1]),
+          memoryProvider.getRecalledBySession(m[1]),
+        ]);
+        // Resolve source_session_title for every memory we're about to
+        // return. Batched: collect distinct session ids, fetch titles
+        // once, then attach. memory.db and oyster.db are separate, so
+        // this stitch happens at the API layer.
+        const sourceIds = new Set<string>();
+        for (const memory of [...written, ...pulled]) {
+          if (memory.source_session_id) sourceIds.add(memory.source_session_id);
+        }
+        const titleById = new Map<string, string | null>();
+        for (const sid of sourceIds) {
+          titleById.set(sid, sessionStore.getById(sid)?.title ?? null);
+        }
+        const enrich = (memory: typeof written[number]) => ({
+          ...memory,
+          source_session_title: memory.source_session_id
+            ? (titleById.get(memory.source_session_id) ?? null)
+            : null,
+        });
+        sendJson({
+          written: written.map(enrich),
+          pulled: pulled.map(enrich),
+        });
+      } catch (err) {
+        sendError(err, 500);
+      }
+      return;
+    }
+  }
+
   // GET /api/artifacts/:id/sessions — sessions that touched this artefact (M:N reverse).
   // Must come BEFORE the generic /api/artifacts/:id PATCH handler so "/sessions"
   // suffix is never interpreted as an artifact id.

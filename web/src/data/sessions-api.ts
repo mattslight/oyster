@@ -59,6 +59,29 @@ export async function fetchSessionArtifacts(id: string, signal?: AbortSignal): P
   return res.json();
 }
 
+/** R6 traceable recall: memories tied to this session — written by it
+ *  (source_session_id == :id) and pulled by it (logged in memory_recalls). */
+export interface SessionMemoryEntry {
+  id: string;
+  content: string;
+  space_id: string | null;
+  tags: string[];
+  created_at: string;
+  source_session_id: string | null;
+  source_session_title: string | null;
+}
+
+export interface SessionMemory {
+  written: SessionMemoryEntry[];
+  pulled: SessionMemoryEntry[];
+}
+
+export async function fetchSessionMemory(id: string, signal?: AbortSignal): Promise<SessionMemory> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/memory`, { signal });
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
+  return res.json();
+}
+
 // The list endpoint strips `raw` from every event to keep the payload
 // reasonable on long sessions (raw can be megabytes per tool result).
 // Use this to lazy-fetch one event's raw on-demand — e.g. when the user

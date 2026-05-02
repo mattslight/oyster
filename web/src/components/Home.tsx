@@ -1034,7 +1034,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <div className="home-memories-wrap">
               <div className="home-memories">
                 {scopedMemories.slice(0, memoriesLimit).map((m) => (
-                  <MemoryCard key={m.id} memory={m} spaces={spaces} showSpaceChip={isMetaView} />
+                  <MemoryCard
+                    key={m.id}
+                    memory={m}
+                    spaces={spaces}
+                    showSpaceChip={isMetaView}
+                    onOpenSession={(id) => setActivePanel({ kind: "session", id })}
+                  />
                 ))}
               </div>
               {memoriesLimit < scopedMemories.length && (
@@ -1683,9 +1689,10 @@ interface MemoryCardProps {
   memory: Memory;
   spaces: Space[];
   showSpaceChip: boolean;
+  onOpenSession: (id: string) => void;
 }
 
-function MemoryCard({ memory, spaces, showSpaceChip }: MemoryCardProps) {
+function MemoryCard({ memory, spaces, showSpaceChip, onOpenSession }: MemoryCardProps) {
   const spaceLabel = spaceLabelFor(memory.space_id, spaces);
   const rel = formatRelative(memory.created_at) ?? "—";
   return (
@@ -1699,6 +1706,16 @@ function MemoryCard({ memory, spaces, showSpaceChip }: MemoryCardProps) {
               <span key={t} className="home-memory-tag">{t}</span>
             ))}
           </span>
+        )}
+        {memory.source_session_id && (
+          <button
+            type="button"
+            className="home-memory-source"
+            onClick={() => onOpenSession(memory.source_session_id!)}
+            title="Open the session that wrote this memory"
+          >
+            from session
+          </button>
         )}
         <span className="home-memory-time">{rel}</span>
       </div>

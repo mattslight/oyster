@@ -4,6 +4,7 @@ import {
   fetchSessionEvents,
   fetchSessionArtifacts,
   fetchSessionEventRaw,
+  fetchSessionMemory,
   SessionNotFoundError,
 } from "../data/sessions-api";
 import { subscribeUiEvents } from "../data/ui-events";
@@ -13,6 +14,8 @@ import type {
   SessionEvent,
   SessionArtifactJoined,
   SessionState,
+  SessionMemory,
+  SessionMemoryEntry,
 } from "../data/sessions-api";
 import { KindThumb } from "./KindThumb";
 import type { ActivePanel } from "./InspectorPanel";
@@ -43,7 +46,7 @@ const RAW_CAP_BYTES = 4096;
 // assume there are more upstream and surface the "1000+" affordance.
 const PAGE_SIZE = 1000;
 
-type Tab = "transcript" | "artefacts";
+type Tab = "transcript" | "artefacts" | "memory";
 
 type RoleCategory = "user" | "assistant" | "tools" | "system" | "thinking";
 const ALL_CATEGORIES: RoleCategory[] = ["user", "assistant", "tools", "system", "thinking"];
@@ -91,6 +94,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
+  const [memory, setMemory] = useState<SessionMemory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("transcript");
   // True if the bootstrap fetch returned a full page — i.e. there are older
@@ -120,6 +124,7 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
     setSession(null);
     setEvents(null);
     setArtefacts(null);
+    setMemory(null);
     setTab("transcript");
     setHasMoreOlder(false);
     setLoadingOlder(false);
@@ -129,12 +134,14 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
       fetchSession(sessionId, ac.signal),
       fetchSessionEvents(sessionId, { signal: ac.signal }),
       fetchSessionArtifacts(sessionId, ac.signal),
+      fetchSessionMemory(sessionId, ac.signal),
     ])
-      .then(([s, ev, art]) => {
+      .then(([s, ev, art, mem]) => {
         if (reqId !== latestReqId.current) return;
         setSession(s);
         setEvents(ev);
         setArtefacts(art);
+        setMemory(mem);
         setHasMoreOlder(ev.length >= PAGE_SIZE);
         setBootstrapDone(true);
       })
@@ -283,11 +290,13 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
         eventsCount={events?.length ?? 0}
         hasMoreOlder={hasMoreOlder}
         artefactsCount={artefacts ? new Set(artefacts.map((a) => a.artifact.id)).size : 0}
+        memoryCount={memory ? memory.written.length + memory.pulled.length : 0}
       />
       <TranscriptBody
         tab={tab}
         events={events}
         artefacts={artefacts}
+        memory={memory}
         onSwitchTo={onSwitchTo}
         sessionId={sessionId}
         agent={session.agent}
@@ -308,12 +317,13 @@ export function SessionInspector({ sessionId, onSwitchTo, onClose, onNotFound }:
  * to read history, leave them there.
  */
 function TranscriptBody({
-  tab, events, artefacts, onSwitchTo, sessionId, agent,
+  tab, events, artefacts, memory, onSwitchTo, sessionId, agent,
   hasMoreOlder, loadingOlder, onLoadOlder,
 }: {
   tab: Tab;
   events: SessionEvent[] | null;
   artefacts: SessionArtifactJoined[] | null;
+  memory: SessionMemory | null;
   onSwitchTo: (next: ActivePanel) => void;
   sessionId: string;
   agent: SessionAgent;
@@ -410,6 +420,7 @@ function TranscriptBody({
           </>
         )}
         {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
+        {tab === "memory" && <MemoryTab memory={memory} onSwitchTo={onSwitchTo} sessionId={sessionId} />}
       </div>
     </>
   );
@@ -549,13 +560,14 @@ function Banner({ session }: { session: Session }) {
 }
 
 function Tabs({
-  tab, setTab, eventsCount, hasMoreOlder, artefactsCount,
+  tab, setTab, eventsCount, hasMoreOlder, artefactsCount, memoryCount,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
   eventsCount: number;
   hasMoreOlder: boolean;
   artefactsCount: number;
+  memoryCount: number;
 }) {
   // While older events haven't all been loaded, clamp the badge to "1000+"
   // — the loaded count grows as the user scrolls, but the user wants the
@@ -577,7 +589,110 @@ function Tabs({
       >
         Artefacts <span className="badge">{artefactsCount}</span>
       </button>
+      <button
+        type="button"
+        className={`inspector-tab${tab === "memory" ? " active" : ""}`}
+        onClick={() => setTab("memory")}
+      >
+        Memory <span className="badge">{memoryCount}</span>
+      </button>
     </div>
+  );
+}
+
+function MemoryTab({
+  memory, onSwitchTo, sessionId,
+}: {
+  memory: SessionMemory | null;
+  onSwitchTo: (next: ActivePanel) => void;
+  sessionId: string;
+}) {
+  if (memory === null) return <div className="inspector-empty">Loading memory…</div>;
+  const { written, pulled } = memory;
+  if (written.length === 0 && pulled.length === 0) {
+    return (
+      <div className="inspector-empty">
+        No memory traffic in this session yet. As the agent calls <code>remember</code> or <code>recall</code>, entries will appear here.
+      </div>
+    );
+  }
+  return (
+    <div className="memory-tab">
+      <MemorySection
+        title="Written by this session"
+        emptyHint="No memories were written by this session."
+        items={written}
+        sessionId={sessionId}
+        onSwitchTo={onSwitchTo}
+      />
+      <MemorySection
+        title="Pulled into this session"
+        emptyHint="No memories were recalled in this session."
+        items={pulled}
+        sessionId={sessionId}
+        onSwitchTo={onSwitchTo}
+      />
+    </div>
+  );
+}
+
+function MemorySection({
+  title, emptyHint, items, sessionId, onSwitchTo,
+}: {
+  title: string;
+  emptyHint: string;
+  items: SessionMemoryEntry[];
+  sessionId: string;
+  onSwitchTo: (next: ActivePanel) => void;
+}) {
+  return (
+    <section className="memory-section">
+      <h3 className="memory-section-title">{title} <span className="badge">{items.length}</span></h3>
+      {items.length === 0 ? (
+        <div className="memory-section-empty">{emptyHint}</div>
+      ) : (
+        <ul className="memory-list">
+          {items.map((m) => (
+            <MemoryRow key={m.id} memory={m} currentSessionId={sessionId} onSwitchTo={onSwitchTo} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function MemoryRow({
+  memory, currentSessionId, onSwitchTo,
+}: {
+  memory: SessionMemoryEntry;
+  currentSessionId: string;
+  onSwitchTo: (next: ActivePanel) => void;
+}) {
+  // Source link only appears when (a) the memory has an attributable
+  // source, and (b) it isn't this very session — pointing the user at
+  // the inspector they already have open is noise.
+  const showSource = memory.source_session_id && memory.source_session_id !== currentSessionId;
+  return (
+    <li className="memory-row">
+      <div className="memory-row-content">{memory.content}</div>
+      <div className="memory-row-meta">
+        {memory.space_id && <span className="memory-row-space">{memory.space_id}</span>}
+        {memory.tags.length > 0 && memory.tags.map((t) => (
+          <span key={t} className="memory-row-tag">{t}</span>
+        ))}
+        {showSource && (
+          <button
+            type="button"
+            className="memory-row-source"
+            onClick={() => onSwitchTo({ kind: "session", id: memory.source_session_id! })}
+            title={`Open source session: ${memory.source_session_title ?? memory.source_session_id}`}
+          >
+            from {memory.source_session_title ?? memory.source_session_id!.slice(0, 8)}
+          </button>
+        )}
+        <span className="memory-row-ts">{formatTs(memory.created_at)}</span>
+      </div>
+    </li>
   );
 }
 
