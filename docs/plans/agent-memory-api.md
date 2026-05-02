@@ -13,11 +13,13 @@ Agent (Claude Code / Cursor / Codex / …)
    ▼
 Local Oyster server (always running on the user's machine)
    │
-   │  free / today: SqliteFtsMemoryProvider → ~/Oyster/db/memory.db
+   │  free / today: SqliteFtsMemoryProvider → <userland>/db/memory.db
    │  Pro (0.8.0+):  CloudMemoryProvider → Cloudflare D1 + Vectorize
    ▼
 Cloud (Pro only)
 ```
+
+`<userland>` resolves to `~/Oyster/` for the installed package, `./userland/` in dev, or whatever `OYSTER_USERLAND` is set to.
 
 ## Requirements served
 
