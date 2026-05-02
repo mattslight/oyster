@@ -1,0 +1,21 @@
+name = "oyster-auth"
+main = "src/worker.ts"
+compatibility_date = "2026-04-01"
+
+# Bind the D1 database. Run `wrangler d1 create oyster-auth` once,
+# then paste the returned database_id here.
+[[d1_databases]]
+binding = "DB"
+database_name = "oyster-auth"
+database_id = "44086805-fbfa-4446-8626-126af7e2ec19"
+
+# Auth flow lives under /auth on the apex. Both apex and www are routed
+# so the Worker is reachable from either origin (GH Pages 301-redirects
+# www → apex, but a direct hit on www still needs to land here).
+[[routes]]
+pattern = "oyster.to/auth/*"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "www.oyster.to/auth/*"
+zone_name = "oyster.to"
