@@ -39,7 +39,11 @@ export function useFetched<T>(
   const latestReqId = useRef(0);
   // Hold initial in a ref so callers can pass `[]` literally without
   // tripping the deps array; the effects below read .current on demand.
+  // Sync on every render so a derived `initial` (e.g. memoised from props)
+  // doesn't get frozen at the first-render value — without this, a later
+  // reset on `key` change would revert to a stale empty.
   const initialRef = useRef(initial);
+  initialRef.current = initial;
 
   // Pre-paint clear on key change. Without this, switching from one
   // keyed view to another briefly shows the previous payload before

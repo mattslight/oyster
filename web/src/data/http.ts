@@ -58,7 +58,8 @@ export async function patchJson<T>(
   return res.json() as Promise<T>;
 }
 
-/** POST with no JSON response body (e.g. archive/restore endpoints).
+/** POST whose response body the caller doesn't need (e.g. archive/restore
+ *  endpoints — the server may return JSON status, but it's discarded here).
  *  Throws ApiError on non-2xx; resolves to void otherwise. */
 export async function postEmpty(
   url: string,
