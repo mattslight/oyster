@@ -402,6 +402,11 @@ export class SqliteSessionStore implements SessionStore {
     // and the query parses to the same adjacent-tokens phrase.
     const trimmed = query.trim();
     if (trimmed.length === 0) return [];
+    // Guard: a query of pure punctuation (e.g. "?", "()") would wrap
+    // to a phrase that the unicode61 tokeniser strips entirely,
+    // producing an FTS5 syntax error at execution time. Bail before
+    // we hit SQLite.
+    if (!/[A-Za-z0-9]/.test(trimmed)) return [];
     const isPlainWord = /^[A-Za-z0-9]+$/.test(trimmed);
     let ftsQuery: string;
     if (isPlainWord) {

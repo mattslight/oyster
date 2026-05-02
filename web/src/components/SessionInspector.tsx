@@ -464,19 +464,23 @@ function TranscriptBody({
     }
   }, [focusEventId, matchIds, sessionId]);
   const currentMatchEventId = matchIds[searchMatchIdx];
+  // O(1) lookup for the filter pass below — Array.includes would make
+  // the per-render filter O(n×m) on long transcripts with many matches.
+  const matchIdSet = useMemo(() => new Set(matchIds), [matchIds]);
 
   // Always include deep-link / search targets in the rendered list, even
   // if their category is filtered out. Otherwise a Spotlight click on a
   // tool_result with Tools off lands on no DOM target. Same for
   // in-transcript search hits — strip them and the user can't see what
   // they searched for.
-  const filteredEvents = events
+  const filteredEvents = useMemo(() => events
     ? events.filter((e) =>
         visible.has(categoryOf(e))
         || e.id === focusEventId
-        || matchIds.includes(e.id),
+        || matchIdSet.has(e.id),
       )
-    : null;
+    : null,
+  [events, visible, focusEventId, matchIdSet]);
   const filteredLen = filteredEvents?.length ?? 0;
 
   useEffect(() => {
