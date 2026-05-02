@@ -29,7 +29,15 @@ type = "ratelimit"
 namespace_id = "1001"
 simple = { limit = 20, period = 3600 }
 
-# Non-secret config. Secrets (RESEND_API_KEY) go via `wrangler secret put`.
+# Non-secret config. Secrets (RESEND_API_KEY, GITHUB_OAUTH_CLIENT_SECRET)
+# go via `wrangler secret put`. GITHUB_OAUTH_CLIENT_ID is committed
+# in-tree even though the repo is public because (a) it isn't secret
+# per OAuth — it's exposed in every redirect URL, and (b) GitHub
+# enforces the registered callback URL (oyster.to/auth/github/callback),
+# so a fork that grabbed this id can't complete sign-in: GitHub
+# redirects to oyster.to, which 400s on the unknown state. The worst
+# case for a forker is a confusing dev UX; they should register their
+# own OAuth App for local work.
 [vars]
 FROM_ADDRESS = "noreply@oyster.to"
 REPLY_TO = "matthew@slight.me"
