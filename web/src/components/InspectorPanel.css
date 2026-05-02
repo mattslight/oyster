@@ -452,6 +452,35 @@ button.link-row:focus-visible {
   border-radius: 2px;
 }
 
+/* Floating scroll-to-bottom button. Anchors to the inspector panel's
+   bottom-right and only renders when the user is materially above the
+   tail. Clicks snap to bottom and re-arm the auto-tail follow. */
+.transcript-scroll-bottom {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(20, 20, 30, 0.85);
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  z-index: 1;
+}
+.transcript-scroll-bottom:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(30, 30, 45, 0.92);
+}
+
 /* ── Spotlight deep-link flash (#329) ── */
 /* Brief glow on the matched turn after the inspector opens via a
    transcript-hit click, so the user's eye lands on the right line.

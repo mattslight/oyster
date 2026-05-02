@@ -428,11 +428,23 @@ function TranscriptBody({
     const q = trimmedQuery.toLowerCase();
     return events.filter((e) => e.text.toLowerCase().includes(q)).map((e) => e.id);
   }, [events, isSearching, trimmedQuery]);
-  // Clamp idx if the match list shrinks under us (e.g. user typed more).
+  // Clamp idx if the match list shrinks under us (e.g. user typed
+  // more). Gated on isSearching so closing the bar (which empties
+  // matchIds via the isSearching gate above) doesn't reset the
+  // user's position — re-opening returns them to the same match.
   useEffect(() => {
+    if (!isSearching) return;
     if (matchIds.length === 0) { setSearchMatchIdx(0); return; }
     if (searchMatchIdx >= matchIds.length) setSearchMatchIdx(0);
-  }, [matchIds.length, searchMatchIdx]);
+  }, [isSearching, matchIds.length, searchMatchIdx]);
+
+  // Action-driven scroll: only scroll to the current match when the
+  // user explicitly navigated (clicked ↑/↓ or arrived via Spotlight),
+  // not when they merely toggled the bar open. Without this, hiding
+  // and reopening the bar via the magnifying glass would yank the
+  // transcript back to the current match every time, fighting the
+  // user's scroll position.
+  const pendingMatchScrollRef = useRef(false);
 
   // Align the find bar's current match to the Spotlight-clicked event
   // once both the matches and the focus id are known. Without this,
@@ -447,6 +459,7 @@ function TranscriptBody({
     const idx = matchIds.indexOf(focusEventId);
     if (idx >= 0) {
       setSearchMatchIdx(idx);
+      pendingMatchScrollRef.current = true; // initial deep-link should scroll
       alignedFocusRef.current = { sid: sessionId, fid: focusEventId };
     }
   }, [focusEventId, matchIds, sessionId]);
@@ -515,13 +528,15 @@ function TranscriptBody({
       restoreFromBottomRef.current = null;
       return;
     }
-    // In-transcript search: scroll the current match into view on every
-    // step (user expects ↑/↓ to navigate). The flash class re-runs each
-    // time because Turn re-keys on `flash` boolean change.
-    if (currentMatchEventId !== undefined && filteredLen > 0) {
+    // In-transcript search: scroll the current match into view ONLY
+    // when the user just navigated (↑/↓ or initial Spotlight arrival).
+    // pendingMatchScrollRef gates this so toggling the bar open doesn't
+    // yank the transcript back to the current match each time.
+    if (pendingMatchScrollRef.current && currentMatchEventId !== undefined && filteredLen > 0) {
       const target = el.querySelector(`[data-event-id="${currentMatchEventId}"]`) as HTMLElement | null;
       if (target) {
         target.scrollIntoView({ block: "center" });
+        pendingMatchScrollRef.current = false;
         wasNearBottomRef.current = false;
         return;
       }
@@ -560,12 +575,37 @@ function TranscriptBody({
 
   function stepMatch(delta: number) {
     if (matchIds.length === 0) return;
+    pendingMatchScrollRef.current = true;
     setSearchMatchIdx((i) => (i + delta + matchIds.length) % matchIds.length);
   }
   function closeSearch() {
     setSearchOpen(false);
     setSearchQuery("");
     setSearchMatchIdx(0);
+  }
+
+  // Floating "scroll to bottom" affordance. Visible when the user is
+  // not within 80px of the bottom (matches the auto-tail threshold).
+  // Tracked via state so the button can show/hide; we read scrollTop
+  // on the body's scroll handler that already exists for load-older.
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // Hide when essentially at the bottom; show when materially above.
+      setShowScrollBottom(fromBottom > 200);
+    };
+    el.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => el.removeEventListener("scroll", update);
+  }, [tab]);
+  function scrollToBottom() {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    wasNearBottomRef.current = true;
   }
 
   // Highlight applies to whichever event is the current scroll target —
@@ -614,6 +654,20 @@ function TranscriptBody({
         {tab === "artefacts" && <Artefacts items={artefacts} onSwitchTo={onSwitchTo} />}
         {tab === "memory" && <MemoryTab memory={memory} memoryError={memoryError} onSwitchTo={onSwitchTo} sessionId={sessionId} />}
       </div>
+      {tab === "transcript" && showScrollBottom && (
+        <button
+          type="button"
+          className="transcript-scroll-bottom"
+          onClick={scrollToBottom}
+          aria-label="Scroll to bottom of transcript"
+          title="Scroll to bottom"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <polyline points="19 12 12 19 5 12" />
+          </svg>
+        </button>
+      )}
     </>
   );
 }
