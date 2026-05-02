@@ -754,7 +754,9 @@ async function fetchGithubEmails(token: string): Promise<GitHubEmail[] | null> {
     console.error("github_emails_fetch_failed", res.status);
     return null;
   }
-  return await res.json().catch(() => null) as GitHubEmail[] | null;
+  const body = await res.json().catch(() => null);
+  if (!Array.isArray(body)) return null;
+  return body as GitHubEmail[];
 }
 
 async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<Response> {
