@@ -2,8 +2,8 @@ import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import type { ToolDefiner } from "./mcp-tool.js";
 
 // ── Contract ──────────────────────────────────────────────────
 
@@ -369,14 +369,14 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 // ── MCP tool registration ─────────────────────────────────────
 
 export function registerMemoryTools(
-  server: McpServer,
+  tool: ToolDefiner,
   provider: MemoryProvider,
   // R6: returns the session id of the agent making this request, or null
   // when we can't attribute (no matching active session, internal-only call,
   // unknown user-agent). Stamps memories at write time and logs recalls.
   resolveActiveSessionId: () => string | null = () => null,
 ): void {
-  server.tool(
+  tool(
     "remember",
     "Store a memory for future sessions. Use when the user says 'remember this', shares a preference, or makes a decision worth preserving. Do not auto-remember — only store when explicitly asked or when the fact is clearly durable.",
     {
@@ -384,24 +384,15 @@ export function registerMemoryTools(
       space_id: z.string().optional().describe("Scope to a space (e.g. 'tokinvest'). Omit for global memory."),
       tags: z.array(z.string()).optional().describe("Categorisation tags (e.g. ['preference'], ['decision', 'project:tokinvest'])"),
     },
-    async ({ content, space_id, tags }) => {
-      try {
-        const memory = await provider.remember({
-          content,
-          space_id,
-          tags,
-          source_session_id: resolveActiveSessionId(),
-        });
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(memory, null, 2) }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
-    },
+    async ({ content, space_id, tags }) => provider.remember({
+      content,
+      space_id,
+      tags,
+      source_session_id: resolveActiveSessionId(),
+    }),
   );
 
-  server.tool(
+  tool(
     "recall",
     "Search memories by natural language query. Returns ranked matches from this space and global memories. Use at session start to load relevant context, or when the user asks what you remember.",
     {
@@ -410,59 +401,39 @@ export function registerMemoryTools(
       limit: z.number().int().min(1).max(50).optional().describe("Max results (default 10)"),
     },
     async ({ query, space_id, limit }) => {
-      try {
-        const memories = await provider.recall({
-          query,
-          space_id,
-          limit,
-          recalling_session_id: resolveActiveSessionId(),
-        });
-        if (memories.length === 0) {
-          return { content: [{ type: "text" as const, text: "No memories found." }] };
-        }
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(memories, null, 2) }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      const memories = await provider.recall({
+        query,
+        space_id,
+        limit,
+        recalling_session_id: resolveActiveSessionId(),
+      });
+      if (memories.length === 0) return "No memories found.";
+      return memories;
     },
   );
 
-  server.tool(
+  tool(
     "forget",
     "Remove a memory from active recall by ID. The user will no longer see this memory in searches or lists.",
     {
       id: z.string().describe("Memory ID to forget"),
     },
     async ({ id }) => {
-      try {
-        await provider.forget(id);
-        return { content: [{ type: "text" as const, text: `Memory "${id}" forgotten.` }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      await provider.forget(id);
+      return `Memory "${id}" forgotten.`;
     },
   );
 
-  server.tool(
+  tool(
     "list_memories",
     "List all active memories, optionally filtered by space. Returns memories ordered by most recently updated.",
     {
       space_id: z.string().optional().describe("Filter by space. Omit to list all memories."),
     },
     async ({ space_id }) => {
-      try {
-        const memories = await provider.list(space_id);
-        if (memories.length === 0) {
-          return { content: [{ type: "text" as const, text: "No memories stored yet." }] };
-        }
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(memories, null, 2) }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      const memories = await provider.list(space_id);
+      if (memories.length === 0) return "No memories stored yet.";
+      return memories;
     },
   );
 }
