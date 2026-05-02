@@ -84,6 +84,7 @@ npm run build:changelog  # renders CHANGELOG.md → docs/changelog.html
 - User workspace lives at `~/Oyster/` (installed) or `./userland/` (dev), split into `db/`, `config/`, `apps/`, `backups/`, `spaces/`. See `docs/plans/archived/userland-layout.md` for the full layout.
 - Always use feature branches, never commit to main directly
 - Add a `CHANGELOG.md` entry in the same PR as any user-visible change; run `npm run build:changelog` to refresh `docs/changelog.html` (also auto-runs via the `version` lifecycle on `npm run release`)
+- Changelog style is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/): terse bullets under Added / Changed / Fixed / Security, each one a user-visible outcome (bold lead-in, 1–2 lines max). No internal file paths, MCP tool names, route names, or implementation detail — those belong in the PR. If a section runs past ~6 bullets or any bullet runs past two lines, cut it down before tagging.
 
 ---
 
