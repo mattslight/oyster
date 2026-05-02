@@ -12,7 +12,7 @@ import type { SessionStore } from "./session-store.js";
 import type { ArtifactKind, UiCommand } from "../../shared/types.js";
 import { debug } from "./debug.js";
 import { slugify } from "./utils.js";
-import { recordToolCall } from "./mcp-client-tracker.js";
+import { makeTool, withStructured, type ToolTelemetry } from "./mcp-tool.js";
 
 // Kept local — value imports from shared/ don't transpile in tsx (include: ["src"] only).
 // `satisfies` ensures this stays in sync with the ArtifactKind union at compile time.
@@ -325,82 +325,39 @@ Create user content via \`create_artifact\` — it writes under \`${userlandDir}
 export function createMcpServer(deps: McpDeps): McpServer {
   const server = new McpServer({ name: "oyster", version: "1.0.0" });
 
-  // Monkey-patch `server.tool` so every registered tool emits a
-  // `mcp_tool_called` SSE event on completion — but only for external
-  // agents. Our own OpenCode subprocess makes many calls during normal
-  // operation and would otherwise flood the onboarding action log.
-  if (!deps.clientContext.isInternal) {
-    const externalUa = deps.clientContext.userAgent;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const originalTool = (server.tool as any).bind(server);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (server as any).tool = (name: string, ...rest: any[]) => {
-      const handler = rest.pop();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const wrapped = async (...args: any[]) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let result: any;
-        let isError = false;
-        try {
-          result = await handler(...args);
-          return result;
-        } catch (err) {
-          // Re-throw to preserve the SDK's error contract, but record the
-          // call as errored so the action log / status counter stay honest.
-          isError = true;
-          throw err;
-        } finally {
-          try {
-            recordToolCall(externalUa);
-            // SSE payload intentionally excludes the user-agent — the dock
-            // only needs tool name + error flag for the action log, and
-            // stripping the UA keeps the stream leaner if the origin gate
-            // is ever misconfigured. Full UA is in /api/mcp/status (local-
-            // origin only).
-            deps.broadcastUiEvent({
-              version: 1,
-              command: "mcp_tool_called",
-              payload: {
-                tool: name,
-                at: new Date().toISOString(),
-                is_error: isError || Boolean(result?.isError),
-              },
-            });
-          } catch { /* best effort — never let telemetry break a tool call */ }
-        }
+  // Telemetry is opt-in per call: external agents get `mcp_tool_called` SSE +
+  // recordToolCall (drives the onboarding action log + /api/mcp/status). Our
+  // own OpenCode subprocess opts out — it makes many calls during normal
+  // operation and would otherwise flood the log.
+  const telemetry: ToolTelemetry | undefined = deps.clientContext.isInternal
+    ? undefined
+    : {
+        broadcastUiEvent: deps.broadcastUiEvent,
+        userAgent: deps.clientContext.userAgent,
       };
-      return originalTool(name, ...rest, wrapped);
-    };
-  }
+  const tool = makeTool(server, telemetry);
 
   // ── get_context ──
 
-  server.tool(
+  tool(
     "get_context",
     "Get a description of Oyster OS — what it is, how it works, and how to use these tools effectively. Call this first if you are unfamiliar with Oyster.",
     {},
-    async () => ({
-      content: [{ type: "text" as const, text: buildContext(deps.userlandDir) }],
-    }),
+    async () => buildContext(deps.userlandDir),
   );
 
   // ── list_spaces ──
 
-  server.tool(
+  tool(
     "list_spaces",
     "List all spaces (named workspaces) on the Oyster desktop. A space is a tab the user switches between — 'home' is always present; others are user-defined.",
     {},
-    async () => {
-      const spaces = deps.spaceService.listSpaces();
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(spaces, null, 2) }],
-      };
-    },
+    async () => deps.spaceService.listSpaces(),
   );
 
   // ── onboard_space ──
 
-  server.tool(
+  tool(
     "onboard_space",
     "Create a space (or extend one with the same name) as a logical grouping for work. Spaces are named workspaces the user switches between — they don't require filesystem paths. If `paths` are provided, each folder is attached and scanned for apps, docs, and diagrams; if not, the space is created empty as a logical grouping (summaries, memories, and artifacts can attach later). If a space with this name already exists, any given paths are attached to it — NOT duplicated into a new one. Returns `created: true` when a new space was made, `created: false` when an existing one was extended.",
     {
@@ -408,70 +365,61 @@ export function createMcpServer(deps: McpDeps): McpServer {
       paths: z.array(z.string()).optional().describe("Optional. Absolute local paths to attach and scan. Omit for a logical grouping with no filesystem attachment."),
     },
     async ({ name, paths }) => {
-      try {
-        const resolvedPaths = paths && paths.length > 0 ? paths : [];
+      const resolvedPaths = paths && paths.length > 0 ? paths : [];
 
-        // Extend-or-create: resolve the canonical slugified id first, reuse
-        // an existing space when present, and only createSpace when missing.
-        // Control flow stays on stable state (a row lookup) rather than
-        // parsing the "already exists" error message. The inner try/catch
-        // still handles a rare concurrent-create race: two parallel callers
-        // both see no existing row, both call createSpace, one wins and the
-        // other gets the "already exists" throw → we look up the winner.
-        const spaceId = slugify(name);
-        let space = deps.spaceService.getSpace(spaceId);
-        let created = false;
-        if (!space) {
-          try {
-            space = deps.spaceService.createSpace({ name });
-            created = true;
-          } catch (err) {
-            const existing = deps.spaceService.getSpace(spaceId);
-            if (!existing) throw err;
-            space = existing;
-          }
+      // Extend-or-create: resolve the canonical slugified id first, reuse
+      // an existing space when present, and only createSpace when missing.
+      // Control flow stays on stable state (a row lookup) rather than
+      // parsing the "already exists" error message. The inner try/catch
+      // still handles a rare concurrent-create race: two parallel callers
+      // both see no existing row, both call createSpace, one wins and the
+      // other gets the "already exists" throw → we look up the winner.
+      const spaceId = slugify(name);
+      let space = deps.spaceService.getSpace(spaceId);
+      let created = false;
+      if (!space) {
+        try {
+          space = deps.spaceService.createSpace({ name });
+          created = true;
+        } catch (err) {
+          const existing = deps.spaceService.getSpace(spaceId);
+          if (!existing) throw err;
+          space = existing;
         }
-
-        const pathReports: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }> = [];
-        for (const p of resolvedPaths) {
-          try {
-            deps.spaceService.addSource(space.id, p);
-            // `attached` covers newly added sources, restored-from-soft-delete
-            // sources, AND already-active sources for the same space (addSource
-            // is idempotent in those cases).
-            pathReports.push({ path: p, status: "attached" });
-          } catch (err) {
-            const msg = (err as Error).message;
-            // `addSource` only throws for paths that don't exist on disk OR
-            // paths already claimed by a DIFFERENT space (the conflict guard).
-            // The latter means THIS space still has no folders for that path,
-            // so we must not count it as attached for the scan-guard below.
-            const ownedElsewhere = /already attached/i.test(msg);
-            pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
-          }
-        }
-
-        // Only scan when at least one path actually attached to THIS space.
-        // If every path failed (missing on disk, owned by another space),
-        // scanSpace would throw \"no folders\" and the agent would see a
-        // confusing scan error on top of per-path errors already in `paths`.
-        const anyAttached = pathReports.some((r) => r.status === "attached");
-        const scanResult = anyAttached ? await deps.spaceService.scanSpace(space.id) : null;
-        return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({ space_id: space.id, created, paths: pathReports, scan_summary: scanResult }, null, 2),
-          }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
       }
+
+      const pathReports: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }> = [];
+      for (const p of resolvedPaths) {
+        try {
+          deps.spaceService.addSource(space.id, p);
+          // `attached` covers newly added sources, restored-from-soft-delete
+          // sources, AND already-active sources for the same space (addSource
+          // is idempotent in those cases).
+          pathReports.push({ path: p, status: "attached" });
+        } catch (err) {
+          const msg = (err as Error).message;
+          // `addSource` only throws for paths that don't exist on disk OR
+          // paths already claimed by a DIFFERENT space (the conflict guard).
+          // The latter means THIS space still has no folders for that path,
+          // so we must not count it as attached for the scan-guard below.
+          const ownedElsewhere = /already attached/i.test(msg);
+          pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
+        }
+      }
+
+      // Only scan when at least one path actually attached to THIS space.
+      // If every path failed (missing on disk, owned by another space),
+      // scanSpace would throw \"no folders\" and the agent would see a
+      // confusing scan error on top of per-path errors already in `paths`.
+      const anyAttached = pathReports.some((r) => r.status === "attached");
+      const scanResult = anyAttached ? await deps.spaceService.scanSpace(space.id) : null;
+      return { space_id: space.id, created, paths: pathReports, scan_summary: scanResult };
     },
   );
 
   // ── set_space_summary ──
 
-  server.tool(
+  tool(
     "set_space_summary",
     "Attach a short summary (title + content) to a space. Use this to capture what a space is about — context, focus, or scope — in the user's own terms. Upserts on the space's slugified name: if the space exists, its summary is updated; if not, a logical space is created with the summary attached. One summary per space.",
     {
@@ -480,42 +428,27 @@ export function createMcpServer(deps: McpDeps): McpServer {
       content: z.string().describe("The summary itself — what this space is about, in a sentence or two."),
     },
     async ({ name, title, content }) => {
-      try {
-        let space = deps.spaceService.getSpace(slugify(name));
-        if (!space) space = deps.spaceService.createSpace({ name });
-        const updated = deps.spaceService.setSummary(space.id, title, content);
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify({ space_id: updated.id, title: updated.summaryTitle, content: updated.summaryContent }, null, 2) }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      let space = deps.spaceService.getSpace(slugify(name));
+      if (!space) space = deps.spaceService.createSpace({ name });
+      const updated = deps.spaceService.setSummary(space.id, title, content);
+      return { space_id: updated.id, title: updated.summaryTitle, content: updated.summaryContent };
     },
   );
 
   // ── scan_space ──
 
-  server.tool(
+  tool(
     "scan_space",
     "Rescan an existing space's repo for new apps, docs, and diagrams. Already-registered artifacts are skipped (idempotent). Use this after adding new files to a repo that was previously onboarded.",
     {
       space_id: z.string().describe("ID of the space to scan"),
     },
-    async ({ space_id }) => {
-      try {
-        const result = await deps.spaceService.scanSpace(space_id);
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
-    },
+    async ({ space_id }) => deps.spaceService.scanSpace(space_id),
   );
 
   // ── detach_source ──
 
-  server.tool(
+  tool(
     "detach_source",
     "Detach a previously-linked folder from a space. Soft-deletes the link AND any tiles that came from that folder. The folder itself is untouched on disk. Reversible — re-attaching the same path restores the link and resurfaces the tiles.",
     {
@@ -523,48 +456,37 @@ export function createMcpServer(deps: McpDeps): McpServer {
       path: z.string().describe("Absolute path of the linked folder to detach (~/ supported)"),
     },
     async ({ space_id, path: rawPath }) => {
-      try {
-        const source = deps.spaceService.getActiveSourceByPath(rawPath);
-        if (!source || source.space_id !== space_id) {
-          return {
-            content: [{ type: "text" as const, text: `No folder at "${rawPath}" is currently attached to space "${space_id}".` }],
-            isError: true,
-          };
-        }
-        deps.spaceService.removeSource(source.id);
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify({ detached: source.path, source_id: source.id, space_id: source.space_id }, null, 2) }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+      const source = deps.spaceService.getActiveSourceByPath(rawPath);
+      if (!source || source.space_id !== space_id) {
+        throw new Error(`No folder at "${rawPath}" is currently attached to space "${space_id}".`);
       }
+      deps.spaceService.removeSource(source.id);
+      return { detached: source.path, source_id: source.id, space_id: source.space_id };
     },
   );
 
   // ── gather_repo_context ──
 
-  server.tool(
+  tool(
     "gather_repo_context",
     "Read key files from a local repo and return them as a structured context payload, along with deterministic artifact suggestions (READMEs, diagrams, apps detected from package.json). Stays within a ~30k token budget. Does NOT create artifacts — call create_artifact separately if you want to persist any output.",
     {
       repo_path: z.string().describe("Absolute local path to the repository root"),
     },
     async ({ repo_path }) => {
-      try {
-        const result = gatherRepoContext(repo_path);
-        return {
-          content: [{ type: "text" as const, text: result.content }],
-          structuredContent: { suggestions: result.suggestions },
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      // Plain-text content + structuredContent — return the full ToolResponse
+      // shape to bypass the helper's auto JSON-stringify.
+      const result = gatherRepoContext(repo_path);
+      return {
+        content: [{ type: "text" as const, text: result.content }],
+        structuredContent: { suggestions: result.suggestions },
+      };
     },
   );
 
   // ── list_artifacts ──
 
-  server.tool(
+  tool(
     "list_artifacts",
     "List artifacts (desktop icons) on the Oyster surface, optionally filtered by space, kind, or search term. Returns id, label, kind, space, status, url, group, and source_path for each artifact.",
     {
@@ -585,8 +507,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         artifacts = artifacts.filter((a) => a.label.toLowerCase().includes(q));
       }
       artifacts = artifacts.slice(0, limit ?? 20);
-
-      const summary = artifacts.map((a) => ({
+      return artifacts.map((a) => ({
         id: a.id,
         label: a.label,
         kind: a.artifactKind,
@@ -596,16 +517,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
         group: a.groupName,
         source_path: deps.service.getDocFile(a.id) ?? null,
       }));
-
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }],
-      };
     },
   );
 
   // ── register_artifact ──
 
-  server.tool(
+  tool(
     "register_artifact",
     "Register a file that already exists on disk as a desktop artifact. Use this only when the file already exists. To create new content and register it in one step, use create_artifact instead. Any absolute path the server can read is accepted; prefer files the user controls (inside a registered space folder or a repo the user has attached). Kind and ID are inferred from the filename if not provided.",
     {
@@ -621,57 +538,38 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
     async ({ path, space_id, label, id, artifact_kind, group_name }) => {
       debug("mcp", "register_artifact invoked", { path, label, id: id ?? null, space_id, kind: artifact_kind ?? null });
-      try {
-        const artifact = await deps.service.registerArtifact(
-          { path, space_id, label, id, artifact_kind, group_name },
-          [], // MCP callers are trusted — no path restriction
-        );
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(artifact, null, 2) }],
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text" as const, text: (err as Error).message }],
-          isError: true,
-        };
-      }
+      return deps.service.registerArtifact(
+        { path, space_id, label, id, artifact_kind, group_name },
+        [], // MCP callers are trusted — no path restriction
+      );
     },
   );
 
   // ── read_artifact ──
 
-  server.tool(
+  tool(
     "read_artifact",
     "Read the raw text content of a static text-backed artifact. Redirect and non-file artifacts are not supported.",
     { id: z.string().describe("Artifact ID") },
     async ({ id }) => {
       const filePath = deps.service.getDocFile(id);
       if (!filePath) {
-        return {
-          content: [{ type: "text" as const, text: `Artifact "${id}" not found or is not a static file. Use list_artifacts to find the artifact URL.` }],
-          isError: true,
-        };
+        throw new Error(`Artifact "${id}" not found or is not a static file. Use list_artifacts to find the artifact URL.`);
       }
       if (!existsSync(filePath)) {
-        return {
-          content: [{ type: "text" as const, text: `File not found on disk: ${filePath}` }],
-          isError: true,
-        };
+        throw new Error(`File not found on disk: ${filePath}`);
       }
       const ext = extname(filePath).toLowerCase();
       if (!TEXT_EXTS.has(ext)) {
-        return {
-          content: [{ type: "text" as const, text: `Cannot read "${ext}" files as text` }],
-          isError: true,
-        };
+        throw new Error(`Cannot read "${ext}" files as text`);
       }
-      return { content: [{ type: "text" as const, text: readFileSync(filePath, "utf8") }] };
+      return readFileSync(filePath, "utf8");
     },
   );
 
   // ── create_artifact ──
 
-  server.tool(
+  tool(
     "create_artifact",
     "Create a new file under the space's native folder (<workspace>/spaces/<space-id>/...) and register it as a desktop artifact in one step. The server computes the file path from space_id, label, and optional subdir — you provide the content. Do not try to write into <workspace>/db/, <workspace>/apps/, or the workspace root; those are reserved. Appears immediately on the user's desktop.",
     {
@@ -686,24 +584,17 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
     async ({ space_id, label, artifact_kind, content, subdir, group_name, source_origin, extension }) => {
       debug("mcp", "create_artifact invoked", { label, space_id, kind: artifact_kind, subdir: subdir ?? null, extension: extension ?? null });
-      try {
-        const artifact = await deps.service.createArtifact(
-          { space_id, label, artifact_kind, content, subdir, group_name, source_origin, extension },
-          deps.getNativeSourcePath(space_id),
-        );
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(artifact, null, 2) }],
-          structuredContent: { ...artifact },
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      const artifact = await deps.service.createArtifact(
+        { space_id, label, artifact_kind, content, subdir, group_name, source_origin, extension },
+        deps.getNativeSourcePath(space_id),
+      );
+      return withStructured(artifact, { ...artifact });
     },
   );
 
   // ── update_artifact ──
 
-  server.tool(
+  tool(
     "update_artifact",
     "Update display metadata: label, space assignment, group name, or artifact kind. Does not rename or move the file on disk.",
     {
@@ -714,20 +605,13 @@ export function createMcpServer(deps: McpDeps): McpServer {
       artifact_kind: z.enum(["app", "deck", "map", "notes", "diagram", "wireframe", "table"]).optional().describe("Correct the artifact kind if it was inferred incorrectly."),
     },
     async ({ id, label, space_id, group_name, artifact_kind }) => {
-      try {
-        const updated = await deps.service.updateArtifact(id, {
-          label,
-          space_id,
-          artifact_kind,
-          ...(group_name !== undefined ? { group_name: group_name || null } : {}),
-        });
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(updated, null, 2) }],
-          structuredContent: { ...updated },
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      const updated = await deps.service.updateArtifact(id, {
+        label,
+        space_id,
+        artifact_kind,
+        ...(group_name !== undefined ? { group_name: group_name || null } : {}),
+      });
+      return withStructured(updated, { ...updated });
     },
   );
 
@@ -738,114 +622,91 @@ export function createMcpServer(deps: McpDeps): McpServer {
   // but the description leads with both terms so the agent can match either
   // phrasing in user requests.
 
-  server.tool(
+  tool(
     "remove_artifact",
     "Archive (remove) an artifact from the desktop surface. The file and record are preserved — the artifact simply stops appearing on the live surface and moves into the archived view. This is reversible via `restore_artifact`. Use this when the user says archive, remove, hide, or delete an artifact.",
     { id: z.string().describe("Artifact ID to remove") },
     async ({ id }) => {
-      try {
-        deps.service.removeArtifact(id);
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" removed from surface (moved to archived view)` }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      deps.service.removeArtifact(id);
+      return `Artifact "${id}" removed from surface (moved to archived view)`;
     },
   );
 
   // ── list_archived_artifacts ──
 
-  server.tool(
+  tool(
     "list_archived_artifacts",
     "List artifacts that have been archived (removed from the live surface). These still exist on disk and in the DB — they just don't render on the desktop until restored. Use this when the user asks about archived, removed, or hidden artifacts.",
     {},
-    async () => {
-      try {
-        const archived = await deps.service.getArchivedArtifacts();
-        return { content: [{ type: "text" as const, text: JSON.stringify(archived, null, 2) }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
-    },
+    async () => deps.service.getArchivedArtifacts(),
   );
 
   // ── restore_artifact ──
 
-  server.tool(
+  tool(
     "restore_artifact",
     "Restore an archived artifact so it reappears on the desktop surface. Inverse of `remove_artifact`. Use when the user asks to un-archive, restore, or bring back a removed artifact.",
     { id: z.string().describe("Artifact ID to restore from the archived view") },
     async ({ id }) => {
-      try {
-        deps.service.restoreArtifact(id);
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" restored to the desktop surface` }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      deps.service.restoreArtifact(id);
+      return `Artifact "${id}" restored to the desktop surface`;
     },
   );
 
   // ── reveal_artifact ──
 
-  server.tool(
+  tool(
     "reveal_artifact",
     "Flag an artifact to be revealed on the user's desktop — the UI will switch to its space and briefly highlight the icon on the next poll. Call this after create_artifact so the user knows where to find what you just created.",
     { id: z.string().describe("Artifact ID to reveal") },
     async ({ id }) => {
       const artifact = await deps.service.getArtifactById(id);
-      if (!artifact) {
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" not found` }], isError: true };
-      }
+      if (!artifact) throw new Error(`Artifact "${id}" not found`);
       deps.pendingReveals.add(id);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ revealed: id, space: artifact.spaceId, label: artifact.label }) }],
-      };
+      return { revealed: id, space: artifact.spaceId, label: artifact.label };
     },
   );
 
   // ── open_artifact ──
 
-  server.tool(
+  tool(
     "open_artifact",
     "Open an artifact in the user's viewer window by exact ID. The UI switches to the artifact's space and opens the viewer immediately. Use list_artifacts(search) first to find the right ID.",
     { id: z.string().describe("Artifact ID to open") },
     async ({ id }) => {
       const artifact = await deps.service.getArtifactById(id);
-      if (!artifact) {
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" not found. Use list_artifacts to find available artifacts.` }], isError: true };
-      }
+      if (!artifact) throw new Error(`Artifact "${id}" not found. Use list_artifacts to find available artifacts.`);
       deps.broadcastUiEvent({
         version: 1,
         command: "open_artifact",
         payload: { id: artifact.id, spaceId: artifact.spaceId, label: artifact.label, url: artifact.url, artifactKind: artifact.artifactKind },
       });
-      return { content: [{ type: "text" as const, text: `Opened "${artifact.label}"` }] };
+      return `Opened "${artifact.label}"`;
     },
   );
 
   // ── switch_space ──
 
-  server.tool(
+  tool(
     "switch_space",
     "Switch the user's desktop to a different space by exact ID. The UI navigates immediately. Use list_spaces first to find available space IDs.",
     { id: z.string().describe("Space ID to switch to") },
     async ({ id }) => {
       const spaces = deps.spaceService.listSpaces();
       const space = spaces.find(s => s.id === id);
-      if (!space) {
-        return { content: [{ type: "text" as const, text: `Space "${id}" not found. Available: ${spaces.map(s => s.id).join(", ")}` }], isError: true };
-      }
+      if (!space) throw new Error(`Space "${id}" not found. Available: ${spaces.map(s => s.id).join(", ")}`);
       deps.broadcastUiEvent({
         version: 1,
         command: "switch_space",
         payload: { spaceId: space.id },
       });
-      return { content: [{ type: "text" as const, text: `Switched to "${space.displayName}"` }] };
+      return `Switched to "${space.displayName}"`;
     },
   );
 
   // ── regenerate_icon ──
 
-  server.tool(
+  tool(
     "regenerate_icon",
     "Regenerate the AI-generated icon for an artifact. Uses the same geometric low-poly style as all Oyster icons. Optionally accepts a composition hint to guide what is depicted — the style (colours, geometry, palette) is always preserved.",
     {
@@ -854,14 +715,10 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
     async ({ id, hint }) => {
       const artifact = await deps.service.getArtifactById(id);
-      if (!artifact) {
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" not found` }], isError: true };
-      }
+      if (!artifact) throw new Error(`Artifact "${id}" not found`);
 
       const sourcePath = deps.service.getDocFile(id);
-      if (!sourcePath) {
-        return { content: [{ type: "text" as const, text: `Artifact "${id}" has no file source — icon regeneration is only supported for static file artifacts` }], isError: true };
-      }
+      if (!sourcePath) throw new Error(`Artifact "${id}" has no file source — icon regeneration is only supported for static file artifacts`);
 
       // Derive artifact directory: if source is inside a src/ subdir, go up one level
       const srcIdx = sourcePath.lastIndexOf("/src/");
@@ -873,30 +730,26 @@ export function createMcpServer(deps: McpDeps): McpServer {
         : join(deps.userlandDir, "icons", id);
 
       if (!artifactDir.startsWith(deps.userlandDir)) {
-        return { content: [{ type: "text" as const, text: "Artifact is outside userland — cannot regenerate icon" }], isError: true };
+        throw new Error("Artifact is outside userland — cannot regenerate icon");
       }
 
       mkdirSync(artifactDir, { recursive: true });
       const queued = deps.iconGenerator.forceEnqueue(id, artifact.label, artifact.artifactKind, artifactDir, hint);
-      if (!queued) {
-        return { content: [{ type: "text" as const, text: "Icon generation is disabled (FAL_KEY not configured)" }], isError: true };
-      }
+      if (!queued) throw new Error("Icon generation is disabled (FAL_KEY not configured)");
 
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ status: "queued", id, label: artifact.label, hint: hint ?? null }) }],
-      };
+      return { status: "queued", id, label: artifact.label, hint: hint ?? null };
     },
   );
 
   // ── Memory tools ──
-  registerMemoryTools(server, deps.memoryProvider, deps.resolveActiveSessionId);
+  registerMemoryTools(tool, deps.memoryProvider, deps.resolveActiveSessionId);
 
   // ── Transcript search (R2 verbatim, #311) ──
   // Distinct from `recall` (which searches the memory layer). Returns
   // transcript events instead of memories — different result shape, so
   // the agent picks the right tool by intent: gist → recall; exact
   // phrasing → recall_transcripts.
-  server.tool(
+  tool(
     "recall_transcripts",
     "Search across past conversation transcripts by natural-language query. Use when the user asks about specific phrasing, exact decisions, or details that wouldn't necessarily be in a saved memory — e.g. 'what FTS5 schema did we settle on', 'what specs did we agree for the render server'. Returns matched transcript events with a highlighted snippet, ordered by relevance.",
     {
@@ -905,27 +758,18 @@ export function createMcpServer(deps: McpDeps): McpServer {
       limit: z.number().int().min(1).max(50).optional().describe("Max results (default 20)"),
     },
     async ({ query, session_id, limit }) => {
-      try {
-        const hits = deps.sessionStore.searchEvents(query, { sessionId: session_id, limit });
-        if (hits.length === 0) {
-          return { content: [{ type: "text" as const, text: "No transcript matches." }] };
-        }
-        // Slim the response: agents don't need the raw JSONL line on
-        // every hit; full event is a click-through away in the inspector.
-        const slim = hits.map((h) => ({
-          session_id: h.session_id,
-          session_title: h.session_title,
-          role: h.role,
-          ts: h.ts,
-          snippet: h.snippet,
-          event_id: h.id,
-        }));
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(slim, null, 2) }],
-        };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
-      }
+      const hits = deps.sessionStore.searchEvents(query, { sessionId: session_id, limit });
+      if (hits.length === 0) return "No transcript matches.";
+      // Slim the response: agents don't need the raw JSONL line on
+      // every hit; full event is a click-through away in the inspector.
+      return hits.map((h) => ({
+        session_id: h.session_id,
+        session_title: h.session_title,
+        role: h.role,
+        ts: h.ts,
+        snippet: h.snippet,
+        event_id: h.id,
+      }));
     },
   );
 
