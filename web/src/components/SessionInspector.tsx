@@ -571,7 +571,13 @@ function TranscriptBody({
   return (
     <>
       {tab === "transcript" && (
-        <TranscriptFilter visible={visible} onToggle={toggleCategory} agent={agent} />
+        <TranscriptFilter
+          visible={visible}
+          onToggle={toggleCategory}
+          agent={agent}
+          onOpenSearch={() => setSearchOpen(true)}
+          searchActive={searchOpen}
+        />
       )}
       {tab === "transcript" && searchOpen && (
         <TranscriptSearchBar
@@ -676,11 +682,13 @@ function TranscriptSearchBar({
 }
 
 function TranscriptFilter({
-  visible, onToggle, agent,
+  visible, onToggle, agent, onOpenSearch, searchActive,
 }: {
   visible: Set<RoleCategory>;
   onToggle: (cat: RoleCategory) => void;
   agent: SessionAgent;
+  onOpenSearch: () => void;
+  searchActive: boolean;
 }) {
   const labels: Array<[RoleCategory, string]> = [
     ["user", "User"],
@@ -691,6 +699,18 @@ function TranscriptFilter({
   ];
   return (
     <div className="transcript-filter" role="group" aria-label="Filter transcript by role">
+      <button
+        type="button"
+        className={`transcript-filter-search${searchActive ? " active" : ""}`}
+        onClick={onOpenSearch}
+        aria-label="Find in transcript"
+        title="Find in transcript (Cmd+F)"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </button>
       {labels.map(([cat, label]) => (
         <button
           key={cat}
