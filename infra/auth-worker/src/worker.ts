@@ -2,7 +2,7 @@
 // device-flow bridge to the local server at localhost:4444. See
 // docs/plans/auth.md for the full design.
 
-import { pkceVerifier, codeChallengeS256 } from "./oauth-helpers";
+import { pkceVerifier, codeChallengeS256, pickPrimaryVerifiedEmail, type GitHubEmail } from "./oauth-helpers";
 //
 // PR 2 endpoints:
 //   GET  /auth/sign-in       HTML form (also accepts ?d=<user_code> for the device flow)
@@ -697,6 +697,130 @@ async function handleGithubStart(req: Request, env: Env, url: URL): Promise<Resp
   });
 }
 
+interface GitHubUser {
+  id: number;
+  login: string;
+}
+
+async function exchangeGithubCode(env: Env, code: string, verifier: string, redirectUri: string): Promise<string | null> {
+  const res = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      client_id: env.GITHUB_OAUTH_CLIENT_ID,
+      client_secret: env.GITHUB_OAUTH_CLIENT_SECRET,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+    }),
+  });
+  if (!res.ok) {
+    console.error("github_token_exchange_failed", res.status);
+    return null;
+  }
+  const body = await res.json().catch(() => null) as { access_token?: string } | null;
+  return body?.access_token ?? null;
+}
+
+async function fetchGithubUser(token: string): Promise<GitHubUser | null> {
+  const res = await fetch("https://api.github.com/user", {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "user-agent": "oyster-auth",
+      accept: "application/vnd.github+json",
+    },
+  });
+  if (!res.ok) {
+    console.error("github_user_fetch_failed", res.status);
+    return null;
+  }
+  const body = await res.json().catch(() => null) as { id?: number; login?: string } | null;
+  if (!body || typeof body.id !== "number" || typeof body.login !== "string") return null;
+  return { id: body.id, login: body.login };
+}
+
+async function fetchGithubEmails(token: string): Promise<GitHubEmail[] | null> {
+  const res = await fetch("https://api.github.com/user/emails", {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "user-agent": "oyster-auth",
+      accept: "application/vnd.github+json",
+    },
+  });
+  if (!res.ok) {
+    console.error("github_emails_fetch_failed", res.status);
+    return null;
+  }
+  return await res.json().catch(() => null) as GitHubEmail[] | null;
+}
+
+async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<Response> {
+  if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
+    return json({ error: "oauth_not_configured" }, 503, NO_STORE);
+  }
+
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  if (!code || !state || state.length > 200) {
+    return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
+  }
+
+  const now = Date.now();
+
+  // Atomic state consume. Two concurrent callbacks for the same state
+  // cannot both pass — only one sees the RETURNING row.
+  const stateRow = await env.DB
+    .prepare(
+      `UPDATE oauth_states
+          SET consumed_at = ?
+        WHERE state = ? AND consumed_at IS NULL AND expires_at > ?
+        RETURNING provider, pkce_verifier, user_code`,
+    )
+    .bind(now, state, now)
+    .first<{ provider: string; pkce_verifier: string; user_code: string | null }>();
+
+  if (!stateRow || stateRow.provider !== "github") {
+    return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
+  }
+
+  const redirectUri = `${url.origin}/auth/github/callback`;
+  const accessToken = await exchangeGithubCode(env, code, stateRow.pkce_verifier, redirectUri);
+  if (!accessToken) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 502, NO_STORE);
+  }
+
+  const ghUser = await fetchGithubUser(accessToken);
+  if (!ghUser) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 502, NO_STORE);
+  }
+
+  const ghEmails = await fetchGithubEmails(accessToken);
+  if (!ghEmails) {
+    return htmlResponse(SIGN_IN_ERROR_HTML("Sign-in failed. Please try again."), 502, NO_STORE);
+  }
+
+  const primaryEmail = pickPrimaryVerifiedEmail(ghEmails);
+  if (!primaryEmail) {
+    return htmlResponse(
+      SIGN_IN_ERROR_HTML("GitHub didn't return a verified primary email. Add and verify a primary email at github.com/settings/emails, or sign in with the email link below."),
+      400,
+      NO_STORE,
+    );
+  }
+
+  // TASK 2.3 fills in identity resolution, session creation, and the
+  // device-code attach. For now, return a placeholder so the type-check
+  // passes and integration can be tested step-by-step.
+  return json(
+    { stage: "callback_pre_resolve", provider_user_id: String(ghUser.id), primary_email: primaryEmail, has_user_code: stateRow.user_code !== null },
+    200,
+    NO_STORE,
+  );
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
@@ -721,6 +845,9 @@ export default {
       }
       if (url.pathname === "/auth/github/start" && req.method === "GET") {
         return await handleGithubStart(req, env, url);
+      }
+      if (url.pathname === "/auth/github/callback" && req.method === "GET") {
+        return await handleGithubCallback(req, env, url);
       }
       if (url.pathname === "/auth/device-init" && req.method === "POST") {
         return await handleDeviceInit(req, env);
