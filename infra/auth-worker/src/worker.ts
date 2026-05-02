@@ -23,6 +23,10 @@ export interface Env {
   RESEND_API_KEY?: string;
   FROM_ADDRESS?: string;
   REPLY_TO?: string;
+  // GitHub OAuth. Both empty until the OAuth App is registered; handlers
+  // check both and 503 if either is missing (handled in Phase 2).
+  GITHUB_OAUTH_CLIENT_ID?: string;
+  GITHUB_OAUTH_CLIENT_SECRET?: string;
 }
 
 // Magic-link tokens are always 43 chars (32 bytes base64url, no padding).
@@ -606,6 +610,14 @@ async function handleWhoami(req: Request, env: Env, host: string): Promise<Respo
   return json({ id: lookup.user.id, email: lookup.user.email }, 200, NO_STORE);
 }
 
+async function handleGithubStart(_req: Request, env: Env): Promise<Response> {
+  if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
+    return json({ error: "oauth_not_configured" }, 503, NO_STORE);
+  }
+  // Phase 2 wires the real start flow.
+  return json({ error: "not_implemented" }, 501, NO_STORE);
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
@@ -627,6 +639,9 @@ export default {
       }
       if (url.pathname === "/auth/whoami" && req.method === "GET") {
         return await handleWhoami(req, env, url.host);
+      }
+      if (url.pathname === "/auth/github/start" && req.method === "GET") {
+        return await handleGithubStart(req, env);
       }
       if (url.pathname === "/auth/device-init" && req.method === "POST") {
         return await handleDeviceInit(req, env);

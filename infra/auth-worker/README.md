@@ -19,6 +19,8 @@ Done in your terminal from inside `infra/auth-worker/`.
 
 ### 1. Install deps
 
+Requires Node ≥22 (wrangler@4.x's minimum).
+
 ```bash
 npm install
 ```
@@ -65,6 +67,20 @@ npm run deploy
 
 Worker is now live at `https://oyster.to/auth/*`. The per-IP rate-limit binding is provisioned automatically on deploy from the `[[unsafe.bindings]]` block in `wrangler.toml` — no separate command needed.
 
+### 6.5. (Optional) Register a GitHub OAuth App
+
+Required only once GitHub sign-in is being implemented (Phase 2 of [`docs/plans/auth-oauth.md`](../../docs/plans/auth-oauth.md)). Skip if you only need magic-link to work.
+
+1. github.com/settings/developers → **New OAuth App**.
+2. Application name: `Oyster`.
+3. Homepage URL: `https://oyster.to`.
+4. Authorization callback URL: `https://oyster.to/auth/github/callback`.
+5. Click **Register application**, then **Generate a new client secret**. Keep the client ID and the secret accessible.
+6. Edit `wrangler.toml` and set `GITHUB_OAUTH_CLIENT_ID = "<the client id>"` in the `[vars]` block.
+7. `npx wrangler secret put GITHUB_OAUTH_CLIENT_SECRET` and paste the secret when prompted.
+8. Apply the OAuth schema migration: `npm run db:migrate:0002`.
+9. Redeploy: `npm run deploy`.
+
 ### 7. Smoke test the full flow
 
 In a browser, open `https://oyster.to/auth/sign-in`. Enter your email. The form should report "Check your inbox". Click the link in the email. You should land on `/auth/welcome` with `Signed in as <your email>`.
@@ -90,6 +106,7 @@ curl -i https://oyster.to/auth/whoami
 
 ```bash
 npm run typecheck   # tsc --noEmit
+npm run test        # vitest run — unit tests for pure helpers
 npm run dev         # local Worker on localhost:8787 with a local D1
 npm run tail        # stream Worker logs from production
 ```
