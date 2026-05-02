@@ -3,7 +3,6 @@ import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSyn
 import { homedir } from "node:os";
 import { basename, extname, join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderMarkdown, renderMermaid } from "./renderers.js";
 import {
   startApp,
   stopApp,
@@ -23,7 +22,6 @@ import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
 import { slugify } from "./utils.js";
 import { IconGenerator } from "./icon-generator.js";
-import { injectBridge } from "./error-bridge.js";
 import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
@@ -32,13 +30,14 @@ import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
 import { tryHandleImportRoute } from "./routes/import.js";
+import { tryHandleStaticRoute } from "./routes/static.js";
+import { MIME } from "./mime.js";
 import type { UiCommand } from "../../shared/types.js";
 import {
   scanExistingArtifacts,
   startGenerationTimer,
   handleFileEdited,
   clearSeenArtifact,
-  inferName,
 } from "./artifact-detector.js";
 import { runStartupBackup } from "./backup.js";
 import { setImportStatePath } from "./import.js";
@@ -135,294 +134,11 @@ function getNativeSourcePath(spaceId: string): string {
   return join(SPACES_DIR, spaceId);
 }
 
-// Recursive size+count walker for /api/vault/inventory. Skips symlinks so
-// we don't follow a circular link out of the userland tree, and ignores
-// permission errors silently — a single unreadable file shouldn't fail
-// the whole inventory.
-function walkDirSize(dir: string): { count: number; size: number } {
-  let count = 0;
-  let size = 0;
-  let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch { return { count, size }; }
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue;
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      const sub = walkDirSize(full);
-      count += sub.count;
-      size += sub.size;
-    } else if (entry.isFile()) {
-      try {
-        const st = statSync(full);
-        count += 1;
-        size += st.size;
-      } catch { /* unreadable, skip */ }
-    }
-  }
-  return { count, size };
-}
-
-// Render the absolute OYSTER_HOME with the user's home dir collapsed to
-// `~/` for display — keeps the Vault page header readable on shared
-// screenshots without leaking the macOS username.
-function humanizeHome(p: string): string {
-  const h = homedir();
-  return p.startsWith(h) ? "~" + p.slice(h.length) : p;
-}
-
-// Count immediate subdirectories. Used for Apps (one bundle = one
-// directory) and Backups (one snapshot = one directory or file).
-function countTopEntries(dir: string, opts: { dirsOnly?: boolean } = {}): number {
-  try {
-    const entries = readdirSync(dir, { withFileTypes: true });
-    return opts.dirsOnly ? entries.filter((e) => e.isDirectory()).length : entries.length;
-  } catch { return 0; }
-}
-
-interface VaultInventoryEntry {
-  name: string;
-  label: string;
-  description: string;
-  count: number;
-  unit: string;
-  size: number;
-  exists: boolean;
-  meta?: string;
-}
-
-// Cache for /api/vault/inventory. The walk visits every file under
-// OYSTER_HOME plus the backups tree — easily seconds on a real install
-// (large WAL, many spaces). Repeat hits within 30s reuse the last result
-// so a user idly looking at the Pro page doesn't grind the disk on every
-// re-render. SSE events that change the inventory (artefact CRUD, source
-// attach/detach) bust the cache via `invalidateVaultInventoryCache()`.
-let vaultInventoryCache: { result: VaultInventoryEntry[]; totalSize: number; root: string; expires: number } | null = null;
-const VAULT_INVENTORY_TTL_MS = 30_000;
-
-function invalidateVaultInventoryCache(): void { vaultInventoryCache = null; }
-
-function buildVaultInventory(deps: { db: Database.Database; spaceStore: SqliteSpaceStore }): VaultInventoryEntry[] {
-  const out: VaultInventoryEntry[] = [];
-
-  // Spaces — DB rows are the source of truth (a space can have a repo_path
-  // pointing outside SPACES_DIR). The on-disk SPACES_DIR is just where
-  // native AI-generated artefacts land.
-  const spaceCount = deps.spaceStore.getAll()
-    .filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__")
-    .length;
-  out.push({
-    name: "spaces",
-    label: "Spaces",
-    description: "Your projects and workspaces",
-    count: spaceCount,
-    unit: "space",
-    size: existsSync(SPACES_DIR) ? walkDirSize(SPACES_DIR).size : 0,
-    exists: existsSync(SPACES_DIR),
-  });
-
-  // Apps — count bundles (top-level directories), not the recursive file
-  // count. A bundle is the unit users actually think about.
-  out.push({
-    name: "apps",
-    label: "Apps",
-    description: "Installed plugin bundles",
-    count: countTopEntries(APPS_DIR, { dirsOnly: true }),
-    unit: "bundle",
-    size: existsSync(APPS_DIR) ? walkDirSize(APPS_DIR).size : 0,
-    exists: existsSync(APPS_DIR),
-  });
-
-  // Database — row count, not file count. Sums the user-facing tables
-  // across both oyster.db and memory.db. SQL is wrapped in try/catch so
-  // a missing table (e.g. on a fresh install) doesn't break the endpoint.
-  let dbRows = 0;
-  const tables = ["artifacts", "spaces", "sources", "sessions", "session_events", "session_artifacts"];
-  for (const t of tables) {
-    try {
-      const row = deps.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number } | undefined;
-      if (row) dbRows += row.n;
-    } catch { /* table missing — skip */ }
-  }
-  // Memories live in a separate DB file; open read-only so a busy WAL
-  // can't block us.
-  try {
-    const memDbPath = join(DB_DIR, "memory.db");
-    if (existsSync(memDbPath)) {
-      const memDb = new Database(memDbPath, { readonly: true, fileMustExist: true });
-      try {
-        const row = memDb.prepare("SELECT COUNT(*) AS n FROM memories").get() as { n: number } | undefined;
-        if (row) dbRows += row.n;
-      } finally { memDb.close(); }
-    }
-  } catch { /* memory.db missing or unreadable — skip */ }
-  out.push({
-    name: "db",
-    label: "Database",
-    description: "Artefacts, sessions, memories",
-    count: dbRows,
-    unit: "row",
-    size: existsSync(DB_DIR) ? walkDirSize(DB_DIR).size : 0,
-    exists: existsSync(DB_DIR),
-  });
-
-  // Config — opencode-ai's config lives at OYSTER_HOME root (opencode.json
-  // and the .opencode/ overrides), not under CONFIG_DIR. Count those files
-  // directly so the row reflects what's actually configured.
-  let configCount = 0;
-  let configSize = 0;
-  const opencodeJson = join(OYSTER_HOME, "opencode.json");
-  if (existsSync(opencodeJson)) {
-    try { configCount += 1; configSize += statSync(opencodeJson).size; } catch { /* skip */ }
-  }
-  const dotOpencode = join(OYSTER_HOME, ".opencode");
-  if (existsSync(dotOpencode)) {
-    const w = walkDirSize(dotOpencode);
-    configCount += w.count; configSize += w.size;
-  }
-  if (existsSync(CONFIG_DIR)) {
-    const w = walkDirSize(CONFIG_DIR);
-    configCount += w.count; configSize += w.size;
-  }
-  out.push({
-    name: "config",
-    label: "Config",
-    description: "Agent and workspace settings",
-    count: configCount,
-    unit: "file",
-    size: configSize,
-    exists: configCount > 0,
-  });
-
-  // Backups — `~/oyster-backups/`, NOT OYSTER_HOME/backups. The auto-backup
-  // job (see backup.ts) writes to `auto/` (installed) or `dev/` (non-installed);
-  // the `manual/` bucket is user-managed (snapshots they took themselves).
-  // Walk all three buckets so the row reads accurate counts on either install
-  // type, and so manual snapshots aren't ignored.
-  const backupRoot = join(homedir(), "oyster-backups");
-  let backupCount = 0;
-  let backupSize = 0;
-  let newestBackup: number | null = null;
-  if (existsSync(backupRoot)) {
-    let topEntries: Array<{ name: string; isDirectory(): boolean }> = [];
-    try { topEntries = readdirSync(backupRoot, { withFileTypes: true }); } catch { /* skip */ }
-    for (const entry of topEntries) {
-      const full = join(backupRoot, entry.name);
-      if (entry.isDirectory() && (entry.name === "auto" || entry.name === "dev" || entry.name === "manual")) {
-        // Bucketed snapshots — each child of auto/dev/manual is one snapshot.
-        let children: Array<{ name: string; isDirectory(): boolean }> = [];
-        try { children = readdirSync(full, { withFileTypes: true }); } catch { continue; }
-        for (const child of children) {
-          if (!child.name.startsWith("backup-")) continue;
-          backupCount += 1;
-          const childPath = join(full, child.name);
-          backupSize += walkDirSize(childPath).size;
-          try {
-            const t = statSync(childPath).mtimeMs;
-            if (newestBackup === null || t > newestBackup) newestBackup = t;
-          } catch { /* skip */ }
-        }
-      } else if (entry.isDirectory() && entry.name.startsWith("backup-")) {
-        // Legacy flat snapshots directly under ~/oyster-backups/.
-        backupCount += 1;
-        backupSize += walkDirSize(full).size;
-        try {
-          const t = statSync(full).mtimeMs;
-          if (newestBackup === null || t > newestBackup) newestBackup = t;
-        } catch { /* skip */ }
-      }
-    }
-  }
-  let backupMeta: string | undefined;
-  if (newestBackup !== null) {
-    const days = Math.floor((Date.now() - newestBackup) / 86_400_000);
-    backupMeta = days <= 0 ? "newest today" : `newest ${days}d ago`;
-  }
-  out.push({
-    name: "backups",
-    label: "Backups",
-    description: "Local snapshots of the database",
-    count: backupCount,
-    unit: "snapshot",
-    size: backupSize,
-    exists: backupCount > 0,
-    meta: backupMeta,
-  });
-
-  return out;
-}
-
 // For the watcher and scanExistingArtifacts, which walk a single directory
 // looking for app-bundle folders. In the new layout, bundles live under
 // APPS_DIR (installed) or SPACES_DIR/<space>/ (AI-generated). Both need to
 // be scanned; see the callsites below.
 const ARTIFACTS_DIR = join(OYSTER_HOME, "")  + sep;
-
-// Resolve a /artifacts/<relativePath> URL to a file on disk. The icon
-// resolver in artifact-service emits URLs like /artifacts/<folder>/icon.png
-// using just the folder name (the artifact's bundle dir), so this handler
-// has to try every place that folder could live after #207:
-//
-//   OYSTER_HOME/<rel>          — dedicated icons/<id>/ + legacy flat
-//   APPS_DIR/<rel>             — installed bundles (builtins + community)
-//   SPACES_DIR/<rel>           — <rel> starts with a space name (e.g. blunderfixer/icon.png)
-//   SPACES_DIR/<space>/<rel>   — <rel> is a bundle folder inside a space (e.g. car-racer/icon.png
-//                                 which lives at spaces/home/car-racer/)
-//
-// Returns the first existing candidate under OYSTER_HOME (path-traversal guard),
-// or null. Used by both /api/resolve-artifact-path and the static /artifacts/
-// server so they stay in sync.
-function resolveArtifactsUrl(relativePath: string): string | null {
-  // Fast path: check the three fixed candidates first. This covers the vast
-  // majority of requests (icons/, APPS_DIR builtins, space-name-as-first-seg)
-  // without touching the filesystem beyond `existsSync`. Only fall back to
-  // walking every space directory when those miss — that's a real-but-rare
-  // case (AI-generated app inside a user space whose icon URL is just
-  // /artifacts/<app>/icon.png with no space hint).
-  // Containment helper — a raw string startsWith(OYSTER_HOME) would let
-  // "/Users/me/OysterX/..." pass when OYSTER_HOME is "/Users/me/Oyster".
-  // Resolve both and require an exact match or a path-sep-terminated prefix.
-  const root = resolve(OYSTER_HOME);
-  const isInsideRoot = (candidate: string): boolean => {
-    const r = resolve(candidate);
-    return r === root || r.startsWith(root + sep);
-  };
-  const fixedCandidates = [
-    join(OYSTER_HOME, relativePath),
-    join(APPS_DIR, relativePath),
-    join(SPACES_DIR, relativePath),
-  ];
-  for (const candidate of fixedCandidates) {
-    if (!isInsideRoot(candidate)) continue;
-    if (existsSync(candidate)) return candidate;
-  }
-  const firstSegment = relativePath.split("/")[0];
-  if (!firstSegment || firstSegment === "icons") return null;
-  try {
-    for (const spaceName of readdirSync(SPACES_DIR)) {
-      const candidate = join(SPACES_DIR, spaceName, relativePath);
-      if (isInsideRoot(candidate) && existsSync(candidate)) return candidate;
-    }
-  } catch { /* SPACES_DIR might not exist on a fresh install */ }
-  return null;
-}
-
-// ── MIME types ──
-
-const MIME: Record<string, string> = {
-  ".html": "text/html",
-  ".css": "text/css",
-  ".js": "application/javascript",
-  ".json": "application/json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".md": "text/html",
-  ".mmd": "text/html",
-  ".mermaid": "text/html",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
-};
 
 // ── Bootstrap ──
 
@@ -676,88 +392,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     getNativeSourcePath, getOpenCodePort,
   })) return;
 
-  // GET /api/resolve-path?url=...  — resolve a serving URL to a filesystem path
-  if (url.startsWith("/api/resolve-path")) {
-    const params = new URL(url, "http://localhost").searchParams;
-    const targetUrl = params.get("url") || "";
-
-    let filePath: string | undefined;
-
-    // /docs/:id → DB artifact with filesystem storage
-    const docsMatch = targetUrl.match(/^\/docs\/([^/]+)$/);
-    if (docsMatch) {
-      filePath = artifactService.getDocFile(docsMatch[1]);
-    }
-
-    // /artifacts/... → resolveArtifactsUrl walks the split layout.
-    if (!filePath && targetUrl.startsWith("/artifacts/")) {
-      const relativePath = targetUrl.slice("/artifacts/".length).split("?")[0];
-      const resolved = resolveArtifactsUrl(relativePath);
-      if (resolved) filePath = resolved;
-    }
-
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ filePath: filePath || null }));
-    return;
-  }
-
-  // GET /api/artifacts — the full live artifact list. Local-origin-only for
-  // the same reason /api/artifacts/archived is: it contains user-private
-  // artifact metadata that a malicious cross-origin site could otherwise
-  // enumerate against a running local Oyster.
-  // /api/workspace → the resolved Oyster workspace layout, used by the
-  // "Where do my files live?" builtin so it shows this user's actual paths
-  // (respects OYSTER_USERLAND + dev vs installed). Local-origin gated for
-  // the same reason as /api/artifacts — paths are user-private.
-  if (url === "/api/workspace") {
-    if (rejectIfNonLocalOrigin()) return;
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({
+  // /api/resolve-path, /api/workspace, /api/vault/inventory,
+  // /api/apps/:name/start|stop, /docs/:name, /artifacts/<rel>
+  if (await tryHandleStaticRoute(req, res, url, ctx, {
+    artifactService, spaceStore, db,
+    layout: {
       oysterHome: OYSTER_HOME,
-      paths: {
-        db: DB_DIR,
-        apps: APPS_DIR,
-        spaces: SPACES_DIR,
-        backups: BACKUPS_DIR,
-      },
-      platform: process.platform,
-      spaces: (() => {
-        try { return readdirSync(SPACES_DIR).filter((e) => {
-          try { return statSync(join(SPACES_DIR, e)).isDirectory(); } catch { return false; }
-        }); } catch { return []; }
-      })(),
-    }));
-    return;
-  }
-
-  // GET /api/vault/inventory — what's currently in the user's ~/Oyster
-  // root: file count + on-disk size for each top-level subdir. Powers the
-  // Vault info page so users can see what cloud sync (when it ships) will
-  // be backing up. Local-origin only — surfaces filesystem layout.
-  if (url === "/api/vault/inventory" && req.method === "GET") {
-    if (rejectIfNonLocalOrigin()) return;
-    try {
-      const now = Date.now();
-      if (!vaultInventoryCache || vaultInventoryCache.expires <= now) {
-        const result = buildVaultInventory({ db, spaceStore });
-        const totalSize = result.reduce((acc, r) => acc + r.size, 0);
-        vaultInventoryCache = {
-          result,
-          totalSize,
-          root: humanizeHome(OYSTER_HOME),
-          expires: now + VAULT_INVENTORY_TTL_MS,
-        };
-      }
-      sendJson({
-        root: vaultInventoryCache.root,
-        totalSize: vaultInventoryCache.totalSize,
-        entries: vaultInventoryCache.result,
-      });
-    } catch (err) {
-      sendError(err, 500);
-    }
-    return;
-  }
+      spacesDir: SPACES_DIR,
+      appsDir: APPS_DIR,
+      dbDir: DB_DIR,
+      configDir: CONFIG_DIR,
+      backupsDir: BACKUPS_DIR,
+    },
+    startApp, stopApp, isPortOpen, waitForReady,
+  })) return;
 
   // GET /api/ui/events — SSE stream for UI commands.
   // Local-origin only. The stream carries `mcp_client_connected` +
@@ -784,77 +432,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
       clearInterval(heartbeat);
       uiClients.delete(res);
     });
-    return;
-  }
-
-  // GET /api/apps/:name/start
-  const startMatch = url.match(/^\/api\/apps\/([^/]+)\/start$/);
-  if (startMatch) {
-    const name = startMatch[1];
-    const config = artifactService.getAppConfig(name);
-    if (!config) {
-      res.writeHead(404);
-      res.end("Unknown app");
-      return;
-    }
-    if (await isPortOpen(config.port)) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "already_running" }));
-      return;
-    }
-    startApp(name, config);
-    try {
-      await waitForReady(config.port);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "started", port: config.port }));
-    } catch {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "timeout" }));
-    }
-    return;
-  }
-
-  // GET /api/apps/:name/stop
-  const stopMatch = url.match(/^\/api\/apps\/([^/]+)\/stop$/);
-  if (stopMatch) {
-    const name = stopMatch[1];
-    const config = artifactService.getAppConfig(name);
-    if (!config) {
-      res.writeHead(404);
-      res.end("Unknown app");
-      return;
-    }
-    const stopped = stopApp(name, config.port);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: stopped ? "stopped" : "not_managed" }));
-    return;
-  }
-
-  // GET /docs/:name
-  const docsMatch = url.split("?")[0].match(/^\/docs\/([^/]+)$/);
-  if (docsMatch) {
-    const name = docsMatch[1];
-    const filePath = artifactService.getDocFile(name);
-    if (!filePath || !existsSync(filePath)) {
-      res.writeHead(404);
-      res.end("Not found");
-      return;
-    }
-    const ext = extname(filePath);
-    const mime = MIME[ext] || "application/octet-stream";
-
-    if (ext === ".md") {
-      const content = readFileSync(filePath, "utf8");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(renderMarkdown(name, content));
-    } else if (ext === ".mmd" || ext === ".mermaid") {
-      const content = readFileSync(filePath, "utf8");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(renderMermaid(name, content)));
-    } else {
-      res.writeHead(200, { "Content-Type": mime });
-      res.end(readFileSync(filePath));
-    }
     return;
   }
 
@@ -919,45 +496,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   const questionMatch = url.match(/^\/api\/chat\/question\/([^/]+)\/reply$/);
   if (questionMatch && req.method === "POST") {
     await proxyToOpenCode(req, res, `/question/${questionMatch[1]}/reply`, getOpenCodePort());
-    return;
-  }
-
-  // ── Static file serving for /artifacts/ ──
-  // Uses the shared resolveArtifactsUrl walker so this stays in sync with the
-  // /api/resolve-artifact-path helper above. The walker enforces the
-  // path-traversal guard (must stay under OYSTER_HOME).
-  if (url.startsWith("/artifacts/")) {
-    const urlPath = url.split("?")[0];
-    const relativePath = urlPath.slice("/artifacts/".length);
-    const filePath = resolveArtifactsUrl(relativePath);
-
-    if (!filePath) {
-      res.writeHead(404);
-      res.end("Not found");
-      return;
-    }
-
-    const ext = extname(filePath);
-    const mime = MIME[ext] || "application/octet-stream";
-
-    if (ext === ".md") {
-      const content = readFileSync(filePath, "utf8");
-      const name = inferName(filePath);
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(renderMarkdown(name, content)));
-    } else if (ext === ".mmd" || ext === ".mermaid") {
-      const content = readFileSync(filePath, "utf8");
-      const name = inferName(filePath);
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(renderMermaid(name, content)));
-    } else if (ext === ".html" || ext === ".htm") {
-      const raw = readFileSync(filePath, "utf8");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(raw));
-    } else {
-      res.writeHead(200, { "Content-Type": mime });
-      res.end(readFileSync(filePath));
-    }
     return;
   }
 
