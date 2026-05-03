@@ -28,6 +28,9 @@ import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
+import { tryHandlePublishRoute } from "./routes/publish.js";
+import { createPublishService, PublishError } from "./publish-service.js";
+import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
 import { tryHandleImportRoute } from "./routes/import.js";
 import { tryHandleStaticRoute } from "./routes/static.js";
@@ -249,6 +252,33 @@ authService.onAuthChanged((state) => {
 });
 void authService.validatePersistedSession();
 
+const WORKER_BASE = process.env.OYSTER_AUTH_BASE
+  ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
+  : "https://oyster.to";
+const publishService = createPublishService({
+  db,
+  readArtifactBytes: async (artifactId) => {
+    // ArtifactService.getDocFile resolves filesystem-backed artefacts to their
+    // on-disk path. Returns undefined for non-filesystem storage (e.g. discovered
+    // artefacts with only a manifest, app bundles, etc.) — those can't be
+    // published as a single file.
+    const path = artifactService.getDocFile(artifactId);
+    if (!path) {
+      throw new PublishError(400, "artifact_not_publishable",
+        "This artefact has no single-file content to publish (only filesystem-backed artefacts are supported in 0.7.0).");
+    }
+    return new Uint8Array(readFileSync(path));
+  },
+  currentUser: () => {
+    const u = authService.getState().user;
+    return u ? { id: u.id, email: u.email } : null;
+  },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: WORKER_BASE,
+  hashPassword,
+  fetch,
+});
+
 // ── Initialize subsystems ──
 
 const iconGenerator = new IconGenerator(updateGeneratedArtifact);
@@ -374,6 +404,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // (magic-link, OAuth) lives in the Cloudflare Worker.
   if (await tryHandleAuthRoute(req, res, url, ctx, { authService })) return;
 
+  // /api/artifacts/:id/publish — publish + unpublish an artefact.
+  if (await tryHandlePublishRoute(req, res, url, ctx, { publishService })) return;
+
   // /oauth/*, /.well-known/oauth-*, /mcp/*, /api/mcp/status
   // Pass the actually-bound `port`, not PREFERRED_PORT — findPort() may
   // have rolled forward (e.g. main repo's dev server already on 3333),
@@ -384,6 +417,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,
+    publishService,
   })) return;
 
   // /api/import/* — paste-from-another-AI flow

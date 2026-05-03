@@ -136,6 +136,7 @@ export function initDb(userlandDir: string): Database.Database {
     "ALTER TABLE artifacts ADD COLUMN share_mode TEXT CHECK (share_mode IS NULL OR share_mode IN ('open','password','signin'))",
     "ALTER TABLE artifacts ADD COLUMN share_password_hash TEXT",
     "ALTER TABLE artifacts ADD COLUMN published_at INTEGER",
+    "ALTER TABLE artifacts ADD COLUMN share_updated_at INTEGER",
     "ALTER TABLE artifacts ADD COLUMN unpublished_at INTEGER",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }

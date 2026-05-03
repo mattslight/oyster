@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --env-file=../.env node_modules/.bin/tsx watch src/index.ts",
     "start": "node --env-file=../.env node_modules/.bin/tsx src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.0",
@@ -23,6 +24,7 @@
     "@types/node": "^25.6.0",
     "@types/ws": "^8.18.0",
     "tsx": "^4.19.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^2.1.0"
   }
 }
