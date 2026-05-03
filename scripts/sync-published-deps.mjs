@@ -11,8 +11,10 @@
 //   node scripts/sync-published-deps.mjs          rewrites root package.json
 //   node scripts/sync-published-deps.mjs --check  exits 1 if a rewrite would change it
 //
-// Packages already in root's optionalDependencies are skipped (e.g. @lydell/
-// node-pty, which is intentionally optional at install time on root).
+// Packages already in root.optionalDependencies stay there (so a fragile prebuilt
+// like @lydell/node-pty doesn't hard-fail global installs on platforms without
+// a binary), but their VERSION pin is still synced from server. Without that,
+// drift in optional-only packages would slip past --check.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -26,15 +28,30 @@ const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf8"));
 const serverPkg = JSON.parse(fs.readFileSync(serverPkgPath, "utf8"));
 
 const serverDeps = serverPkg.dependencies ?? {};
-const rootOptional = rootPkg.optionalDependencies ?? {};
+const currentOptional = rootPkg.optionalDependencies ?? {};
 
-const synced = Object.fromEntries(
-  Object.entries(serverDeps)
-    .filter(([name]) => !(name in rootOptional))
-    .sort(([a], [b]) => a.localeCompare(b)),
-);
+const newDeps = {};
+const newOptional = { ...currentOptional };
 
-const updated = { ...rootPkg, dependencies: synced };
+for (const [name, version] of Object.entries(serverDeps)) {
+  if (name in newOptional) {
+    newOptional[name] = version;
+  } else {
+    newDeps[name] = version;
+  }
+}
+
+const sortByName = (obj) =>
+  Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)));
+
+const updated = {
+  ...rootPkg,
+  dependencies: sortByName(newDeps),
+  ...(Object.keys(newOptional).length > 0
+    ? { optionalDependencies: sortByName(newOptional) }
+    : {}),
+};
+
 const before = fs.readFileSync(rootPkgPath, "utf8");
 const after = JSON.stringify(updated, null, 2) + "\n";
 
