@@ -18,7 +18,7 @@ The R5 schema columns (`share_token`, `share_mode`, `share_password_hash`, `publ
 
 ## Goals
 
-- An agent calling `publish_artifact({ artifact_id, mode, password? })` gets back a working `share_url`.
+- An agent calling `publish_artifact({ artifact_id, mode, password? })` gets back a **reserved** `share_url`. The URL becomes viewable when the public viewer (`GET /p/:token`) lands in #316; #315 reserves the token, stores the bytes in R2, and persists publication state in D1. Acceptance for #315 is that the token + R2 object + D1 row exist correctly, not that the URL serves bytes.
 - The same call from the web UI (`POST /api/artifacts/:id/publish`) does the same thing — single internal helper, two callers.
 - Publishing is upsert-by-artefact: stable URL across content edits and mode changes, only `unpublish_artifact` retires the token.
 - Free-tier caps are enforced authoritatively (5 active publications per account, 10 MB per artefact).
@@ -92,7 +92,11 @@ CREATE TABLE published_artifacts (
   size_bytes        INTEGER NOT NULL,
   published_at      INTEGER NOT NULL,            -- unix ms — first publication of this token (preserved across upserts)
   updated_at        INTEGER NOT NULL,            -- unix ms — last publish call
-  unpublished_at    INTEGER                      -- NULL while live; unix ms when retired
+  unpublished_at    INTEGER,                     -- NULL while live; unix ms when retired
+  CHECK (
+    (mode = 'password' AND password_hash IS NOT NULL) OR
+    (mode <> 'password' AND password_hash IS NULL)
+  )
 );
 
 CREATE INDEX idx_pubart_owner ON published_artifacts(owner_user_id);
@@ -116,9 +120,10 @@ ALTER TABLE artifacts ADD COLUMN share_updated_at INTEGER;
 
 **Local mirror semantics:**
 
-- On successful publish: write `share_token`, `share_mode`, `share_password_hash`, `published_at` (preserved if already set), `share_updated_at = now`, `unpublished_at = NULL`.
-- On successful unpublish: set `unpublished_at = now`, **retain** `share_token`, `share_mode`, etc. The badge query is `share_token IS NOT NULL AND unpublished_at IS NULL`. Retaining the retired token gives the UI later affordances like *"Was published at /p/abc, now offline."*
-- The local mirror is a fast-render cache. Cloud D1 is source of truth.
+- The Worker's response is the source of truth for timestamps. Local SQLite copies them verbatim — never derives `now()` locally for publish-lifecycle fields.
+- On successful publish: write `share_token` ← `response.share_token`, `share_mode` ← `response.mode`, `share_password_hash` ← (the hash the local server forwarded — Worker doesn't echo it back), `published_at` ← `response.published_at`, `share_updated_at` ← `response.updated_at`, `unpublished_at` ← `NULL`.
+- On successful unpublish: `unpublished_at` ← `response.unpublished_at`; **retain** `share_token`, `share_mode`, etc. The badge query is `share_token IS NOT NULL AND unpublished_at IS NULL`. Retaining the retired token gives the UI later affordances like *"Was published at /p/abc, now offline."*
+- The local mirror is a fast-render cache. Cloud D1 is source of truth (which is exactly why timestamps come from the Worker, not from the local clock).
 
 ---
 
@@ -130,7 +135,7 @@ Two different ownership concepts; keep them separated:
   - On `publish_artifact`: if `owner_id IS NULL`, set it to the current signed-in user. If `owner_id` is non-NULL and `!= current_user.id`, reject with 403.
   - Once set, never overwrite.
 - **Cloud publication ownership** is `published_artifacts.owner_user_id` in the cloud D1. The Worker enforces it.
-  - On `publish_artifact` upsert: if an active row exists for `(owner_user_id=current, artifact_id=requested)`, keep its `share_token` and update fields. If an active row exists for the same `artifact_id` under a *different* owner, that's the partial-unique-index violation case — reject with 409 (should never happen in practice because the local server has already filtered by local-owner).
+  - On `publish_artifact` upsert: every active-row lookup is scoped to the calling session's `owner_user_id`. The unique index is `(owner_user_id, artifact_id) WHERE unpublished_at IS NULL`, so different users may publish artefacts that happen to share an `artifact_id` without conflict — they live as separate rows with different tokens. The Worker never queries by `artifact_id` alone.
   - On `unpublish_artifact`: row's `owner_user_id` must equal the calling session's user — else 403.
 
 The Worker does not (and cannot) check local artefact ownership. The local server has already done that before bytes leave the machine.
@@ -223,19 +228,36 @@ POST /api/publish/upload
     2. parse + validate X-Publish-Metadata → 400 invalid_metadata if malformed
     3. assert mode='password' implies password_hash present → 400 password_required
     4. assert Content-Length present → 411 content_length_required
-    5. assert Content-Length ≤ 10 MB → 413 artifact_too_large
-    6. SELECT existing active row for (owner_user_id, artifact_id)
-       - if exists: keep share_token (upsert path; cap check skipped — this is not a new publication)
-       - if not exists: SELECT user.tier; lookup CAPS[tier];
-                        count active publications for owner_user_id;
-                        if count ≥ CAPS[tier].max_active → 402 publish_cap_exceeded;
-                        else generate new 32-char base64url token via crypto.getRandomValues(24)
-    7. PUT bytes to R2 at published/{owner_user_id}/{share_token}, capped at 10 MB
-       (defence; upstream pre-check is the primary)
-    8. UPSERT D1 row:
-       - INSERT if new: published_at = updated_at = now
-       - UPDATE if upsert: mode, password_hash, content_type, size_bytes, updated_at = now
-                          (published_at preserved)
+    5. SELECT user.tier; lookup CAPS[tier];
+       assert Content-Length ≤ CAPS[tier].max_size_bytes → 413 artifact_too_large
+    6. Determine final share_token via "find or claim":
+       a. SELECT existing active row WHERE owner_user_id = current AND artifact_id = requested
+          (queries are always scoped to current owner_user_id — the unique index is per
+           (owner, artifact), so different owners never collide)
+       b. if exists: share_token = existing.share_token; path = 'upsert';
+                     preserve existing published_at
+       c. if not exists:
+          i.   count active publications for owner_user_id
+          ii.  if count ≥ CAPS[tier].max_active → 402 publish_cap_exceeded
+          iii. generate candidate_token via crypto.getRandomValues(new Uint8Array(24)) → base64url
+          iv.  try INSERT new published_artifacts row with candidate_token, metadata from
+               headers, size_bytes from Content-Length, r2_key derived from candidate_token,
+               published_at = updated_at = now
+               - on success: share_token = candidate_token; path = 'first-publish'
+               - on unique-constraint violation (race with concurrent first-publish):
+                 re-SELECT existing active row for (owner_user_id, artifact_id);
+                 share_token = existing.share_token; path = 'upsert' (race-recovered);
+                 preserve existing published_at
+    7. Stream body to R2 at published/{owner_user_id}/{share_token}; abort + return 413
+       artifact_too_large if streamed bytes exceed CAPS[tier].max_size_bytes (defence
+       against a lying or absent Content-Length); on abort, if path = 'first-publish',
+       DELETE the speculatively-inserted D1 row; if path = 'upsert', leave existing row
+       untouched (no UPDATE was applied yet).
+    8. D1 commit:
+       - if path = 'upsert': UPDATE row — mode, password_hash, content_type, size_bytes,
+                             updated_at = now (published_at preserved)
+       - if path = 'first-publish': row already inserted in step 6; no-op (or UPDATE
+                                    updated_at if step 7 took meaningful time)
     9. Return 200 { share_token, share_url, mode, published_at, updated_at }
 
 DELETE /api/publish/:share_token
@@ -328,7 +350,6 @@ All errors return JSON `{ error: <code>, message: <human-readable>, ... }`. The 
 | Invalid `mode` value | 400 | `invalid_mode` | Local server (and Worker, defence in depth). |
 | Invalid metadata blob | 400 | `invalid_metadata` | Worker only — happens if local server is buggy. |
 | R2 PUT failure (transient) | 502 | `upload_failed` | Worker logs cause; client retry-safe. |
-| Mode change conflict (same artefact, different owner — unreachable in practice) | 409 | `publication_conflict` | Worker only. |
 
 ---
 
@@ -345,7 +366,11 @@ All errors return JSON `{ error: <code>, message: <human-readable>, ... }`. The 
 - Publish → re-publish: same `share_token`, fresh bytes in R2, `published_at` preserved, `updated_at` bumped, `mode` change reflected.
 - Publish → unpublish → publish: new `share_token`, old row marked `unpublished_at`, R2 object for old token deleted, R2 object for new token present.
 - 6th publish hits 402: 5 active rows in fixture, attempt to publish a 6th unrelated artefact returns `publish_cap_exceeded`.
-- 11 MB body returns 413.
+- 11 MB Content-Length returns 413 before any body is read.
+- Streamed body exceeds 10 MB despite Content-Length under 10 MB: stream is aborted, 413 returned, no D1 row left behind.
+- Two concurrent first-publish calls for the same `(owner, artifact_id)` both return 200 with the *same* `share_token`; D1 has exactly one row; R2 has one object; loser's bytes win (last-write-wins).
+- Two different users publish artefacts that share an `artifact_id`: both succeed, two distinct rows, two distinct tokens, no conflict.
+- D1 CHECK constraint rejects an INSERT with `mode='open'` and a non-NULL `password_hash`, and rejects `mode='password'` with NULL `password_hash`.
 - Wrong-owner attempt on existing publication returns 403 `not_publication_owner`.
 - DELETE on already-unpublished row is idempotent (returns 200, doesn't change `unpublished_at`).
 
@@ -389,6 +414,10 @@ All errors return JSON `{ error: <code>, message: <human-readable>, ... }`. The 
 | Upload payload format? | Raw bytes in body, JSON metadata in `X-Publish-Metadata` header (base64url). | Simpler than multipart; lets metadata extend without more headers; keeps body purely bytes. |
 | Cap pre-check at local server? | Skipped (size-only pre-check). | No live cap view at local server; one extra round-trip not worth it. Worker is authoritative. |
 | Tier hook in 0.7.0? | Yes — `users.tier TEXT NOT NULL DEFAULT 'free'` + `CAPS` map at the Worker. | One-line schema add. Avoids a 0.8.0 backfill migration on every existing user. Pro values land in 0.8.0. |
+| First-publish concurrency? | INSERT-then-recover. Race losers re-SELECT the active row, treat as upsert path, return 200 with the winning token. | Atomic claim via the partial unique index; cleaner than pre-locking. Last-write-wins for body bytes. |
+| Local SQLite timestamps? | Mirror Worker response verbatim (`response.published_at`, `response.updated_at`, `response.unpublished_at`). | Avoids clock drift between local and cloud; cloud is source of truth for publication state. |
+| D1 CHECK on `password_hash`? | Yes — `(mode='password' AND password_hash NOT NULL) OR (mode≠'password' AND password_hash NULL)`. | Catches metadata-tampering bugs and mode/hash drift at the schema level. |
+| Stream-size enforcement? | Yes — Worker aborts the R2 upload if streamed bytes exceed `CAPS[tier].max_size_bytes`, regardless of `Content-Length`. | `Content-Length` is client-controlled; trust it for the pre-check, enforce it for real on the stream. |
 
 ---
 
