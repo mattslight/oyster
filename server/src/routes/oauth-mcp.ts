@@ -43,6 +43,7 @@ export interface OAuthMcpRouteDeps {
   broadcastUiEvent: (event: UiCommand) => void;
   userlandDir: string;
   getNativeSourcePath: (spaceId: string) => string;
+  publishService: import("../publish-service.js").PublishService;
 }
 
 export async function tryHandleOAuthMcpRoute(
@@ -167,6 +168,7 @@ export async function tryHandleOAuthMcpRoute(
     const mcpServer = createMcpServer({
       store,
       service: artifactService,
+      publishService: deps.publishService,
       userlandDir,
       getNativeSourcePath,
       iconGenerator,

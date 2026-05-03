@@ -111,6 +111,7 @@ function gatherRepoContext(repoPath: string): { content: string; suggestions: Ar
 interface McpDeps {
   store: ArtifactStore;
   service: ArtifactService;
+  publishService: import("./publish-service.js").PublishService;
   userlandDir: string;
   /**
    * Resolves a space id to its native folder on disk
@@ -320,6 +321,19 @@ Do NOT read or write the SQLite databases under Oyster's \`db/\` folder directly
 
 Create user content via \`create_artifact\` — it writes under \`${userlandDir}/spaces/<space-id>/\` automatically. Do not write directly into \`${userlandDir}/db/\`, \`${userlandDir}/backups/\`, or treat the workspace root as a general write location; \`apps/\` is reserved for installed app bundles.
 `.trim();
+}
+
+function publishErrorReturn(err: unknown): { content: Array<{ type: "text"; text: string }>; isError: true } {
+  const e = err as { status?: number; code?: string; message?: string; details?: Record<string, unknown> };
+  const body = {
+    error: e.code ?? "internal_error",
+    message: e.message ?? "Publish failed.",
+    ...(e.details ?? {}),
+  };
+  return {
+    isError: true,
+    content: [{ type: "text", text: JSON.stringify(body, null, 2) }],
+  };
 }
 
 export function createMcpServer(deps: McpDeps): McpServer {
@@ -770,6 +784,44 @@ export function createMcpServer(deps: McpDeps): McpServer {
         snippet: h.snippet,
         event_id: h.id,
       }));
+    },
+  );
+
+  // ── publish_artifact ──
+
+  tool(
+    "publish_artifact",
+    "Publish an artefact to a public share URL. Mode `open` = anyone with the link; `password` = link plus shared password (you must supply `password`); `signin` = viewer must be signed into a free Oyster account. Returns a stable share_token + share_url that survives across re-publishes (calling again on the same artefact upserts: same URL, fresh content, optionally a new mode/password). Free accounts can have at most 5 active publications and each artefact can be at most 10 MB. The user must be signed in.",
+    {
+      artifact_id: z.string().describe("The local artefact id (uuid)."),
+      mode:        z.enum(["open", "password", "signin"]).describe("Access mode for the published URL."),
+      password:    z.string().optional().describe("Required and non-empty when mode='password'. Ignored otherwise."),
+    },
+    async ({ artifact_id, mode, password }) => {
+      try {
+        const result = await deps.publishService.publishArtifact({ artifact_id, mode, password });
+        return withStructured(result, { ...result });
+      } catch (err) {
+        return publishErrorReturn(err);
+      }
+    },
+  );
+
+  // ── unpublish_artifact ──
+
+  tool(
+    "unpublish_artifact",
+    "Retire a previously-published artefact. The share URL stops resolving (returns 410 Gone in the public viewer). A subsequent `publish_artifact` call on the same artefact issues a new token + URL — old URLs are not reused. Idempotent: calling on an already-unpublished artefact returns the existing retirement state. The user must be signed in and own the artefact.",
+    {
+      artifact_id: z.string().describe("The local artefact id (uuid) to unpublish."),
+    },
+    async ({ artifact_id }) => {
+      try {
+        const result = await deps.publishService.unpublishArtifact({ artifact_id });
+        return withStructured(result, { ...result });
+      } catch (err) {
+        return publishErrorReturn(err);
+      }
     },
   );
 

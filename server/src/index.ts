@@ -412,6 +412,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,
+    publishService,
   })) return;
 
   // /api/import/* — paste-from-another-AI flow
