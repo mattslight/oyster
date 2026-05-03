@@ -941,10 +941,10 @@ async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<R
       `UPDATE oauth_states
           SET consumed_at = ?
         WHERE state = ? AND provider = ? AND consumed_at IS NULL AND expires_at > ?
-        RETURNING pkce_verifier, user_code`,
+        RETURNING pkce_verifier, user_code, return_path`,
     )
     .bind(now, state, "github", now)
-    .first<{ pkce_verifier: string; user_code: string | null }>();
+    .first<{ pkce_verifier: string; user_code: string | null; return_path: string | null }>();
 
   if (!stateRow) {
     return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
@@ -1039,10 +1039,11 @@ async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<R
       ...NO_STORE,
     });
   }
+  const safeReturn = validateReturnPath(stateRow.return_path);
   return new Response(null, {
     status: 302,
     headers: {
-      location: "/auth/welcome",
+      location: safeReturn ?? "/auth/welcome",
       "set-cookie": cookie,
       ...NO_STORE,
     },
