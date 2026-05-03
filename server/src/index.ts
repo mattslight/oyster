@@ -29,7 +29,7 @@ import { tryHandleSpaceRoute } from "./routes/spaces.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
 import { tryHandlePublishRoute } from "./routes/publish.js";
-import { createPublishService } from "./publish-service.js";
+import { createPublishService, PublishError } from "./publish-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
 import { tryHandleImportRoute } from "./routes/import.js";
@@ -258,11 +258,16 @@ const WORKER_BASE = process.env.OYSTER_AUTH_BASE
 const publishService = createPublishService({
   db,
   readArtifactBytes: async (artifactId) => {
-    // Single-file artefacts: content_path is set by createArtifact. Read directly.
-    const row = db.prepare("SELECT content_path FROM artifacts WHERE id = ?")
-      .get(artifactId) as { content_path: string | null } | undefined;
-    if (!row?.content_path) throw new Error(`artefact ${artifactId} has no content_path`);
-    return new Uint8Array(readFileSync(row.content_path));
+    // ArtifactService.getDocFile resolves filesystem-backed artefacts to their
+    // on-disk path. Returns undefined for non-filesystem storage (e.g. discovered
+    // artefacts with only a manifest, app bundles, etc.) — those can't be
+    // published as a single file.
+    const path = artifactService.getDocFile(artifactId);
+    if (!path) {
+      throw new PublishError(400, "artifact_not_publishable",
+        "This artefact has no single-file content to publish (only filesystem-backed artefacts are supported in 0.7.0).");
+    }
+    return new Uint8Array(readFileSync(path));
   },
   currentUser: () => {
     const u = authService.getState().user;

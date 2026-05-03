@@ -2,16 +2,25 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { createPublishService } from "../src/publish-service.js";
 
+// Schema mirrors production (server/src/db.ts SCHEMA + the R5 ALTERs).
+// Real columns: artifact_kind (NOT "kind"), storage_kind + storage_config
+// (NOT "content_path"). Path lookup goes through ArtifactService.getDocFile
+// at runtime; the test fakes that via the readArtifactBytes callback.
 function makeDb(): Database.Database {
   const db = new Database(":memory:");
   db.exec(`
     CREATE TABLE artifacts (
       id                   TEXT PRIMARY KEY,
-      kind                 TEXT NOT NULL,
       owner_id             TEXT,
-      created_at           INTEGER NOT NULL,
-      updated_at           INTEGER NOT NULL,
-      content_path         TEXT,
+      space_id             TEXT NOT NULL,
+      label                TEXT NOT NULL,
+      artifact_kind        TEXT NOT NULL,
+      storage_kind         TEXT NOT NULL,
+      storage_config       TEXT NOT NULL DEFAULT '{}',
+      runtime_kind         TEXT NOT NULL,
+      runtime_config       TEXT NOT NULL DEFAULT '{}',
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
       share_token          TEXT,
       share_mode           TEXT,
       share_password_hash  TEXT,
@@ -23,13 +32,13 @@ function makeDb(): Database.Database {
   return db;
 }
 
-function seedArtifact(db: Database.Database, opts: { id?: string; kind?: string; owner_id?: string | null } = {}) {
+function seedArtifact(db: Database.Database, opts: { id?: string; artifact_kind?: string; owner_id?: string | null } = {}) {
   const id = opts.id ?? "art_1";
-  const now = Date.now();
   db.prepare(
-    `INSERT INTO artifacts (id, kind, owner_id, created_at, updated_at, content_path)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, opts.kind ?? "notes", opts.owner_id ?? null, now, now, "/tmp/fake.md");
+    `INSERT INTO artifacts
+       (id, owner_id, space_id, label, artifact_kind, storage_kind, storage_config, runtime_kind, runtime_config)
+     VALUES (?, ?, 'home', 'test', ?, 'filesystem', '{"path":"/tmp/fake.md"}', 'static_file', '{}')`
+  ).run(id, opts.owner_id ?? null, opts.artifact_kind ?? "notes");
   return id;
 }
 
@@ -200,5 +209,67 @@ describe("unpublishArtifact", () => {
     const row = db.prepare("SELECT share_token, unpublished_at FROM artifacts WHERE id='art_1'").get() as any;
     expect(row.share_token).toBe("tokABC");           // retained
     expect(row.unpublished_at).toBe(1700000099000);   // mirrored from response
+  });
+
+  it("is idempotent on already-unpublished — returns stored retirement state without calling Worker", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_1", owner_id: "u1" });
+    db.prepare(`UPDATE artifacts SET share_token='tokABC', share_mode='open', published_at=1, share_updated_at=1, unpublished_at=1700000099000 WHERE id='art_1'`).run();
+
+    const fetchMock = vi.fn();   // must NOT be called
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+
+    const out = await svc.unpublishArtifact({ artifact_id: "art_1" });
+    expect(out).toEqual({ ok: true, share_token: "tokABC", unpublished_at: 1700000099000 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("publishArtifact additional coverage", () => {
+  it("preserves owner_id on second publish by the same user", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_1", owner_id: "u1" });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      share_token: "tok123", share_url: "https://oyster.to/p/tok123",
+      mode: "open", published_at: 1, updated_at: 1,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array([1]),
+      currentUser: () => ({ id: "u1", email: "a@a" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await svc.publishArtifact({ artifact_id: "art_1", mode: "open" });
+    const row = db.prepare("SELECT owner_id FROM artifacts WHERE id='art_1'").get() as any;
+    expect(row.owner_id).toBe("u1");   // unchanged
+  });
+
+  it("rejects 413 locally when bytes exceed 10 MB without contacting Worker", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_big", owner_id: "u1" });
+    const fetchMock = vi.fn();
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(11 * 1024 * 1024),
+      currentUser: () => ({ id: "u1", email: "a@a" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await expect(svc.publishArtifact({ artifact_id: "art_big", mode: "open" }))
+      .rejects.toMatchObject({ status: 413, code: "artifact_too_large", details: { limit_bytes: 10 * 1024 * 1024 } });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

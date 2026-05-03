@@ -46,8 +46,14 @@ export class PublishError extends Error {
     public readonly details: Record<string, unknown> = {},
   ) {
     super(message);
+    this.name = "PublishError";
   }
 }
+
+// Free-tier publish ceiling. Worker is authoritative (CAPS in publish-helpers.ts);
+// this is a local pre-check so we don't proxy bytes that will bounce. Tier-aware
+// lookup lands when Pro arrives in 0.8.0.
+const FREE_MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
 export interface PublishService {
   publishArtifact(args: PublishArgs): Promise<PublishResult>;
@@ -56,7 +62,7 @@ export interface PublishService {
 
 interface ArtifactRow {
   id: string;
-  kind: string;
+  artifact_kind: string;
   owner_id: string | null;
   share_token: string | null;
   unpublished_at: number | null;
@@ -70,7 +76,7 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       if (!user || !token) throw new PublishError(401, "sign_in_required", "Sign in to publish artefacts.");
 
       const row = deps.db.prepare(
-        "SELECT id, kind, owner_id, share_token, unpublished_at FROM artifacts WHERE id = ?"
+        "SELECT id, artifact_kind, owner_id, share_token, unpublished_at FROM artifacts WHERE id = ?"
       ).get(args.artifact_id) as ArtifactRow | undefined;
       if (!row) throw new PublishError(404, "artifact_not_found", `No artefact with id ${args.artifact_id}`);
 
@@ -85,9 +91,17 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       const passwordHash = args.mode === "password" ? await deps.hashPassword(args.password!) : undefined;
       const bytes = await deps.readArtifactBytes(args.artifact_id);
 
+      // Local pre-check: skip the round trip when we already know the Worker
+      // will reject with 413. Worker remains authoritative.
+      if (bytes.byteLength > FREE_MAX_SIZE_BYTES) {
+        throw new PublishError(413, "artifact_too_large",
+          "Free tier allows published artefacts up to 10 MB.",
+          { limit_bytes: FREE_MAX_SIZE_BYTES });
+      }
+
       const meta = {
         artifact_id: args.artifact_id,
-        artifact_kind: row.kind,
+        artifact_kind: row.artifact_kind,
         mode: args.mode,
         ...(passwordHash ? { password_hash: passwordHash } : {}),
       };
@@ -142,8 +156,13 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       if (row.owner_id && row.owner_id !== user.id) {
         throw new PublishError(403, "not_publication_owner", "This publication belongs to a different account.");
       }
-      if (!row.share_token || row.unpublished_at !== null) {
-        throw new PublishError(404, "publication_not_found", "No live publication for this artefact.");
+      if (!row.share_token) {
+        throw new PublishError(404, "publication_not_found", "This artefact was never published.");
+      }
+      // Idempotency: if already unpublished, return the stored retirement state
+      // without bothering the Worker. Matches the MCP tool contract.
+      if (row.unpublished_at !== null) {
+        return { ok: true as const, share_token: row.share_token, unpublished_at: row.unpublished_at };
       }
 
       const res = await deps.fetch(`${deps.workerBase}/api/publish/${row.share_token}`, {

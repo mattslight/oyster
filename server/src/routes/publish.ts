@@ -4,6 +4,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { PublishService, PublishError } from "../publish-service.js";
 import type { RouteCtx } from "../http-utils.js";
+import { safeDecode } from "../http-utils.js";
 
 export interface PublishRouteDeps {
   publishService: PublishService;
@@ -20,22 +21,40 @@ export async function tryHandlePublishRoute(
 ): Promise<boolean> {
   const m = url.match(PATH_RE);
   if (!m) return false;
-  const artifactId = decodeURIComponent(m[1]);
   const { sendJson, rejectIfNonLocalOrigin, readJsonBody } = ctx;
+  const artifactId = safeDecode(m[1]);
+  if (artifactId === null) {
+    sendJson({ error: "invalid_artifact_id", message: "Malformed URL encoding in artefact id." }, 400);
+    return true;
+  }
 
   if (req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
-    const body = await readJsonBody();
-    const mode = body?.mode;
+    let body: Record<string, unknown>;
+    try {
+      body = await readJsonBody();
+    } catch (err) {
+      // readJsonBody throws HttpError on malformed/oversized JSON. Without
+      // this catch the rejection bubbles to handleHttpRequest and crashes.
+      const status = (err && typeof err === "object" && "status" in err) ? (err as { status: number }).status : 400;
+      const message = err instanceof Error ? err.message : "Could not read request body.";
+      sendJson({ error: "invalid_request_body", message }, status);
+      return true;
+    }
+    const mode = body.mode;
     if (mode !== "open" && mode !== "password" && mode !== "signin") {
       sendJson({ error: "invalid_mode", message: "mode must be open, password, or signin" }, 400);
+      return true;
+    }
+    if (body.password !== undefined && typeof body.password !== "string") {
+      sendJson({ error: "invalid_password_type", message: "password must be a string." }, 400);
       return true;
     }
     try {
       const result = await deps.publishService.publishArtifact({
         artifact_id: artifactId,
         mode,
-        password: typeof body?.password === "string" ? body.password : undefined,
+        password: typeof body.password === "string" ? body.password : undefined,
       });
       sendJson(result);
     } catch (err) {
