@@ -1,6 +1,10 @@
 name = "oyster-publish"
 main = "src/worker.ts"
 compatibility_date = "2026-04-01"
+# nodejs_compat is required by @cloudflare/vitest-pool-workers (the test
+# infrastructure needs Node-style APIs inside the Worker runtime). Production
+# handlers don't depend on it — they use Web Crypto + standard Web APIs only.
+compatibility_flags = ["nodejs_compat"]
 
 # Shared D1 binding — same database_id as oyster-auth so we can read sessions/users
 # and own the published_artifacts table inside the same DB. Single source of truth.
