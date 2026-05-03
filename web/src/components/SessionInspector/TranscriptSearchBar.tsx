@@ -31,6 +31,7 @@ export function TranscriptSearchBar({
         ref={inputRef}
         className="transcript-search-input"
         placeholder="Find in transcript…"
+        aria-label="Find in transcript"
         value={query}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}

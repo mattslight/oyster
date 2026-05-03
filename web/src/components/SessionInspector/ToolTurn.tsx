@@ -39,9 +39,14 @@ export function ToolTurn({
   return (
     <div className={`turn ${event.role}${flash ? " turn-flash" : ""}`} data-event-id={event.id}>
       <div className="turn-role">{event.role}</div>
-      <div className="turn-tool-summary" onClick={toggle}>
+      <button
+        type="button"
+        className="turn-tool-summary"
+        onClick={toggle}
+        aria-expanded={open}
+      >
         {open ? "▾" : "▸"} <Highlighted text={summary} query={highlightQuery} />
-      </div>
+      </button>
       {open && rawLoading && <div className="turn-tool-truncated">Loading…</div>}
       {open && rawError && <div className="turn-tool-truncated">Couldn't load: {rawError}</div>}
       {open && !rawLoading && !rawError && raw && (
