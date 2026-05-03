@@ -100,6 +100,23 @@ describe("POST /api/publish/upload — metadata + size validation", () => {
     expect(res.status).toBe(413);
     expect(await res.json()).toMatchObject({ error: "artifact_too_large", limit_bytes: 10 * 1024 * 1024 });
   });
+
+  it("rejects Content-Length that isn't a decimal integer", async () => {
+    const u = await seedUser();
+    // Whitespace ("  42  ") is normalised by the Workers runtime before our
+    // regex sees it, so it isn't included here.
+    for (const lied of ["1.5", "1e6", "-3", "abc", ""]) {
+      const res = await call(uploadRequest({
+        cookieHeader: authHeader(u.sessionToken),
+        metadata: metadataHeader({ artifact_id: "a", artifact_kind: "notes", mode: "open" }),
+        contentType: "text/plain",
+        contentLength: lied,
+        body: "x",
+      }));
+      expect(res.status, `lied=${JSON.stringify(lied)}`).toBe(411);
+      expect(await res.json()).toMatchObject({ error: "content_length_required" });
+    }
+  });
 });
 
 describe("POST /api/publish/upload — first publish (open mode)", () => {
@@ -325,6 +342,57 @@ describe("POST /api/publish/upload — D1 CHECK enforcement", () => {
     // Caught by the handler's defence-in-depth (Task 2.5) before reaching D1.
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: "invalid_metadata" });
+  });
+});
+
+describe("POST /api/publish/upload — size_bytes reconciliation", () => {
+  it("D1 size_bytes records actual streamed bytes, not Content-Length, when client lies under the cap", async () => {
+    const u = await seedUser();
+    const realBody = "exactly twelve!"; // 15 bytes
+    const lied = "999"; // claim 999 bytes
+    const res = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({ artifact_id: "art_size", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: lied,
+      body: realBody,
+    }));
+    expect(res.status).toBe(200);
+    const json = await res.json() as { share_token: string };
+
+    const row = await env.DB.prepare(
+      "SELECT size_bytes FROM published_artifacts WHERE share_token = ?"
+    ).bind(json.share_token).first<{ size_bytes: number }>();
+    expect(row?.size_bytes).toBe(new TextEncoder().encode(realBody).byteLength);
+  });
+
+  it("upsert path also records actual streamed bytes", async () => {
+    const u = await seedUser();
+    // First publish (no lie).
+    const first = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({ artifact_id: "art_size_2", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: "5",
+      body: "hello",
+    }));
+    expect(first.status).toBe(200);
+
+    // Re-publish with lying Content-Length.
+    const second = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({ artifact_id: "art_size_2", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: "100",
+      body: "no",
+    }));
+    expect(second.status).toBe(200);
+    const j = await second.json() as { share_token: string };
+
+    const row = await env.DB.prepare(
+      "SELECT size_bytes FROM published_artifacts WHERE share_token = ?"
+    ).bind(j.share_token).first<{ size_bytes: number }>();
+    expect(row?.size_bytes).toBe(2);
   });
 });
 

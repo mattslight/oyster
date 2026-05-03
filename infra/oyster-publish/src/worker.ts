@@ -1,7 +1,7 @@
 // oyster-publish — R5 publish endpoints + viewer scaffold.
 // Spec: docs/superpowers/specs/2026-05-03-r5-publish-backend-design.md
 
-import type { Env, PublicationRow } from "./types";
+import type { Env } from "./types";
 import { CAPS, generateShareToken, parseMetadataHeader, r2KeyFor, type Tier } from "./publish-helpers";
 
 export default {
@@ -52,16 +52,19 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
     return jsonError(400, "invalid_metadata");
   }
 
-  // Step 4: Content-Length present.
+  // Step 4: Content-Length present and well-formed.
+  // Reject non-digit headers (e.g. "1.5", "1e6", "-3", " 42 ") — these would slip
+  // past Number() but corrupt size_bytes. The spec wants an explicit decimal-digit
+  // string. Final source of truth for size_bytes is the actual streamed byteLength
+  // (set in step 8); contentLength here is just the cap-check estimate.
   const lenHeader = req.headers.get("Content-Length");
-  if (!lenHeader) return jsonError(411, "content_length_required");
+  if (!lenHeader || !/^\d+$/.test(lenHeader)) return jsonError(411, "content_length_required");
   const contentLength = Number(lenHeader);
-  if (!Number.isFinite(contentLength) || contentLength < 0) {
-    return jsonError(411, "content_length_required");
-  }
+  if (!Number.isSafeInteger(contentLength)) return jsonError(411, "content_length_required");
 
-  // Step 5: tier + size cap.
-  const tier = (user.tier in CAPS ? user.tier : "free") as Tier;
+  // Step 5: tier + size cap. Use Object.hasOwn so prototype keys (toString etc.)
+  // can't masquerade as a tier and produce an undefined cap.
+  const tier = (Object.hasOwn(CAPS, user.tier) ? user.tier : "free") as Tier;
   const cap = CAPS[tier];
   if (contentLength > cap.max_size_bytes) {
     return jsonError(413, "artifact_too_large", "Free tier allows published artefacts up to 10 MB.", {
@@ -175,7 +178,10 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
     return jsonError(502, "upload_failed");
   }
 
-  // Step 8: D1 commit.
+  // Step 8: D1 commit. size_bytes is reconciled to the actual number of bytes
+  // we just wrote to R2 (Content-Length is client-controlled and may have lied
+  // within the cap; bodyBytes.byteLength is what's actually in the bucket).
+  const actualSize = bodyBytes.byteLength;
   if (path === "upsert") {
     const updatedAt = Date.now();
     await env.DB.prepare(
@@ -185,7 +191,7 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
     ).bind(
       meta.mode, meta.password_hash ?? null,
       req.headers.get("Content-Type") ?? "application/octet-stream",
-      contentLength, updatedAt, shareToken,
+      actualSize, updatedAt, shareToken,
     ).run();
 
     // Step 9: respond (upsert path).
@@ -197,7 +203,14 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
       updated_at: updatedAt,
     });
   } else {
-    // First-publish: row already inserted with published_at = updated_at = now.
+    // First-publish: row was inserted in step 6 with size_bytes = contentLength
+    // (the header value). Reconcile to actual streamed byteLength so D1 matches
+    // what's in R2.
+    if (actualSize !== contentLength) {
+      await env.DB.prepare(
+        `UPDATE published_artifacts SET size_bytes = ? WHERE share_token = ?`
+      ).bind(actualSize, shareToken).run();
+    }
     // Return the same timestamp for both so published_at === updated_at on the wire.
     return jsonOk({
       share_token: shareToken,
