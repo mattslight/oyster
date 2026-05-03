@@ -130,6 +130,11 @@ export async function tryHandleSpaceRoute(
           return true;
         }
         const source = spaceService.addSource(spaceId, path);
+        // addSource backfills orphan sessions whose cwd matches — tell
+        // connected clients to refetch so the Unsorted tile disappears
+        // immediately rather than waiting for the next watcher tick.
+        // Mirrors the from-path route.
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
         // Fire scan but don't block the response — tiles surface via SSE
         // as the watcher / scanner picks them up. A long scan would
         // otherwise hang the Folders UI for many seconds on a big repo.
