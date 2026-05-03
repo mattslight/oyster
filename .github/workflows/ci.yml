@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Action versions pinned to exact tags (matches release.yml convention).
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+            server/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd web && npm ci && cd ..
+          cd server && npm ci && cd ..
+
+      - name: Verify root deps mirror server runtime deps
+        run: node scripts/sync-published-deps.mjs --check
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint web
+        # Non-blocking until the existing lint debt is resolved. Output is
+        # visible in PR checks; flip to blocking by removing this flag.
+        continue-on-error: true
+        run: cd web && npm run lint
