@@ -101,7 +101,9 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
           "Content-Type": "application/octet-stream",
           "Content-Length": String(bytes.byteLength),
         },
-        body: bytes,
+        // BodyInit doesn't accept Uint8Array directly in Node's fetch types;
+        // wrap in Buffer (subclass of Uint8Array, accepted as BodyInit).
+        body: Buffer.from(bytes),
       });
 
       if (!res.ok) {
@@ -136,12 +138,12 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       const row = deps.db.prepare(
         "SELECT id, owner_id, share_token, unpublished_at FROM artifacts WHERE id = ?"
       ).get(artifact_id) as ArtifactRow | undefined;
-      if (!row) throw new PublishError(404, "artifact_not_found");
+      if (!row) throw new PublishError(404, "artifact_not_found", `No artefact with id ${artifact_id}`);
       if (row.owner_id && row.owner_id !== user.id) {
-        throw new PublishError(403, "not_publication_owner");
+        throw new PublishError(403, "not_publication_owner", "This publication belongs to a different account.");
       }
       if (!row.share_token || row.unpublished_at !== null) {
-        throw new PublishError(404, "publication_not_found");
+        throw new PublishError(404, "publication_not_found", "No live publication for this artefact.");
       }
 
       const res = await deps.fetch(`${deps.workerBase}/api/publish/${row.share_token}`, {
