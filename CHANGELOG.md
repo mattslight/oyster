@@ -8,6 +8,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - **Sign in to Oyster.** A free account in three clicks — Continue with GitHub, or send a sign-in link to your email as a fallback. The badge in the top-left corner shows your address; sign-out is one click. The same identity will unlock Publish & share artefacts later in 0.7.0 and cross-device continuity in 0.8.0. ([#295](https://github.com/mattslight/oyster/issues/295), [#340](https://github.com/mattslight/oyster/issues/340))
 - **Attach an Unsorted folder to an existing space.** The folder button on each Unsorted tile now opens a picker — choose any space to take it in (with a "Best match" hint when the folder name resembles one), or create a new space as before.
+- **Public viewer for shared artefacts.** Visiting a published share URL now renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, and inline images — with three access modes: open links resolve immediately, password-protected links unlock once for 24 hours per browser, and sign-in-required links route through the standard sign-in flow and land back on the share. ([#316](https://github.com/mattslight/oyster/issues/316))
 
 ### Fixed
 
