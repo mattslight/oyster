@@ -11,6 +11,8 @@
     "db:migrate:local": "wrangler d1 execute oyster-auth --file=migrations/0001_init.sql --local",
     "db:migrate:0002": "wrangler d1 execute oyster-auth --file=migrations/0002_oauth.sql --remote",
     "db:migrate:0002:local": "wrangler d1 execute oyster-auth --file=migrations/0002_oauth.sql --local",
+    "db:migrate:0003": "wrangler d1 execute oyster-auth --file=migrations/0003_publish.sql --remote",
+    "db:migrate:0003:local": "wrangler d1 execute oyster-auth --file=migrations/0003_publish.sql --local",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
