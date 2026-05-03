@@ -13,6 +13,8 @@
     "db:migrate:0002:local": "wrangler d1 execute oyster-auth --file=migrations/0002_oauth.sql --local",
     "db:migrate:0003": "wrangler d1 execute oyster-auth --file=migrations/0003_publish.sql --remote",
     "db:migrate:0003:local": "wrangler d1 execute oyster-auth --file=migrations/0003_publish.sql --local",
+    "db:migrate:0004": "wrangler d1 execute oyster-auth --file=migrations/0004_return_path.sql --remote",
+    "db:migrate:0004:local": "wrangler d1 execute oyster-auth --file=migrations/0004_return_path.sql --local",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
