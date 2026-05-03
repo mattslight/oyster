@@ -210,7 +210,31 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
 }
 
 async function handlePublishDelete(req: Request, env: Env, shareToken: string): Promise<Response> {
-  return jsonError(501, "not_implemented", "publish_unpublish — body in Task 2.6");
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+
+  type Row = { owner_user_id: string; r2_key: string; unpublished_at: number | null };
+  const row = await env.DB.prepare(
+    "SELECT owner_user_id, r2_key, unpublished_at FROM published_artifacts WHERE share_token = ?"
+  ).bind(shareToken).first<Row>();
+
+  if (!row) return jsonError(404, "publication_not_found");
+  if (row.owner_user_id !== user.id) return jsonError(403, "not_publication_owner");
+
+  if (row.unpublished_at !== null) {
+    return jsonOk({ ok: true, share_token: shareToken, unpublished_at: row.unpublished_at });
+  }
+
+  const now = Date.now();
+  await env.DB.prepare("UPDATE published_artifacts SET unpublished_at = ? WHERE share_token = ?")
+    .bind(now, shareToken).run();
+
+  // Best-effort R2 delete; D1 is the source of truth.
+  try { await env.ARTIFACTS.delete(row.r2_key); } catch (err) {
+    console.warn("[publish] R2 delete failed (orphan accepted):", err);
+  }
+
+  return jsonOk({ ok: true, share_token: shareToken, unpublished_at: now });
 }
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
