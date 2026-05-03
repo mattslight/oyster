@@ -710,15 +710,17 @@ async function handleGithubStart(req: Request, env: Env, url: URL): Promise<Resp
     }
   }
 
+  const returnPath = userCode ? null : validateReturnPath(url.searchParams.get("return"));
+
   const state = randomState();
   const verifier = pkceVerifier();
   const challenge = await codeChallengeS256(verifier);
 
   await env.DB
     .prepare(
-      "INSERT INTO oauth_states (state, provider, pkce_verifier, user_code, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO oauth_states (state, provider, pkce_verifier, user_code, created_at, expires_at, return_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(state, "github", verifier, userCode, now, now + OAUTH_STATE_TTL_MS)
+    .bind(state, "github", verifier, userCode, now, now + OAUTH_STATE_TTL_MS, returnPath)
     .run();
 
   const githubUrl = new URL("https://github.com/login/oauth/authorize");
