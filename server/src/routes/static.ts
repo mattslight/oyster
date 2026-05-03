@@ -13,7 +13,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type Database from "better-sqlite3";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import type { ArtifactService } from "../artifact-service.js";
 import type { SqliteSpaceStore } from "../space-store.js";
@@ -63,6 +63,12 @@ export function resolveArtifactsUrl(
     const r = resolve(candidate);
     return r === root || r.startsWith(root + sep);
   };
+  // Only return regular files — a directory match would propagate
+  // through to readFileSync upstream and crash with EISDIR. statSync
+  // throws on missing, so wrap in a single try/catch.
+  const isFile = (p: string): boolean => {
+    try { return statSync(p).isFile(); } catch { return false; }
+  };
   const fixedCandidates = [
     join(layout.oysterHome, relativePath),
     join(layout.appsDir, relativePath),
@@ -70,14 +76,14 @@ export function resolveArtifactsUrl(
   ];
   for (const candidate of fixedCandidates) {
     if (!isInsideRoot(candidate)) continue;
-    if (existsSync(candidate)) return candidate;
+    if (isFile(candidate)) return candidate;
   }
   const firstSegment = relativePath.split("/")[0];
   if (!firstSegment || firstSegment === "icons") return null;
   try {
     for (const spaceName of readdirSync(layout.spacesDir)) {
       const candidate = join(layout.spacesDir, spaceName, relativePath);
-      if (isInsideRoot(candidate) && existsSync(candidate)) return candidate;
+      if (isInsideRoot(candidate) && isFile(candidate)) return candidate;
     }
   } catch { /* SPACES_DIR might not exist on a fresh install */ }
   return null;
@@ -93,10 +99,17 @@ export async function tryHandleStaticRoute(
   const { sendJson, sendError, rejectIfNonLocalOrigin } = ctx;
   const { artifactService, spaceStore, db, layout } = deps;
 
-  // GET /api/resolve-path?url=…
+  // GET /api/resolve-path?url=… — leaks absolute filesystem paths, so
+  // local-origin only.
   if (url.startsWith("/api/resolve-path")) {
-    const params = new URL(url, "http://localhost").searchParams;
-    const targetUrl = params.get("url") || "";
+    if (rejectIfNonLocalOrigin()) return true;
+    let targetUrl: string;
+    try {
+      targetUrl = new URL(url, "http://localhost").searchParams.get("url") || "";
+    } catch {
+      sendJson({ error: "Invalid URL" }, 400);
+      return true;
+    }
 
     let filePath: string | undefined;
     const docsMatch = targetUrl.match(/^\/docs\/([^/]+)$/);
@@ -154,8 +167,13 @@ export async function tryHandleStaticRoute(
   }
 
   // GET /api/apps/:name/start
+  // Local-origin gated — these mutate process state. Still GETs for
+  // backward compat with the existing web client (web/src/data/artifacts-api
+  // calls these as fetch() with no method); migrating to POST is a
+  // separate, coordinated change that updates the client at the same time.
   const startMatch = url.match(/^\/api\/apps\/([^/]+)\/start$/);
   if (startMatch) {
+    if (rejectIfNonLocalOrigin()) return true;
     const name = startMatch[1];
     const config = artifactService.getAppConfig(name);
     if (!config) {
@@ -177,9 +195,11 @@ export async function tryHandleStaticRoute(
     return true;
   }
 
-  // GET /api/apps/:name/stop
+  // GET /api/apps/:name/stop — see /start above re: local-origin guard +
+  // GET-vs-POST.
   const stopMatch = url.match(/^\/api\/apps\/([^/]+)\/stop$/);
   if (stopMatch) {
+    if (rejectIfNonLocalOrigin()) return true;
     const name = stopMatch[1];
     const config = artifactService.getAppConfig(name);
     if (!config) {
@@ -192,39 +212,49 @@ export async function tryHandleStaticRoute(
     return true;
   }
 
-  // GET /docs/:name — server-rendered docs (md/mmd → HTML; otherwise raw)
+  // GET /docs/:name — server-rendered docs (md/mmd → HTML; otherwise raw).
+  // Local-origin gated — serves user-private artifact content.
   const docsMatch = url.split("?")[0].match(/^\/docs\/([^/]+)$/);
   if (docsMatch) {
+    if (rejectIfNonLocalOrigin()) return true;
     const name = docsMatch[1];
     const filePath = artifactService.getDocFile(name);
-    if (!filePath || !existsSync(filePath)) {
+    if (!filePath) {
       res.writeHead(404);
       res.end("Not found");
       return true;
     }
     const ext = extname(filePath);
     const mime = MIME[ext] || "application/octet-stream";
-
-    if (ext === ".md") {
-      const content = readFileSync(filePath, "utf8");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(renderMarkdown(name, content));
-    } else if (ext === ".mmd" || ext === ".mermaid") {
-      const content = readFileSync(filePath, "utf8");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(renderMermaid(name, content)));
-    } else {
-      res.writeHead(200, { "Content-Type": mime });
-      res.end(readFileSync(filePath));
+    // existsSync + readFileSync is a TOCTOU race — wrap the read so a
+    // file removed between check and read returns 404 instead of crashing.
+    try {
+      if (ext === ".md") {
+        const content = readFileSync(filePath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(renderMarkdown(name, content));
+      } else if (ext === ".mmd" || ext === ".mermaid") {
+        const content = readFileSync(filePath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(injectBridge(renderMermaid(name, content)));
+      } else {
+        res.writeHead(200, { "Content-Type": mime });
+        res.end(readFileSync(filePath));
+      }
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
     }
     return true;
   }
 
   // GET /artifacts/<rel> — static asset serving for artifact bundles.
   // Uses resolveArtifactsUrl (above) so this stays in sync with the
-  // /api/resolve-path helper. The walker enforces the path-traversal
-  // guard (must stay under OYSTER_HOME).
+  // /api/resolve-path helper. Walker enforces the path-traversal guard
+  // (must stay under OYSTER_HOME) and the isFile() check (no directory
+  // matches → no EISDIR crash). Local-origin gated — serves user files.
   if (url.startsWith("/artifacts/")) {
+    if (rejectIfNonLocalOrigin()) return true;
     const urlPath = url.split("?")[0];
     const relativePath = urlPath.slice("/artifacts/".length);
     const filePath = resolveArtifactsUrl(relativePath, layout);
@@ -237,24 +267,30 @@ export async function tryHandleStaticRoute(
 
     const ext = extname(filePath);
     const mime = MIME[ext] || "application/octet-stream";
-
-    if (ext === ".md") {
-      const content = readFileSync(filePath, "utf8");
-      const name = inferName(filePath);
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(renderMarkdown(name, content)));
-    } else if (ext === ".mmd" || ext === ".mermaid") {
-      const content = readFileSync(filePath, "utf8");
-      const name = inferName(filePath);
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(renderMermaid(name, content)));
-    } else if (ext === ".html" || ext === ".htm") {
-      const raw = readFileSync(filePath, "utf8");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(injectBridge(raw));
-    } else {
-      res.writeHead(200, { "Content-Type": mime });
-      res.end(readFileSync(filePath));
+    // Wrap reads — the resolver checked existence + isFile, but a file
+    // can be removed/renamed between resolution and read (TOCTOU).
+    try {
+      if (ext === ".md") {
+        const content = readFileSync(filePath, "utf8");
+        const name = inferName(filePath);
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(injectBridge(renderMarkdown(name, content)));
+      } else if (ext === ".mmd" || ext === ".mermaid") {
+        const content = readFileSync(filePath, "utf8");
+        const name = inferName(filePath);
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(injectBridge(renderMermaid(name, content)));
+      } else if (ext === ".html" || ext === ".htm") {
+        const raw = readFileSync(filePath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(injectBridge(raw));
+      } else {
+        res.writeHead(200, { "Content-Type": mime });
+        res.end(readFileSync(filePath));
+      }
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
     }
     return true;
   }
