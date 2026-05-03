@@ -58,6 +58,21 @@ function base64urlEncode(bytes: Uint8Array): string {
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// Match /p/<token> or /p/<token>/raw. Returns null on no match.
+const SHARE_TOKEN_CHARSET = /^[A-Za-z0-9_-]+$/;
+export function parseShareTokenPath(pathname: string): { shareToken: string; raw: boolean } | null {
+  if (!pathname.startsWith("/p/")) return null;
+  const rest = pathname.slice("/p/".length);
+  if (rest.length === 0) return null;
+  if (rest.endsWith("/raw")) {
+    const token = rest.slice(0, -"/raw".length);
+    if (!SHARE_TOKEN_CHARSET.test(token)) return null;
+    return { shareToken: token, raw: true };
+  }
+  if (!SHARE_TOKEN_CHARSET.test(rest)) return null;
+  return { shareToken: rest, raw: false };
+}
+
 function base64urlDecodeToString(s: string): string {
   // Restore standard base64 padding/alphabet for atob.
   const padded = s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);

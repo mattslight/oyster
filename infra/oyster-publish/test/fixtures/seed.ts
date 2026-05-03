@@ -107,3 +107,40 @@ export function authHeader(sessionToken: string): { Cookie: string } {
 export function metadataHeader(payload: object): string {
   return Buffer.from(JSON.stringify(payload)).toString("base64url");
 }
+
+export async function retirePublication(shareToken: string, unpublishedAt = Date.now()): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE published_artifacts SET unpublished_at = ? WHERE share_token = ?",
+  ).bind(unpublishedAt, shareToken).run();
+}
+
+export async function putR2Object(key: string, body: Uint8Array | string, contentType: string): Promise<void> {
+  await env.ARTIFACTS.put(key, body, { httpMetadata: { contentType } });
+}
+
+export async function seedActiveOpenWithBody(opts: {
+  ownerUserId: string;
+  artifactId: string;
+  artifactKind?: "notes" | "diagram" | "app" | "deck" | "wireframe" | "table" | "map";
+  contentType?: string;
+  body: string | Uint8Array;
+  shareToken?: string;
+  publishedAt?: number;
+}): Promise<{ shareToken: string; r2Key: string }> {
+  const token = opts.shareToken ?? `seeded_${crypto.randomUUID().slice(0, 8)}`;
+  const kind = opts.artifactKind ?? "notes";
+  const contentType = opts.contentType ?? "text/markdown";
+  const now = opts.publishedAt ?? Date.now();
+  const r2Key = `published/${opts.ownerUserId}/${token}`;
+  const sizeBytes = typeof opts.body === "string"
+    ? new TextEncoder().encode(opts.body).byteLength
+    : opts.body.byteLength;
+  await env.DB.prepare(
+    `INSERT INTO published_artifacts
+     (share_token, owner_user_id, artifact_id, artifact_kind, mode, password_hash,
+      r2_key, content_type, size_bytes, published_at, updated_at, unpublished_at)
+     VALUES (?, ?, ?, ?, 'open', NULL, ?, ?, ?, ?, ?, NULL)`,
+  ).bind(token, opts.ownerUserId, opts.artifactId, kind, r2Key, contentType, sizeBytes, now, now).run();
+  await putR2Object(r2Key, opts.body, contentType);
+  return { shareToken: token, r2Key };
+}
