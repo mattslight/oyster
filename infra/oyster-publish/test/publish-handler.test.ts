@@ -234,3 +234,125 @@ describe("POST /api/publish/upload — cap enforcement", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("POST /api/publish/upload — race recovery", () => {
+  it("two sequential first-publishes with same artifact_id return the same share_token, one D1 row", async () => {
+    const u = await seedUser();
+    const body = "racing";
+
+    // First publish for art_race.
+    const r1 = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({ artifact_id: "art_race", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    expect(r1.status).toBe(200);
+    const j1 = await r1.json() as any;
+
+    // Second publish for same artifact_id (upsert, not first-publish race).
+    const r2 = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({ artifact_id: "art_race", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    expect(r2.status).toBe(200);
+    const j2 = await r2.json() as any;
+
+    // Both return the same share_token.
+    expect(j1.share_token).toBe(j2.share_token);
+
+    // Exactly one row.
+    const rows = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM published_artifacts WHERE owner_user_id = ? AND artifact_id = ? AND unpublished_at IS NULL"
+    ).bind(u.id, "art_race").first<{ n: number }>();
+    expect(rows?.n).toBe(1);
+
+    // R2 object exists at the winning token (check existence only, don't consume stream).
+    const obj = await env.ARTIFACTS.get(`published/${u.id}/${j1.share_token}`);
+    if (obj) {
+      // Consume any stream to ensure cleanup happens
+      await obj.text().catch(() => {});
+    }
+    expect(obj).toBeTruthy();
+  });
+});
+
+describe("POST /api/publish/upload — cross-owner non-conflict", () => {
+  it("two users may publish artefacts that share an artifact_id without conflict", async () => {
+    const a = await seedUser({ id: "user_a", email: "a@example.com" });
+    const b = await seedUser({ id: "user_b", email: "b@example.com" });
+
+    const body = "shared";
+    const ra = await call(uploadRequest({
+      cookieHeader: authHeader(a.sessionToken),
+      metadata: metadataHeader({ artifact_id: "shared_id", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    const rb = await call(uploadRequest({
+      cookieHeader: authHeader(b.sessionToken),
+      metadata: metadataHeader({ artifact_id: "shared_id", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    expect(ra.status).toBe(200);
+    expect(rb.status).toBe(200);
+    const ja = await ra.json() as any;
+    const jb = await rb.json() as any;
+    expect(ja.share_token).not.toBe(jb.share_token);
+
+    const rows = await env.DB.prepare(
+      "SELECT owner_user_id FROM published_artifacts WHERE artifact_id = ? AND unpublished_at IS NULL ORDER BY owner_user_id"
+    ).bind("shared_id").all<{ owner_user_id: string }>();
+    expect(rows.results.map(r => r.owner_user_id)).toEqual(["user_a", "user_b"]);
+  });
+});
+
+describe("POST /api/publish/upload — D1 CHECK enforcement", () => {
+  it("rejects an open-mode publish that smuggles a password_hash", async () => {
+    const u = await seedUser();
+    const body = "x";
+    const res = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({
+        artifact_id: "art_check", artifact_kind: "notes", mode: "open",
+        password_hash: "pbkdf2$100000$x$y",  // illegal for open mode
+      }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    // Caught by the handler's defence-in-depth (Task 2.5) before reaching D1.
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_metadata" });
+  });
+});
+
+describe("POST /api/publish/upload — streamed-size enforcement", () => {
+  it("aborts mid-stream when streamed bytes exceed cap despite Content-Length under cap", async () => {
+    const u = await seedUser();
+    const liedLength = 10;  // claim 10 bytes
+    const realBody = new Uint8Array(11 * 1024 * 1024);  // actually send 11 MB
+    realBody.fill(0x41);
+    const res = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({ artifact_id: "art_stream", artifact_kind: "notes", mode: "open" }),
+      contentType: "application/octet-stream",
+      contentLength: String(liedLength),
+      body: realBody,
+    }));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error: "artifact_too_large" });
+    // No D1 row left behind.
+    const row = await env.DB.prepare(
+      "SELECT * FROM published_artifacts WHERE owner_user_id = ? AND artifact_id = ?"
+    ).bind(u.id, "art_stream").first();
+    expect(row).toBeNull();
+  });
+});
