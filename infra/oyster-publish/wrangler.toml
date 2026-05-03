@@ -35,3 +35,12 @@ zone_name = "oyster.to"
 [[routes]]
 pattern = "www.oyster.to/p/*"
 zone_name = "oyster.to"
+
+# Rate limiter for password-gate POST attempts. Key = `${ip}:${share_token}`
+# so one IP cannot exhaust attempts across all of a publisher's shares.
+# Spec: docs/superpowers/specs/2026-05-03-r5-viewer-design.md
+[[unsafe.bindings]]
+name = "VIEWER_PASSWORD_LIMIT"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
