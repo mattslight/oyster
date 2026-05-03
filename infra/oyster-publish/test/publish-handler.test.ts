@@ -236,30 +236,24 @@ describe("POST /api/publish/upload — cap enforcement", () => {
 });
 
 describe("POST /api/publish/upload — race recovery", () => {
-  it("two sequential first-publishes with same artifact_id return the same share_token, one D1 row", async () => {
+  it("two concurrent first-publishes return the same share_token, one D1 row, one R2 object", async () => {
     const u = await seedUser();
     const body = "racing";
 
-    // First publish for art_race.
-    const r1 = await call(uploadRequest({
-      cookieHeader: authHeader(u.sessionToken),
-      metadata: metadataHeader({ artifact_id: "art_race", artifact_kind: "notes", mode: "open" }),
-      contentType: "text/plain",
-      contentLength: String(body.length),
-      body,
-    }));
-    expect(r1.status).toBe(200);
-    const j1 = await r1.json() as any;
+    function call6() {
+      return call(uploadRequest({
+        cookieHeader: authHeader(u.sessionToken),
+        metadata: metadataHeader({ artifact_id: "art_race", artifact_kind: "notes", mode: "open" }),
+        contentType: "text/plain",
+        contentLength: String(body.length),
+        body,
+      }));
+    }
 
-    // Second publish for same artifact_id (upsert, not first-publish race).
-    const r2 = await call(uploadRequest({
-      cookieHeader: authHeader(u.sessionToken),
-      metadata: metadataHeader({ artifact_id: "art_race", artifact_kind: "notes", mode: "open" }),
-      contentType: "text/plain",
-      contentLength: String(body.length),
-      body,
-    }));
+    const [r1, r2] = await Promise.all([call6(), call6()]);
+    expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
+    const j1 = await r1.json() as any;
     const j2 = await r2.json() as any;
 
     // Both return the same share_token.
