@@ -100,3 +100,40 @@ function escapeHtml(s: string): string {
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
   ));
 }
+
+// ─── Iframe chrome (app / deck / wireframe / table / map) ──────────────────
+
+export function renderChromeWithIframe(row: PublicationRow): Response {
+  const iframe = `
+<!-- Deliberately omit allow-same-origin.
+     With allow-scripts only, the sandboxed document gets an opaque origin
+     and cannot access oyster.to cookies or same-origin storage. -->
+<iframe sandbox="allow-scripts" src="/p/${escapeAttr(row.share_token)}/raw"
+        style="border:0;width:100%;height:calc(100vh - 60px);display:block;"></iframe>`;
+  // Body's main padding is removed for iframe so it fills naturally.
+  const cssExtra = `main { padding: 0; max-width: none; }`;
+  const page = renderChromePage({ title: "Shared via Oyster", bodyHtml: iframe, cssExtra });
+  return new Response(page, {
+    status: 200,
+    headers: cacheHeaders(row, "text/html; charset=utf-8"),
+  });
+}
+
+export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Response {
+  const headers = new Headers(cacheHeaders(row, row.content_type));
+  headers.set(
+    "content-security-policy",
+    "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+  );
+  headers.set("x-frame-options", "SAMEORIGIN");
+  headers.set("content-disposition", "inline");
+  // Buffer.from wrap is required for Workers fetch BodyInit — raw Uint8Array
+  // doesn't satisfy the type in cf-types.
+  return new Response(bytes, { status: 200, headers });
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
+  ));
+}

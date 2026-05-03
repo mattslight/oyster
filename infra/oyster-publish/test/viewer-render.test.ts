@@ -123,3 +123,59 @@ describe("renderMermaidPage", () => {
     expect(csp).toMatch(/script-src 'self' 'unsafe-inline' https:\/\/cdn\.jsdelivr\.net/);
   });
 });
+
+import { renderChromeWithIframe, renderRawHtmlBody } from "../src/viewer-render";
+
+describe("renderChromeWithIframe", () => {
+  const ROW = { share_token: "app1", mode: "open", updated_at: 3000, artifact_kind: "app", content_type: "text/html" } as any;
+
+  it("returns a 200 HTML response with chrome", async () => {
+    const res = renderChromeWithIframe(ROW);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("🦪 oyster");
+    expect(body).toContain("Powered by Oyster");
+  });
+
+  it("contains a sandboxed iframe pointing at /p/<token>/raw", async () => {
+    const res = renderChromeWithIframe(ROW);
+    const body = await res.text();
+    expect(body).toContain('sandbox="allow-scripts"');
+    expect(body).toContain('src="/p/app1/raw"');
+    // Critical: sandbox attribute must NOT include allow-same-origin (would defeat origin isolation)
+    expect(body).not.toMatch(/sandbox="[^"]*allow-same-origin/);
+  });
+
+  it("includes the deliberate-omission comment in source", async () => {
+    const res = renderChromeWithIframe(ROW);
+    const body = await res.text();
+    expect(body).toContain("Deliberately omit allow-same-origin");
+  });
+});
+
+describe("renderRawHtmlBody — strict CSP for iframe content", () => {
+  it("serves bytes with the recorded content-type", async () => {
+    const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
+    const bytes = new TextEncoder().encode("<h1>my app</h1>");
+    const res = renderRawHtmlBody(bytes, ROW);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html");
+    expect(await res.text()).toBe("<h1>my app</h1>");
+  });
+
+  it("sets a strict CSP including connect-src 'none' and form-action 'none'", async () => {
+    const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
+    const res = renderRawHtmlBody(new TextEncoder().encode(""), ROW);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("connect-src 'none'");
+    expect(csp).toContain("frame-src 'none'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).toContain("form-action 'none'");
+  });
+
+  it("sets X-Frame-Options: SAMEORIGIN", async () => {
+    const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
+    const res = renderRawHtmlBody(new TextEncoder().encode(""), ROW);
+    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+  });
+});
