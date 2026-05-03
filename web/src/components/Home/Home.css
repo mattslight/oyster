@@ -1669,3 +1669,101 @@
   font-size: 13px;
   margin: 0;
 }
+
+/* Orphan-folder attach picker — anchored to the FolderPlus button on an
+   Unsorted tile, portaled to body. Visual language matches space-ctx-menu
+   so the two surfaces feel like siblings. */
+.attach-orphan-popover {
+  position: fixed;
+  z-index: 9999;
+  padding: 4px;
+  background: rgba(22, 23, 40, 0.97);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.attach-orphan-header {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  padding: 8px 10px 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.attach-orphan-header-path {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+.attach-orphan-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.attach-orphan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.attach-orphan-row:hover:not(:disabled) {
+  background: rgba(124, 107, 255, 0.12);
+}
+.attach-orphan-row:disabled {
+  cursor: default;
+}
+.attach-orphan-row[aria-busy="true"] {
+  opacity: 0.55;
+}
+.attach-orphan-row-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-orphan-row-hint {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.attach-orphan-row--new {
+  color: var(--home-accent-bright, #c4b8ff);
+}
+.attach-orphan-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.attach-orphan-sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 3px 8px;
+}
+.attach-orphan-error {
+  padding: 6px 10px 8px;
+  font-size: 11px;
+  color: #f87171;
+  white-space: normal;
+}
+.attach-orphan-hint {
+  padding: 6px 10px 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}

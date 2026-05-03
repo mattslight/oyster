@@ -109,33 +109,43 @@ export class SpaceService {
     // Reattach-restore: a soft-deleted source for the same (space, path) wins
     // over inserting a fresh row. Same id survives — its artifacts will
     // resurface on the next scan via upsertCandidate.
+    let source: Source;
     const removed = this.spaceStore.getSoftDeletedSourceByPathForSpace(spaceId, resolved);
     if (removed) {
       try {
         this.spaceStore.restoreSource(removed.id);
-        return { ...removed, removed_at: null };
+        source = { ...removed, removed_at: null };
       } catch (err) {
         // Race: between our check and the restore, another caller inserted a
         // fresh active source for the same path. Re-evaluate.
         if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
-          return this.resolveSourceConflict(spaceId, resolved, err);
+          source = this.resolveSourceConflict(spaceId, resolved, err);
+        } else {
+          throw err;
         }
-        throw err;
+      }
+    } else {
+      const id = crypto.randomUUID();
+      try {
+        this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
+        source = this.spaceStore.getSourceById(id)!;
+      } catch (err) {
+        // Race: a concurrent caller inserted the same path between our check and
+        // our insert. Re-evaluate.
+        if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
+          source = this.resolveSourceConflict(spaceId, resolved, err);
+        } else {
+          throw err;
+        }
       }
     }
 
-    const id = crypto.randomUUID();
-    try {
-      this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
-    } catch (err) {
-      // Race: a concurrent caller inserted the same path between our check and
-      // our insert. Re-evaluate.
-      if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
-        return this.resolveSourceConflict(spaceId, resolved, err);
-      }
-      throw err;
-    }
-    return this.spaceStore.getSourceById(id)!;
+    // Re-attribute orphan sessions whose cwd matches — same side-effect as
+    // createSpaceFromPath, so the Unsorted folder tile disappears once its
+    // sessions get a home. Idempotent (only updates rows where space_id and
+    // source_id are both NULL), so safe on the race-conflict path too.
+    this.sessionStore.backfillSourceForCwd(resolved, spaceId, source.id);
+    return source;
   }
 
   // Both addSource paths can race against the partial unique index on

@@ -20,10 +20,12 @@ import { ShowMore } from "./ShowMore";
 import { AddMemoryForm } from "./AddMemoryForm";
 import { ProjectTileGrid } from "./ProjectTileGrid";
 import { AttachFolderForm } from "./AttachFolderForm";
+import { AttachOrphanPopover } from "./AttachOrphanPopover";
 import { MemoryCard } from "./MemoryCard";
 import { VaultInfo } from "./VaultInfo";
 import { homeRelative, renderPipCounts, stateColor } from "./utils";
 import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./types";
+import { addSpaceSource } from "../../data/spaces-api";
 import "./Home.css";
 
 interface Props {
@@ -154,9 +156,14 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // source row, so they're keyed by cwd instead of source_id. Lives
   // alongside selectedFolderId; resets when scope changes.
   const [selectedOrphanCwd, setSelectedOrphanCwd] = useState<string | null>(null);
-  // Cwd of the orphan tile currently mid-promotion. Disables the FolderPlus
-  // button so a slow server response can't kick off a duplicate promote.
+  // Cwd of the orphan tile currently mid-promotion (or mid-attach). Disables
+  // every FolderPlus button so a slow server response can't kick off a
+  // duplicate; also gates the picker popover. Set while either flow runs.
   const [promotingCwd, setPromotingCwd] = useState<string | null>(null);
+  // Orphan attach picker. Anchored to the FolderPlus button on the matching
+  // tile; rendered via portal alongside SpaceContextMenu at the end of the
+  // tree so it overlays cleanly.
+  const [attachPicker, setAttachPicker] = useState<{ cwd: string; rect: DOMRect } | null>(null);
   // Space-delete confirm. Set to a real space id to open. Two entry points
   // share this state: the empty-shell banner button (acts on the active
   // space) and the breadcrumb-pill context menu (acts on the clicked one).
@@ -721,19 +728,19 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       <button
                         type="button"
                         className="home-active-project-tile-jump"
-                        disabled={isPromoting}
-                        onClick={async (e) => {
+                        disabled={isPromoting && attachPicker?.cwd !== p.cwd}
+                        onClick={(e) => {
                           e.stopPropagation();
-                          if (promotingCwd) return;
-                          setPromotingCwd(p.cwd);
-                          try {
-                            await onPromoteFolderToSpace(p.cwd);
-                          } finally {
-                            setPromotingCwd(null);
+                          if (promotingCwd && attachPicker?.cwd !== p.cwd) return;
+                          if (attachPicker?.cwd === p.cwd) {
+                            setAttachPicker(null);
+                            return;
                           }
+                          const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                          setAttachPicker({ cwd: p.cwd, rect });
                         }}
-                        aria-label={`Promote ${homeRelative(p.cwd)} to its own space`}
-                        title={`Promote ${homeRelative(p.cwd)} to its own space`}
+                        aria-label={`Attach ${homeRelative(p.cwd)} to a space`}
+                        title={`Attach ${homeRelative(p.cwd)} to a space`}
                       >
                         <FolderPlus size={14} strokeWidth={2} aria-hidden="true" />
                       </button>
@@ -1057,6 +1064,37 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           />
         )}
       </InspectorPanel>
+      {attachPicker && onPromoteFolderToSpace && (() => {
+        const meta = new Set(["home", "__all__", "__archived__"]);
+        const candidates = spaces.filter((s) => !meta.has(s.id));
+        const cwd = attachPicker.cwd;
+        return (
+          <AttachOrphanPopover
+            path={cwd}
+            anchorRect={attachPicker.rect}
+            spaces={candidates}
+            onClose={() => setAttachPicker(null)}
+            onPickSpace={async (spaceId) => {
+              if (promotingCwd) throw new Error("Another attach is already in progress");
+              setPromotingCwd(cwd);
+              try {
+                await addSpaceSource(spaceId, cwd);
+              } finally {
+                setPromotingCwd(null);
+              }
+            }}
+            onPromoteToNew={async () => {
+              if (promotingCwd) throw new Error("Another attach is already in progress");
+              setPromotingCwd(cwd);
+              try {
+                await onPromoteFolderToSpace(cwd);
+              } finally {
+                setPromotingCwd(null);
+              }
+            }}
+          />
+        );
+      })()}
       {pillCtx && (() => {
         const target = spaces.find((s) => s.id === pillCtx.spaceId);
         if (!target) return null;
