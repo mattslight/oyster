@@ -1,0 +1,20 @@
+{
+  "name": "oyster-publish-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloudflare Worker for R5 publish: artefact upload + publication state + R2 storage",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "@cloudflare/vitest-pool-workers": "^0.5.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^4.0.0"
+  }
+}

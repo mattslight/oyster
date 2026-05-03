@@ -1,0 +1,33 @@
+name = "oyster-publish"
+main = "src/worker.ts"
+compatibility_date = "2026-04-01"
+
+# Shared D1 binding — same database_id as oyster-auth so we can read sessions/users
+# and own the published_artifacts table inside the same DB. Single source of truth.
+[[d1_databases]]
+binding = "DB"
+database_name = "oyster-auth"
+database_id = "44086805-fbfa-4446-8626-126af7e2ec19"
+
+# R2 bucket for published artefact bytes.
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "oyster-artifacts"
+
+# Routes: admin API + public viewer. Both apex and www so the Worker is
+# reachable from either origin (matches auth-worker pattern).
+[[routes]]
+pattern = "oyster.to/api/publish/*"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "www.oyster.to/api/publish/*"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "oyster.to/p/*"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "www.oyster.to/p/*"
+zone_name = "oyster.to"
