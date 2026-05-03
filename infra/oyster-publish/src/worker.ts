@@ -366,7 +366,7 @@ async function handleViewerGet(req: Request, env: Env, shareToken: string): Prom
         headers: { location: access.location, "cache-control": "private, no-store" },
       });
     case "gate":
-      return htmlPage(200, passwordGatePage(shareToken), { mode: "password-gate" });
+      return htmlPage(200, passwordGatePage(shareToken));
     case "ok":
       return renderForRow(env, access.row, req);
   }
@@ -379,7 +379,7 @@ async function handleViewerRaw(req: Request, env: Env, shareToken: string): Prom
   if (access.kind === "redirect") {
     return new Response(null, { status: 302, headers: { location: access.location, "cache-control": "private, no-store" } });
   }
-  if (access.kind === "gate") return htmlPage(200, passwordGatePage(shareToken), { mode: "password-gate" });
+  if (access.kind === "gate") return htmlPage(200, passwordGatePage(shareToken));
   // OK — serve raw bytes for HTML kinds, or fall through for non-HTML
   const obj = await env.ARTIFACTS.get(access.row.r2_key);
   if (!obj) {
@@ -415,11 +415,11 @@ async function handleViewerPost(req: Request, env: Env, shareToken: string): Pro
   try {
     form = await req.formData();
   } catch {
-    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }), { mode: "password-gate" });
+    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }));
   }
   const password = form.get("password");
   if (typeof password !== "string" || password.length === 0) {
-    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }), { mode: "password-gate" });
+    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }));
   }
 
   if (!row.password_hash) {
@@ -428,7 +428,7 @@ async function handleViewerPost(req: Request, env: Env, shareToken: string): Pro
   }
   const ok = await verifyPbkdf2(password, row.password_hash);
   if (!ok) {
-    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }), { mode: "password-gate" });
+    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }));
   }
 
   const cookieValue = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
@@ -485,7 +485,7 @@ async function renderForRow(env: Env, row: PublicationRow, req?: Request): Promi
   }
 }
 
-function htmlPage(status: number, body: string, opts?: { mode?: "password-gate" }): Response {
+function htmlPage(status: number, body: string): Response {
   const headers: Record<string, string> = {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "private, no-store",

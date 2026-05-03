@@ -24,10 +24,12 @@ export function renderMarkdownPage(bytes: Uint8Array, row: PublicationRow): Resp
   const title = titleMatch ? stripTags(titleMatch[1]!) : "Shared via Oyster";
   const page = renderChromePage({ title, bodyHtml: html });
 
-  return new Response(page, {
-    status: 200,
-    headers: cacheHeaders(row, "text/html; charset=utf-8"),
-  });
+  const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
+  headers.set(
+    "content-security-policy",
+    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+  );
+  return new Response(page, { status: 200, headers });
 }
 
 // ─── Cache headers ─────────────────────────────────────────────────────────
