@@ -263,6 +263,37 @@ describe("GET/POST /p/:token — password mode", () => {
   });
 });
 
+describe("ETag / 304", () => {
+  it("returns 304 on matching If-None-Match", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art1", body: "# x",
+    });
+    const first = await call(getReq(`/p/${shareToken}`));
+    const etag = first.headers.get("etag") ?? "";
+    expect(etag).toMatch(/^W\//);
+    const second = await call(getReq(`/p/${shareToken}`, { ifNoneMatch: etag }));
+    expect(second.status).toBe(304);
+    expect(second.headers.get("etag")).toBe(etag);
+  });
+
+  it("does NOT return 304 for password mode", async () => {
+    const u = await seedUser();
+    const hash = await env.DB.prepare("SELECT 'pbkdf2$100000$x$y' AS h").first<{ h: string }>();
+    const token = await seedActivePublication({
+      ownerUserId: u.id, artifactId: "art2", mode: "password", passwordHash: hash!.h,
+    });
+    await putR2Object(`published/${u.id}/${token}`, "# x", "text/markdown");
+    await env.DB.prepare(
+      "UPDATE published_artifacts SET content_type = 'text/markdown', artifact_kind = 'notes' WHERE share_token = ?",
+    ).bind(token).run();
+    const cookieValue = await signViewerCookie(token, env.VIEWER_COOKIE_SECRET);
+    const cookie = `oyster_view_${token}=${cookieValue}`;
+    const res = await call(getReq(`/p/${token}`, { cookie, ifNoneMatch: `W/"${token}-anything"` }));
+    expect(res.status).toBe(200);  // password mode never returns 304
+  });
+});
+
 describe("GET /p/:token — signin mode", () => {
   it("unsigned visitor → 302 to /auth/sign-in?return=/p/<token>", async () => {
     const u = await seedUser();

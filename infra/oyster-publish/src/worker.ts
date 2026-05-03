@@ -368,7 +368,7 @@ async function handleViewerGet(req: Request, env: Env, shareToken: string): Prom
     case "gate":
       return htmlPage(200, passwordGatePage(shareToken), { mode: "password-gate" });
     case "ok":
-      return renderForRow(env, access.row);
+      return renderForRow(env, access.row, req);
   }
 }
 
@@ -442,7 +442,22 @@ async function handleViewerPost(req: Request, env: Env, shareToken: string): Pro
   });
 }
 
-async function renderForRow(env: Env, row: PublicationRow): Promise<Response> {
+async function renderForRow(env: Env, row: PublicationRow, req?: Request): Promise<Response> {
+  // Short-circuit on If-None-Match (open mode only — others are no-store).
+  if (req && row.mode === "open") {
+    const ifNoneMatch = req.headers.get("If-None-Match");
+    const etag = `W/"${row.share_token}-${row.updated_at}"`;
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          etag,
+          "cache-control": "public, max-age=60, must-revalidate",
+        },
+      });
+    }
+  }
+
   const obj = await env.ARTIFACTS.get(row.r2_key);
   if (!obj) {
     console.error("[viewer] R2 object missing for token", row.share_token, "key", row.r2_key);
