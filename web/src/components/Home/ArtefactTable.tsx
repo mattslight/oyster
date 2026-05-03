@@ -1,6 +1,6 @@
 // Artefact table view. Extracted from Home/index.tsx.
 import type { Space } from "../../../../shared/types";
-import { Desktop } from "../Desktop";
+import type { Desktop } from "../Desktop";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 import { formatRelative } from "./utils";
 

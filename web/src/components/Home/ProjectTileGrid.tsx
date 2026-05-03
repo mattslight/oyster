@@ -21,8 +21,11 @@ export function ProjectTileGrid({
   spaceId: string;
   spaceDisplayName: string;
   sources: SpaceSource[];
-  folderArtefactCounts: Record<string, number>;
-  sessionCountsBySource: Record<string, { active: number; waiting: number; disconnected: number }>;
+  // Sparse maps — sources with no artefacts / no live sessions have no
+  // entry. Callsites use `?? 0` and pass the lookup straight into
+  // ProjectTile's optional `sessionCounts?` prop.
+  folderArtefactCounts: Partial<Record<string, number>>;
+  sessionCountsBySource: Partial<Record<string, { active: number; waiting: number; disconnected: number }>>;
   selectedFolderId: string | null;
   setSelectedFolderId: (next: string | null) => void;
   totalCounts: Record<StateFilter, number>;
