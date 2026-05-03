@@ -137,3 +137,11 @@ function escapeAttr(s: string): string {
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
   ));
 }
+
+// ─── Image inline ──────────────────────────────────────────────────────────
+
+export function renderImageInline(bytes: Uint8Array, row: PublicationRow): Response {
+  const headers = new Headers(cacheHeaders(row, row.content_type));
+  headers.set("content-disposition", "inline");
+  return new Response(bytes, { status: 200, headers });
+}

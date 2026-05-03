@@ -179,3 +179,30 @@ describe("renderRawHtmlBody — strict CSP for iframe content", () => {
     expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
   });
 });
+
+import { renderImageInline } from "../src/viewer-render";
+
+describe("renderImageInline", () => {
+  const ROW = { share_token: "img1", mode: "open", updated_at: 4000, content_type: "image/png" } as any;
+
+  it("serves bytes inline with the recorded content-type", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG header
+    const res = renderImageInline(png, ROW);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-disposition")).toBe("inline");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(png);
+  });
+
+  it("applies open-mode cache headers", async () => {
+    const res = renderImageInline(new Uint8Array(0), ROW);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60, must-revalidate");
+    expect(res.headers.get("etag")).toBe(`W/"img1-4000"`);
+  });
+
+  it("applies private no-store for non-open modes", async () => {
+    const pwRow = { ...ROW, mode: "password" };
+    const res = renderImageInline(new Uint8Array(0), pwRow);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+});
