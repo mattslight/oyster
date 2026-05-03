@@ -6,7 +6,7 @@
 -- Tier hook for entitlement checks. Always 'free' in 0.7.0; Pro values land in 0.8.0+.
 ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free';
 
-CREATE TABLE published_artifacts (
+CREATE TABLE IF NOT EXISTS published_artifacts (
   share_token       TEXT    PRIMARY KEY,
   owner_user_id     TEXT    NOT NULL REFERENCES users(id),
   artifact_id       TEXT    NOT NULL,
@@ -25,10 +25,10 @@ CREATE TABLE published_artifacts (
   )
 );
 
-CREATE INDEX idx_pubart_owner ON published_artifacts(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_pubart_owner ON published_artifacts(owner_user_id);
 
 -- Active-publication uniqueness scoped to (owner, artefact). artifact_id alone
 -- is not globally unique across users.
-CREATE UNIQUE INDEX idx_pubart_active_per_owner_artifact
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pubart_active_per_owner_artifact
   ON published_artifacts(owner_user_id, artifact_id)
   WHERE unpublished_at IS NULL;

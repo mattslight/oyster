@@ -30,8 +30,8 @@ npm run deploy
 ## Local dev
 
 ```bash
-npm run dev   # runs wrangler dev with miniflare D1 + R2 in-memory
-npm test      # vitest with @cloudflare/vitest-pool-workers
+npm run dev   # runs wrangler dev; D1 + R2 state persists locally under .wrangler/
+npm test      # vitest with @cloudflare/vitest-pool-workers — D1 + R2 are per-test in-memory
 ```
 
 ## Notes
