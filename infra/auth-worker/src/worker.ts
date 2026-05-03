@@ -340,7 +340,7 @@ async function handleMagicLink(req: Request, env: Env, ctx: ExecutionContext, ur
   const ipGate = await env.MAGIC_LINK_LIMIT.limit({ key: ip });
   if (!ipGate.success) return json({ error: "rate_limited" }, 429);
 
-  let payload: { email?: unknown; user_code?: unknown };
+  let payload: { email?: unknown; user_code?: unknown; return_path?: unknown };
   try {
     payload = await req.json();
   } catch {
@@ -389,12 +389,18 @@ async function handleMagicLink(req: Request, env: Env, ctx: ExecutionContext, ur
     deviceCode = dc.device_code;
   }
 
+  // Mutual exclusion: device flow's destination is the device. Return path
+  // only carries through when there is no user_code.
+  const returnPath = userCode
+    ? null
+    : (typeof payload.return_path === "string" ? validateReturnPath(payload.return_path) : null);
+
   const rawToken = randomToken(32);
   const tokenHash = await sha256Hex(rawToken);
   const expiresAt = now + MAGIC_LINK_TTL_MS;
   await env.DB
-    .prepare("INSERT INTO magic_link_tokens (token_hash, user_id, device_code, expires_at) VALUES (?, ?, ?, ?)")
-    .bind(tokenHash, user.id, deviceCode, expiresAt)
+    .prepare("INSERT INTO magic_link_tokens (token_hash, user_id, device_code, expires_at, return_path) VALUES (?, ?, ?, ?, ?)")
+    .bind(tokenHash, user.id, deviceCode, expiresAt, returnPath)
     .run();
 
   const verifyUrl = `${url.origin}/auth/verify?t=${encodeURIComponent(rawToken)}`;
