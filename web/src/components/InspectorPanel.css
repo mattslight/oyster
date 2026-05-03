@@ -320,6 +320,17 @@ button.link-row:focus-visible {
   color: var(--text);
 }
 .turn-tool-summary {
+  /* Was a div; promoted to <button> for keyboard reachability. Reset
+     the user-agent button chrome so the row keeps looking like the rest
+     of the transcript. */
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  width: 100%;
   cursor: pointer;
   font-size: 12px;
   color: var(--text-dim);
