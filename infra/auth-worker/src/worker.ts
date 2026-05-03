@@ -441,10 +441,10 @@ async function handleVerify(env: Env, url: URL): Promise<Response> {
       `UPDATE magic_link_tokens
          SET consumed_at = ?
        WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?
-       RETURNING user_id, device_code`
+       RETURNING user_id, device_code, return_path`
     )
     .bind(now, tokenHash, now)
-    .first<{ user_id: string; device_code: string | null }>();
+    .first<{ user_id: string; device_code: string | null; return_path: string | null }>();
 
   if (!consumed) {
     return htmlResponse(
@@ -494,10 +494,12 @@ async function handleVerify(env: Env, url: URL): Promise<Response> {
       ...NO_STORE,
     });
   }
+  const safeReturn = validateReturnPath(consumed.return_path);
+  const location = safeReturn ?? "/auth/welcome";
   return new Response(null, {
     status: 302,
     headers: {
-      location: "/auth/welcome",
+      location,
       "set-cookie": cookie,
       ...NO_STORE,
     },
