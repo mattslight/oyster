@@ -150,7 +150,15 @@ async function handlePasswordSubmit(req, env, shareToken) {
 }
 ```
 
-**Wrong-password rate-limiting** is enforced by a new rate-limiter binding `VIEWER_PASSWORD_LIMIT` on the `oyster-publish` Worker (scoped per IP, ~10 attempts / 60s — exact budget mirrors `auth-worker`'s `MAGIC_LINK_LIMIT`). Wrong-password attempts beyond the budget see a 429 page (same shape as the auth-worker's existing 429 HTML). Declared in `infra/oyster-publish/wrangler.toml`; no runtime config beyond the binding.
+**Wrong-password rate-limiting:** the POST handler calls `await env.VIEWER_PASSWORD_LIMIT.limit({ key })` **before** PBKDF2 verification. The key combines client IP + `share_token`:
+
+```ts
+const ip = req.headers.get('cf-connecting-ip') ?? 'unknown';
+const gate = await env.VIEWER_PASSWORD_LIMIT.limit({ key: `${ip}:${shareToken}` });
+if (!gate.success) return rateLimitedResponse();  // 429
+```
+
+Including `share_token` in the key means one bad actor on one IP cannot exhaust password attempts across all the publisher's shares. Budget is ~10 attempts / 60s (mirrors `auth-worker`'s `MAGIC_LINK_LIMIT`). Binding declared in `infra/oyster-publish/wrangler.toml` (`[[unsafe.bindings]] type = "ratelimit"` per current Workers Rate Limiting API).
 
 ---
 
@@ -205,7 +213,7 @@ Dispatch order — **content-type first, then kind** — so a `notes` artefact w
 ### Mermaid (`diagram`)
 
 - Server-renders an HTML page with the source embedded in `<pre class="mermaid">…</pre>` plus a CDN script tag.
-- Pinned: `https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js` with subresource integrity (`integrity="sha384-…"` — value populated at build time, verified once and committed).
+- Pinned: `https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js` with subresource integrity. The SRI hash is computed once (`openssl dgst -sha384 -binary mermaid.min.js | openssl base64 -A`), pinned in source alongside the URL, and committed. Both move together when we bump the mermaid version.
 - Initialiser: `mermaid.initialize({ startOnLoad: false }); mermaid.run({ querySelector: 'pre.mermaid' }).catch(showSourceFallback)`.
 - Fallback: on `mermaid.run()` rejection, replace the `<pre class="mermaid">` content with the original source wrapped in `<pre><code>` so the user sees diagram source rather than a blank page.
 - CSP: `default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:`.
@@ -214,7 +222,14 @@ Dispatch order — **content-type first, then kind** — so a `notes` artefact w
 
 ### Single-file HTML kinds (`app`, `deck`, `wireframe`, `table`, `map`)
 
-- The chrome page contains a header, footer, and `<iframe sandbox="allow-scripts" src="/p/<token>/raw" style="border:0;width:100%;height:calc(100vh - <chrome-height>);"></iframe>`.
+- The chrome page contains a header, footer, and `<iframe sandbox="allow-scripts" src="/p/<token>/raw" style="border:0;width:100%;height:calc(100vh - 60px);"></iframe>` (60px = 36px header + 24px footer).
+- The iframe template carries an explicit comment so future maintainers don't "helpfully" add `allow-same-origin`:
+
+  ```ts
+  // Deliberately omit allow-same-origin.
+  // With allow-scripts only, the sandboxed document gets an opaque origin
+  // and cannot access oyster.to cookies or same-origin storage.
+  ```
 - No `allow-same-origin` in the sandbox attribute → the iframe document is treated as a unique opaque origin. It cannot read `document.cookie` from the parent or fetch the parent's URLs.
 - The `/raw` endpoint:
   - Same auth check (`resolveViewerAccess`).
@@ -286,9 +301,9 @@ Plain HTML rendering with `Content-Type: text/html`. JSON variants returned only
 
 ### Allowlist
 
-Only paths matching `^\/p\/[A-Za-z0-9_\-]+$` are honoured. Anything else (including `https://`-prefixed URLs, `..` traversals, query strings, fragments) is silently dropped — sign-in proceeds, return path defaults to the existing landing.
+Only paths matching `^\/p\/[A-Za-z0-9_\-]+$` are honoured. The `+$` anchor excludes `/p/<token>/raw` — we never want sign-in to land a user on the iframe-content endpoint (it's a chrome-less byte serve; landing there strands the user with no navigation back to the viewer). Anything else (including `https://`-prefixed URLs, `..` traversals, query strings, fragments) is silently dropped — sign-in proceeds, return path defaults to the existing landing.
 
-This is closed against open-redirect: the only places we can land a visitor post-sign-in are share-token routes on our own zone.
+This is closed against open-redirect: the only places we can land a visitor post-sign-in are the viewer route on our own zone.
 
 ### Wiring
 
@@ -386,6 +401,7 @@ Add `viewer-handler.test.ts` and `viewer-helpers.test.ts`.
 - HMAC cookie sign/verify round-trip (correct verifies, tampered rejects, expired rejects).
 - Allowlist for `?return=` path: positive (`/p/abcXYZ_-`), negative (`/p/`, `/p/../etc`, `https://attacker.com`, `/dashboard`, empty).
 - markdown-it config: raw `<script>` in input is escaped, not executed (assert via output string).
+- markdown-it default `validateLink`: inputs containing `[click](javascript:alert(1))`, `[](vbscript:…)`, `[](file:///etc/passwd)` and unsafe `data:` schemes do not produce active `href` attributes in the rendered HTML. Confirms we don't need to override `validateLink`.
 - mermaid HTML wrapper: contains pinned CDN URL with SRI hash, initialiser script, and source embedded.
 - ETag generation: same `(token, updated_at)` → same etag; different `updated_at` → different etag.
 
@@ -429,12 +445,13 @@ Add `viewer-handler.test.ts` and `viewer-helpers.test.ts`.
 ## Known limitations
 
 1. **CDN dependency for mermaid.** jsdelivr outage = mermaid diagrams show source-fallback. Acceptable; falling back to source is graceful.
-2. **No sanitiser for markdown beyond `html: false`.** A determined attacker can still produce a markdown link to `javascript:…` — markdown-it's `linkify: true` doesn't catch this. Solution: post-process the rendered HTML to strip `href` values matching `^javascript:` (~5 lines of regex). Spec'd here, implemented in the PR.
+2. **Markdown link safety relies on markdown-it's default `validateLink`.** markdown-it's default `validateLink` blocks `javascript:`, `vbscript:`, `file:`, and unsafe `data:` URLs from rendering as active hrefs. We do **not** override `validateLink`. Worker tests assert that markdown inputs containing those schemes do not produce active links in the rendered HTML. No regex post-processing — adding one would be a code smell signalling we don't trust the parser, and would risk diverging from upstream's continuously-updated allowlist. If a real test exposes a gap, that's the trigger to add layered defence.
 3. **Sandbox iframe's CSP is best-effort.** A clever HTML artefact could in theory use forms or `<base>` to escape — that's why the `/raw` CSP includes `base-uri 'none'` and `form-action 'none'`. Not all browsers enforce every CSP directive uniformly; Cloudflare's egress logs would catch widespread abuse.
-4. **No rate-limiting on `GET /p/<token>`.** Public reads are uncapped. Bandwidth abuse is bounded by R2 read pricing; if it becomes a problem, add a per-IP rate limiter (existing `MAGIC_LINK_LIMIT` pattern is reusable).
-5. **`oyster_view_<token>` cookie is per-token, not per-user.** Two visitors sharing a browser would share the unlocked state for a given share. Acceptable — password sharing is the threat model the publisher already accepted.
-6. **No view counts or analytics.** A `published_artifacts.view_count` is a future column; out of scope here.
-7. **No "I forgot the password" recovery flow.** The publisher unpublishes and republishes (with a new token + new password). Acceptable for v1.
+4. **Published apps in v1 are presentation-only.** The `/raw` CSP includes `connect-src 'none'` — published HTML cannot fetch from external APIs, can't talk to a backend, can't load remote scripts. This is intentional: it means "publish my Vite app to a working backend" is not in scope. Networked apps require a future explicit capability model (think: per-publication CORS allowlist, scoped server-side proxy, etc.). Anyone reaching the limit should treat it as a feature request, not a bug.
+5. **No rate-limiting on `GET /p/<token>`.** Public reads are uncapped. Bandwidth abuse is bounded by R2 read pricing; if it becomes a problem, add a per-IP rate limiter (the same `VIEWER_PASSWORD_LIMIT` binding pattern is reusable).
+6. **`oyster_view_<token>` cookie is per-token, not per-user.** Two visitors sharing a browser would share the unlocked state for a given share. Acceptable — password sharing is the threat model the publisher already accepted.
+7. **No view counts or analytics.** A `published_artifacts.view_count` is a future column; out of scope here.
+8. **No "I forgot the password" recovery flow.** The publisher unpublishes and republishes (with a new token + new password). Acceptable for v1.
 
 ---
 
@@ -448,7 +465,8 @@ Add `viewer-handler.test.ts` and `viewer-helpers.test.ts`.
 | mermaid lib? | Pinned CDN (jsdelivr `mermaid@10.9.1`) with SRI. | Mermaid is ~600 KB; bundling in the Worker would inflate cold-start and bytes-deployed. Client-side render is the upstream-recommended path. |
 | mermaid fallback on failure? | Show source in `<pre><code>`. | A blank page is the worst failure mode; source-as-fallback is informative and graceful. |
 | Chrome on every viewer surface? | No — chrome on success states only; minimal pages on gates/errors. | Chrome competes with single-task pages (gates have one job). Cleaner UX, smaller HTML for failure paths. |
-| Action slot in header for password mode? | Empty. | "Sign in" or "Get Oyster" links would compete with the gate's primary action. |
+| Action slot — password gate? | No chrome at all (gate is a minimal page). | Gate has one job: enter password. Chrome competes. |
+| Action slot — password viewer (post-unlock)? | "Get your own at oyster.to". | Same chrome treatment as `open` viewer once auth has cleared — funnel-on-success. |
 | Sign-in redirect mechanism? | Generic `?return=<path>` param on auth-worker, allowlisted to `/p/*`. | Standard pattern. Allowlist closes open-redirect. Future Workers (e.g. /apps/*) reuse the same param. |
 | Cookie for password unlock? | HMAC-signed, per-token, `Path=/p/<token>`, 24h, HttpOnly+Secure+SameSite=Lax. | Per-token scope prevents one unlock from leaking to other shares. Path-scoping limits cookie surface. 24h is a reasonable session window for a shared link. |
 | Cache `max-age` for open mode? | 60 seconds. | Long enough to absorb a single-node burst; short enough that unpublish becomes visible quickly. |
