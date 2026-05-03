@@ -48,3 +48,55 @@ export function cacheHeaders(row: PublicationRow, contentType: string): HeadersI
 function stripTags(s: string): string {
   return s.replace(/<[^>]*>/g, "");
 }
+
+// ─── Mermaid ───────────────────────────────────────────────────────────────
+
+const MERMAID_VERSION = "10.9.1";
+const MERMAID_SRI = "sha384-WmdflGW9aGfoBdHc4rRyWzYuAjEmDwMdGdiPNacbwfGKxBW/SO6guzuQ76qjnSlr";  // computed via openssl dgst -sha384 -binary; pinned with version
+const MERMAID_URL = `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.min.js`;
+
+export function renderMermaidPage(bytes: Uint8Array, row: PublicationRow): Response {
+  const source = new TextDecoder().decode(bytes);
+  // Only escape chars that would break HTML structure; mermaid reads textContent so &gt; would appear literally in the diagram.
+  const escaped = source.replace(/[&<]/g, (c) => (c === "&" ? "&amp;" : "&lt;"));
+  const body = `
+<pre class="mermaid">${escaped}</pre>
+<script src="${MERMAID_URL}" integrity="${MERMAID_SRI}" crossorigin="anonymous"></script>
+<script>
+(function() {
+  if (typeof mermaid === 'undefined') {
+    showSourceFallback('mermaid CDN unavailable');
+    return;
+  }
+  try {
+    mermaid.initialize({ startOnLoad: false });
+    mermaid.run({ querySelector: 'pre.mermaid' }).catch(function(err) {
+      showSourceFallback(err && err.message ? err.message : 'render failed');
+    });
+  } catch (err) {
+    showSourceFallback(err && err.message ? err.message : 'init failed');
+  }
+  function showSourceFallback(reason) {
+    var el = document.querySelector('pre.mermaid');
+    if (!el) return;
+    el.removeAttribute('class');
+    el.outerHTML = '<pre><code>' + el.textContent.replace(/[&<>]/g, function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}) + '</code></pre>' +
+      '<p style="font-size:0.8rem;color:#999">Diagram could not render: ' + reason.replace(/[<>]/g,'') + '</p>';
+  }
+})();
+</script>
+`;
+  const page = renderChromePage({ title: "Diagram", bodyHtml: body });
+  const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
+  headers.set(
+    "content-security-policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
+  );
+  return new Response(page, { status: 200, headers });
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
+  ));
+}

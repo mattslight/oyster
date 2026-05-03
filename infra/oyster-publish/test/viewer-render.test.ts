@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderMarkdownPage } from "../src/viewer-render";
+import { renderMarkdownPage, renderMermaidPage } from "../src/viewer-render";
 
 const ROW = {
   share_token: "abc",
@@ -82,5 +82,44 @@ describe("renderMarkdownPage — cache headers", () => {
     const res = renderMarkdownPage(new TextEncoder().encode("# x"), pwRow);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(res.headers.get("etag")).toBeNull();
+  });
+});
+
+describe("renderMermaidPage", () => {
+  const SOURCE = "graph TD; A-->B;";
+  const ROW = { share_token: "mer1", mode: "open", updated_at: 2000, artifact_kind: "diagram", content_type: "text/plain" } as any;
+
+  it("returns a 200 HTML response", async () => {
+    const res = renderMermaidPage(new TextEncoder().encode(SOURCE), ROW);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
+  });
+
+  it("embeds the source verbatim in <pre class=\"mermaid\">", async () => {
+    const res = renderMermaidPage(new TextEncoder().encode(SOURCE), ROW);
+    const body = await res.text();
+    expect(body).toContain(`<pre class="mermaid">${SOURCE}</pre>`);
+  });
+
+  it("loads pinned mermaid CDN with SRI", async () => {
+    const res = renderMermaidPage(new TextEncoder().encode(SOURCE), ROW);
+    const body = await res.text();
+    expect(body).toContain("https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js");
+    expect(body).toContain("integrity=\"sha384-");
+    expect(body).toContain('crossorigin="anonymous"');
+  });
+
+  it("includes a fallback that shows source on mermaid.run() failure", async () => {
+    const res = renderMermaidPage(new TextEncoder().encode(SOURCE), ROW);
+    const body = await res.text();
+    expect(body).toContain("mermaid.run");
+    expect(body).toContain(".catch");
+  });
+
+  it("sets a CSP that allows jsdelivr scripts", async () => {
+    const res = renderMermaidPage(new TextEncoder().encode(SOURCE), ROW);
+    const csp = res.headers.get("content-security-policy");
+    expect(csp).toMatch(/cdn\.jsdelivr\.net/);
+    expect(csp).toMatch(/script-src 'self' 'unsafe-inline' https:\/\/cdn\.jsdelivr\.net/);
   });
 });
