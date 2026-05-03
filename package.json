@@ -14,7 +14,8 @@
     "opencode.json"
   ],
   "scripts": {
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "node scripts/sync-published-deps.mjs --check && npm run build",
+    "sync-published-deps": "node scripts/sync-published-deps.mjs",
     "build:web": "cd web && npx vite build",
     "build:server": "cd server && npm run build",
     "build": "npm run build:web && npm run build:server && node -e \"const fs=require('fs');fs.cpSync('web/dist','server/dist/public',{recursive:true})\"",
@@ -41,19 +42,18 @@
     "url": "https://github.com/mattslight/oyster.git"
   },
   "dependencies": {
-    "@fal-ai/client": "^1.9.4",
-    "@modelcontextprotocol/sdk": "^1.28.0",
-    "better-sqlite3": "^12.8.0",
+    "@fal-ai/client": "^1.10.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
-    "marked": "^18.0.2",
-    "opencode-ai": "^1.2.26",
-    "ws": "^8.18.0"
+    "marked": "^18.0.3",
+    "opencode-ai": "^1.14.31",
+    "ws": "^8.20.0"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.2.0-beta.12"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
-  },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  }
 }
