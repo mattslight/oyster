@@ -7,6 +7,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 ### Added
 
 - **Sign in to Oyster.** A free account in three clicks — Continue with GitHub, or send a sign-in link to your email as a fallback. The badge in the top-left corner shows your address; sign-out is one click. The same identity will unlock Publish & share artefacts later in 0.7.0 and cross-device continuity in 0.8.0. ([#295](https://github.com/mattslight/oyster/issues/295), [#340](https://github.com/mattslight/oyster/issues/340))
+- **Publish artefacts.** Turn any single-file artefact into a `oyster.to/p/...` share URL via the chat bar — open, password-protected, or sign-in-required. Free accounts can publish up to 5 artefacts at a time, 10 MB each. ([#315](https://github.com/mattslight/oyster/issues/315))
 
 ### Fixed
 
