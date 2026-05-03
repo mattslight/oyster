@@ -28,6 +28,9 @@ import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
+import { tryHandlePublishRoute } from "./routes/publish.js";
+import { createPublishService } from "./publish-service.js";
+import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
 import { tryHandleImportRoute } from "./routes/import.js";
 import { tryHandleStaticRoute } from "./routes/static.js";
@@ -249,6 +252,28 @@ authService.onAuthChanged((state) => {
 });
 void authService.validatePersistedSession();
 
+const WORKER_BASE = process.env.OYSTER_AUTH_BASE
+  ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
+  : "https://oyster.to";
+const publishService = createPublishService({
+  db,
+  readArtifactBytes: async (artifactId) => {
+    // Single-file artefacts: content_path is set by createArtifact. Read directly.
+    const row = db.prepare("SELECT content_path FROM artifacts WHERE id = ?")
+      .get(artifactId) as { content_path: string | null } | undefined;
+    if (!row?.content_path) throw new Error(`artefact ${artifactId} has no content_path`);
+    return new Uint8Array(readFileSync(row.content_path));
+  },
+  currentUser: () => {
+    const u = authService.getState().user;
+    return u ? { id: u.id, email: u.email } : null;
+  },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: WORKER_BASE,
+  hashPassword,
+  fetch,
+});
+
 // ── Initialize subsystems ──
 
 const iconGenerator = new IconGenerator(updateGeneratedArtifact);
@@ -373,6 +398,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/auth/* — local glue (whoami / startSignIn / signOut). Real auth
   // (magic-link, OAuth) lives in the Cloudflare Worker.
   if (await tryHandleAuthRoute(req, res, url, ctx, { authService })) return;
+
+  // /api/artifacts/:id/publish — publish + unpublish an artefact.
+  if (await tryHandlePublishRoute(req, res, url, ctx, { publishService })) return;
 
   // /oauth/*, /.well-known/oauth-*, /mcp/*, /api/mcp/status
   // Pass the actually-bound `port`, not PREFERRED_PORT — findPort() may
