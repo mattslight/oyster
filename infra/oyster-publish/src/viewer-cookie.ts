@@ -28,7 +28,9 @@ export async function verifyViewerCookie(
   if (typeof cookie !== "string" || cookie.length === 0) return false;
   const parts = cookie.split(".");
   if (parts.length !== 3) return false;
-  const [token, tsRaw, hmacGot] = parts;
+  // tsconfig has noUncheckedIndexedAccess; the length check above guarantees
+  // these three are defined, but TS doesn't narrow array length. Assert.
+  const [token, tsRaw, hmacGot] = parts as [string, string, string];
   if (token !== expectedToken) return false;
   if (!/^\d+$/.test(tsRaw)) return false;
   const ts = Number(tsRaw);
