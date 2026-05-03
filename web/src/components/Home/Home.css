@@ -1699,8 +1699,16 @@
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   min-width: 0;
   flex: 1;
+  /* Truncate from the LEFT so the basename always stays visible —
+     `~/Dev/oyster-os.worktrees` becomes `…oyster-os.worktrees`, not
+     `~/Dev/oyster-…`. Plaintext bidi keeps the path itself rendering
+     LTR within the rtl flow. */
+  direction: rtl;
+  text-align: left;
+  unicode-bidi: plaintext;
 }
 .attach-orphan-list {
   max-height: 260px;

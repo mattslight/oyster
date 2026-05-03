@@ -101,7 +101,14 @@ export class SpaceService {
     // Cross-space conflict / same-space no-op check.
     const active = this.spaceStore.getActiveSourceByPath(resolved);
     if (active) {
-      if (active.space_id === spaceId) return active;
+      if (active.space_id === spaceId) {
+        // Re-attach to the same space is a no-op for the source row, but
+        // still backfill — pre-existing orphan sessions for this cwd may
+        // never have been swept (e.g. attached before the backfill behaviour
+        // existed). Idempotent, so safe to run on every retry.
+        this.sessionStore.backfillSourceForCwd(resolved, spaceId, active.id);
+        return active;
+      }
       const ownerName = this.spaceStore.getById(active.space_id)?.display_name ?? active.space_id;
       throw new Error(`Path is already attached to space "${ownerName}"`);
     }

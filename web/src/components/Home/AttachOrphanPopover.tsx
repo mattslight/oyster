@@ -55,7 +55,13 @@ export function AttachOrphanPopover({ path, anchorRect, spaces, onClose, onPickS
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (ref.current?.contains(e.target as Node)) return;
+      // Ignore mousedowns on the anchor button so the toggle-close branch
+      // in the parent runs cleanly — otherwise mousedown closes the popover
+      // before the button's onClick fires, and onClick reopens it.
+      const r = anchorRect;
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
+      onClose();
     }
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -66,7 +72,7 @@ export function AttachOrphanPopover({ path, anchorRect, spaces, onClose, onPickS
       window.removeEventListener("mousedown", handleClick);
       window.removeEventListener("keydown", handleKey);
     };
-  }, [onClose]);
+  }, [onClose, anchorRect]);
 
   const folderName = basename(path);
   const best = bestMatchSpace(folderName, spaces);
