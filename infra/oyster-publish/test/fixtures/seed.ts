@@ -15,10 +15,11 @@ CREATE TABLE users (
   tier          TEXT NOT NULL DEFAULT 'free'
 );
 CREATE TABLE sessions (
-  session_token TEXT PRIMARY KEY,
+  id            TEXT PRIMARY KEY,                  -- cookie value (mirrors production)
   user_id       TEXT NOT NULL REFERENCES users(id),
   created_at    INTEGER NOT NULL,
-  expires_at    INTEGER NOT NULL
+  expires_at    INTEGER NOT NULL,
+  revoked_at    INTEGER                            -- NULL while active
 );
 CREATE TABLE published_artifacts (
   share_token       TEXT    PRIMARY KEY,
@@ -71,7 +72,7 @@ export async function seedUser(opts: { id?: string; email?: string; tier?: strin
   const sessionToken = `sess_${crypto.randomUUID()}`;
   const expiresAt = now + 30 * 86400 * 1000;
   await env.DB.prepare(
-    "INSERT INTO sessions (session_token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
+    "INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
   ).bind(sessionToken, id, now, expiresAt).run();
 
   return { id, email, sessionToken };

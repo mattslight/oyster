@@ -256,15 +256,18 @@ export async function resolveSession(req: Request, env: Env): Promise<SessionUse
   if (!m) return null;
   const token = m[1];
 
+  // Production sessions schema (infra/auth-worker/migrations/0001_init.sql):
+  //   id TEXT PRIMARY KEY (the cookie value), user_id, created_at,
+  //   expires_at, revoked_at. Live-row predicate matches auth-worker exactly:
+  //   revoked_at IS NULL AND expires_at > now.
   const row = await env.DB.prepare(
-    `SELECT u.id AS id, u.email AS email, u.tier AS tier, s.expires_at AS expires_at
+    `SELECT u.id AS id, u.email AS email, u.tier AS tier
        FROM sessions s
        JOIN users u ON u.id = s.user_id
-      WHERE s.session_token = ?`
-  ).bind(token).first<{ id: string; email: string; tier: string; expires_at: number }>();
+      WHERE s.id = ? AND s.revoked_at IS NULL AND s.expires_at > ?`
+  ).bind(token, Date.now()).first<{ id: string; email: string; tier: string }>();
 
   if (!row) return null;
-  if (row.expires_at <= Date.now()) return null;
   return { id: row.id, email: row.email, tier: row.tier };
 }
 
