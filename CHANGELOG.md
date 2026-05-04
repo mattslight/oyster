@@ -12,6 +12,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **Set up Oyster is a checklist now.** One required item — set up your spaces — and three optional ones (publish your first artefact, connect another agent, import memories). The dock pill stops nagging once the required step is done; the optional items wait quietly in the popover for when you want them.
 - **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. ([#281](https://github.com/mattslight/oyster/issues/281))
 
 ### Fixed

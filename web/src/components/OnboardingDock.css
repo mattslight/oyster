@@ -31,33 +31,38 @@
   background: rgba(124, 107, 255, 0.3);
 }
 
-.onboarding-dock--done {
+/* Required step done — pill collapses to a glyph-only green check.
+   Optional items remain ticking off in the popover but the pill stops
+   drawing attention. */
+.onboarding-dock--ready {
   background: rgba(74, 222, 128, 0.12);
   border-color: rgba(74, 222, 128, 0.25);
-  /* Glyph-only pill — tighter squared-off padding since there's no label */
   padding: 5px 9px;
   gap: 0;
 }
 
-.onboarding-dock--done:hover {
+.onboarding-dock--ready:hover {
   background: rgba(74, 222, 128, 0.2);
 }
 
-.onboarding-dock--done .onboarding-dock-check {
+.onboarding-dock--ready .onboarding-dock-check {
   font-size: 11px;
 }
 
-.onboarding-dock-pulse {
+/* Pre-required-done indicator: amber dot that softly glows + winks (slower
+   and quieter than a scale-bounce) so "something still pending" carries
+   without competing with anything else in the chrome. */
+.onboarding-dock-progress {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #a597ff;
-  animation: onboarding-pulse 1.8s ease-in-out infinite;
+  background: #fbbf24;
+  animation: onboarding-glow 2.4s ease-in-out infinite;
 }
 
-@keyframes onboarding-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50%      { transform: scale(1.4); opacity: 0.4; }
+@keyframes onboarding-glow {
+  0%, 100% { opacity: 0.35; box-shadow: 0 0 3px rgba(251, 191, 36, 0.25); }
+  50%      { opacity: 1;    box-shadow: 0 0 9px rgba(251, 191, 36, 0.85); }
 }
 
 .onboarding-dock-check {
@@ -81,7 +86,7 @@
   background: rgba(20, 21, 40, 0.98);
   border: 1px solid rgba(124, 107, 255, 0.2);
   border-radius: 14px;
-  padding: 18px;
+  padding: 14px 16px 16px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -107,22 +112,138 @@
   transform: rotate(45deg);
 }
 
-.onboarding-progress {
+/* ------------------------------------------------------------------ */
+/* Checklist                                                           */
+/* ------------------------------------------------------------------ */
+
+.onboarding-checklist {
   display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
+  flex-direction: column;
 }
 
-.progress-dot {
-  flex: 1;
-  height: 3px;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.08);
-  transition: background 0.2s;
+.onboarding-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.onboarding-item:first-child { padding-top: 6px; }
+.onboarding-item:last-child  { border-bottom: none; padding-bottom: 6px; }
+
+.onboarding-item-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  margin-top: 1px;
+  font-weight: 700;
 }
 
-.progress-dot.active { background: #7c6bff; }
-.progress-dot.done   { background: #4ade80; }
+.onboarding-item-icon--required {
+  border: 1.5px solid rgba(251, 191, 36, 0.7);
+  background: rgba(251, 191, 36, 0.08);
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.3);
+}
+.onboarding-item-icon--optional {
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+}
+.onboarding-item-icon--done {
+  background: rgba(74, 222, 128, 0.18);
+  border: 1.5px solid rgba(74, 222, 128, 0.45);
+  color: #4ade80;
+}
+
+.onboarding-item-body { flex: 1; min-width: 0; }
+
+.onboarding-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.onboarding-item--done .onboarding-item-title {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.onboarding-item-tag {
+  display: inline-block;
+  font-size: 9.5px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  vertical-align: 1px;
+  font-weight: 500;
+}
+.onboarding-item-tag--required { color: #fbbf24; }
+.onboarding-item-tag--optional { color: #a597ff; }
+.onboarding-item-tag--done     { color: rgba(74, 222, 128, 0.7); }
+
+.onboarding-item-desc {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.onboarding-item-action {
+  margin-top: 9px;
+  padding: 5px 11px;
+  background: rgba(124, 107, 255, 0.22);
+  border: 1px solid rgba(124, 107, 255, 0.45);
+  border-radius: 7px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s;
+}
+.onboarding-item-action:hover {
+  background: rgba(124, 107, 255, 0.35);
+  border-color: rgba(124, 107, 255, 0.65);
+}
+
+.onboarding-summary {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12.5px;
+  padding: 14px 0 4px;
+}
+
+.onboarding-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #a597ff;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.onboarding-link:hover { color: #fff; }
+
+/* ------------------------------------------------------------------ */
+/* Sub-views (publish / mcp / memories)                                */
+/* ------------------------------------------------------------------ */
+
+.onboarding-back {
+  background: none;
+  border: none;
+  color: rgba(165, 151, 255, 0.85);
+  font-family: inherit;
+  font-size: 11.5px;
+  padding: 0 0 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.onboarding-back:hover { color: #fff; }
 
 /* Step content */
 
@@ -132,29 +253,11 @@
   gap: 4px;
 }
 
-.onboarding-step-header {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 11px;
-  color: #7c6bff;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
 .onboarding-step-title {
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 4px;
   letter-spacing: -0.01em;
-}
-
-.onboarding-step-optional {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  font-weight: 400;
-  color: rgba(232, 233, 240, 0.35);
-  letter-spacing: 0.04em;
-  margin-left: 4px;
 }
 
 .onboarding-step-desc {
@@ -164,19 +267,7 @@
   margin-bottom: 10px;
 }
 
-.onboarding-placeholder {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  color: rgba(232, 233, 240, 0.35);
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-
-/* Step 1 — client tabs */
+/* MCP — client tabs */
 
 .onboarding-client-tabs {
   display: inline-flex;
@@ -201,11 +292,7 @@
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
 }
-
-.onboarding-client-tab:hover {
-  color: #f0f0f5;
-}
-
+.onboarding-client-tab:hover { color: #f0f0f5; }
 .onboarding-client-tab.active {
   background: rgba(124, 107, 255, 0.25);
   color: #fff;
@@ -251,9 +338,7 @@
   height: 4px;
   width: 4px;
 }
-.onboarding-code-box pre::-webkit-scrollbar-track {
-  background: transparent;
-}
+.onboarding-code-box pre::-webkit-scrollbar-track { background: transparent; }
 .onboarding-code-box pre::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
@@ -280,12 +365,10 @@
   flex-shrink: 0;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-
 .onboarding-code-copy:hover {
   background: rgba(124, 107, 255, 0.3);
   color: #fff;
 }
-
 .onboarding-code-copy.copied {
   background: rgba(74, 222, 128, 0.15);
   border-color: rgba(74, 222, 128, 0.25);
@@ -313,67 +396,12 @@
   50% { opacity: 0.3; }
 }
 
-/* Step 2 — action log */
-
-.onboarding-action-log {
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-family: "Space Grotesk", -apple-system, sans-serif;
-  font-size: 12px;
-  color: rgba(232, 233, 240, 0.7);
-  max-height: 140px;
-  overflow-y: auto;
-  line-height: 1.7;
-  margin-bottom: 12px;
-}
-
-.onboarding-action-log--empty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: rgba(232, 233, 240, 0.35);
-}
-
-.onboarding-action-line {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.onboarding-action-tick {
-  color: #4ade80;
-  font-size: 9px;
-  flex-shrink: 0;
-}
-
-.onboarding-action-error {
-  color: #f87171;
-  font-size: 9px;
-  flex-shrink: 0;
-}
-
-.onboarding-trust-note {
-  background: rgba(74, 222, 128, 0.06);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 10px;
-  line-height: 1.5;
-}
-
 .onboarding-disclaimer {
   font-size: 10px;
   color: rgba(232, 233, 240, 0.35);
   text-align: center;
   margin-top: 10px;
   letter-spacing: 0.02em;
-}
-
-.onboarding-trust-note strong {
-  color: #4ade80;
-  font-weight: 500;
 }
 
 .onboarding-step-actions {
@@ -395,10 +423,8 @@
   cursor: pointer;
   transition: background 0.15s;
 }
-
-.onboarding-btn-primary:hover {
-  background: rgba(124, 107, 255, 0.3);
-}
+.onboarding-btn-primary:hover { background: rgba(124, 107, 255, 0.3); }
+.onboarding-btn-primary:disabled { opacity: 0.5; cursor: default; }
 
 .onboarding-btn-ghost {
   background: none;
@@ -411,13 +437,7 @@
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
-
 .onboarding-btn-ghost:hover {
   color: #f0f0f5;
   border-color: rgba(255, 255, 255, 0.15);
-}
-
-.onboarding-done-actions {
-  margin-top: 12px;
-  text-align: right;
 }

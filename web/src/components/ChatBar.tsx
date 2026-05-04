@@ -342,6 +342,23 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
   }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError]);
 
+  // Cross-component prompt trigger. Other surfaces (currently the onboarding
+  // dock's "Set up Oyster" button) dispatch `oyster:send-prompt` with a text
+  // payload to fire the same handleSend path as the hero CTA. Detail.text
+  // must be a non-empty string; we don't auto-focus the input or change the
+  // chat-expand state — handleSend manages all of that.
+  useEffect(() => {
+    function handler(e: Event) {
+      const detail = (e as CustomEvent<{ text?: string }>).detail;
+      const text = detail?.text;
+      if (typeof text === "string" && text.length > 0) {
+        handleSend(text);
+      }
+    }
+    window.addEventListener("oyster:send-prompt", handler);
+    return () => window.removeEventListener("oyster:send-prompt", handler);
+  }, [handleSend]);
+
   function handleCopyChat() {
     const text = messages
       .filter((m) => m.content)

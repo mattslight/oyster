@@ -52,60 +52,69 @@ const CLIENT_CONFIGS: Record<ClientKey, { hint: string; command: (mcpUrl: string
   },
 };
 
-const STORAGE_KEY = "oyster-onboarding-state";
+// v2: switched from a 3-step gated funnel (step1Complete / step2Complete /
+// step3Complete) to a 4-item checklist with one required item. Bumping the
+// key invalidates the old shape rather than migrating it — most criteria
+// re-derive on mount (userSpaceCount, MCP status), so a fresh state is
+// quickly populated to truth without bothering the user.
+const STORAGE_KEY = "oyster-onboarding-state-v2";
 
-type StepIndex = 1 | 2 | 3;
+type ItemKey = "spaces" | "publish" | "mcp" | "memories";
 
 interface OnboardingState {
-  step1Complete: boolean;
-  step2Complete: boolean;
-  step3Complete: boolean;
+  spacesComplete: boolean;
+  publishComplete: boolean;
+  mcpComplete: boolean;
+  memoriesComplete: boolean;
 }
 
 const defaultState: OnboardingState = {
-  step1Complete: false,
-  step2Complete: false,
-  step3Complete: false,
+  spacesComplete: false,
+  publishComplete: false,
+  mcpComplete: false,
+  memoriesComplete: false,
 };
 
-const ACTION_LOG_LIMIT = 50;
-
-interface ToolCall {
-  tool: string;
-  at: string;
-  isError: boolean;
+interface ChecklistItem {
+  key: ItemKey;
+  title: string;
+  required: boolean;
+  desc: string;
+  actionLabel: string;
 }
 
-// Tool names as they appear in SSE events are snake_case engineering
-// labels — useful for debugging, tedious as a status feed. Map to short
-// natural-language phrases. Unknown tools fall back to a humanised
-// version of the raw name.
-const TOOL_PHRASES: Record<string, string> = {
-  get_context: "Reading the Oyster playbook",
-  list_spaces: "Checking your spaces",
-  list_artifacts: "Looking at your artifacts",
-  onboard_space: "Creating a space",
-  set_space_summary: "Summarising a space",
-  scan_space: "Scanning for artifacts",
-  create_artifact: "Creating an artifact",
-  update_artifact: "Updating an artifact",
-  remove_artifact: "Removing an artifact",
-  read_artifact: "Reading an artifact",
-  open_artifact: "Opening an artifact",
-  reveal_artifact: "Opening on the surface",
-  gather_repo_context: "Reading a repo",
-  regenerate_icon: "Generating an icon",
-  remember: "Saving a memory",
-  recall: "Recalling a memory",
-  forget: "Forgetting a memory",
-  list_memories: "Checking your memories",
-};
-
-function humanizeTool(tool: string): string {
-  if (TOOL_PHRASES[tool]) return TOOL_PHRASES[tool];
-  const spaced = tool.replace(/_/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
+// Order matters: required first, then optionals in install-friction order
+// (publish = no install; MCP = config edit; memories = external AI roundtrip).
+const ITEMS: ChecklistItem[] = [
+  {
+    key: "spaces",
+    title: "Set up your spaces",
+    required: true,
+    desc: "Let Oyster scan your dev folders and group your work into spaces.",
+    actionLabel: "Set up Oyster",
+  },
+  {
+    key: "publish",
+    title: "Publish your first artefact",
+    required: false,
+    desc: "Make a thing in chat, click Publish — get a share URL.",
+    actionLabel: "Show me how",
+  },
+  {
+    key: "mcp",
+    title: "Connect another agent (MCP)",
+    required: false,
+    desc: "Drive Oyster from Claude Code, Cursor, VS Code or Windsurf.",
+    actionLabel: "Show me how",
+  },
+  {
+    key: "memories",
+    title: "Import memories",
+    required: false,
+    desc: "Bring memories from ChatGPT or Claude into Oyster.",
+    actionLabel: "Show me how",
+  },
+];
 
 function loadState(): OnboardingState {
   try {
@@ -123,31 +132,34 @@ function saveState(state: OnboardingState) {
   } catch { /* ignore quota errors */ }
 }
 
-function activeStep(state: OnboardingState): StepIndex {
-  if (!state.step1Complete) return 1;
-  if (!state.step2Complete) return 2;
-  return 3;
-}
+const COMPLETE_KEY: Record<ItemKey, keyof OnboardingState> = {
+  spaces: "spacesComplete",
+  publish: "publishComplete",
+  mcp: "mcpComplete",
+  memories: "memoriesComplete",
+};
 
-function completedCount(state: OnboardingState): number {
-  return [state.step1Complete, state.step2Complete, state.step3Complete].filter(Boolean).length;
+function isComplete(state: OnboardingState, key: ItemKey): boolean {
+  return state[COMPLETE_KEY[key]];
 }
 
 function allDone(state: OnboardingState): boolean {
-  return state.step1Complete && state.step2Complete && state.step3Complete;
+  return state.spacesComplete && state.publishComplete && state.mcpComplete && state.memoriesComplete;
 }
 
 interface OnboardingDockProps {
-  /** User-defined spaces (from App.tsx). We only look at the count of
-   *  non-system spaces as the completion signal for step 2. */
+  /** Count of user-defined spaces (excludes home / __all__ / __archived__).
+   *  Drives the bidirectional auto-tick on the required Spaces item: any
+   *  space exists → ticked; deletes back to zero → un-ticked. */
   userSpaceCount?: number;
 }
+
+type View = "checklist" | { kind: "step"; key: Exclude<ItemKey, "spaces"> };
 
 export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {}) {
   const [state, setState] = useState<OnboardingState>(loadState);
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [viewingStep, setViewingStep] = useState<StepIndex>(() => activeStep(loadState()));
-  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [view, setView] = useState<View>("checklist");
   const dockRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -162,61 +174,28 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
       .then((data) => {
         if (cancelled || !data) return;
         if (data.connected_clients > 0) {
-          setState((s) => (s.step1Complete ? s : { ...s, step1Complete: true }));
+          setState((s) => (s.mcpComplete ? s : { ...s, mcpComplete: true }));
         }
       })
       .catch(() => { /* server may not be up yet */ });
     return () => { cancelled = true; };
   }, []);
 
-  // Listen for MCP connect + tool-call SSE events via the shared subscription
-  // (App.tsx also subscribes) so we only hold one EventSource per tab.
+  // Listen for MCP connect events via the shared SSE subscription (App.tsx
+  // also subscribes) so we only hold one EventSource per tab.
   useEffect(() => subscribeUiEvents((event) => {
     if (event.command === "mcp_client_connected") {
-      setState((s) => (s.step1Complete ? s : { ...s, step1Complete: true }));
-    }
-    if (event.command === "mcp_tool_called") {
-      const payload = event.payload as { tool?: string; at?: string; is_error?: boolean } | undefined;
-      const call: ToolCall = {
-        tool: payload?.tool ?? "unknown",
-        at: payload?.at ?? new Date().toISOString(),
-        isError: Boolean(payload?.is_error),
-      };
-      setToolCalls((prev) => {
-        const next = [...prev, call];
-        return next.length > ACTION_LOG_LIMIT ? next.slice(-ACTION_LOG_LIMIT) : next;
-      });
+      setState((s) => (s.mcpComplete ? s : { ...s, mcpComplete: true }));
     }
   }), []);
 
-  // Step 2 completion rule: at least one user-created space exists.
-  // That's the real signal the agent did useful work — works identically
-  // for external MCP clients (Claude Code, Cursor, ...) and for Oyster's
-  // own chat bar. We deliberately do NOT back-fill step 1 here: internal
-  // chatbar users haven't connected an MCP client and should still see
-  // that step offered. Step 1 gets marked complete only via an actual
-  // MCP connection event (see /api/mcp/status + mcp_client_connected).
+  // Spaces auto-tick: bidirectional. Any user-created space → ticked;
+  // deleting back to zero → un-ticked. Honest reflection of *current* setup
+  // state, not a high-water-mark from a past session.
   useEffect(() => {
-    if (userSpaceCount <= 0) return;
-    setState((s) => (s.step2Complete ? s : { ...s, step2Complete: true }));
+    const shouldBe = userSpaceCount > 0;
+    setState((s) => (s.spacesComplete === shouldBe ? s : { ...s, spacesComplete: shouldBe }));
   }, [userSpaceCount]);
-
-  // Auto-advance the popover to the next still-incomplete step whenever
-  // the currently-viewed step flips complete. Covers every path: manual
-  // "I've connected it" / "I'm done" clicks, MCP SSE events, and the
-  // userSpaceCount side effect. Keeping this in one place avoids the
-  // earlier bug where step-1 handlers jumped to step 2 unconditionally,
-  // even when step 2 was already done (should've gone to step 3).
-  useEffect(() => {
-    setViewingStep((v) => {
-      const viewingDone =
-        (v === 1 && state.step1Complete) ||
-        (v === 2 && state.step2Complete) ||
-        (v === 3 && state.step3Complete);
-      if (viewingDone && !allDone(state)) return activeStep(state);
-      return v;
-    });
-  }, [state.step1Complete, state.step2Complete, state.step3Complete]);
 
   // Click outside the popover closes it
   useEffect(() => {
@@ -239,65 +218,49 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
     };
   }, [popoverOpen]);
 
-  const openPopover = useCallback(() => {
-    setViewingStep(activeStep(state));
+  const togglePopover = useCallback(() => {
+    setView("checklist");
     setPopoverOpen((v) => !v);
-  }, [state]);
-
-  // `markStepN` just flips the state flag — the auto-advance effect above
-  // moves `viewingStep` to the next incomplete step.
-  const markStep1 = useCallback(() => {
-    setState((s) => ({ ...s, step1Complete: true }));
   }, []);
 
-  const markStep2 = useCallback(() => {
-    setState((s) => ({ ...s, step2Complete: true }));
+  const markDone = useCallback((key: ItemKey) => {
+    setState((s) => ({ ...s, [COMPLETE_KEY[key]]: true }));
   }, []);
 
-  const markStep3 = useCallback(() => {
-    setState((s) => ({ ...s, step3Complete: true }));
-    setPopoverOpen(false);
-  }, []);
-
-  const skipStep3 = useCallback(() => {
-    setState((s) => ({ ...s, step3Complete: true }));
+  const handleSetUpSpaces = useCallback(() => {
+    // Send the canonical setup prompt to the chat. ChatBar listens for this
+    // event and routes through the same handleSend path as its hero
+    // "Set up Oyster" button.
+    window.dispatchEvent(
+      new CustomEvent("oyster:send-prompt", { detail: { text: "Set up Oyster" } }),
+    );
     setPopoverOpen(false);
   }, []);
 
   const resetAll = useCallback(() => {
-    // Mirror the [userSpaceCount] effect's rule: if a user space already
-    // exists, step 2 counts as done. Step 1 (MCP connect) does NOT get
-    // auto-marked — it needs an actual MCP connection event regardless of
-    // what other setup has happened. Without this carry-forward, the
-    // reset would strand the user on step 2 forever (the effect never
-    // re-fires because `userSpaceCount` doesn't change).
-    const hasSpaces = userSpaceCount > 0;
-    setState({
-      ...defaultState,
-      step2Complete: hasSpaces,
-    });
-    setToolCalls([]);
-    setViewingStep(1);
+    // Spaces auto-derives from userSpaceCount on the next render — start
+    // everything else fresh.
+    setState({ ...defaultState });
+    setView("checklist");
     setPopoverOpen(true);
-  }, [userSpaceCount]);
+  }, []);
 
-  const count = completedCount(state);
   const done = allDone(state);
+  const requiredDone = state.spacesComplete;
 
   return (
     <>
       <button
         ref={dockRef}
-        className={`onboarding-dock${done ? " onboarding-dock--done" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
-        onClick={openPopover}
+        className={`onboarding-dock${requiredDone ? " onboarding-dock--ready" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
+        onClick={togglePopover}
         aria-expanded={popoverOpen}
-        aria-label={done ? "Oyster setup complete" : `Oyster setup — ${count} of 3`}
+        aria-label={requiredDone ? "Oyster setup checklist" : "Set up Oyster"}
       >
-        {!done && count === 0 && <span className="onboarding-dock-pulse" />}
-        {!done && count > 0 && <span className="onboarding-dock-check">✓</span>}
-        {done && <span className="onboarding-dock-check">✓</span>}
-        {!done && (
-          <span className="onboarding-dock-label">{`Set up Oyster · ${count}/3`}</span>
+        {!requiredDone && <span className="onboarding-dock-progress" />}
+        {requiredDone && <span className="onboarding-dock-check">✓</span>}
+        {!requiredDone && (
+          <span className="onboarding-dock-label">Set up Oyster</span>
         )}
       </button>
 
@@ -305,23 +268,33 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
         <div ref={popoverRef} className="onboarding-popover" role="dialog" aria-label="Oyster setup">
           <div className="onboarding-popover-arrow" />
 
-          {done ? (
-            <DoneSummary onReset={resetAll} />
-          ) : (
-            <>
-              <div className="onboarding-progress">
-                <div className={`progress-dot${state.step1Complete ? " done" : viewingStep === 1 ? " active" : ""}`} />
-                <div className={`progress-dot${state.step2Complete ? " done" : viewingStep === 2 ? " active" : ""}`} />
-                <div className={`progress-dot${state.step3Complete ? " done" : viewingStep === 3 ? " active" : ""}`} />
-              </div>
-
-              {viewingStep === 1 && <Step1Connect onComplete={markStep1} />}
-              {viewingStep === 2 && <Step2AgentWork onComplete={markStep2} toolCalls={toolCalls} />}
-              {viewingStep === 3 && (
-                <Step3Memories onComplete={markStep3} onSkip={skipStep3} />
-              )}
-            </>
-          )}
+          {view === "checklist" ? (
+            <Checklist
+              state={state}
+              requiredDone={requiredDone}
+              done={done}
+              onSetUpSpaces={handleSetUpSpaces}
+              onShowStep={(key) => setView({ kind: "step", key })}
+              onReset={resetAll}
+            />
+          ) : view.kind === "step" && view.key === "publish" ? (
+            <PublishGuide
+              onBack={() => setView("checklist")}
+              onMarkDone={() => { markDone("publish"); setView("checklist"); }}
+              done={state.publishComplete}
+            />
+          ) : view.kind === "step" && view.key === "mcp" ? (
+            <McpConnect
+              onBack={() => setView("checklist")}
+              onMarkDone={() => { markDone("mcp"); setView("checklist"); }}
+              done={state.mcpComplete}
+            />
+          ) : view.kind === "step" && view.key === "memories" ? (
+            <MemoriesImport
+              onBack={() => setView("checklist")}
+              onMarkDone={() => { markDone("memories"); setView("checklist"); }}
+            />
+          ) : null}
         </div>
       )}
     </>
@@ -329,12 +302,110 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
 }
 
 /* ------------------------------------------------------------------ */
-/* Step content is placeholder for A1 — real implementations land in   */
-/* stories A2 (connect), A3 (agent work), A4 (memories). Each uses a   */
-/* manual "done" button here so the flow is navigable end-to-end.      */
+/* Checklist view                                                      */
 /* ------------------------------------------------------------------ */
 
-function Step1Connect({ onComplete }: { onComplete: () => void }) {
+interface ChecklistProps {
+  state: OnboardingState;
+  requiredDone: boolean;
+  done: boolean;
+  onSetUpSpaces: () => void;
+  onShowStep: (key: Exclude<ItemKey, "spaces">) => void;
+  onReset: () => void;
+}
+
+function Checklist({ state, requiredDone, done, onSetUpSpaces, onShowStep, onReset }: ChecklistProps) {
+  return (
+    <div className="onboarding-checklist">
+      {ITEMS.map((item) => {
+        const itemDone = isComplete(state, item.key);
+        // Required: show CTA until done. Optional: show CTA only once the
+        // required step is done. Pre-required-done, optionals render as
+        // quiet preview rows so nothing competes with the one required step.
+        const showAction = item.required ? !itemDone : (requiredDone && !itemDone);
+        const tag: "required" | "optional" | "done" = itemDone
+          ? "done"
+          : item.required
+            ? "required"
+            : "optional";
+        return (
+          <div key={item.key} className={`onboarding-item${itemDone ? " onboarding-item--done" : ""}`}>
+            <span className={`onboarding-item-icon onboarding-item-icon--${tag}`}>
+              {itemDone && "✓"}
+            </span>
+            <div className="onboarding-item-body">
+              <div className="onboarding-item-title">
+                {item.title}
+                <span className={`onboarding-item-tag onboarding-item-tag--${tag}`}>
+                  {tag}
+                </span>
+              </div>
+              {!itemDone && <div className="onboarding-item-desc">{item.desc}</div>}
+              {showAction && (
+                <button
+                  type="button"
+                  className="onboarding-item-action"
+                  onClick={() => {
+                    if (item.key === "spaces") onSetUpSpaces();
+                    else onShowStep(item.key);
+                  }}
+                >
+                  {item.actionLabel}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {done && (
+        <div className="onboarding-summary">
+          You're all set.{" "}
+          <button type="button" className="onboarding-link" onClick={onReset}>Reset</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sub-views — opened from "Show me how" on the optional items.       */
+/* Each renders standalone content + a Back link to the checklist.    */
+/* ------------------------------------------------------------------ */
+
+function BackBar({ onBack }: { onBack: () => void }) {
+  return (
+    <button type="button" className="onboarding-back" onClick={onBack}>
+      ← Back to checklist
+    </button>
+  );
+}
+
+function PublishGuide({ onBack, onMarkDone, done }: { onBack: () => void; onMarkDone: () => void; done: boolean }) {
+  return (
+    <div className="onboarding-step">
+      <BackBar onBack={onBack} />
+      <div className="onboarding-step-title">Publish your first artefact</div>
+      <div className="onboarding-step-desc">
+        Make a thing in chat — a deck, a doc, a mockup. It lands as a tile
+        on the surface. Open it, click Publish, pick an access mode (open,
+        password or sign-in), and you'll get a share URL on oyster.to.
+      </div>
+      <div className="onboarding-disclaimer">
+        Free includes 5 published artefacts; Oyster Pro lifts the cap.
+      </div>
+      <div className="onboarding-step-actions">
+        {done ? (
+          <button className="onboarding-btn-ghost" onClick={onBack}>Done</button>
+        ) : (
+          <button className="onboarding-btn-ghost" onClick={onMarkDone}>I've done this</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function McpConnect({ onBack, onMarkDone, done }: { onBack: () => void; onMarkDone: () => void; done: boolean }) {
   const [client, setClient] = useState<ClientKey>("claude");
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
@@ -342,8 +413,6 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
   const config = CLIENT_CONFIGS[client];
   const command = useMemo(() => config.command(mcpUrl), [config, mcpUrl]);
 
-  // Clear any pending "reset copied" timer if the user advances (unmount)
-  // or re-copies before the 1.8s window elapses.
   useEffect(() => () => {
     if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
   }, []);
@@ -358,14 +427,10 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
         copiedTimerRef.current = null;
       }, 1800);
     } catch {
-      // Clipboard access can be denied (permissions, insecure context in
-      // some browsers). Leave `copied` false so the button still shows "copy"
-      // — the command is still visible in the code box for manual copy.
+      // Clipboard blocked; the command is still visible in the code box.
     }
   }, [command]);
 
-  // Reset the copied state when the user switches tabs so the button is
-  // truthful about whether the *currently visible* command is in the clipboard.
   const switchClient = useCallback((next: ClientKey) => {
     setClient(next);
     setCopied(false);
@@ -373,8 +438,9 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
 
   return (
     <div className="onboarding-step">
-      <div className="onboarding-step-title">Connect Oyster to your agent</div>
-      <div className="onboarding-step-desc">Run it once — your agent takes it from there.</div>
+      <BackBar onBack={onBack} />
+      <div className="onboarding-step-title">Connect another agent</div>
+      <div className="onboarding-step-desc">Run this once — your agent takes it from there.</div>
 
       <div className="onboarding-client-tabs">
         {CLIENT_TABS.map((t) => (
@@ -405,92 +471,22 @@ function Step1Connect({ onComplete }: { onComplete: () => void }) {
       </div>
 
       <div className="onboarding-step-actions">
-        <button className="onboarding-btn-ghost" onClick={onComplete}>
-          I've connected it
-        </button>
+        {done ? (
+          <button className="onboarding-btn-ghost" onClick={onBack}>Done</button>
+        ) : (
+          <button className="onboarding-btn-ghost" onClick={onMarkDone}>I've connected it</button>
+        )}
       </div>
     </div>
   );
 }
 
-// One short prompt. The agent reads get_context from the oyster MCP to
-// learn the rest (how to discover the dev folder, what tools to call,
-// etc.). Keeping this minimal pushes the intelligence where it belongs:
-// into the server's self-description, not into the user's head.
-const AGENT_PROMPT = "Set up Oyster for me. Call the oyster MCP's get_context tool first — it explains the rest.";
-
-function Step2AgentWork({ onComplete, toolCalls }: { onComplete: () => void; toolCalls: ToolCall[] }) {
-  const [copied, setCopied] = useState(false);
-  const copiedTimerRef = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
-  }, []);
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(AGENT_PROMPT);
-      setCopied(true);
-      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
-      copiedTimerRef.current = window.setTimeout(() => {
-        setCopied(false);
-        copiedTimerRef.current = null;
-      }, 1800);
-    } catch {
-      // Clipboard blocked — prompt is still visible in the code box.
-    }
-  }, []);
-
-  const hasActivity = toolCalls.length > 0;
-
-  return (
-    <div className="onboarding-step">
-      <div className="onboarding-step-title">Ask your agent to set things up</div>
-      <div className="onboarding-step-desc">Paste this in your agent. Watch the desktop fill.</div>
-
-      <div className="onboarding-code-box">
-        <pre><code>{AGENT_PROMPT}</code></pre>
-        <button
-          className={`onboarding-code-copy${copied ? " copied" : ""}`}
-          onClick={handleCopy}
-        >
-          {copied ? "copied" : "copy"}
-        </button>
-      </div>
-
-      {hasActivity ? (
-        <div className="onboarding-action-log">
-          {toolCalls.slice(-10).map((call, i) => (
-            <div key={`${call.at}-${i}`} className="onboarding-action-line">
-              <span className={call.isError ? "onboarding-action-error" : "onboarding-action-tick"}>
-                {call.isError ? "✗" : "✓"}
-              </span>
-              <span>{humanizeTool(call.tool)}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="onboarding-action-log onboarding-action-log--empty">
-          <span className="onboarding-waiting-dot" />
-          Watching for your agent's activity…
-        </div>
-      )}
-
-      <div className="onboarding-step-actions">
-        <button className="onboarding-btn-ghost" onClick={onComplete}>
-          I'm done with this step
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Step3Memories({
-  onComplete,
-  onSkip,
+function MemoriesImport({
+  onBack,
+  onMarkDone,
 }: {
-  onComplete: () => void;
-  onSkip: () => void;
+  onBack: () => void;
+  onMarkDone: () => void;
 }) {
   // a = prompt ready to copy; b = copied, waiting for user to paste-in-AI
   // then paste the response into Oyster's chat.
@@ -527,9 +523,8 @@ function Step3Memories({
       await navigator.clipboard.writeText(prompt);
       setSub("b");
     } catch {
-      // Clipboard blocked (permissions / insecure context). Keep the user
-      // on sub-step "a" so the prompt is still visible to copy manually —
-      // advancing would land them on a misleading \"Copied\" screen.
+      // Clipboard blocked — keep the user on sub-step "a" so the prompt is
+      // still visible to copy manually.
     }
   }, [prompt]);
 
@@ -542,12 +537,13 @@ function Step3Memories({
   if (sub === "b") {
     return (
       <div className="onboarding-step">
+        <BackBar onBack={onBack} />
         <div className="onboarding-step-title">Copied</div>
         <div className="onboarding-step-desc">
           Paste into your Chat AI. Paste the response into Oyster's chat ↓
         </div>
         <div className="onboarding-step-actions">
-          <button className="onboarding-btn-primary" style={{ flex: 1 }} onClick={onComplete}>
+          <button className="onboarding-btn-primary" style={{ flex: 1 }} onClick={onMarkDone}>
             Done
           </button>
           <button className="onboarding-btn-ghost" onClick={() => setSub("a")}>Back</button>
@@ -559,9 +555,8 @@ function Step3Memories({
 
   return (
     <div className="onboarding-step">
-      <div className="onboarding-step-title">
-        Bring in your memories <span className="onboarding-step-optional">· optional</span>
-      </div>
+      <BackBar onBack={onBack} />
+      <div className="onboarding-step-title">Import memories</div>
       <div className="onboarding-step-desc">Copy this prompt and give it to your Chat AI.</div>
 
       <div className="onboarding-code-box">
@@ -593,28 +588,10 @@ function Step3Memories({
             Copy
           </button>
         )}
-        <button className="onboarding-btn-ghost" onClick={onSkip}>Skip</button>
+        <button className="onboarding-btn-ghost" onClick={onMarkDone}>Skip</button>
       </div>
 
       <div className="onboarding-disclaimer">Everything stays on your machine.</div>
-    </div>
-  );
-}
-
-// Rendered when the popover opens after all three steps are complete.
-// Keeps the pill's truthful "done" state honest — summary, not a dangling CTA.
-function DoneSummary({ onReset }: { onReset: () => void }) {
-  return (
-    <div className="onboarding-step">
-      <div className="onboarding-step-title">You're all set</div>
-      <div className="onboarding-step-desc">
-        Oyster's ready. Import-from-AI lives on the desktop if you want to revisit.
-      </div>
-      <div className="onboarding-step-actions">
-        <button className="onboarding-btn-ghost" onClick={onReset}>
-          Reset setup
-        </button>
-      </div>
     </div>
   );
 }
