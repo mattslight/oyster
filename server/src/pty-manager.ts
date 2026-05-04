@@ -32,6 +32,7 @@ export function spawnSession(
   env: Record<string, string>,
 ) {
   if (!ptyAvailable) return;
+  if (proc) return proc;
 
   console.log(`Spawning ${shell} in ${cwd}`);
   const pty = ptyModule.default ?? ptyModule;
@@ -57,6 +58,8 @@ export function spawnSession(
 
   proc.onExit(({ exitCode }: { exitCode: number }) => {
     console.log(`Session exited with code ${exitCode}`);
+    proc = null;
+    scrollback = "";
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) {
         client.send("\r\n\x1b[90m[session ended]\x1b[0m\r\n");
@@ -67,7 +70,10 @@ export function spawnSession(
   return proc;
 }
 
-export function attachWebSocket(httpServer: Server) {
+export function attachWebSocket(
+  httpServer: Server,
+  spawnParams?: { shell: string; shellArgs: string[]; cwd: string; env: Record<string, string> },
+) {
   const wss = new WebSocketServer({ server: httpServer });
 
   wss.on("connection", (ws: WebSocket) => {
@@ -78,6 +84,14 @@ export function attachWebSocket(httpServer: Server) {
       ws.send("\r\n\x1b[90m[terminal not available — node-pty not installed]\x1b[0m\r\n");
       ws.on("close", () => { clients.delete(ws); });
       return;
+    }
+
+    // Lazy-spawn the PTY shell on first connection. Spawning at boot doubled
+    // startup time (~11s) because two opencode-ai processes initialised in
+    // parallel and competed for CPU. The terminal window is rarely opened —
+    // most users never trigger this. See #385.
+    if (spawnParams && !proc) {
+      spawnSession(spawnParams.shell, spawnParams.shellArgs, spawnParams.cwd, spawnParams.env);
     }
 
     // Replay scrollback so reconnecting clients see current state

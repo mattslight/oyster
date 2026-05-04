@@ -19,6 +19,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **Faster startup.** Chat is usable in ~1.5s on cold boot (was ~14s). The terminal-window backend now spawns on demand instead of at launch, so two heavyweight processes no longer fight for CPU during init. ([#385](https://github.com/mattslight/oyster/issues/385))
 - **"Set up Oyster" no longer ignores early clicks.** If you click the prompt before the chat has finished booting, the click is now queued and fires automatically the moment the session is ready — instead of silently doing nothing.
 - **Setup pill no longer reads as "done" while optionals remain.** Once you set up your spaces (the required step), the pill now says *Continue setup* with a green check — invitation, not full stop. It only collapses to the silent green badge when every optional is also ticked or skipped.
 - **Clicking an artefact in the session inspector** now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.

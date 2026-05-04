@@ -55,9 +55,12 @@ import {
 } from "./opencode-manager.js";
 import { attachChatEventClient } from "./opencode-events.js";
 import { sweepOrphanOpenCodeProcesses } from "./opencode-orphan-sweep.js";
-import { spawnSession, attachWebSocket } from "./pty-manager.js";
+import { attachWebSocket } from "./pty-manager.js";
 import { SqliteFtsMemoryProvider } from "./memory-store.js";
 import { AuthService } from "./auth-service.js";
+import { bootMark, bootTime, bootTimeAsync } from "./boot-timer.js";
+
+bootMark("imports loaded");
 
 // ── Config ──
 
@@ -209,10 +212,10 @@ function bootstrapUserland() {
 }
 
 // ── Auto-backup userland before bootstrap/upgrade and before touching the DB ──
-runStartupBackup(OYSTER_HOME);
+bootTime("runStartupBackup", () => runStartupBackup(OYSTER_HOME));
 setImportStatePath(OYSTER_HOME);
 
-bootstrapUserland();
+bootTime("bootstrapUserland", () => bootstrapUserland());
 
 // ── Clean environment (no OpenAI key leak to subprocesses) ──
 
@@ -224,7 +227,7 @@ delete cleanEnv["OPENAI_API_KEY"];
 
 // ── Artifact store ──
 
-const db = initDb(DB_DIR);
+const db = bootTime("initDb (migrations)", () => initDb(DB_DIR));
 const store = new SqliteArtifactStore(db);
 const spaceStore = new SqliteSpaceStore(db);
 const sessionStore = new SqliteSessionStore(db);
@@ -240,7 +243,7 @@ const artifactService = new ArtifactService(store, WORKER_BASE, OYSTER_HOME, spa
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
-await memoryProvider.init();
+await bootTimeAsync("memoryProvider.init", () => memoryProvider.init());
 
 // Auth bridge to oyster.to/auth/*. Reads ~/Oyster/config/auth.json on
 // startup so a previously-signed-in user is recognised across restarts.
@@ -285,7 +288,11 @@ const publishService = createPublishService({
 const iconGenerator = new IconGenerator(updateGeneratedArtifact);
 const pendingReveals = new Set<string>();
 
-spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
+// PTY shell is lazy-spawned on first WebSocket connection (i.e. when the
+// user opens the terminal window). Spawning eagerly here doubled boot time
+// because two opencode-ai processes competed for CPU during init. See #385.
+
+bootMark("subsystems init done (artifactService, spaceService, authService, publishService, iconGenerator)");
 
 // OpenCode spawn is deferred until after port resolution (see below)
 // Scan every location where app bundles can live after #207:
@@ -293,33 +300,35 @@ spawnSession(SHELL, SHELL_ARGS, WORKSPACE, cleanEnv);
 //   SPACES_DIR/<space>/    — AI-generated apps owned by a space
 //   OYSTER_HOME            — anything still at the root (legacy / newly-generated
 //                            before the agent's CWD gets re-pointed in a follow-up)
-scanExistingArtifacts(APPS_DIR, iconGenerator);
-if (existsSync(SPACES_DIR)) {
-  for (const spaceEntry of readdirSync(SPACES_DIR)) {
-    const spaceDir = join(SPACES_DIR, spaceEntry);
-    try {
-      // manifestOnly: true — space folders contain organisational
-      // subfolders (invoices/, research/) with many single-file artifacts.
-      // The fallback scan would misregister each subfolder as a bogus
-      // gen:<folder> bundle; only manifest-based AI-generated apps
-      // should be picked up here.
-      if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, iconGenerator, { manifestOnly: true });
-    } catch { /* skip unreadable */ }
+bootTime("scanExistingArtifacts (apps + spaces + home)", () => {
+  scanExistingArtifacts(APPS_DIR, iconGenerator);
+  if (existsSync(SPACES_DIR)) {
+    for (const spaceEntry of readdirSync(SPACES_DIR)) {
+      const spaceDir = join(SPACES_DIR, spaceEntry);
+      try {
+        // manifestOnly: true — space folders contain organisational
+        // subfolders (invoices/, research/) with many single-file artifacts.
+        // The fallback scan would misregister each subfolder as a bogus
+        // gen:<folder> bundle; only manifest-based AI-generated apps
+        // should be picked up here.
+        if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, iconGenerator, { manifestOnly: true });
+      } catch { /* skip unreadable */ }
+    }
   }
-}
-scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
+  scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
+});
 
 // Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path).
 // Load the archived-paths set once and pass it through; otherwise every
 // reconcile call would re-run the same SQL + JSON.parse over every archived row.
-{
+bootTime("reconcileGeneratedArtifacts", () => {
   const archivedPaths = artifactService.getArchivedFilePaths();
   for (const entry of getGeneratedArtifactEntries()) {
     if (!entry.builtin && entry.filePath && entry.status === "ready") {
       artifactService.reconcileGeneratedArtifact(entry, entry.filePath, USERLAND_DIR, archivedPaths);
     }
   }
-}
+});
 
 startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
   if (!builtin) {
@@ -598,7 +607,7 @@ function findPort(preferred: number, maxAttempts = 10): Promise<number> {
   });
 }
 
-const port = await findPort(PREFERRED_PORT);
+const port = await bootTimeAsync("findPort", () => findPort(PREFERRED_PORT));
 
 // Write OpenCode config with the actual port so MCP URL is always correct.
 // ?internal=1 lets the /mcp handler distinguish OpenCode's own traffic from
@@ -641,10 +650,13 @@ try {
 
 writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode, null, 2) + "\n");
 
+bootMark("opencode config written, about to listen");
+
 const httpServer = createServer(handleHttpRequest);
-attachWebSocket(httpServer);
+attachWebSocket(httpServer, { shell: SHELL, shellArgs: SHELL_ARGS, cwd: WORKSPACE, env: cleanEnv });
 
 httpServer.listen(port, "127.0.0.1", () => {
+  bootMark(`httpServer listening on ${port}`);
   console.log(`Oyster server listening on http://127.0.0.1:${port}`);
   console.log(`  WebSocket: ws://127.0.0.1:${port}`);
   console.log(`  API:       http://127.0.0.1:${port}/api/artifacts`);
