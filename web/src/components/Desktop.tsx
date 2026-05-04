@@ -286,24 +286,42 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
               <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
               {!isArchivedView && !artifactCtx.artifact.builtin && !artifactCtx.artifact.plugin && artifactCtx.artifact.status !== "generating" && onArtifactPublish && (
-                <button
-                  className="space-ctx-item"
-                  onClick={async () => {
-                    const a = artifactCtx.artifact;
-                    setArtifactCtx(null);
-                    // Already published → unpublish directly. Mode / password
-                    // changes are reachable via /p <name>, which re-opens the
-                    // picker on a live publication.
-                    if (a.publication?.unpublishedAt === null) {
-                      try { await unpublishArtifact(a.id); }
-                      catch (err) { setAlertState({ open: true, title: "Unpublish failed", body: (err as Error).message }); }
-                    } else {
+                artifactCtx.artifact.publication?.unpublishedAt === null ? (
+                  <>
+                    <button
+                      className="space-ctx-item"
+                      onClick={() => {
+                        const a = artifactCtx.artifact;
+                        setArtifactCtx(null);
+                        onArtifactPublish(a);
+                      }}
+                    >
+                      Edit share…
+                    </button>
+                    <button
+                      className="space-ctx-item"
+                      onClick={async () => {
+                        const a = artifactCtx.artifact;
+                        setArtifactCtx(null);
+                        try { await unpublishArtifact(a.id); }
+                        catch (err) { setAlertState({ open: true, title: "Unpublish failed", body: (err as Error).message }); }
+                      }}
+                    >
+                      Unpublish
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="space-ctx-item"
+                    onClick={() => {
+                      const a = artifactCtx.artifact;
+                      setArtifactCtx(null);
                       onArtifactPublish(a);
-                    }
-                  }}
-                >
-                  {artifactCtx.artifact.publication?.unpublishedAt === null ? "Unpublish" : "Publish…"}
-                </button>
+                    }}
+                  >
+                    Publish…
+                  </button>
+                )
               )}
               <div className="space-ctx-sep" />
               {artifactCtx.artifact.plugin ? (
