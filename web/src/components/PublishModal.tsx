@@ -24,6 +24,7 @@ export function PublishModal({ artifact, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [confirmUnpublish, setConfirmUnpublish] = useState(false);
 
   // Reset internal state when the artefact changes (modal reopens on a different one).
@@ -39,6 +40,26 @@ export function PublishModal({ artifact, onClose }: Props) {
   const publication = artifact?.publication?.unpublishedAt === null ? artifact.publication : null;
   const isPublished = !!publication;
   const isSigninMode = publication?.shareMode === "signin";
+
+  useEffect(() => {
+    if (!showQr || !publication?.shareUrl) {
+      setQrSvg(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { default: qrcode } = await import("qrcode-generator");
+      if (cancelled) return;
+      // type 0 = auto type-number, 'M' = medium error correction.
+      const q = qrcode(0, "M");
+      q.addData(publication.shareUrl);
+      q.make();
+      // size:4 = 4-pixel module size; margin:0 = no quiet-zone in the SVG (we
+      // pad with the surrounding container).
+      setQrSvg(q.createSvgTag({ scalable: true, margin: 0 }));
+    })();
+    return () => { cancelled = true; };
+  }, [showQr, publication?.shareUrl]);
 
   // When the modal opens on a published artefact, sync the picker to the current mode.
   useEffect(() => {
@@ -172,7 +193,24 @@ export function PublishModal({ artifact, onClose }: Props) {
                   <Link2 size={14} strokeWidth={2} />
                 </button>
               </div>
-              {/* QR canvas mounts in T13 — placeholder div for now */}
+              {showQr && qrSvg && (
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: "flex",
+                    justifyContent: "center",
+                    background: "#fff",
+                    borderRadius: 6,
+                    padding: 12,
+                  }}
+                  dangerouslySetInnerHTML={{ __html: qrSvg }}
+                />
+              )}
+              {showQr && !qrSvg && (
+                <div style={{ marginTop: 14, textAlign: "center", fontSize: 11, color: "#64748b" }}>
+                  Generating QR…
+                </div>
+              )}
             </div>
             <div className="publish-modal-meta">
               Live · published {publication.publishedAt
