@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
 import type { SessionState } from "../../data/sessions-api";
-import type { Space } from "../../../../shared/types";
+import type { Artifact, Space } from "../../../../shared/types";
 import { useSessions } from "../../hooks/useSessions";
 import { useMemories } from "../../hooks/useMemories";
 import { useSpaceSources } from "../../hooks/useSpaceSources";
@@ -48,13 +48,19 @@ interface Props {
   onSubViewActiveChange?: (active: boolean) => void;
 }
 
-const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered"];
+const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published"];
 const ARTEFACT_SOURCE_LABELS: Record<ArtefactSource, string> = {
   all: "all",
   manual: "mine",
   ai_generated: "from agents",
   discovered: "linked",
+  published: "published",
 };
+
+// Mirrors PublishedChip's live-check. A publication exists once a share token
+// has been minted; unpublishedAt becomes non-null when the publication is retired.
+const isLivePublication = (a: Artifact): boolean =>
+  a.publication != null && a.publication.unpublishedAt == null;
 
 // 3 rows × ~7 tiles in the default 1100px column ≈ 21. The grid is
 // responsive so the visible count varies by width — picking a fixed cap
@@ -431,11 +437,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // Source-origin counts over the scoped artefacts (so the chip totals
   // reflect the current space pill, not the global pile).
   const artefactSourceCounts = useMemo(() => {
-    const counts: Record<ArtefactSource, number> = { all: 0, manual: 0, ai_generated: 0, discovered: 0 };
+    const counts: Record<ArtefactSource, number> = { all: 0, manual: 0, ai_generated: 0, discovered: 0, published: 0 };
     counts.all = effectiveDesktopProps.artifacts.length;
     for (const a of effectiveDesktopProps.artifacts) {
       const o = a.sourceOrigin ?? "manual";
       if (o === "manual" || o === "ai_generated" || o === "discovered") counts[o]++;
+      if (isLivePublication(a)) counts.published++;
     }
     return counts;
   }, [effectiveDesktopProps.artifacts]);
@@ -463,7 +470,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     } else if (selectedFolderId) {
       list = list.filter((a) => a.sourceId === selectedFolderId);
     }
-    if (artefactSource !== "all") {
+    if (artefactSource === "published") {
+      list = list.filter(isLivePublication);
+    } else if (artefactSource !== "all") {
       list = list.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
     }
     return list;
@@ -931,13 +940,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <span className="home-section-stats">
               {ARTEFACT_SOURCE_ORDER.map((src) => {
                 const count = artefactSourceCounts[src];
-                if (count === 0 && src !== "all") return null;
+                // Origin pills hide at 0 (clutter); "all" stays unconditional;
+                // "published" stays visible as a discoverability surface — clicking
+                // it at 0 lands on a how-to-publish hint instead of an empty grid.
+                if (count === 0 && src !== "all" && src !== "published") return null;
                 return (
                   <button
                     key={src}
                     className={`stat-btn${artefactSource === src ? " active" : ""}`}
                     onClick={() => setArtefactSource(src)}
                   >
+                    {src === "published" && <span className="pip pip-published" />}
                     {count} {ARTEFACT_SOURCE_LABELS[src]}
                   </button>
                 );
@@ -972,7 +985,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               </button>
             </div>
           </div>
-          {artefactsView === "icons" ? (
+          {artefactSource === "published" && filteredArtefactsTotal === 0 ? (
+            <div className="home-empty">
+              No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong>
+            </div>
+          ) : artefactsView === "icons" ? (
             <>
               <div className="home-artefacts">
                 <Desktop
@@ -980,6 +997,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   artifacts={visibleArtefacts}
                   isHero={false}
                   showMeta
+                  flatten={artefactSource === "published"}
                   onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
                 />
               </div>

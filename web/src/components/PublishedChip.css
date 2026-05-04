@@ -22,9 +22,8 @@
   background: rgba(167, 139, 250, 0.12);
 }
 
-.published-chip__tag--password {
+.published-chip__lock {
   color: #fbbf24;
-  background: rgba(251, 191, 36, 0.12);
 }
 
 .published-chip__btn {
@@ -44,15 +43,6 @@
 
 .published-chip__btn:hover {
   background: rgba(167, 139, 250, 0.28);
-}
-
-.published-chip__btn--password {
-  background: rgba(251, 191, 36, 0.12);
-  color: #fbbf24;
-}
-
-.published-chip__btn--password:hover {
-  background: rgba(251, 191, 36, 0.28);
 }
 
 .published-chip__btn--copied {

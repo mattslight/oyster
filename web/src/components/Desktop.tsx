@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Archive } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { archiveArtifact, archiveGroup, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, updateArtifact } from "../data/artifacts-api";
+import { unpublishArtifact } from "../data/publish-api";
 import { ArtifactIcon } from "./ArtifactIcon";
 import { ConfirmModal } from "./ConfirmModal";
 import { PromptModal } from "./PromptModal";
@@ -25,6 +26,10 @@ interface Props {
   isArchivedView?: boolean;
   /** Render relative-time meta line under each artifact label. Used by Home. */
   showMeta?: boolean;
+  /** Bypass the groupName → folder-tile bucketing and render every artefact
+   *  as its own tile. Used by status-style filters like "published" where
+   *  bucketing by source-folder hides the result the user just asked for. */
+  flatten?: boolean;
   onArtifactPublish?: (artifact: Artifact) => void;
 }
 
@@ -32,7 +37,7 @@ type DisplayItem =
   | { type: "group"; key: string; name: string; artifacts: Artifact[] }
   | { type: "artifact"; key: string; artifact: Artifact };
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView, showMeta, onArtifactPublish }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView, showMeta, flatten, onArtifactPublish }: Props) {
   const isAllSpace = space === "__all__";
   // Meta-spaces span multiple real spaces, so groupName is no longer unique —
   // `notes` from space A would merge with `notes` from space B into a single
@@ -158,7 +163,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
   // ── Display items — groups first (alpha), then ungrouped (alpha) ──
   const displayItems = useMemo((): DisplayItem[] => {
     const sorted = [...artifacts].sort((a, b) => a.label.localeCompare(b.label));
-    if (isMetaSpace) {
+    if (isMetaSpace || flatten) {
       return sorted.map((a): DisplayItem => ({ type: "artifact", key: a.id, artifact: a }));
     }
     const groupMap = new Map<string, Artifact[]>();
@@ -180,7 +185,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
       items.push({ type: "artifact", key: a.id, artifact: a });
     }
     return items;
-  }, [artifacts, isMetaSpace]);
+  }, [artifacts, isMetaSpace, flatten]);
 
   return (
     <div className="desktop">
@@ -281,16 +286,42 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
               <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
               {!isArchivedView && !artifactCtx.artifact.builtin && !artifactCtx.artifact.plugin && artifactCtx.artifact.status !== "generating" && onArtifactPublish && (
-                <button
-                  className="space-ctx-item"
-                  onClick={() => {
-                    const a = artifactCtx.artifact;
-                    setArtifactCtx(null);
-                    onArtifactPublish(a);
-                  }}
-                >
-                  {artifactCtx.artifact.publication?.unpublishedAt === null ? "Manage publication…" : "Publish…"}
-                </button>
+                artifactCtx.artifact.publication?.unpublishedAt === null ? (
+                  <>
+                    <button
+                      className="space-ctx-item"
+                      onClick={() => {
+                        const a = artifactCtx.artifact;
+                        setArtifactCtx(null);
+                        onArtifactPublish(a);
+                      }}
+                    >
+                      Edit share…
+                    </button>
+                    <button
+                      className="space-ctx-item"
+                      onClick={async () => {
+                        const a = artifactCtx.artifact;
+                        setArtifactCtx(null);
+                        try { await unpublishArtifact(a.id); }
+                        catch (err) { setAlertState({ open: true, title: "Unpublish failed", body: (err as Error).message }); }
+                      }}
+                    >
+                      Unpublish
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="space-ctx-item"
+                    onClick={() => {
+                      const a = artifactCtx.artifact;
+                      setArtifactCtx(null);
+                      onArtifactPublish(a);
+                    }}
+                  >
+                    Publish…
+                  </button>
+                )
               )}
               <div className="space-ctx-sep" />
               {artifactCtx.artifact.plugin ? (
