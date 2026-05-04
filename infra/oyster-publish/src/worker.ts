@@ -446,7 +446,7 @@ async function renderForRow(env: Env, row: PublicationRow, req?: Request): Promi
   // Short-circuit on If-None-Match (open mode only — others are no-store).
   if (req && row.mode === "open") {
     const ifNoneMatch = req.headers.get("If-None-Match");
-    const etag = `W/"${row.share_token}-${row.updated_at}"`;
+    const etag = `"${row.share_token}-${row.updated_at}"`;
     if (ifNoneMatch && ifNoneMatch === etag) {
       return new Response(null, {
         status: 304,

@@ -74,7 +74,7 @@ describe("renderMarkdownPage — cache headers", () => {
     const openRow = { ...ROW, mode: "open", updated_at: 1000 };
     const res = renderMarkdownPage(new TextEncoder().encode("# x"), openRow);
     expect(res.headers.get("cache-control")).toBe("public, max-age=60, must-revalidate");
-    expect(res.headers.get("etag")).toMatch(/^W\/"abc-1000"$/);
+    expect(res.headers.get("etag")).toMatch(/^"abc-1000"$/);
   });
 
   it("sets cache-control: private, no-store for non-open modes", async () => {
@@ -197,7 +197,7 @@ describe("renderImageInline", () => {
   it("applies open-mode cache headers", async () => {
     const res = renderImageInline(new Uint8Array(0), ROW);
     expect(res.headers.get("cache-control")).toBe("public, max-age=60, must-revalidate");
-    expect(res.headers.get("etag")).toBe(`W/"img1-4000"`);
+    expect(res.headers.get("etag")).toBe(`"img1-4000"`);
   });
 
   it("applies private no-store for non-open modes", async () => {

@@ -38,7 +38,7 @@ export function cacheHeaders(row: PublicationRow, contentType: string): HeadersI
   const headers: Record<string, string> = { "content-type": contentType };
   if (row.mode === "open") {
     headers["cache-control"] = "public, max-age=60, must-revalidate";
-    headers["etag"] = `W/"${row.share_token}-${row.updated_at}"`;
+    headers["etag"] = `"${row.share_token}-${row.updated_at}"`;
   } else {
     headers["cache-control"] = "private, no-store";
   }

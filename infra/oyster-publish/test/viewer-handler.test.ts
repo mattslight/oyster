@@ -81,7 +81,7 @@ describe("GET /p/:token — open mode", () => {
     });
     const res = await call(getReq(`/p/${shareToken}`));
     expect(res.headers.get("cache-control")).toBe("public, max-age=60, must-revalidate");
-    expect(res.headers.get("etag")).toMatch(/^W\/"[^"]+"$/);
+    expect(res.headers.get("etag")).toMatch(/^"[^"]+"$/);
   });
 
   it("serves images inline with no chrome", async () => {
@@ -271,7 +271,7 @@ describe("ETag / 304", () => {
     });
     const first = await call(getReq(`/p/${shareToken}`));
     const etag = first.headers.get("etag") ?? "";
-    expect(etag).toMatch(/^W\//);
+    expect(etag).toMatch(/^"[^"]+"$/);
     const second = await call(getReq(`/p/${shareToken}`, { ifNoneMatch: etag }));
     expect(second.status).toBe(304);
     expect(second.headers.get("etag")).toBe(etag);
@@ -289,7 +289,7 @@ describe("ETag / 304", () => {
     ).bind(token).run();
     const cookieValue = await signViewerCookie(token, env.VIEWER_COOKIE_SECRET);
     const cookie = `oyster_view_${token}=${cookieValue}`;
-    const res = await call(getReq(`/p/${token}`, { cookie, ifNoneMatch: `W/"${token}-anything"` }));
+    const res = await call(getReq(`/p/${token}`, { cookie, ifNoneMatch: `"${token}-anything"` }));
     expect(res.status).toBe(200);  // password mode never returns 304
   });
 });
