@@ -58,6 +58,8 @@ export function spawnSession(
 
   proc.onExit(({ exitCode }: { exitCode: number }) => {
     console.log(`Session exited with code ${exitCode}`);
+    proc = null;
+    scrollback = "";
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) {
         client.send("\r\n\x1b[90m[session ended]\x1b[0m\r\n");

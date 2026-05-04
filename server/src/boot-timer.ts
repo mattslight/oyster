@@ -2,6 +2,8 @@
 // Logs timestamped step markers so we can see where startup wallclock goes.
 // See #385.
 
+import { performance } from "node:perf_hooks";
+
 const enabled = process.env.OYSTER_BOOT_PROFILE === "1";
 const t0 = performance.now();
 
