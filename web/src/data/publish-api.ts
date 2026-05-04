@@ -24,9 +24,9 @@ export interface PublishErrorBody {
 }
 
 export class PublishApiError extends Error {
-  status: number;
-  code: string;
-  details: Record<string, unknown>;
+  readonly status: number;
+  readonly code: string;
+  readonly details: Record<string, unknown>;
 
   constructor(
     status: number,
