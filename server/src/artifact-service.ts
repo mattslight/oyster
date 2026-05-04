@@ -81,7 +81,7 @@ export class ArtifactService {
   private archivedPathsCache: Set<string> | null = null;
   private invalidateArchivedPaths(): void { this.archivedPathsCache = null; }
 
-  constructor(private store: ArtifactStore, private userlandDir?: string, private spaceStore?: SpaceStore, private workerBase?: string) {}
+  constructor(private store: ArtifactStore, private userlandDir?: string, private spaceStore?: SpaceStore, private workerBase: string = "") {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const allRows = this.store.getAll();
@@ -544,7 +544,7 @@ export class ArtifactService {
       }
     }
 
-    const publication = row.share_token && this.workerBase
+    const publication = row.share_token
       ? {
           shareToken: row.share_token,
           shareUrl: `${this.workerBase}/p/${row.share_token}`,
