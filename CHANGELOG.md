@@ -18,6 +18,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **"Set up Oyster" no longer ignores early clicks.** If you click the prompt before the chat has finished booting, the click is now queued and fires automatically the moment the session is ready — instead of silently doing nothing.
 - **Clicking an artefact in the session inspector** now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.
 - **Attaching a folder to a space** now sweeps in any sessions already running in that folder, instead of leaving them stranded under Unsorted.
 
