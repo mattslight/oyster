@@ -81,7 +81,7 @@ export class ArtifactService {
   private archivedPathsCache: Set<string> | null = null;
   private invalidateArchivedPaths(): void { this.archivedPathsCache = null; }
 
-  constructor(private store: ArtifactStore, private userlandDir?: string, private spaceStore?: SpaceStore) {}
+  constructor(private store: ArtifactStore, private userlandDir?: string, private spaceStore?: SpaceStore, private workerBase?: string) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const allRows = this.store.getAll();
@@ -544,6 +544,17 @@ export class ArtifactService {
       }
     }
 
+    const publication = row.share_token && this.workerBase
+      ? {
+          shareToken: row.share_token,
+          shareUrl: `${this.workerBase}/p/${row.share_token}`,
+          shareMode: row.share_mode!,
+          publishedAt: row.published_at!,
+          updatedAt: row.share_updated_at!,
+          unpublishedAt: row.unpublished_at,
+        }
+      : undefined;
+
     if (row.runtime_kind === "local_process") {
       const port = (runtimeConfig.port as number) || 0;
       const portOpen = await isPortOpen(port);
@@ -573,6 +584,7 @@ export class ArtifactService {
         sourceOrigin: row.source_origin,
         sourceId: row.source_id,
         ...this.resolveIcon(row),
+        ...(publication ? { publication } : {}),
       };
     }
 
@@ -598,6 +610,7 @@ export class ArtifactService {
       sourceLabel,
       sourceOrigin: row.source_origin,
       ...this.resolveIcon(row),
+      ...(publication ? { publication } : {}),
     };
   }
 
