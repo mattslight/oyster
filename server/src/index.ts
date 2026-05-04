@@ -235,7 +235,7 @@ const WORKER_BASE = process.env.OYSTER_AUTH_BASE
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
 // not inside DB_DIR. spaceStore is passed in so rowToArtifact can resolve the
 // linked-source path for tiles whose `source_id` is non-null.
-const artifactService = new ArtifactService(store, OYSTER_HOME, spaceStore, WORKER_BASE);
+const artifactService = new ArtifactService(store, WORKER_BASE, OYSTER_HOME, spaceStore);
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);

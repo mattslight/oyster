@@ -71,7 +71,7 @@ describe("artifact wire format — publication", () => {
   beforeEach(() => {
     db = makeDb();
     const store = new SqliteArtifactStore(db);
-    service = new ArtifactService(store, undefined, undefined, "https://oyster.to");
+    service = new ArtifactService(store, "https://oyster.to");
   });
 
   it("omits the publication field when share_token is NULL", async () => {
