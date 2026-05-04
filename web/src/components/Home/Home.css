@@ -238,6 +238,7 @@
 .pip-amber { background: var(--home-amber); box-shadow: 0 0 6px var(--home-amber); }
 .pip-red   { background: var(--home-red);   box-shadow: 0 0 6px var(--home-red); }
 .pip-dim   { background: var(--home-text-muted); }
+.pip-published { background: #a78bfa; }
 
 /* ── View toggle (icons / table) ── */
 .home-view-toggle {
