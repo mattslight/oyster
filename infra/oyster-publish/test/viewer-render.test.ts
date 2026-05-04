@@ -205,4 +205,11 @@ describe("renderImageInline", () => {
     const res = renderImageInline(new Uint8Array(0), pwRow);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
   });
+
+  it("sets a minimal CSP with default-src 'none'", async () => {
+    const res = renderImageInline(new Uint8Array(0), ROW);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("img-src 'self' data:");
+  });
 });

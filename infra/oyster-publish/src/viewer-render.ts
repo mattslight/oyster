@@ -145,5 +145,6 @@ function escapeAttr(s: string): string {
 export function renderImageInline(bytes: Uint8Array, row: PublicationRow): Response {
   const headers = new Headers(cacheHeaders(row, row.content_type));
   headers.set("content-disposition", "inline");
+  headers.set("content-security-policy", "default-src 'none'; img-src 'self' data:");
   return new Response(bytes, { status: 200, headers });
 }
