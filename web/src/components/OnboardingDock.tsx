@@ -238,12 +238,14 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
   }, []);
 
   const resetAll = useCallback(() => {
-    // Spaces auto-derives from userSpaceCount on the next render — start
-    // everything else fresh.
-    setState({ ...defaultState });
+    // Initialise spacesComplete directly from the current userSpaceCount.
+    // The [userSpaceCount] auto-derive effect won't re-fire if the count
+    // hasn't changed, so we'd otherwise leave a user with existing spaces
+    // stuck on an un-ticked required item.
+    setState({ ...defaultState, spacesComplete: userSpaceCount > 0 });
     setView("checklist");
     setPopoverOpen(true);
-  }, []);
+  }, [userSpaceCount]);
 
   const done = allDone(state);
   const requiredDone = state.spacesComplete;
@@ -251,6 +253,7 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
   return (
     <>
       <button
+        type="button"
         ref={dockRef}
         className={`onboarding-dock${requiredDone ? " onboarding-dock--ready" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
         onClick={togglePopover}
@@ -396,9 +399,9 @@ function PublishGuide({ onBack, onMarkDone, done }: { onBack: () => void; onMark
       </div>
       <div className="onboarding-step-actions">
         {done ? (
-          <button className="onboarding-btn-ghost" onClick={onBack}>Done</button>
+          <button type="button" className="onboarding-btn-ghost" onClick={onBack}>Done</button>
         ) : (
-          <button className="onboarding-btn-ghost" onClick={onMarkDone}>I've done this</button>
+          <button type="button" className="onboarding-btn-ghost" onClick={onMarkDone}>I've done this</button>
         )}
       </div>
     </div>
@@ -445,6 +448,7 @@ function McpConnect({ onBack, onMarkDone, done }: { onBack: () => void; onMarkDo
       <div className="onboarding-client-tabs">
         {CLIENT_TABS.map((t) => (
           <button
+            type="button"
             key={t.key}
             className={`onboarding-client-tab${client === t.key ? " active" : ""}`}
             onClick={() => switchClient(t.key)}
@@ -458,6 +462,7 @@ function McpConnect({ onBack, onMarkDone, done }: { onBack: () => void; onMarkDo
       <div className="onboarding-code-box">
         <pre><code>{command}</code></pre>
         <button
+          type="button"
           className={`onboarding-code-copy${copied ? " copied" : ""}`}
           onClick={handleCopy}
         >
@@ -472,9 +477,9 @@ function McpConnect({ onBack, onMarkDone, done }: { onBack: () => void; onMarkDo
 
       <div className="onboarding-step-actions">
         {done ? (
-          <button className="onboarding-btn-ghost" onClick={onBack}>Done</button>
+          <button type="button" className="onboarding-btn-ghost" onClick={onBack}>Done</button>
         ) : (
-          <button className="onboarding-btn-ghost" onClick={onMarkDone}>I've connected it</button>
+          <button type="button" className="onboarding-btn-ghost" onClick={onMarkDone}>I've connected it</button>
         )}
       </div>
     </div>
@@ -543,10 +548,10 @@ function MemoriesImport({
           Paste into your Chat AI. Paste the response into Oyster's chat ↓
         </div>
         <div className="onboarding-step-actions">
-          <button className="onboarding-btn-primary" style={{ flex: 1 }} onClick={onMarkDone}>
+          <button type="button" className="onboarding-btn-primary" style={{ flex: 1 }} onClick={onMarkDone}>
             Done
           </button>
-          <button className="onboarding-btn-ghost" onClick={() => setSub("a")}>Back</button>
+          <button type="button" className="onboarding-btn-ghost" onClick={() => setSub("a")}>Back</button>
         </div>
         <div className="onboarding-disclaimer">Everything stays on your machine.</div>
       </div>
@@ -572,6 +577,7 @@ function MemoriesImport({
       <div className="onboarding-step-actions">
         {loadError ? (
           <button
+            type="button"
             className="onboarding-btn-primary"
             style={{ flex: 1 }}
             onClick={retry}
@@ -580,6 +586,7 @@ function MemoriesImport({
           </button>
         ) : (
           <button
+            type="button"
             className="onboarding-btn-primary"
             style={{ flex: 1 }}
             onClick={handleCopy}
@@ -588,7 +595,7 @@ function MemoriesImport({
             Copy
           </button>
         )}
-        <button className="onboarding-btn-ghost" onClick={onMarkDone}>Skip</button>
+        <button type="button" className="onboarding-btn-ghost" onClick={onMarkDone}>Skip</button>
       </div>
 
       <div className="onboarding-disclaimer">Everything stays on your machine.</div>
