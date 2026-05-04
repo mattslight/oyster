@@ -73,6 +73,11 @@ export function parseShareTokenPath(pathname: string): { shareToken: string; raw
   return { shareToken: rest, raw: false };
 }
 
+// Kinds whose artifact bytes are served via /raw inside a sandboxed iframe.
+// Used in both handleViewerRaw (to 404 non-iframe kinds) and renderForRow
+// (to dispatch to renderChromeWithIframe). Keep in sync — single source of truth.
+export const IFRAME_KINDS: ReadonlySet<string> = new Set(["app", "deck", "wireframe", "table", "map"]);
+
 // Mirror of auth-worker's isLocalHost helper. Omit Secure on loopback so
 // wrangler dev (http://localhost:8787) can exercise the password-unlock flow.
 export function isLoopback(host: string): boolean {

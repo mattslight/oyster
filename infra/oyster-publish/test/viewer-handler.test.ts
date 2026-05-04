@@ -331,6 +331,23 @@ describe("ETag / 304", () => {
   });
 });
 
+describe("GET /p/:token — unknown artifact_kind", () => {
+  it("returns 500 for unknown kind with non-text content_type", async () => {
+    const u = await seedUser();
+    const token = `seeded_${crypto.randomUUID().slice(0, 8)}`;
+    const r2Key = `published/${u.id}/${token}`;
+    await env.DB.prepare(
+      `INSERT INTO published_artifacts
+       (share_token, owner_user_id, artifact_id, artifact_kind, mode, password_hash,
+        r2_key, content_type, size_bytes, published_at, updated_at, unpublished_at)
+       VALUES (?, ?, 'art_unk', 'unknown_kind', 'open', NULL, ?, 'application/octet-stream', 4, ?, ?, NULL)`,
+    ).bind(token, u.id, r2Key, Date.now(), Date.now()).run();
+    await putR2Object(r2Key, new Uint8Array([0, 1, 2, 3]), "application/octet-stream");
+    const res = await call(getReq(`/p/${token}`));
+    expect(res.status).toBe(500);
+  });
+});
+
 describe("GET /p/:token — signin mode", () => {
   it("unsigned visitor → 302 to /auth/sign-in?return=/p/<token>", async () => {
     const u = await seedUser();

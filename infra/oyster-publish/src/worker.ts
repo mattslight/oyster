@@ -2,7 +2,7 @@
 // Spec: docs/superpowers/specs/2026-05-03-r5-publish-backend-design.md
 
 import type { Env, PublicationRow } from "./types";
-import { CAPS, generateShareToken, parseMetadataHeader, parseShareTokenPath, r2KeyFor, type Tier, isLoopback } from "./publish-helpers";
+import { CAPS, generateShareToken, IFRAME_KINDS, parseMetadataHeader, parseShareTokenPath, r2KeyFor, type Tier, isLoopback } from "./publish-helpers";
 import { resolveViewerAccess } from "./viewer-access";
 import { signViewerCookie } from "./viewer-cookie";
 import {
@@ -381,7 +381,6 @@ async function handleViewerRaw(req: Request, env: Env, shareToken: string): Prom
   }
   if (access.kind === "gate") return htmlPage(200, passwordGatePage(shareToken));
   // OK — only iframe kinds are served via /raw; everything else 404s.
-  const IFRAME_KINDS = new Set(["app", "deck", "wireframe", "table", "map"]);
   if (!IFRAME_KINDS.has(access.row.artifact_kind)) {
     return htmlPage(404, notFoundPage());
   }
@@ -472,23 +471,14 @@ async function renderForRow(env: Env, row: PublicationRow, req?: Request): Promi
   const bytes = new Uint8Array(await obj.arrayBuffer());
 
   if (row.content_type.startsWith("image/")) return renderImageInline(bytes, row);
-
-  switch (row.artifact_kind) {
-    case "notes":
-      return renderMarkdownPage(bytes, row);
-    case "diagram":
-      return renderMermaidPage(bytes, row);
-    case "app":
-    case "deck":
-    case "wireframe":
-    case "table":
-    case "map":
-      return renderChromeWithIframe(row);
-    default:
-      return row.content_type.startsWith("text/")
-        ? renderMarkdownPage(bytes, row)
-        : renderChromeWithIframe(row);
-  }
+  if (row.artifact_kind === "notes") return renderMarkdownPage(bytes, row);
+  if (row.artifact_kind === "diagram") return renderMermaidPage(bytes, row);
+  if (IFRAME_KINDS.has(row.artifact_kind)) return renderChromeWithIframe(row);
+  // text/* fallback for unknown kinds with text content_type
+  if (row.content_type.startsWith("text/")) return renderMarkdownPage(bytes, row);
+  // Unknown kind with non-text content — reject rather than silently iframe-loading a 404.
+  console.error("[viewer] unsupported artifact_kind for token", row.share_token, "kind", row.artifact_kind, "content_type", row.content_type);
+  return htmlPage(500, internalErrorPage());
 }
 
 function htmlPage(status: number, body: string): Response {
