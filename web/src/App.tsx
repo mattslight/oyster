@@ -201,7 +201,9 @@ export default function App() {
       dispatch({ type: "CLOSE_ALL_VIEWERS" });
     }
     if (event.command === "artifact_changed") {
-      void fetchArtifacts().then(setArtifacts);
+      void fetchArtifacts()
+        .then(setArtifacts)
+        .catch((err) => console.warn("[oyster] artifact_changed refetch failed:", err));
       return;
     }
   }), []);
