@@ -405,7 +405,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (await tryHandleAuthRoute(req, res, url, ctx, { authService })) return;
 
   // /api/artifacts/:id/publish — publish + unpublish an artefact.
-  if (await tryHandlePublishRoute(req, res, url, ctx, { publishService })) return;
+  if (await tryHandlePublishRoute(req, res, url, ctx, { publishService, broadcastUiEvent })) return;
 
   // /oauth/*, /.well-known/oauth-*, /mcp/*, /api/mcp/status
   // Pass the actually-bound `port`, not PREFERRED_PORT — findPort() may

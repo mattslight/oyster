@@ -4,10 +4,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { PublishService, PublishError } from "../publish-service.js";
 import type { RouteCtx } from "../http-utils.js";
+import type { UiCommand } from "../../../shared/types.js";
 import { safeDecode } from "../http-utils.js";
 
 export interface PublishRouteDeps {
   publishService: PublishService;
+  broadcastUiEvent: (event: UiCommand) => void;
 }
 
 const PATH_RE = /^\/api\/artifacts\/([^/]+)\/publish$/;
@@ -57,6 +59,7 @@ export async function tryHandlePublishRoute(
         password: typeof body.password === "string" ? body.password : undefined,
       });
       sendJson(result);
+      deps.broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: artifactId } });
     } catch (err) {
       writePublishError(sendJson, err);
     }
@@ -68,6 +71,7 @@ export async function tryHandlePublishRoute(
     try {
       const result = await deps.publishService.unpublishArtifact({ artifact_id: artifactId });
       sendJson(result);
+      deps.broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: artifactId } });
     } catch (err) {
       writePublishError(sendJson, err);
     }
