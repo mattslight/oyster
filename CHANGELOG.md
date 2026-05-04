@@ -10,6 +10,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Attach an Unsorted folder to an existing space.** The folder button on each Unsorted tile now opens a picker — choose any space to take it in (with a "Best match" hint when the folder name resembles one), or create a new space as before.
 - **Public viewer for shared artefacts.** Visiting a published share URL now renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, and inline images — with three access modes: open links resolve immediately, password-protected links unlock once for 24 hours per browser, and sign-in-required links route through the standard sign-in flow and land back on the share. ([#316](https://github.com/mattslight/oyster/issues/316))
 
+### Changed
+
+- **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. ([#281](https://github.com/mattslight/oyster/issues/281))
+
 ### Fixed
 
 - **Clicking an artefact in the session inspector** now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.

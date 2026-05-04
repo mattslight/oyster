@@ -12,18 +12,18 @@ The free account tier is the **identity and publishing substrate**. Pro is the *
 
 Each milestone from here delivers one or more requirements. Polish, refactors, and clever local features may still happen — they ride on top of the spine, not in front of it.
 
-## 0.6.0 — Trustworthy recall
+## 0.6.0 — Trustworthy recall ✅ shipped
 
-**Delivers:** R6 (traceable recall) + R2 same-device verbatim.
+**Delivered:** R6 (traceable recall) + R2 same-device verbatim.
 
-**Purpose:** make recall trustworthy *before* the heavier sync work scales it. Two tickets, ships fast.
+**Purpose:** make recall trustworthy *before* the heavier sync work scales it. Two tickets, shipped fast.
 
-**Ships:**
+**Shipped:**
 
-- **R6 traceable recall** (#310) — `memories.source_session_id` schema + watcher plumbing + `recall()` returns the originating session + inspector Memory tab renders "Pulled into / Written by this session" + Home memories list clicks through to the source session. Closes the loop: every recalled memory is traceable to the conversation that produced it.
-- **R2 verbatim recall, same-device** (#311) — FTS5 over `session_events.text` so the *"what FTS5 schema did we settle on?"* / *"what were the exact specs we agreed for the render server?"* case resolves locally. The cross-device extension lands in 0.8.0.
+- ✅ **R6 traceable recall** (#310) — `memories.source_session_id` schema + watcher plumbing + `recall()` returns the originating session + inspector Memory tab renders "Pulled into / Written by this session" + Home memories list clicks through to the source session. Closes the loop: every recalled memory is traceable to the conversation that produced it.
+- ✅ **R2 verbatim recall, same-device** (#311 / #328) — FTS5 over `session_events.text` plus `recall_transcripts` MCP tool. Cross-session spotlight (#331) added the in-transcript find experience. The cross-device extension lands in 0.8.0.
 
-**Won't ship:** anything else. No bundles, no empty-state coach-mark, no waitlist pill, no broad error-handling sweep, no schema speculation for sync. Those were on prior drafts of this milestone — all deferred to where they actually deliver value.
+**Didn't ship:** anything else. Deferred items remain deferred.
 
 ## 0.7.0 — Free account + Publish/Share
 
@@ -31,14 +31,16 @@ Each milestone from here delivers one or more requirements. Polish, refactors, a
 
 **Purpose:** first visible Cloud wedge. Convert the waitlist into a free-account funnel. The pricing page promise of *"Sync · Memory · Publish"* starts being true with **Publish**.
 
+**Status:** auth + R5 backend + viewer all shipped. Only the Publish UI affordance (#317) remains.
+
 **Ships:**
 
-- **Magic-link auth** (#295) — sign-up + sign-in. Account state surfaced in-app. Pattern from `~/Dev/oyster-crm`.
-- **R5 schema** (#314) — `share_token`, `share_mode`, `share_password_hash`, `published_at`, `unpublished_at` columns on artefacts.
-- **R5 backend** (#315) — `publish_artifact` MCP tool, `POST /api/artifacts/:id/publish`, cloud upload to R2 object store.
-- **R5 viewer** (#316) — public route at `/s/<share_token>` with three access modes (open, password, sign-in-required).
-- **R5 UI** (#317) — Publish action in the artefact UI (modal, mode picker, URL display, copy-to-clipboard).
-- **Entitlement / caps model** — free tier caps (artefact count, bandwidth); Pro tier unlocks higher caps. The substrate that all later Pro features ride on. Folds into the work above; not a separate ticket unless it grows.
+- ✅ **Auth** — magic-link (#295) shipped first; **OAuth Google + GitHub (#340) replaced it as the primary path**, magic-link demoted to fallback. Account state surfaced in-app. Pattern adapted from `~/Dev/oyster-crm`.
+- ✅ **R5 schema** (#314) — `share_token`, `share_mode`, `share_password_hash`, `published_at`, `share_updated_at`, `unpublished_at` columns on artefacts.
+- ✅ **R5 backend** (#315) — `publish_artifact` / `unpublish_artifact` MCP tools, `POST /api/artifacts/:id/publish` + unpublish, cloud upload to R2 via `infra/oyster-publish` Worker. Single source of truth in `server/src/publish-service.ts`.
+- ✅ **R5 viewer** (#316) — public viewer at `oyster.to/p/<token>` with three access modes (open, password, sign-in-required). Implemented as a Cloudflare Worker route with markdown rendering.
+- ⏳ **R5 UI** (#317) — Publish action in the artefact UI (modal, mode picker, URL display, copy-to-clipboard). **In flight.**
+- **Entitlement / caps model** — free-tier caps for published-artefact size enforced in the Worker (10 MB ceiling); Pro tier unlocks higher. Folded into the work above.
 
 **Won't ship:** sync, durability, cloud memory store, semantic recall, cross-device anything, artefact-byte sync, version history. Those are 0.8.0+. Multi-file bundles also out of scope — single-file artefacts are sufficient for R5; richer Publish lives in 0.9.0+ if it earns its keep.
 
