@@ -2,12 +2,31 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
 import { homedir } from "node:os";
 import crypto from "node:crypto";
+import ignore, { type Ignore } from "ignore";
 import type { SpaceStore, SpaceRow, Source } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { SessionStore } from "./session-store.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
+
+// Build a gitignore matcher from .gitignore at the scan root, if one exists.
+// Returns null when there's nothing to honor — callers can skip the per-entry
+// check entirely. Only the root .gitignore is read; nested .gitignore files
+// are not layered (the 80% case for repo scanning, parity with
+// `git check-ignore` for top-level patterns). Errors reading the file are
+// swallowed — a malformed gitignore should not break the scan.
+export function loadGitignore(rootDir: string): Ignore | null {
+  const gitignorePath = join(rootDir, ".gitignore");
+  if (!existsSync(gitignorePath)) return null;
+  try {
+    const contents = readFileSync(gitignorePath, "utf8");
+    if (!contents.trim()) return null;
+    return ignore().add(contents);
+  } catch {
+    return null;
+  }
+}
 
 // Last non-empty path component, normalised. Same logic used at scan time and
 // (if ever needed again) for slug-based migration backfill — single source of
@@ -324,7 +343,8 @@ export class SpaceService {
           continue;
         }
         const slug = folderSlug(folderPath);
-        const candidates = this.walk(folderPath);
+        const gitignore = loadGitignore(folderPath);
+        const candidates = this.walk(folderPath, 0, folderPath, gitignore);
         for (const c of candidates) {
           // Namespace sourceRef with the folder's basename — reduces (but does
           // not eliminate) collisions when a space has multiple paths. Two
@@ -353,7 +373,7 @@ export class SpaceService {
   }
 
   private walk(
-    dir: string, depth = 0, root = dir,
+    dir: string, depth = 0, root = dir, gitignore: Ignore | null = null,
   ): Array<{ absPath: string; sourceRef: string; kind: "app" | "notes" | "diagram" }> {
     if (depth > MAX_DEPTH) return [];
     const results: ReturnType<typeof this.walk> = [];
@@ -398,11 +418,22 @@ export class SpaceService {
       let stat: ReturnType<typeof statSync>;
       try { stat = statSync(absPath); } catch { continue; }
 
+      // Path used for gitignore matching — must be relative to the root
+      // (which is the gitignore's directory) and use posix separators. The
+      // `ignore` package requires a trailing "/" for directories so the
+      // pattern e.g. `dist/` matches a directory named `dist`.
+      const relForIgnore = posixRelDir
+        ? `${posixRelDir}/${entry}${stat.isDirectory() ? "/" : ""}`
+        : `${entry}${stat.isDirectory() ? "/" : ""}`;
+
       if (stat.isDirectory()) {
-        if (!SKIP_DIRS.has(entry) && !entry.startsWith(".")) results.push(...this.walk(absPath, depth + 1, root));
+        if (SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
+        if (gitignore?.ignores(relForIgnore)) continue;
+        results.push(...this.walk(absPath, depth + 1, root, gitignore));
         continue;
       }
       if (SKIP_FILE_PATTERNS.some((p) => p.test(entry))) continue;
+      if (gitignore?.ignores(relForIgnore)) continue;
 
       const posixRelFile = (posixRelDir ? posixRelDir + "/" : "") + entry;
 

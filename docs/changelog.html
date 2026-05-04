@@ -330,6 +330,10 @@
 <li><strong>Attach an Unsorted folder to an existing space.</strong> The folder button on each Unsorted tile now opens a picker — choose any space to take it in (with a &quot;Best match&quot; hint when the folder name resembles one), or create a new space as before.</li>
 <li><strong>Public viewer for shared artefacts.</strong> Visiting a published share URL now renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, and inline images — with three access modes: open links resolve immediately, password-protected links unlock once for 24 hours per browser, and sign-in-required links route through the standard sign-in flow and land back on the share. (<a href="https://github.com/mattslight/oyster/issues/316" rel="noopener noreferrer">#316</a>)</li>
 </ul>
+<h3>Changed</h3>
+<ul>
+<li><strong>Repo scanner respects <code>.gitignore</code>.</strong> Folders and files matched by a project&#39;s <code>.gitignore</code> are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. (<a href="https://github.com/mattslight/oyster/issues/281" rel="noopener noreferrer">#281</a>)</li>
+</ul>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Clicking an artefact in the session inspector</strong> now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.</li>
