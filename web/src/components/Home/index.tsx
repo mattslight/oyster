@@ -1001,6 +1001,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   artifacts={visibleArtefacts}
                   isHero={false}
                   showMeta
+                  flatten={artefactSource === "published"}
                   onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
                 />
               </div>
