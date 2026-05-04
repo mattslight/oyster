@@ -12,13 +12,12 @@ interface Props {
 export function PublishedChip({ publication }: Props) {
   const { copied, copy } = useCopyLink(publication.shareUrl);
   const isPassword = publication.shareMode === "password";
-  const tagClass = `published-chip__tag${isPassword ? " published-chip__tag--password" : ""}`;
-  const btnClass = `published-chip__btn${isPassword ? " published-chip__btn--password" : ""}${copied ? " published-chip__btn--copied" : ""}`;
+  const btnClass = `published-chip__btn${copied ? " published-chip__btn--copied" : ""}`;
 
   return (
     <span className="published-chip">
-      <span className={tagClass} title={publication.shareUrl}>
-        {isPassword && <Lock size={9} strokeWidth={2.5} />}
+      <span className="published-chip__tag" title={publication.shareUrl}>
+        {isPassword && <Lock className="published-chip__lock" size={9} strokeWidth={2.5} />}
         Published
       </span>
       <button
