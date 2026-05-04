@@ -22,7 +22,10 @@ describe("SqliteFtsMemoryProvider", () => {
   });
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    // Close the SQLite handle first so the WAL/shm files can be removed —
+    // matters on Windows where unlink fails while the connection is open.
+    provider?.close();
+    if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
   describe("remember", () => {
