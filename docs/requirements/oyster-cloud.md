@@ -24,9 +24,7 @@ A user who signs into Oyster on a fresh machine sees their full context with no 
 
 **Verify:** clean install + sign-in produces the same Home page as on the user's primary machine, modulo locally-mounted folder contents — the user must still acquire the underlying files separately (e.g. clone a git remote into a local path). No manual import, file copy, or configuration step is required between sign-in and the populated Home page rendering.
 
-**Variant — self-hosted continuity via a git remote.** Users may opt to use their own git remote as the durable copy instead of Oyster's managed cloud. Same R1 outcome, different transport, no trust handed to us. Treated as a first-class option, not a back-door.
-
-**Verify (variant):** with a self-hosted git remote configured on the primary machine, performing the equivalent setup on a fresh machine (install Oyster, point it at the same remote, pull) produces the same Home page as the managed-cloud path, with the same caveats around locally-mounted folder contents and the same no-manual-import constraint.
+Pro is how Oyster delivers R1. Power users who'd rather manage their own backup of `~/Oyster` may do so — that's their choice, not a product commitment we make.
 
 ---
 
