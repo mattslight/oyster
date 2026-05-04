@@ -38,14 +38,14 @@ The type name `ArtefactSource` slightly mis-fits with `published` included (a st
 
 ### Predicate
 
-Mirrors `PublishedChip`:
+Define once locally in `Home/index.tsx`, mirroring `PublishedChip`:
 
 ```ts
 const isLivePublication = (a: Artifact) =>
   a.publication != null && a.publication.unpublishedAt == null;
 ```
 
-Used both for the count and for the filter. (Inline; no new helper unless a third caller appears.)
+Use the same reference for both the count memo and the filter memo. Single source of truth, no inline duplication.
 
 ### Live updates
 
@@ -72,19 +72,25 @@ Manual, against a running dev server with the user signed into Pro:
 3. Click the pill. Grid narrows to those two artefacts. The `linked` pill (or whichever was active) deactivates.
 4. Click `all`. Grid restores to the full set; `published` deactivates.
 5. Unpublish one of the two via the picker (still on `all`). Within an SSE round-trip the pill reads `1 published` without a manual refresh.
-6. Unpublish the second. Pill disappears (count returns to 0). The filter, if it was active, falls back to `all` — currently this would leave the user on an empty `published` view; that's acceptable in v1 because the SSE-driven count = 0 and the pill simply hides, with the empty grid signaling state change.
+6. Click `published`. Grid narrows to one artefact. Unpublish that last one. Within an SSE round-trip the pill **disappears**, the filter **auto-resets to `all`**, and the grid shows the full unfiltered set. No manual recovery click required.
 
-Edge case: if the user has the `published` filter active when the count drops to 0, the pill hides but `artefactSource` is still `"published"`. Result: grid shows zero artefacts and the radio appears to have no active member. This is acceptable — clicking `all` recovers cleanly. Auto-resetting to `all` on count-zero is tempting but adds coupling between the count memo and the filter setter, and the user is one click from recovery either way.
+Auto-reset rationale: leaving `artefactSource = "published"` while the pill is hidden produces a visibly broken radio state — no pill active, grid empty, user has to infer what happened. The reset (one tiny `useEffect`) only fires for an otherwise-impossible visible state, so the count↔filter coupling is bounded and acceptable.
 
 ## Implementation notes
 
 - The existing `count === 0 && src !== "all"` hide-rule on the pill loop already applies — `published` participates without special casing.
 - The pip JSX is a small conditional inside the existing `.map` — `{src === "published" && <span className="pip pip-published" />}` placed before the count.
-- `setArtefactSource("all")` already runs on space change (the existing `useEffect` resetting filters on scope switch). No additional reset logic needed.
+- `setArtefactSource("all")` already runs on space change (the existing `useEffect` resetting filters on scope switch). The new auto-reset effect is in addition to that, scoped to the count→filter sync:
+  ```ts
+  useEffect(() => {
+    if (artefactSource === "published" && artefactSourceCounts.published === 0) {
+      setArtefactSource("all");
+    }
+  }, [artefactSource, artefactSourceCounts.published]);
+  ```
 
 ## What this design rejects
 
 - **Composable filter dimensions** — too much state for too little reward in v1; revisit if a third status filter lands.
 - **Renaming `ArtefactSource` to `ArtefactFilter`** — touches more files than the change justifies. Accept the slight semantic drift on the internal type name.
 - **Splitting open vs password into two pills** — duplicates the per-tile chip's signal.
-- **Auto-falling-back-to-`all` when count drops to zero** — adds coupling for a one-click recovery.
