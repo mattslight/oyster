@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
 import type { SessionState } from "../../data/sessions-api";
@@ -199,7 +199,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // Tell App when the user is on a Home sub-view so it can drop the chat
   // bar out of hero mode (otherwise the centered overlay occludes the
   // vault preview / orphan tiles). Sub-views only exist while on Home.
-  useEffect(() => {
+  useLayoutEffect(() => {
     onSubViewActiveChange?.(isHomeView && (showVault || showElsewhere));
   }, [isHomeView, showVault, showElsewhere, onSubViewActiveChange]);
 
@@ -656,7 +656,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <div className="home-subtitle">
               Click the
               {" "}
-              <FolderPlus size={14} strokeWidth={2} aria-hidden="true" className="home-subtitle-glyph" />
+              <FolderPlus size={14} strokeWidth={2} role="img" aria-label="folder plus" className="home-subtitle-glyph" />
               {" "}
               on a tile to set up your first space.
             </div>

@@ -142,11 +142,6 @@
   color: var(--text-muted, rgba(255, 255, 255, 0.55));
 }
 
-.home-subtitle strong {
-  color: var(--text);
-  font-weight: 600;
-}
-
 .home-subtitle-glyph {
   display: inline-block;
   vertical-align: -2px;
