@@ -164,3 +164,44 @@ export interface UiCommand {
   payload: unknown;
   correlationId?: string;
 }
+
+/** A folder candidate in a setup proposal. Path is absolute (server-side);
+ *  label is the leaf basename for display. */
+export interface SetupProposalFolder {
+  path: string;
+  label: string;
+}
+
+/** A proposed space grouping in a setup proposal. The agent picks the name
+ *  and groups related folders; the user can edit names, toggle the space
+ *  on/off, and drag chips between spaces or to/from Everything else. */
+export interface SetupProposalSpace {
+  /** Stable client-side id used for selection / dnd. Not the slugified
+   *  space id — that's derived from the (possibly-edited) name on apply. */
+  key: string;
+  name: string;
+  reason?: string;
+  folders: SetupProposalFolder[];
+}
+
+/** Full proposal payload. Emitted by the agent via the `propose_setup` MCP
+ *  tool, broadcast over SSE as `setup_proposal_ready`, rendered by the
+ *  standalone SetupProposalPanel. */
+export interface SetupProposal {
+  /** Server-issued id used to correlate apply requests with the proposal
+   *  the user reviewed (lets us reject stale applies if a newer proposal
+   *  has since arrived). */
+  proposalId: string;
+  spaces: SetupProposalSpace[];
+  everythingElse: SetupProposalFolder[];
+}
+
+/** Per-space outcome from POST /api/setup/apply. Mirrors the shape returned
+ *  by the underlying onboard_space service so the UI can show partial
+ *  failures honestly. */
+export interface SetupApplyResult {
+  spaceId: string;
+  name: string;
+  created: boolean;
+  paths: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }>;
+}

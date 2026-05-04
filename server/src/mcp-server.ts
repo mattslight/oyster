@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { extname, dirname, join, resolve, basename } from "node:path";
+import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
@@ -9,7 +10,7 @@ import type { SpaceService } from "./space-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { SessionStore } from "./session-store.js";
-import type { ArtifactKind, UiCommand } from "../../shared/types.js";
+import type { ArtifactKind, UiCommand, SetupProposal } from "../../shared/types.js";
 import { debug } from "./debug.js";
 import { slugify } from "./utils.js";
 import { makeTool, withStructured, type ToolTelemetry } from "./mcp-tool.js";
@@ -198,41 +199,41 @@ user's active projects.
 - Space names are short, lowercase, and human — pick whatever the user
   would actually call this part of their work.
 
-### Step 3 — Present the plan to the user in chat BEFORE applying
+### Step 3 — Send the proposal to the UI
 
-Show:
-- The proposed spaces with the folders in each and a one-sentence reason why.
-- What you'd filter as noise (with reasons).
-- Any open questions you want them to answer first.
+Call \`propose_setup\` with your grouped spaces and an \`everythingElse\` array
+for folders you considered but didn't auto-group. The user gets an interactive
+panel where they can toggle, rename, drag chips, +Add space, and apply.
 
-Don't apply silently. Don't dump raw JSON. Format it readably — the user is
-reviewing a plan, not consuming an API response.
+DO NOT write a markdown plan in chat. The panel IS the plan. After calling
+\`propose_setup\`, briefly acknowledge in chat (one short sentence — e.g.
+"Sent you a proposal — pick what looks right.") and stop. Do NOT call
+\`onboard_space\` yourself; the user applies via the panel and the server
+fans out the writes.
 
-### Step 4 — Apply once confirmed
+If you're unsure whether a folder is a real project, put it in
+\`everythingElse\` rather than asking — the user can drag it into a space
+themselves. No open questions in chat.
 
-For each confirmed space, call \`onboard_space\` with a \`name\` and a \`paths\`
-array (absolute paths). One call creates the space, attaches every path, and
-scans each. For multi-folder spaces make ONE call with all the paths in the
-array — don't loop once per folder.
+### Step 4 — Don't apply
 
-### Step 5 — Confirm back
-
-Tell the user how many spaces were created and rough artifact counts per space.
-Offer to adjust anything that looks off.
+You don't apply. The panel sends the user's confirmed selections to
+\`POST /api/setup/apply\`, which calls \`onboard_space\` per space on your
+behalf. The surface refreshes via SSE; the user sees it happen.
 
 ### If the user gave you an explicit path
 
 (e.g. *"set up Oyster with my projects at ~/foo"*)
 
-Skip the probe. Start at Step 1 for just that path — walk its subfolders, apply
-the same judgement, propose, confirm, apply.
+Skip the probe. Start at Step 1 for just that path — walk its subfolders,
+apply the same judgement, then call \`propose_setup\` for the user to confirm.
 
 ### Don't silently drop anything
 
-If you considered a folder and decided it wasn't a project, say so in the plan
-and give a short reason. Never omit folders from the plan without telling the
-user. If you're unsure whether something counts, flag it as an open question
-and let the user decide.
+If you considered a folder and decided it wasn't a project, surface it in
+\`everythingElse\` (the panel renders it as a draggable chip) rather than
+omitting it. The user can ignore it or drag it into a space — that's their
+call, not yours.
 
 ## "Here's my context from another AI" — import playbook
 
@@ -446,6 +447,52 @@ export function createMcpServer(deps: McpDeps): McpServer {
       if (!space) space = deps.spaceService.createSpace({ name });
       const updated = deps.spaceService.setSummary(space.id, title, content);
       return { space_id: updated.id, title: updated.summaryTitle, content: updated.summaryContent };
+    },
+  );
+
+  // ── propose_setup ──
+
+  tool(
+    "propose_setup",
+    "Render a structured setup proposal in the user's UI: a panel of proposed spaces (each with folders) plus an Everything-else bucket for unattached folders. Use this from Step 3 of the 'Set up Oyster for me' playbook INSTEAD of writing a markdown plan in chat — the user can toggle, rename, drag chips, and apply directly from the panel. After calling, briefly acknowledge in chat (e.g. 'Sent you a proposal — pick what looks right.') and stop. Do NOT call onboard_space yourself; the panel applies via /api/setup/apply.",
+    {
+      spaces: z.array(z.object({
+        name: z.string().describe("Display name for the space (short, lowercase, human)."),
+        reason: z.string().optional().describe("One-sentence reason this group hangs together (e.g. 'shared prefix tokinvest-*')."),
+        folders: z.array(z.object({
+          path: z.string().describe("Absolute path to the folder."),
+          label: z.string().describe("Display label for the folder (typically the leaf basename)."),
+        })).describe("Folders that belong in this space."),
+      })).describe("Proposed space groupings, ordered by confidence (highest first)."),
+      everythingElse: z.array(z.object({
+        path: z.string().describe("Absolute path to the folder."),
+        label: z.string().describe("Display label for the folder (typically the leaf basename)."),
+      })).optional().describe("Folders considered but not auto-grouped — surfaced in the panel so the user can drag them into a space if desired. Don't omit borderline folders silently."),
+    },
+    async ({ spaces, everythingElse }) => {
+      const proposalId = randomUUID();
+      const now = Date.now();
+      const proposal: SetupProposal = {
+        proposalId,
+        spaces: spaces.map((s, i) => ({
+          key: `s${now}-${i}`,
+          name: s.name,
+          reason: s.reason,
+          folders: s.folders,
+        })),
+        everythingElse: everythingElse ?? [],
+      };
+      deps.broadcastUiEvent({
+        version: 1,
+        command: "setup_proposal_ready",
+        payload: proposal,
+      });
+      return {
+        proposal_id: proposalId,
+        space_count: spaces.length,
+        everything_else_count: everythingElse?.length ?? 0,
+        message: "Proposal sent to the user's UI. They'll pick what they want and apply it from the panel.",
+      };
     },
   );
 

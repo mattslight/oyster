@@ -1,0 +1,387 @@
+/* SetupProposalPanel — full-screen modal overlay rendered by App when the
+   agent emits propose_setup. Standalone primitive (not chat-coupled) so it
+   can be triggered from other surfaces later. Visual language matches the
+   mock at /tmp/setup-oyster-mock.html. */
+
+.setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(8, 9, 22, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 24px;
+  overflow-y: auto;
+  font-family: "Space Grotesk", -apple-system, system-ui, sans-serif;
+  color: #f0f0f5;
+  animation: setup-overlay-in 0.18s ease;
+}
+
+@keyframes setup-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.setup-panel {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  background: rgba(20, 21, 40, 0.96);
+  border: 1px solid rgba(124, 107, 255, 0.22);
+  border-radius: 14px;
+  padding: 22px 22px 18px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+  animation: setup-panel-in 0.22s ease;
+}
+
+@keyframes setup-panel-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.setup-header { margin-bottom: 18px; padding-right: 32px; }
+.setup-title  { font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+.setup-sub    {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.5;
+  margin: 0;
+}
+.setup-sub strong { color: rgba(255, 255, 255, 0.85); font-weight: 600; }
+.setup-sub em     { color: rgba(255, 255, 255, 0.85); font-style: normal; }
+
+.setup-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+.setup-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* Rows ------------------------------------------------------------- */
+
+.setup-rows { display: flex; flex-direction: column; }
+
+.setup-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  margin: 0 -8px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.setup-row:last-of-type { border-bottom: none; }
+
+.setup-row--over {
+  background: rgba(124, 107, 255, 0.08);
+  outline: 1px dashed rgba(124, 107, 255, 0.45);
+}
+
+.setup-row--unchecked .setup-name-btn,
+.setup-row--unchecked .setup-count,
+.setup-row--unchecked .setup-reason,
+.setup-row--unchecked .setup-chip { opacity: 0.4; }
+
+.setup-row-spacer { width: 18px; flex: 0 0 18px; }
+
+/* Checkbox replica */
+.setup-check {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+.setup-check--on {
+  background: rgba(124, 107, 255, 0.85);
+  border-color: rgba(124, 107, 255, 1);
+}
+.setup-check:hover { border-color: rgba(124, 107, 255, 0.9); }
+
+.setup-row-body { flex: 1; min-width: 0; }
+
+.setup-row-name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-name-btn {
+  background: none;
+  border: none;
+  padding: 1px 4px;
+  margin: 0 -4px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  cursor: text;
+  transition: background 0.1s;
+}
+.setup-name-btn:hover { background: rgba(255, 255, 255, 0.05); }
+.setup-name-empty { color: rgba(255, 255, 255, 0.4); font-style: italic; }
+
+.setup-name-static {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  padding: 1px 0;
+}
+
+.setup-name-input {
+  background: rgba(124, 107, 255, 0.08);
+  border: 1px solid rgba(124, 107, 255, 0.5);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  outline: none;
+  width: 180px;
+}
+
+.setup-count {
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}
+
+.setup-reason {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.45;
+  font-style: italic;
+}
+
+/* Chips ------------------------------------------------------------ */
+
+.setup-chips {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.setup-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  background: rgba(124, 107, 255, 0.10);
+  border: 1px solid rgba(124, 107, 255, 0.22);
+  border-radius: 7px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: grab;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s, box-shadow 0.12s;
+  user-select: none;
+  touch-action: none;
+}
+.setup-chip:hover {
+  background: rgba(124, 107, 255, 0.18);
+  border-color: rgba(124, 107, 255, 0.4);
+  transform: translateY(-1px);
+}
+.setup-chip:active { cursor: grabbing; }
+.setup-chip--dragging {
+  opacity: 0.4;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+}
+.setup-chip--elsewhere {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+.setup-chip--elsewhere:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.setup-chip-label {
+  /* Ensures the label width holds when the × is hidden */
+  padding-right: 4px;
+}
+.setup-chip:has(.setup-chip-x) .setup-chip-label {
+  padding-right: 0;
+}
+
+.setup-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  margin-left: 1px;
+}
+.setup-chip-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Empty space / Add space ----------------------------------------- */
+
+.setup-empty-msg {
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-remove-btn {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: rgba(239, 68, 68, 0.85);
+  font-family: inherit;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.setup-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.setup-add-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px 14px;
+  margin: 0 -8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.setup-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px dashed rgba(124, 107, 255, 0.35);
+  color: rgba(165, 151, 255, 0.95);
+  border-radius: 7px;
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.setup-add-btn:hover {
+  background: rgba(124, 107, 255, 0.08);
+  border-color: rgba(124, 107, 255, 0.55);
+  color: #fff;
+}
+
+/* Everything-else specific styling — distinct from a regular space row,
+   even though it shares the .setup-row base. */
+.setup-row--elsewhere {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+}
+
+/* Footer ----------------------------------------------------------- */
+
+.setup-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  color: rgba(255, 195, 195, 0.95);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.setup-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 4px;
+}
+
+.setup-btn-primary {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  background: rgba(124, 107, 255, 0.85);
+  color: #fff;
+  border: 1px solid rgba(124, 107, 255, 1);
+  transition: background 0.12s;
+}
+.setup-btn-primary:hover:not(:disabled) {
+  background: rgba(124, 107, 255, 0.95);
+}
+.setup-btn-primary:disabled {
+  background: rgba(124, 107, 255, 0.35);
+  border-color: rgba(124, 107, 255, 0.45);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.setup-btn-ghost {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.setup-btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.setup-btn-ghost:disabled { opacity: 0.5; cursor: default; }

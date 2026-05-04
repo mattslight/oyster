@@ -7,6 +7,7 @@ import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
 import { OnboardingDock } from "./components/OnboardingDock";
+import { SetupProposalPanel } from "./components/SetupProposalPanel";
 import { AuthBadge } from "./components/AuthBadge";
 import { windowsReducer } from "./stores/windows";
 import {
@@ -20,7 +21,7 @@ import {
 import { subscribeUiEvents } from "./data/ui-events";
 import { shouldOpenFullscreen } from "../../shared/types";
 import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace, promoteFolderToSpace } from "./data/spaces-api";
-import type { Space } from "../../shared/types";
+import type { Space, SetupProposal } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import "./App.css";
 
@@ -115,6 +116,10 @@ export default function App() {
   const [viewerHash, setViewerHash] = useState<string>(() => getUrlState().hash);
   const [connected, setConnected] = useState(true);
   const [aiError, setAiError] = useState<string | null>(null);
+  // Active proposal from the agent's `propose_setup` MCP tool (broadcast
+  // via SSE). Standalone overlay — not coupled to the chat. Triggered by
+  // the agent during first-run setup; cleared on Apply / Close.
+  const [setupProposal, setSetupProposal] = useState<SetupProposal | null>(null);
 
   // Active-space-aware artifact loader. Mirrors current activeSpace via a ref
   // so callers don't have to thread it through every closure (polling,
@@ -205,6 +210,9 @@ export default function App() {
         .then(setArtifacts)
         .catch((err) => console.warn("[oyster] artifact_changed refetch failed:", err));
       return;
+    }
+    if (event.command === "setup_proposal_ready") {
+      setSetupProposal(event.payload as SetupProposal);
     }
   }), [loadArtifacts]);
 
@@ -578,6 +586,22 @@ export default function App() {
       <OnboardingDock
         userSpaceCount={FORCE_ONBOARDING ? 0 : spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
       />
+
+      {setupProposal && (
+        <SetupProposalPanel
+          proposal={setupProposal}
+          onClose={() => setSetupProposal(null)}
+          onApplied={() => {
+            // Refresh spaces + artefacts so the surface reflects the new
+            // structure immediately. The server's `setup_applied` SSE event
+            // can also fan out to other tabs; this branch handles the apply
+            // tab itself.
+            void fetchSpaces().then(setSpaces).catch(() => undefined);
+            void loadArtifacts().then(setArtifacts).catch(() => undefined);
+            setSetupProposal(null);
+          }}
+        />
+      )}
     </div>
   );
 }
