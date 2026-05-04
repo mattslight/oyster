@@ -22,7 +22,7 @@ export function renderMarkdownPage(bytes: Uint8Array, row: PublicationRow): Resp
   // Title: first H1 if present, else fallback.
   const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
   const title = titleMatch ? stripTags(titleMatch[1]!) : "Shared via Oyster";
-  const page = renderChromePage({ title, bodyHtml: html });
+  const page = renderChromePage({ title, bodyHtml: html, showActionSlot: row.mode !== "signin" });
 
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
@@ -88,7 +88,7 @@ export function renderMermaidPage(bytes: Uint8Array, row: PublicationRow): Respo
 })();
 </script>
 `;
-  const page = renderChromePage({ title: "Diagram", bodyHtml: body });
+  const page = renderChromePage({ title: "Diagram", bodyHtml: body, showActionSlot: row.mode !== "signin" });
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
@@ -114,7 +114,7 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
         style="border:0;width:100%;height:calc(100vh - 60px);display:block;"></iframe>`;
   // Body's main padding is removed for iframe so it fills naturally.
   const cssExtra = `main { padding: 0; max-width: none; }`;
-  const page = renderChromePage({ title: "Shared via Oyster", bodyHtml: iframe, cssExtra });
+  const page = renderChromePage({ title: "Shared via Oyster", bodyHtml: iframe, cssExtra, showActionSlot: row.mode !== "signin" });
   return new Response(page, {
     status: 200,
     headers: cacheHeaders(row, "text/html; charset=utf-8"),

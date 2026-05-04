@@ -373,4 +373,29 @@ describe("GET /p/:token — signin mode", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("private");
   });
+
+  it("signin viewer (signed in) does NOT show 'Get your own at oyster.to' CTA", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art3cta", body: "# signin-only",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+    const cookie = `oyster_session=${u.sessionToken}`;
+    const res = await call(getReq(`/p/${shareToken}`, { cookie }));
+    expect(res.status).toBe(200);
+    expect(await res.text()).not.toContain("Get your own at oyster.to");
+  });
+});
+
+describe("GET /p/:token — CTA in open mode", () => {
+  it("open viewer shows 'Get your own at oyster.to' CTA", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_cta_open", body: "# open",
+    });
+    const res = await call(getReq(`/p/${shareToken}`));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Get your own at oyster.to");
+  });
 });
