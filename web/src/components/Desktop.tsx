@@ -25,13 +25,14 @@ interface Props {
   isArchivedView?: boolean;
   /** Render relative-time meta line under each artifact label. Used by Home. */
   showMeta?: boolean;
+  onArtifactPublish?: (artifact: Artifact) => void;
 }
 
 type DisplayItem =
   | { type: "group"; key: string; name: string; artifacts: Artifact[] }
   | { type: "artifact"; key: string; artifact: Artifact };
 
-export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView, showMeta }: Props) {
+export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onArtifactStop, onGroupClick, onSpaceChange, onConvertToSpace, onRefresh, onArtifactUpdate, onArtifactRemove, revealId, isArchivedView, showMeta, onArtifactPublish }: Props) {
   const isAllSpace = space === "__all__";
   // Meta-spaces span multiple real spaces, so groupName is no longer unique —
   // `notes` from space A would merge with `notes` from space B into a single
@@ -279,6 +280,18 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
               <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
+              {!isArchivedView && !artifactCtx.artifact.builtin && !artifactCtx.artifact.plugin && artifactCtx.artifact.status !== "generating" && onArtifactPublish && (
+                <button
+                  className="space-ctx-item"
+                  onClick={() => {
+                    const a = artifactCtx.artifact;
+                    setArtifactCtx(null);
+                    onArtifactPublish(a);
+                  }}
+                >
+                  {artifactCtx.artifact.publication?.unpublishedAt === null ? "Manage publication…" : "Publish…"}
+                </button>
+              )}
               <div className="space-ctx-sep" />
               {artifactCtx.artifact.plugin ? (
                 <button className="space-ctx-item space-ctx-delete" onClick={() => handleUninstallPlugin(artifactCtx.artifact)}>Uninstall</button>

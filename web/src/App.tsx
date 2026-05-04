@@ -354,10 +354,6 @@ export default function App() {
     if (artifact.builtin || artifact.plugin || artifact.status === "generating") return;
     setPublishingArtifact(artifact);
   }, []);
-  // Keep a stable ref so T16-T18 prop wires compile without stale-closure issues.
-  const handleArtifactPublishRef = useRef(handleArtifactPublish);
-  handleArtifactPublishRef.current = handleArtifactPublish;
-
   async function handleFixError(error: { title: string; path: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
     // Use a fresh session so Oyster has clean context for the fix
     const session = await createSession();
@@ -429,6 +425,7 @@ export default function App() {
           onArtifactRemove: (id) =>
             setArtifacts((prev) => prev.filter((a) => a.id !== id)),
           revealId,
+          onArtifactPublish: handleArtifactPublish,
         }}
       />
 
