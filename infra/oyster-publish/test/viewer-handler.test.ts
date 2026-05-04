@@ -145,6 +145,26 @@ describe("GET /p/:token/raw — iframe content", () => {
     const res = await call(getReq(`/p/${shareToken}/raw`));
     expect(res.status).toBe(410);
   });
+
+  it("returns 404 on /raw for non-iframe kind (notes)", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art1", artifactKind: "notes",
+      contentType: "text/markdown", body: "# hello",
+    });
+    const res = await call(getReq(`/p/${shareToken}/raw`));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 on /raw for iframe kind (app)", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art1", artifactKind: "app",
+      contentType: "text/html", body: "<h1>app</h1>",
+    });
+    const res = await call(getReq(`/p/${shareToken}/raw`));
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("GET/POST /p/:token — password mode", () => {

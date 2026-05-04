@@ -380,7 +380,11 @@ async function handleViewerRaw(req: Request, env: Env, shareToken: string): Prom
     return new Response(null, { status: 302, headers: { location: access.location, "cache-control": "private, no-store" } });
   }
   if (access.kind === "gate") return htmlPage(200, passwordGatePage(shareToken));
-  // OK — serve raw bytes for HTML kinds, or fall through for non-HTML
+  // OK — only iframe kinds are served via /raw; everything else 404s.
+  const IFRAME_KINDS = new Set(["app", "deck", "wireframe", "table", "map"]);
+  if (!IFRAME_KINDS.has(access.row.artifact_kind)) {
+    return htmlPage(404, notFoundPage());
+  }
   const obj = await env.ARTIFACTS.get(access.row.r2_key);
   if (!obj) {
     console.error("[viewer] R2 object missing for token", shareToken, "key", access.row.r2_key);
