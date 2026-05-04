@@ -239,6 +239,12 @@ export function PublishModal({ artifact, onClose }: Props) {
         <div className="publish-modal-eyebrow">{isPublished ? "Published" : "Publish artefact"}</div>
         <h2 id="publish-modal-title" className="publish-modal-title">{artifact.label}</h2>
 
+        {error && (
+          <div className="publish-modal-error">
+            <span>{error}</span>
+          </div>
+        )}
+
         {auth.status !== "signed-in" && auth.status !== "loading" && (
           <>
             <div className="publish-modal-helper">
@@ -269,12 +275,6 @@ export function PublishModal({ artifact, onClose }: Props) {
 
         {auth.status === "signed-in" && (
           <>
-            {error && (
-              <div className="publish-modal-error">
-                <span>{error}</span>
-              </div>
-            )}
-
             {isPublished && publication && (
               <>
                 <div className="publish-modal-url">
