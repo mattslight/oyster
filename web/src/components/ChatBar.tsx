@@ -256,9 +256,21 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [expanded, setExpanded]);
 
+  // Queue for prompts dispatched before the chat session has finished
+  // initialising. createSession() can take a few seconds while OpenCode
+  // boots; without this, clicking "Set up Oyster" during the boot window
+  // silently no-ops because handleSend bails on `!sessionId`. Now we
+  // capture the latest pending text and drain it once sessionId arrives.
+  const pendingPromptRef = useRef<string | null>(null);
+
   const handleSend = useCallback(async (override?: string) => {
     const raw = override ?? input;
-    if (!raw.trim() || streaming || !sessionId) return;
+    if (!raw.trim() || streaming) return;
+    if (!sessionId) {
+      // Session still booting — queue and let the drain effect fire it.
+      pendingPromptRef.current = raw;
+      return;
+    }
     const content = raw;
 
     // ── # commands — instant space switch, no LLM call ──
@@ -382,6 +394,19 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
   }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError, onArtifactPublish, publishableArtifacts]);
 
+  // Drain any queued prompt as soon as the session is ready AND nothing
+  // is streaming. handleSend's other guard is `streaming`; if we drained
+  // and called through while a stream was in flight, the call would
+  // early-return and the prompt would be silently lost. Listening on
+  // `streaming` too means the effect re-fires when it flips false.
+  useEffect(() => {
+    if (!sessionId || streaming) return;
+    const queued = pendingPromptRef.current;
+    if (!queued) return;
+    pendingPromptRef.current = null;
+    handleSend(queued);
+  }, [sessionId, streaming, handleSend]);
+
   // Cross-component prompt trigger. Other surfaces (currently the onboarding
   // dock's "Set up Oyster" button) dispatch `oyster:send-prompt` with a text
   // payload to fire the same handleSend path as the hero CTA. Detail.text
@@ -432,7 +457,10 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                   type="button"
                   className="chatbar-hero-prompt"
                   onClick={() => handleSend("Set up Oyster")}
-                  disabled={!sessionId || streaming}
+                  // Only block during an active stream — when sessionId is
+                  // null (chat still booting), the click queues and fires
+                  // automatically once the session arrives.
+                  disabled={streaming}
                   tabIndex={taglineHidden ? -1 : 0}
                   title="Click to send, or type it yourself"
                 >
