@@ -18,6 +18,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **Setup pill no longer reads as "done" while optionals remain.** Once you set up your spaces (the required step), the pill now says *Continue setup* with a green check — invitation, not full stop. It only collapses to the silent green badge when every optional is also ticked or skipped.
 - **Clicking an artefact in the session inspector** now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.
 - **Attaching a folder to a space** now sweeps in any sessions already running in that folder, instead of leaving them stranded under Unsorted.
 
