@@ -203,7 +203,12 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     if (publishArgMatch !== null && (lower === "/p" || lower.startsWith("/p "))) {
       const q = (publishArgMatch[2] || "").trim();
       if (!q) {
-        return publishableArtifacts.slice(0, 8).map(a => ({ key: a.id, label: a.label, desc: a.spaceId, type: "publish-artifact" as const, score: 0 }));
+        const sorted = [...publishableArtifacts].sort((a, b) => {
+          if (a.spaceId === activeSpace && b.spaceId !== activeSpace) return -1;
+          if (b.spaceId === activeSpace && a.spaceId !== activeSpace) return 1;
+          return a.label.localeCompare(b.label);
+        });
+        return sorted.slice(0, 8).map(a => ({ key: a.id, label: a.label, desc: a.spaceId, type: "publish-artifact" as const, score: 0 }));
       }
       const allowed = new Set(publishableArtifacts.map((a) => a.id));
       return scoreArtifacts(q)
@@ -375,7 +380,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         : "Can't reach Oyster — check that the server is running";
       onAiError?.(msg);
     }
-  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError]);
+  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError, onArtifactPublish, publishableArtifacts]);
 
   function handleCopyChat() {
     const text = messages
