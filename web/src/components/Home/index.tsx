@@ -447,17 +447,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
-  // If the user has the published filter active and the count drops to 0
-  // (e.g. they just unpublished the last live artefact), the pill hides
-  // — without this reset they'd be left on an empty grid with no active
-  // pill, a visibly broken radio state. The coupling here is bounded:
-  // it only fires for an otherwise-impossible visible state.
-  useEffect(() => {
-    if (artefactSource === "published" && artefactSourceCounts.published === 0) {
-      setArtefactSource("all");
-    }
-  }, [artefactSource, artefactSourceCounts.published]);
-
   // Per-source artefact counts for the project tile grid. "vault"
   // collects everything without a source_id (manual + ai_generated tiles
   // that didn't come from a linked folder). The tile grid itself drives
@@ -951,7 +940,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <span className="home-section-stats">
               {ARTEFACT_SOURCE_ORDER.map((src) => {
                 const count = artefactSourceCounts[src];
-                if (count === 0 && src !== "all") return null;
+                // Origin pills hide at 0 (clutter); "all" stays unconditional;
+                // "published" stays visible as a discoverability surface — clicking
+                // it at 0 lands on a how-to-publish hint instead of an empty grid.
+                if (count === 0 && src !== "all" && src !== "published") return null;
                 return (
                   <button
                     key={src}
@@ -993,7 +985,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               </button>
             </div>
           </div>
-          {artefactsView === "icons" ? (
+          {artefactSource === "published" && filteredArtefactsTotal === 0 ? (
+            <div className="home-empty">
+              No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong>
+            </div>
+          ) : artefactsView === "icons" ? (
             <>
               <div className="home-artefacts">
                 <Desktop

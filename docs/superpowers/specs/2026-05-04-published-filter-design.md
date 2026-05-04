@@ -24,7 +24,7 @@ R5 (#315 backend, #316 viewer, #317 publish UI) shipped publication end-to-end. 
 - **Copy:** `published`. Matches the chip text, the data field name (`publication`), and reads consistently with the verb the user just used in the publish picker.
 - **Inactive treatment:** neutral pill background (same as siblings) with a small purple pip prefix. Borrows the pip pattern from the Sessions section (`live` / `waiting` / `disconnected`) so the eye reads "this is a status, not an origin" without breaking the row's visual uniformity.
 - **Active treatment:** existing `.stat-btn.active` purple — no new behaviour.
-- **Hide-when-zero:** matches the existing pills — pill renders only when `count > 0`. The `all` pill stays unconditional.
+- **Hide-when-zero:** the origin pills (`mine`, `from agents`, `linked`) hide at 0 to keep the row tidy. The `published` pill stays visible at 0 because it doubles as a discoverability surface — clicking it before the user has published anything lands on a how-to hint instead of an empty grid. The `all` pill stays unconditional.
 
 The purple is `#a78bfa`, matching `PublishedChip__tag` in `web/src/components/PublishedChip.css`.
 
@@ -67,30 +67,24 @@ No backend changes. No `shared/types.ts` changes — the wire format already car
 
 Manual, against a running dev server with the user signed into Pro:
 
-1. Surface starts with no publications. Pill **does not render** (count is 0).
-2. Publish two artefacts (one open, one password) via the publish picker. Pill appears as `2 published` with a purple pip on the left. Count is `2`, not `1` — open + password both count.
-3. Click the pill. Grid narrows to those two artefacts. The `linked` pill (or whichever was active) deactivates.
+1. Surface starts with no publications. Pill renders as `0 published` with the purple pip — visible but inactive.
+2. Click `published` while count is 0. Grid is replaced by a how-to hint: "No published artefacts yet — type `/p <name>` in the chat bar, or right-click any artefact and choose **Publish…**".
+3. Publish two artefacts (one open, one password). Pill reads `2 published`. Count is `2`, not `1` — open + password both count. Hint disappears, grid shows the two artefacts (flat, not bucketed by source folder).
 4. Click `all`. Grid restores to the full set; `published` deactivates.
-5. Unpublish one of the two via the picker (still on `all`). Within an SSE round-trip the pill reads `1 published` without a manual refresh.
-6. Click `published`. Grid narrows to one artefact. Unpublish that last one. Within an SSE round-trip the pill **disappears**, the filter **auto-resets to `all`**, and the grid shows the full unfiltered set. No manual recovery click required.
-
-Auto-reset rationale: leaving `artefactSource = "published"` while the pill is hidden produces a visibly broken radio state — no pill active, grid empty, user has to infer what happened. The reset (one tiny `useEffect`) only fires for an otherwise-impossible visible state, so the count↔filter coupling is bounded and acceptable.
+5. Unpublish one of the two (right-click → Unpublish). Within an SSE round-trip the pill reads `1 published` without a manual refresh.
+6. Click `published`, then unpublish the last one. Pill drops to `0 published`. The grid replaces with the how-to hint again (no auto-reset — the empty state is the recovery path).
 
 ## Implementation notes
 
-- The existing `count === 0 && src !== "all"` hide-rule on the pill loop already applies — `published` participates without special casing.
+- The pill loop hide-rule excepts `"published"`: `if (count === 0 && src !== "all" && src !== "published") return null;`. Origin pills still hide at 0; `published` and `all` always render.
 - The pip JSX is a small conditional inside the existing `.map` — `{src === "published" && <span className="pip pip-published" />}` placed before the count.
-- `setArtefactSource("all")` already runs on space change (the existing `useEffect` resetting filters on scope switch). The new auto-reset effect is in addition to that, scoped to the count→filter sync:
-  ```ts
-  useEffect(() => {
-    if (artefactSource === "published" && artefactSourceCounts.published === 0) {
-      setArtefactSource("all");
-    }
-  }, [artefactSource, artefactSourceCounts.published]);
-  ```
+- `setArtefactSource("all")` already runs on space change (the existing `useEffect` resetting filters on scope switch). No additional reset logic — the empty-state hint replaces the auto-reset that earlier drafts of this design proposed.
+- Empty-state hint renders in `Home/index.tsx` between the pill row and the artefact grid, conditional on `artefactSource === "published" && filteredArtefactsTotal === 0`. Uses the existing `.home-empty` class for visual consistency with the sessions/memories empty states.
+- `flatten={artefactSource === "published"}` is passed to `Desktop` so artefacts render as their own tiles in this view (status filters cut across folders; source-folder bucketing would hide the result).
 
 ## What this design rejects
 
 - **Composable filter dimensions** — too much state for too little reward in v1; revisit if a third status filter lands.
 - **Renaming `ArtefactSource` to `ArtefactFilter`** — touches more files than the change justifies. Accept the slight semantic drift on the internal type name.
 - **Splitting open vs password into two pills** — duplicates the per-tile chip's signal.
+- **Hiding the pill at 0 + auto-resetting the filter** — earlier draft. The always-visible pill plus how-to hint is more useful than a hidden-pill + radio-snap-back behaviour, especially for first-time users who haven't published anything yet.
