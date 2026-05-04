@@ -394,17 +394,18 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
   }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError, onArtifactPublish, publishableArtifacts]);
 
-  // Drain any queued prompt as soon as the session is ready. This is what
-  // makes the click-while-booting case resolve correctly: handleSend
-  // captured the text into pendingPromptRef and returned; once sessionId
-  // flips truthy, we re-fire through the same code path.
+  // Drain any queued prompt as soon as the session is ready AND nothing
+  // is streaming. handleSend's other guard is `streaming`; if we drained
+  // and called through while a stream was in flight, the call would
+  // early-return and the prompt would be silently lost. Listening on
+  // `streaming` too means the effect re-fires when it flips false.
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || streaming) return;
     const queued = pendingPromptRef.current;
     if (!queued) return;
     pendingPromptRef.current = null;
     handleSend(queued);
-  }, [sessionId, handleSend]);
+  }, [sessionId, streaming, handleSend]);
 
   // Cross-component prompt trigger. Other surfaces (currently the onboarding
   // dock's "Set up Oyster" button) dispatch `oyster:send-prompt` with a text
