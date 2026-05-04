@@ -562,6 +562,7 @@ export default function App() {
         inputRef={chatInputRef}
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
+        onArtifactPublish={handleArtifactPublish}
         isFirstRun={isFirstRun}
         onAiError={setAiError}
       />
