@@ -21,7 +21,7 @@ type Phase = "idle" | "publishing" | "unpublishing";
 type AuthState =
   | { status: "loading" }
   | { status: "signed-out" }
-  | { status: "signing-in"; signInUrl: string; expiresAt: number }
+  | { status: "signing-in"; expiresAt: number }
   | { status: "signed-in"; email: string };
 
 export function PublishModal({ artifact, onClose }: Props) {
@@ -191,7 +191,6 @@ export function PublishModal({ artifact, onClose }: Props) {
       window.open(body.sign_in_url, "_blank", "noopener,noreferrer");
       setAuth({
         status: "signing-in",
-        signInUrl: body.sign_in_url,
         expiresAt: Date.now() + body.expires_in * 1000,
       });
     } catch (err) {

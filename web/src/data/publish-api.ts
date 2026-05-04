@@ -1,5 +1,3 @@
-import type { ArtefactPublication } from "../../../shared/types";
-
 /** Result of a successful publish. Mirrors PublishResult from server/src/publish-service.ts. */
 export interface PublishResponse {
   share_token: string;
@@ -71,9 +69,4 @@ export function publishArtifact(
 
 export function unpublishArtifact(artifactId: string): Promise<UnpublishResponse> {
   return send<UnpublishResponse>("DELETE", artifactId);
-}
-
-/** Helper used by the chip and modal to derive "is currently live" from a publication. */
-export function isLive(publication: ArtefactPublication | null | undefined): publication is ArtefactPublication {
-  return !!publication && publication.unpublishedAt === null;
 }
