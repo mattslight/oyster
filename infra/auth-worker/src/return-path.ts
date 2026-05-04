@@ -12,6 +12,9 @@ export function validateReturnPath(raw: string | null | undefined): string | nul
   if (raw == null) return null;
   if (typeof raw !== "string") return null;
   if (raw.length === 0 || raw.length > MAX_PATH_LEN) return null;
+  // JS regex `$` matches before a trailing newline; reject any control
+  // chars (especially CR/LF) explicitly so they never reach a Location header.
+  if (/[\x00-\x1f\x7f]/.test(raw)) return null;
   if (!SHARE_VIEWER_PATH.test(raw)) return null;
   return raw;
 }

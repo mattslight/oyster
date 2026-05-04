@@ -55,4 +55,17 @@ describe("validateReturnPath — rejects everything else", () => {
     const long = "/p/" + "a".repeat(2048);
     expect(validateReturnPath(long)).toBeNull();
   });
+
+  it("rejects trailing newline (defence against JS regex $ semantics)", () => {
+    expect(validateReturnPath("/p/abc\n")).toBeNull();
+  });
+
+  it("rejects embedded CR/LF", () => {
+    expect(validateReturnPath("/p/abc\r\nLocation: evil")).toBeNull();
+  });
+
+  it("rejects tab and other control chars", () => {
+    expect(validateReturnPath("/p/ab\tc")).toBeNull();
+    expect(validateReturnPath("/p/ab\x00c")).toBeNull();
+  });
 });
