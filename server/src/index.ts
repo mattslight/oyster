@@ -227,11 +227,15 @@ const db = initDb(DB_DIR);
 const store = new SqliteArtifactStore(db);
 const spaceStore = new SqliteSpaceStore(db);
 const sessionStore = new SqliteSessionStore(db);
+const WORKER_BASE = process.env.OYSTER_AUTH_BASE
+  ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
+  : "https://oyster.to";
+
 // artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
 // not inside DB_DIR. spaceStore is passed in so rowToArtifact can resolve the
 // linked-source path for tiles whose `source_id` is non-null.
-const artifactService = new ArtifactService(store, OYSTER_HOME, spaceStore);
+const artifactService = new ArtifactService(store, WORKER_BASE, OYSTER_HOME, spaceStore);
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
@@ -251,10 +255,6 @@ authService.onAuthChanged((state) => {
   });
 });
 void authService.validatePersistedSession();
-
-const WORKER_BASE = process.env.OYSTER_AUTH_BASE
-  ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
-  : "https://oyster.to";
 const publishService = createPublishService({
   db,
   readArtifactBytes: async (artifactId) => {
@@ -405,7 +405,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (await tryHandleAuthRoute(req, res, url, ctx, { authService })) return;
 
   // /api/artifacts/:id/publish — publish + unpublish an artefact.
-  if (await tryHandlePublishRoute(req, res, url, ctx, { publishService })) return;
+  if (await tryHandlePublishRoute(req, res, url, ctx, { publishService, broadcastUiEvent })) return;
 
   // /oauth/*, /.well-known/oauth-*, /mcp/*, /api/mcp/status
   // Pass the actually-bound `port`, not PREFERRED_PORT — findPort() may

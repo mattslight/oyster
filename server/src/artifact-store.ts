@@ -19,11 +19,17 @@ export interface ArtifactRow {
   source_id: string | null;    // FK to sources.id; NULL = not from a linked external source
   created_at: string;
   updated_at: string;
+  share_token: string | null;
+  share_mode: "open" | "password" | "signin" | null;
+  share_password_hash: string | null;
+  published_at: number | null;
+  share_updated_at: number | null;
+  unpublished_at: number | null;
 }
 
 // ── Store interface ──
 
-export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "source_id"> & {
+export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "source_id" | "share_token" | "share_mode" | "share_password_hash" | "published_at" | "share_updated_at" | "unpublished_at"> & {
   source_origin?: "manual" | "discovered" | "ai_generated";
   source_ref?: string | null;
   source_id?: string | null;

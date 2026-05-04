@@ -20,6 +20,7 @@
     "marked": "^17.0.4",
     "motion": "^12.38.0",
     "ogl": "^1.0.11",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "three": "^0.184.0"
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.0",
+    "@types/qrcode-generator": "^0.0.16",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

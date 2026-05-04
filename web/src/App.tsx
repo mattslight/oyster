@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Home } from "./components/Home";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
+import { PublishModal } from "./components/PublishModal";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
@@ -42,6 +43,7 @@ export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
+  const [publishingArtifact, setPublishingArtifact] = useState<Artifact | null>(null);
   const getUrlState = useCallback((): { space: string; artifactId: string | null; groupName: string | null; hash: string } => {
     const artifactMatch = window.location.pathname.match(/^\/s\/([^/]+)\/a\/([^/]+)$/);
     if (artifactMatch) {
@@ -198,7 +200,13 @@ export default function App() {
       window.history.pushState(null, "", `/s/${spaceId}`);
       dispatch({ type: "CLOSE_ALL_VIEWERS" });
     }
-  }), []);
+    if (event.command === "artifact_changed") {
+      void loadArtifacts()
+        .then(setArtifacts)
+        .catch((err) => console.warn("[oyster] artifact_changed refetch failed:", err));
+      return;
+    }
+  }), [loadArtifacts]);
 
   // Sync state from browser back/forward
   useEffect(() => {
@@ -341,6 +349,11 @@ export default function App() {
     await stopAppApi(appName);
   }
 
+  // T16-T18 will pass this to Desktop, ViewerWindow, and ChatBar.
+  const handleArtifactPublish = useCallback((artifact: Artifact) => {
+    if (artifact.builtin || artifact.plugin || artifact.status === "generating") return;
+    setPublishingArtifact(artifact);
+  }, []);
   async function handleFixError(error: { title: string; path: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
     // Use a fresh session so Oyster has clean context for the fix
     const session = await createSession();
@@ -412,6 +425,7 @@ export default function App() {
           onArtifactRemove: (id) =>
             setArtifacts((prev) => prev.filter((a) => a.id !== id)),
           revealId,
+          onArtifactPublish: handleArtifactPublish,
         }}
       />
 
@@ -424,6 +438,7 @@ export default function App() {
           const currentIdx = docArtifacts.findIndex((a) => a.url === w.artifactPath);
           const hasPrev = currentIdx > 0;
           const hasNext = currentIdx >= 0 && currentIdx < docArtifacts.length - 1;
+          const viewerArtifact = currentIdx >= 0 ? docArtifacts[currentIdx] : undefined;
 
           return (
             <ViewerWindow
@@ -448,6 +463,9 @@ export default function App() {
                 window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
               }}
               onFixError={handleFixError}
+              onShare={viewerArtifact ? () => handleArtifactPublish(viewerArtifact) : undefined}
+              shareDisabled={!viewerArtifact || viewerArtifact.builtin || viewerArtifact.plugin || viewerArtifact.status === "generating"}
+              shareLabel={viewerArtifact?.publication?.unpublishedAt === null ? "Published" : "Publish"}
               onNavigate={(dir) => {
                 const nextIdx = currentIdx + dir;
                 const next = docArtifacts[nextIdx];
@@ -501,6 +519,11 @@ export default function App() {
         </div>
       )}
 
+      {publishingArtifact && (() => {
+        const fresh = artifacts.find((a) => a.id === publishingArtifact.id) ?? publishingArtifact;
+        return <PublishModal artifact={fresh} onClose={() => setPublishingArtifact(null)} />;
+      })()}
+
       {openGroup && (() => {
         // In __all__ and __archived__ views, artifacts have real space_ids
         // (home, oyster, …) — not the meta-space's id. Skip the space-match
@@ -539,6 +562,7 @@ export default function App() {
         inputRef={chatInputRef}
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
+        onArtifactPublish={handleArtifactPublish}
         isFirstRun={isFirstRun}
         onAiError={setAiError}
       />

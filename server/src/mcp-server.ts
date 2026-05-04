@@ -800,6 +800,11 @@ export function createMcpServer(deps: McpDeps): McpServer {
     async ({ artifact_id, mode, password }) => {
       try {
         const result = await deps.publishService.publishArtifact({ artifact_id, mode, password });
+        deps.broadcastUiEvent({
+          version: 1,
+          command: "artifact_changed",
+          payload: { id: artifact_id },
+        });
         return withStructured(result, { ...result });
       } catch (err) {
         return publishErrorReturn(err);
@@ -818,6 +823,11 @@ export function createMcpServer(deps: McpDeps): McpServer {
     async ({ artifact_id }) => {
       try {
         const result = await deps.publishService.unpublishArtifact({ artifact_id });
+        deps.broadcastUiEvent({
+          version: 1,
+          command: "artifact_changed",
+          payload: { id: artifact_id },
+        });
         return withStructured(result, { ...result });
       } catch (err) {
         return publishErrorReturn(err);
