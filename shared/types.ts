@@ -43,6 +43,20 @@ export interface Artifact {
   sourceOrigin?: "manual" | "discovered" | "ai_generated";
   /** ID of the linked source folder this artefact came from. Null/undefined for native artefacts (manual / ai_generated). Drives per-folder filtering on the project-tile grid. */
   sourceId?: string | null;
+  /** Cloud publication state for this artefact. Omitted entirely when no
+   *  share token has ever been minted. When present with `unpublishedAt: null`
+   *  the artefact is currently public; when `unpublishedAt` is non-null the
+   *  publication has been retired (chip hides; URL serves 410). */
+  publication?: ArtefactPublication | null;
+}
+
+export interface ArtefactPublication {
+  shareToken: string;
+  shareUrl: string;
+  shareMode: "open" | "password" | "signin";
+  publishedAt: number;
+  updatedAt: number;
+  unpublishedAt: number | null;  // null = live; non-null = retired
 }
 
 export type ScanStatus = "none" | "scanning" | "complete" | "error";
