@@ -1,4 +1,4 @@
-# #374 — Published filter pill on Home
+# Published filter pill on Home (#374)
 
 ## Goal
 
@@ -26,7 +26,7 @@ R5 (#315 backend, #316 viewer, #317 publish UI) shipped publication end-to-end. 
 - **Active treatment:** existing `.stat-btn.active` purple — no new behaviour.
 - **Hide-when-zero:** the origin pills (`mine`, `from agents`, `linked`) hide at 0 to keep the row tidy. The `published` pill stays visible at 0 because it doubles as a discoverability surface — clicking it before the user has published anything lands on a how-to hint instead of an empty grid. The `all` pill stays unconditional.
 
-The purple is `#a78bfa`, matching `PublishedChip__tag` in `web/src/components/PublishedChip.css`.
+The purple is `#a78bfa`, matching `.published-chip__tag` in `web/src/components/PublishedChip.css`.
 
 ### Filter model
 

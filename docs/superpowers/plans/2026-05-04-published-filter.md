@@ -4,7 +4,7 @@
 
 **Goal:** Add a `N published` pill to the Artefacts header on Home that filters the grid to currently-live publications.
 
-**Architecture:** Extend the existing `artefactSource` radio with a fifth value `"published"`. Define a single `isLivePublication` predicate in `Home/index.tsx` and use it for both the count memo and the filter memo. Add a `useEffect` that resets `artefactSource` to `"all"` when the published count drops to zero (prevents an orphaned active filter with no visible pill). Purple pip prefix on the pill marks it as a status, not an origin.
+**Architecture:** Extend the existing `artefactSource` radio with a fifth value `"published"`. Define a single `isLivePublication` predicate in `Home/index.tsx` and use it for both the count memo and the filter memo. Purple pip prefix on the pill marks it as a status, not an origin. The pill stays visible at 0 (origin pills hide at 0) because it doubles as a discoverability surface — clicking it before any publications exist lands on a how-to hint instead of an empty grid. As shipped, this plan's earlier draft of an auto-reset `useEffect` was dropped in favour of the always-visible-pill + how-to-hint shape.
 
 **Tech Stack:** React + TypeScript (web), no test runner — verification is `npm run build` (tsc + vite) and manual click-through.
 
@@ -458,12 +458,12 @@ npm run dev
 
 Walk through each acceptance step from the spec. Use a fresh browser tab so you start from a clean state:
 
-1. **No publications:** open the surface. The Artefacts pill row shows `all` / `mine` / `from agents` / `linked` only. The `published` pill is **not visible** (count is 0). ✅
-2. **Publish two artefacts (one open, one password):** publish each via right-click → Publish or `/p <artefact>`. The pill appears as `2 published` with a small purple dot. Count is 2 (both modes count). ✅
-3. **Click `published`:** pill goes active (purple background); grid narrows to those two artefacts; whichever pill was active before deactivates. ✅
+1. **No publications:** open the surface. The Artefacts pill row shows `all` / `mine` / `from agents` / `linked` plus `0 published` with a purple pip — the published pill stays visible at 0. ✅
+2. **Click `published` at 0:** grid is replaced by a how-to hint pointing at `/p <name>` and the right-click → Publish… flow. ✅
+3. **Publish two artefacts (one open, one password):** publish each via right-click → Publish… or `/p <artefact>`. The pill reads `2 published`. Hint disappears; grid shows the two artefacts flat (not bucketed by source folder). ✅
 4. **Click `all`:** grid restores to the full set; `published` pill deactivates. ✅
 5. **Unpublish one (still on `all`):** the pill updates to `1 published` within an SSE round-trip without a manual refresh. ✅
-6. **Click `published`, then unpublish the last one:** within an SSE round-trip the pill **disappears**, the filter auto-resets to `all`, and the grid shows the full unfiltered set. The `all` pill is active. ✅
+6. **Click `published`, then unpublish the last one:** pill drops to `0 published` (still visible). Grid replaces with the how-to hint again — no auto-reset; the empty state is the recovery path. ✅
 
 If any step fails, capture the failing step and the symptom, then return to the relevant Task to debug.
 
