@@ -94,10 +94,6 @@
   outline: 1px dashed rgba(124, 107, 255, 0.45);
 }
 
-.setup-row--unchecked .setup-name-btn,
-.setup-row--unchecked .setup-count,
-.setup-row--unchecked .setup-reason,
-.setup-row--unchecked .setup-chip { opacity: 0.4; }
 
 .setup-row-spacer { width: 18px; flex: 0 0 18px; }
 

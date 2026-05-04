@@ -26,7 +26,6 @@ interface SpaceRow {
   name: string;
   reason?: string;
   folders: SetupProposalFolder[];
-  included: boolean;
 }
 
 interface DragData {
@@ -42,7 +41,7 @@ interface Props {
 
 export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
   const [spaces, setSpaces] = useState<SpaceRow[]>(() =>
-    proposal.spaces.map((s) => ({ ...s, included: true })),
+    proposal.spaces.map((s) => ({ ...s })),
   );
   const [elsewhere, setElsewhere] = useState<SetupProposalFolder[]>(
     proposal.everythingElse,
@@ -59,16 +58,31 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
 
   const includedCount = useMemo(
     () =>
-      spaces.filter(
-        (s) => s.included && s.name.trim() !== "" && s.folders.length > 0,
-      ).length,
+      spaces.filter((s) => s.name.trim() !== "" && s.folders.length > 0).length,
     [spaces],
   );
 
+  // Untick = bulk demote. The chips drop into Everything else and the
+  // space row goes away — cleaner than the soft-dim alternative, which
+  // left chips stranded in a row that wouldn't apply anywhere. If the
+  // user changes their mind, "+ Add space" + drag-back is the path.
+  // Toggle is therefore one-way: a row only exists when it's a real
+  // candidate for creation.
   const handleToggle = useCallback((key: string) => {
-    setSpaces((s) =>
-      s.map((x) => (x.key === key ? { ...x, included: !x.included } : x)),
-    );
+    let dropped: SetupProposalFolder[] = [];
+    setSpaces((prev) => {
+      const target = prev.find((x) => x.key === key);
+      if (!target) return prev;
+      dropped = target.folders;
+      return prev.filter((x) => x.key !== key);
+    });
+    if (dropped.length > 0) {
+      setElsewhere((e) => {
+        const seen = new Set(e.map((f) => f.path));
+        const additions = dropped.filter((f) => !seen.has(f.path));
+        return additions.length > 0 ? [...e, ...additions] : e;
+      });
+    }
   }, []);
 
   const handleStartRename = useCallback((key: string) => {
@@ -85,10 +99,7 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
 
   const handleAddSpace = useCallback(() => {
     const key = `s${Date.now()}-new`;
-    setSpaces((s) => [
-      ...s,
-      { key, name: "", folders: [], included: true },
-    ]);
+    setSpaces((s) => [...s, { key, name: "", folders: [] }]);
     setRenamingKey(key);
   }, []);
 
@@ -170,9 +181,7 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
       const body = {
         proposalId: proposal.proposalId,
         spaces: spaces
-          .filter(
-            (s) => s.included && s.name.trim() !== "" && s.folders.length > 0,
-          )
+          .filter((s) => s.name.trim() !== "" && s.folders.length > 0)
           .map((s) => ({
             name: s.name.trim(),
             paths: s.folders.map((f) => f.path),
@@ -322,15 +331,16 @@ function SpaceRowView({
   return (
     <div
       ref={setNodeRef}
-      className={`setup-row${isOver ? " setup-row--over" : ""}${space.included ? "" : " setup-row--unchecked"}`}
+      className={`setup-row${isOver ? " setup-row--over" : ""}`}
     >
       <button
         type="button"
-        className={`setup-check${space.included ? " setup-check--on" : ""}`}
+        className="setup-check setup-check--on"
         onClick={() => onToggle(space.key)}
-        aria-label={space.included ? "Untick space" : "Tick space"}
+        aria-label="Untick — drop chips into Everything else and remove this space"
+        title="Untick to drop chips into Everything else"
       >
-        {space.included && <span aria-hidden="true">✓</span>}
+        <span aria-hidden="true">✓</span>
       </button>
 
       <div className="setup-row-body">
