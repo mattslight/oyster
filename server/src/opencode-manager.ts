@@ -1,6 +1,7 @@
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, execSync } from "node:child_process";
 import { broadcastRaw, broadcastSynthetic } from "./opencode-events.js";
+import { bootMark } from "./boot-timer.js";
 
 let shuttingDown = false;
 let opencodeRestarts = 0;
@@ -39,6 +40,7 @@ export function spawnOpenCodeServe(
   userlandDir: string,
   cleanEnv: Record<string, string>,
 ) {
+  bootMark("spawnOpenCodeServe (process.spawn)");
   console.log(`Spawning opencode serve in ${userlandDir}`);
   resolvedPort = 0;
   const portArg = opencodePort > 0 ? String(opencodePort) : "0";
@@ -62,6 +64,7 @@ export function spawnOpenCodeServe(
     if (match && !resolvedPort) {
       resolvedPort = parseInt(match[1], 10);
       opencodeRestarts = 0;
+      bootMark(`opencode listening on ${resolvedPort} (chat usable)`);
       console.log(`[opencode-serve] resolved to port ${resolvedPort}`);
     }
   });
