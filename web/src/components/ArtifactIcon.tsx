@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link2 } from "lucide-react";
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 import { parseTimestamp } from "../utils/parseTimestamp";
+import { PublishedChip } from "./PublishedChip";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const typeConfig: Record<
@@ -223,6 +224,9 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
         const rel = formatArtifactRelative(artifact.createdAt);
         return rel ? <span className="icon-label-meta">{rel}</span> : null;
       })()}
+      {!isRenaming && artifact.publication && artifact.publication.unpublishedAt === null && (
+        <PublishedChip publication={artifact.publication} />
+      )}
     </button>
   );
 }
