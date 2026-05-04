@@ -114,11 +114,17 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
   const handleDemoteChip = useCallback(
     (folder: SetupProposalFolder, fromSpaceKey: string) => {
       setSpaces((s) =>
-        s.map((x) =>
-          x.key === fromSpaceKey
-            ? { ...x, folders: x.folders.filter((f) => f.path !== folder.path) }
-            : x,
-        ),
+        s
+          .map((x) =>
+            x.key === fromSpaceKey
+              ? { ...x, folders: x.folders.filter((f) => f.path !== folder.path) }
+              : x,
+          )
+          // Auto-remove on last-chip-out: an empty space mid-flow is just
+          // visual noise. The "Remove space" button is still there as an
+          // escape hatch for "+ Add space" rows the user creates and then
+          // abandons before dragging anything in.
+          .filter((x) => x.key !== fromSpaceKey || x.folders.length > 0),
       );
       setElsewhere((e) =>
         e.some((f) => f.path === folder.path) ? e : [...e, folder],
@@ -155,6 +161,14 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
             : x,
         );
       }
+      // Auto-remove the source space if the drag emptied it. Only matches
+      // the source — newly-empty target spaces don't exist (a target is
+      // either Everything else, an existing populated space, or a "+ Add"
+      // row the user is intentionally filling).
+      next = next.filter(
+        (x) =>
+          spaceDropId(x.key) !== data.fromContainer || x.folders.length > 0,
+      );
       return next;
     });
 
