@@ -228,6 +228,23 @@ describe("GET/POST /p/:token — password mode", () => {
     expect(await getRes.text()).toContain("Secret notes");
   });
 
+  it("POST correct password on localhost → cookie omits Secure flag", async () => {
+    const u = await seedUser();
+    const hash = await makeHash("letmein");
+    const token = await seedActivePublication({
+      ownerUserId: u.id, artifactId: "art2loc", mode: "password", passwordHash: hash,
+    });
+    const headers = new Headers({ "Content-Type": "application/x-www-form-urlencoded" });
+    const body = new URLSearchParams({ password: "letmein" });
+    const req = new Request(`http://localhost:8787/p/${token}`, { method: "POST", headers, body: body.toString() });
+    const postRes = await call(req);
+    expect(postRes.status).toBe(302);
+    const setCookie = postRes.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain(`oyster_view_${token}=`);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).not.toContain("Secure");
+  });
+
   it("POST wrong password → 200 gate with 'Incorrect password'", async () => {
     const u = await seedUser();
     const hash = await makeHash("letmein");

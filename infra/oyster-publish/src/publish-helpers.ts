@@ -73,6 +73,13 @@ export function parseShareTokenPath(pathname: string): { shareToken: string; raw
   return { shareToken: rest, raw: false };
 }
 
+// Mirror of auth-worker's isLocalHost helper. Omit Secure on loopback so
+// wrangler dev (http://localhost:8787) can exercise the password-unlock flow.
+export function isLoopback(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1" ||
+    host.startsWith("localhost:") || host.startsWith("127.0.0.1:");
+}
+
 function base64urlDecodeToString(s: string): string {
   // Restore standard base64 padding/alphabet for atob.
   const padded = s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);

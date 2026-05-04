@@ -2,7 +2,7 @@
 // Spec: docs/superpowers/specs/2026-05-03-r5-publish-backend-design.md
 
 import type { Env, PublicationRow } from "./types";
-import { CAPS, generateShareToken, parseMetadataHeader, parseShareTokenPath, r2KeyFor, type Tier } from "./publish-helpers";
+import { CAPS, generateShareToken, parseMetadataHeader, parseShareTokenPath, r2KeyFor, type Tier, isLoopback } from "./publish-helpers";
 import { resolveViewerAccess } from "./viewer-access";
 import { signViewerCookie } from "./viewer-cookie";
 import {
@@ -436,10 +436,12 @@ async function handleViewerPost(req: Request, env: Env, shareToken: string): Pro
   }
 
   const cookieValue = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+  const host = new URL(req.url).host;
+  const secureFlag = isLoopback(host) ? "" : " Secure;";
   return new Response(null, {
     status: 302,
     headers: {
-      "set-cookie": `oyster_view_${shareToken}=${cookieValue}; HttpOnly; Secure; SameSite=Lax; Path=/p/${shareToken}; Max-Age=86400`,
+      "set-cookie": `oyster_view_${shareToken}=${cookieValue}; HttpOnly;${secureFlag} SameSite=Lax; Path=/p/${shareToken}; Max-Age=86400`,
       "location": `/p/${shareToken}`,
       "cache-control": "private, no-store",
     },
