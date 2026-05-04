@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   useDraggable,
   useDroppable,
@@ -50,10 +51,14 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
-  // Pointer-only dnd for v1. 4px activation distance keeps regular clicks
-  // (rename, ×, toggle) from being interpreted as drag-starts.
+  // Pointer + keyboard dnd. 4px activation distance on pointer keeps
+  // regular clicks (rename, ×, toggle) from being interpreted as drag-
+  // starts. Keyboard sensor restores arrow-key chip moves so this flow
+  // isn't pointer-only — chip reassignment is core to setup, not optional
+  // polish.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor),
   );
 
   const includedCount = useMemo(
@@ -207,8 +212,20 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `apply failed (HTTP ${res.status})`);
+        // Server returns JSON envelopes like `{ error: "..." }`. Parse
+        // when possible so the user sees the actual message instead of
+        // raw JSON. Fall through to the status text only on parse failure.
+        let message = `apply failed (HTTP ${res.status})`;
+        try {
+          const data = (await res.json()) as { error?: string };
+          if (typeof data.error === "string" && data.error.length > 0) {
+            message = data.error;
+          }
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) message = text;
+        }
+        throw new Error(message);
       }
       const data = (await res.json()) as { results: SetupApplyResult[] };
       onApplied(data.results);
@@ -220,6 +237,19 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
     }
     // On success: stay disabled; onApplied closes the panel.
   }, [proposal.proposalId, spaces, onApplied]);
+
+  // Reset the panel state when a new proposal arrives. Without this, a
+  // second `setup_proposal_ready` event (e.g. user re-runs setup, or a
+  // future re-scan flow) would leave the panel rendering stale chips
+  // because useState only initialises on first mount. proposalId is the
+  // server-issued identity for the proposal, so a change there means new
+  // payload — clear edits and start fresh.
+  useEffect(() => {
+    setSpaces(proposal.spaces.map((s) => ({ ...s })));
+    setElsewhere(proposal.everythingElse);
+    setRenamingKey(null);
+    setApplyError(null);
+  }, [proposal.proposalId, proposal.spaces, proposal.everythingElse]);
 
   // Esc closes when not in the middle of an apply.
   useEffect(() => {
@@ -252,6 +282,11 @@ export function SetupProposalPanel({ proposal, onClose, onApplied }: Props) {
               className="setup-close"
               onClick={onClose}
               aria-label="Close"
+              // Block all dismissal paths while a request is in flight —
+              // unmounting mid-apply hides applyError and the user never
+              // learns whether their write succeeded. Esc handler also
+              // gates on `applying`.
+              disabled={applying}
             >
               ×
             </button>

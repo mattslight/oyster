@@ -92,6 +92,23 @@ export async function tryHandleSetupRoute(
     return true;
   }
 
+  // Reject slug-collisions in the same payload up-front. Two rows named
+  // "foo" and "Foo" both slugify to "foo"; without this check they'd merge
+  // into a single space silently while the panel showed them as separate.
+  // Surface as a single error so the user can rename one.
+  const seenSlugs = new Map<string, string>(); // slug -> first display name
+  for (const wanted of body.spaces) {
+    const id = slugify(wanted.name);
+    const prev = seenSlugs.get(id);
+    if (prev) {
+      sendJson({
+        error: `Two spaces would collapse to the same id "${id}" (from "${prev}" and "${wanted.name}"). Rename one before applying.`,
+      }, 400);
+      return true;
+    }
+    seenSlugs.set(id, wanted.name);
+  }
+
   const results: SetupApplyResult[] = [];
   for (const wanted of body.spaces) {
     const id = slugify(wanted.name);
@@ -101,22 +118,34 @@ export async function tryHandleSetupRoute(
       try {
         space = spaceService.createSpace({ name: wanted.name });
         created = true;
-      } catch {
-        // Race: a concurrent caller created it first; reuse the winner.
+      } catch (err) {
+        // Distinguish concurrent-create races (existing space appears on
+        // re-lookup) from genuine creation failures (slug invalid, storage
+        // error). The old over-broad catch reported every failure as a
+        // generic per-path issue, hiding real bugs.
         const existing = spaceService.getSpace(id);
-        if (!existing) {
-          results.push({ spaceId: id, name: wanted.name, created: false, paths: wanted.paths.map((path) => ({ path, status: "failed", error: "space create failed" })) });
+        if (existing) {
+          space = existing;
+        } else {
+          const msg = (err as Error).message || "space create failed";
+          results.push({
+            spaceId: id,
+            name: wanted.name,
+            created: false,
+            paths: wanted.paths.map((path) => ({ path, status: "failed", error: msg })),
+          });
           continue;
         }
-        space = existing;
       }
     }
 
     const pathReports: SetupApplyResult["paths"] = [];
+    let anyAttached = false;
     for (const p of wanted.paths) {
       try {
         spaceService.addSource(space.id, p);
         pathReports.push({ path: p, status: "attached" });
+        anyAttached = true;
       } catch (err) {
         const msg = (err as Error).message;
         const ownedElsewhere = /already attached/i.test(msg);
@@ -124,16 +153,25 @@ export async function tryHandleSetupRoute(
       }
     }
 
-    // Scan only when something actually attached — otherwise scanSpace would
-    // throw "no folders" on top of the per-path errors already in `paths`.
-    const anyAttached = pathReports.some((r) => r.status === "attached");
     if (anyAttached) {
-      try {
-        await spaceService.scanSpace(space.id);
-      } catch {
-        // Scan failure isn't fatal — the space + sources exist; the user can
-        // re-trigger a scan later. Per-path attach status is the source of truth.
-      }
+      // addSource backfills orphan sessions whose cwd matches the attached
+      // folder. Other attach flows broadcast `session_changed` so connected
+      // clients re-attribute those sessions immediately; without this here,
+      // newly-claimed sessions stay under Elsewhere until polling catches up.
+      broadcastUiEvent({
+        version: 1,
+        command: "session_changed",
+        payload: { id: null, reason: "setup_apply" },
+      });
+
+      // Fire-and-forget scan. The user-facing attach-folder route does the
+      // same thing for the same reason: a serial await on every space's
+      // scan blocks the apply response and is much more likely to hit
+      // client/proxy timeouts on multi-space applies with large repos.
+      void spaceService.scanSpace(space.id).catch(() => {
+        // Scan failure isn't fatal — the space + sources exist; user can
+        // re-trigger via a manual scan.
+      });
     }
 
     results.push({ spaceId: space.id, name: wanted.name, created, paths: pathReports });

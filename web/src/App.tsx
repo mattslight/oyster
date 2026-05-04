@@ -218,6 +218,13 @@ export default function App() {
     if (event.command === "setup_proposal_ready") {
       setSetupProposal(event.payload as SetupProposal);
     }
+    if (event.command === "setup_applied") {
+      // Another tab just applied a setup proposal. Refresh spaces +
+      // artefacts so this tab reflects what the apply created without
+      // waiting for the regular polling tick.
+      void fetchSpaces().then(setSpaces).catch(() => undefined);
+      void loadArtifacts().then(setArtifacts).catch(() => undefined);
+    }
   }), [loadArtifacts]);
 
   // Sync state from browser back/forward

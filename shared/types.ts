@@ -188,9 +188,10 @@ export interface SetupProposalSpace {
  *  tool, broadcast over SSE as `setup_proposal_ready`, rendered by the
  *  standalone SetupProposalPanel. */
 export interface SetupProposal {
-  /** Server-issued id used to correlate apply requests with the proposal
-   *  the user reviewed (lets us reject stale applies if a newer proposal
-   *  has since arrived). */
+  /** Server-issued correlation id for telemetry / log lookup. The apply
+   *  route does NOT enforce it: the panel sends the user's edited plan,
+   *  not a ratification of the original proposal, so a stale id is fine.
+   *  Real safety lives in `addSource` validating each path on disk. */
   proposalId: string;
   spaces: SetupProposalSpace[];
   everythingElse: SetupProposalFolder[];

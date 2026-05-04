@@ -169,4 +169,74 @@ describe("routes/setup — apply", () => {
     expect(body.results[0].created).toBe(false);
     expect(service.createSpace).not.toHaveBeenCalled();
   });
+
+  it("rejects two payload entries that slugify to the same id", async () => {
+    const broadcast = vi.fn();
+    const service = makeSpaceService();
+    const { req, res, ctx, captured } = fakeReqRes("POST", {
+      spaces: [
+        { name: "Foo", paths: ["/abs/a"] },
+        // "Foo Bar" and "foo-bar" both slugify to "foo-bar".
+        { name: "Foo Bar", paths: ["/abs/b"] },
+        { name: "foo-bar", paths: ["/abs/c"] },
+      ],
+    });
+    const handled = await tryHandleSetupRoute(
+      req as never, res as never,
+      "/api/setup/apply", ctx as never,
+      { spaceService: service as never, broadcastUiEvent: broadcast },
+    );
+    expect(handled).toBe(true);
+    expect(captured.status).toBe(400);
+    const body = captured.json as { error: string };
+    expect(body.error).toMatch(/foo-bar/);
+    expect(service.createSpace).not.toHaveBeenCalled();
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it("broadcasts session_changed when at least one path attaches", async () => {
+    const broadcast = vi.fn();
+    const service = makeSpaceService();
+    const { req, res, ctx } = fakeReqRes("POST", {
+      spaces: [{ name: "oyster", paths: ["/abs/p"] }],
+    });
+    await tryHandleSetupRoute(
+      req as never, res as never,
+      "/api/setup/apply", ctx as never,
+      { spaceService: service as never, broadcastUiEvent: broadcast },
+    );
+    // Both session_changed (per-space) AND setup_applied (final) fire.
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "session_changed" }),
+    );
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "setup_applied" }),
+    );
+  });
+
+  it("does not block on scan — fires it without awaiting", async () => {
+    const broadcast = vi.fn();
+    const service = makeSpaceService();
+    let scanResolved = false;
+    service.scanSpace.mockImplementation(
+      () => new Promise<unknown>((resolve) => {
+        // Don't resolve in this tick — emulates a slow scan.
+        setTimeout(() => {
+          scanResolved = true;
+          resolve({});
+        }, 50);
+      }),
+    );
+    const { req, res, ctx } = fakeReqRes("POST", {
+      spaces: [{ name: "oyster", paths: ["/abs/p"] }],
+    });
+    await tryHandleSetupRoute(
+      req as never, res as never,
+      "/api/setup/apply", ctx as never,
+      { spaceService: service as never, broadcastUiEvent: broadcast },
+    );
+    // Response returned before scan finished — that's the point.
+    expect(scanResolved).toBe(false);
+    expect(service.scanSpace).toHaveBeenCalledTimes(1);
+  });
 });

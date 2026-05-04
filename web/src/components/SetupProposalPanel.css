@@ -6,7 +6,11 @@
 .setup-overlay {
   position: fixed;
   inset: 0;
-  z-index: 950;
+  /* Above viewer windows (5100), Spotlight (5500), and existing modal
+     overlays (10000) defined in App.css. Setup is a blocking dialog and
+     must take precedence over anything that was open when the proposal
+     arrived. */
+  z-index: 11000;
   background: rgba(8, 9, 22, 0.78);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
