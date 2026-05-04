@@ -201,12 +201,12 @@ export default function App() {
       dispatch({ type: "CLOSE_ALL_VIEWERS" });
     }
     if (event.command === "artifact_changed") {
-      void fetchArtifacts()
+      void loadArtifacts()
         .then(setArtifacts)
         .catch((err) => console.warn("[oyster] artifact_changed refetch failed:", err));
       return;
     }
-  }), []);
+  }), [loadArtifacts]);
 
   // Sync state from browser back/forward
   useEffect(() => {

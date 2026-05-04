@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link2 } from "lucide-react";
-import type { Artifact } from "../../../shared/types";
+import type { Artifact, ArtefactPublication } from "../../../shared/types";
 import { publishArtifact, unpublishArtifact, PublishApiError } from "../data/publish-api";
 import { useCopyLink } from "../hooks/useCopyLink";
 import { ConfirmModal } from "./ConfirmModal";
@@ -33,6 +33,7 @@ export function PublishModal({ artifact, onClose }: Props) {
   const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [confirmUnpublish, setConfirmUnpublish] = useState(false);
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+  const [optimisticPublication, setOptimisticPublication] = useState<ArtefactPublication | null>(null);
 
   // Reset internal state when the artefact changes (modal reopens on a different one).
   useEffect(() => {
@@ -41,6 +42,10 @@ export function PublishModal({ artifact, onClose }: Props) {
       setPassword("");
       setPhase("idle");
       setError(null);
+      setShowQr(false);
+      setQrSvg(null);
+      setConfirmUnpublish(false);
+      setOptimisticPublication(null);
     }
   }, [artifact?.id]);
 
@@ -67,7 +72,7 @@ export function PublishModal({ artifact, onClose }: Props) {
     return () => { cancelled = true; unsub(); };
   }, [artifact?.id]);
 
-  const publication = artifact?.publication?.unpublishedAt === null ? artifact.publication : null;
+  const publication = (artifact?.publication?.unpublishedAt === null ? artifact.publication : null) ?? optimisticPublication;
   const isPublished = !!publication;
   const isSigninMode = publication?.shareMode === "signin";
 
@@ -127,23 +132,40 @@ export function PublishModal({ artifact, onClose }: Props) {
   const canPublish = phase === "idle"
     && (mode === "open" || (mode === "password" && password.length > 0));
 
+  function applyError(err: unknown): void {
+    if (err instanceof PublishApiError && err.code === "sign_in_required") {
+      setAuth({ status: "signed-out" });
+      setError(null);
+      return;
+    }
+    if (err instanceof PublishApiError) {
+      setError(err.message || err.code);
+      return;
+    }
+    setError("Something went wrong — try again.");
+  }
+
   async function handlePublish() {
     if (!artifact || !canPublish) return;
     setPhase("publishing");
     setError(null);
     try {
-      await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
-      // Optimistic close on success — the SSE artifact_changed event will
-      // trigger an artefact list refetch, which surfaces the chip and updates
-      // any future re-open of the modal with the published state.
-      onClose();
+      const result = await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
+      setOptimisticPublication({
+        shareToken: result.share_token,
+        shareUrl: result.share_url,
+        shareMode: result.mode,
+        publishedAt: result.published_at,
+        updatedAt: result.updated_at,
+        unpublishedAt: null,
+      });
+      setPassword("");
+      setPhase("idle");
+      // SSE refetch will arrive shortly; the derived `publication` above prefers
+      // the canonical value from `artifact.publication` when it lands.
     } catch (err) {
       setPhase("idle");
-      if (err instanceof PublishApiError) {
-        setError(err.message || err.code);
-      } else {
-        setError("Couldn't publish — try again.");
-      }
+      applyError(err);
     }
   }
 
@@ -152,13 +174,21 @@ export function PublishModal({ artifact, onClose }: Props) {
     setPhase("publishing");
     setError(null);
     try {
-      await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
+      const result = await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
+      setOptimisticPublication({
+        shareToken: result.share_token,
+        shareUrl: result.share_url,
+        shareMode: result.mode,
+        publishedAt: result.published_at,
+        updatedAt: result.updated_at,
+        unpublishedAt: null,
+      });
       setPassword("");
       setPhase("idle");
       // SSE will refetch and re-pin the picker to the new mode.
     } catch (err) {
       setPhase("idle");
-      setError(err instanceof PublishApiError ? (err.message || err.code) : "Couldn't update — try again.");
+      applyError(err);
     }
   }
 
@@ -169,11 +199,12 @@ export function PublishModal({ artifact, onClose }: Props) {
     setError(null);
     try {
       await unpublishArtifact(artifact.id);
+      setOptimisticPublication(null);
       // SSE will flip publication.unpublishedAt → modal returns to unpublished state.
       setPhase("idle");
     } catch (err) {
       setPhase("idle");
-      setError(err instanceof PublishApiError ? (err.message || err.code) : "Couldn't unpublish — try again.");
+      applyError(err);
     }
   }
 
