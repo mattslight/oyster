@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Home } from "./components/Home";
 import { GroupPopup } from "./components/GroupPopup";
 import { ChatBar } from "./components/ChatBar";
+import { PublishModal } from "./components/PublishModal";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
@@ -42,6 +43,7 @@ export default function App() {
   const [windows, dispatch] = useReducer(windowsReducer, []);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
+  const [publishingArtifact, setPublishingArtifact] = useState<Artifact | null>(null);
   const getUrlState = useCallback((): { space: string; artifactId: string | null; groupName: string | null; hash: string } => {
     const artifactMatch = window.location.pathname.match(/^\/s\/([^/]+)\/a\/([^/]+)$/);
     if (artifactMatch) {
@@ -198,6 +200,10 @@ export default function App() {
       window.history.pushState(null, "", `/s/${spaceId}`);
       dispatch({ type: "CLOSE_ALL_VIEWERS" });
     }
+    if (event.command === "artifact_changed") {
+      void fetchArtifacts().then(setArtifacts);
+      return;
+    }
   }), []);
 
   // Sync state from browser back/forward
@@ -340,6 +346,15 @@ export default function App() {
     const appName = artifact.id.replace("app:", "");
     await stopAppApi(appName);
   }
+
+  // T16-T18 will pass this to Desktop, ViewerWindow, and ChatBar.
+  const handleArtifactPublish = useCallback((artifact: Artifact) => {
+    if (artifact.builtin || artifact.plugin || artifact.status === "generating") return;
+    setPublishingArtifact(artifact);
+  }, []);
+  // Keep a stable ref so T16-T18 prop wires compile without stale-closure issues.
+  const handleArtifactPublishRef = useRef(handleArtifactPublish);
+  handleArtifactPublishRef.current = handleArtifactPublish;
 
   async function handleFixError(error: { title: string; path: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
     // Use a fresh session so Oyster has clean context for the fix
@@ -500,6 +515,11 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {publishingArtifact && (() => {
+        const fresh = artifacts.find((a) => a.id === publishingArtifact.id) ?? publishingArtifact;
+        return <PublishModal artifact={fresh} onClose={() => setPublishingArtifact(null)} />;
+      })()}
 
       {openGroup && (() => {
         // In __all__ and __archived__ views, artifacts have real space_ids
