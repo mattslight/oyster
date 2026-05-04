@@ -1,6 +1,10 @@
 name = "oyster-auth"
 main = "src/worker.ts"
 compatibility_date = "2026-04-01"
+# nodejs_compat is required by @cloudflare/vitest-pool-workers (the test
+# infrastructure needs Node-style APIs inside the Worker runtime). Production
+# handlers don't depend on it — they use Web Crypto + standard Web APIs only.
+compatibility_flags = ["nodejs_compat"]
 
 # Bind the D1 database. Run `wrangler d1 create oyster-auth` once,
 # then paste the returned database_id here.
