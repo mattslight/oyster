@@ -1,0 +1,147 @@
+/* web/src/components/PublishModal.css */
+
+/* Reuses .confirm-modal-overlay / .confirm-modal-panel from ConfirmModal.css.
+   Override + extend with publish-specific affordances. */
+
+.publish-modal-panel {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  background: #181a26;
+  border: 1px solid #2d2f52;
+  border-radius: 12px;
+  padding: 20px;
+  color: #e2e8f0;
+  font-family: var(--font-system, system-ui);
+}
+
+.publish-modal-eyebrow {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.publish-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+
+.publish-modal-error {
+  font-size: 12px;
+  color: #fca5a5;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.publish-modal-error__retry {
+  background: none;
+  border: 1px solid #fca5a5;
+  color: #fca5a5;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.publish-modal-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.publish-modal-mode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #cbd5e1;
+}
+
+.publish-modal-mode--selected {
+  color: #e2e8f0;
+}
+
+.publish-modal-mode__radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #475569;
+  display: inline-block;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.publish-modal-mode--selected .publish-modal-mode__radio {
+  border-color: #a78bfa;
+}
+
+.publish-modal-mode--selected .publish-modal-mode__radio::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: #a78bfa;
+  border-radius: 50%;
+}
+
+.publish-modal-password {
+  width: 100%;
+  background: #0f1118;
+  border: 1px solid #2d2f52;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #e2e8f0;
+  font-family: var(--font-system, system-ui);
+  margin-bottom: 18px;
+}
+
+.publish-modal-password::placeholder {
+  color: #64748b;
+}
+
+.publish-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.publish-modal-actions--published {
+  justify-content: space-between;
+}
+
+.publish-modal-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+  background: #2d2f52;
+  color: #e2e8f0;
+  font-family: var(--font-system, system-ui);
+}
+
+.publish-modal-btn--primary {
+  background: #a78bfa;
+  color: #0f1118;
+  font-weight: 600;
+}
+
+.publish-modal-btn--cancel {
+  background: none;
+  color: #94a3b8;
+}
+
+.publish-modal-btn--unpublish {
+  background: none;
+  color: #fca5a5;
+}
+
+.publish-modal-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
