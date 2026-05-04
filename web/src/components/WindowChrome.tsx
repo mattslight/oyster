@@ -22,6 +22,7 @@ interface Props {
   zIndex: number;
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  extraHeader?: ReactNode;
 }
 
 export function WindowChrome({
@@ -36,6 +37,7 @@ export function WindowChrome({
   zIndex,
   fullscreen = false,
   onToggleFullscreen,
+  extraHeader,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const offset = useRef({ x: 0, y: 0 });
@@ -183,6 +185,7 @@ export function WindowChrome({
       >
         <span className="window-title">{title}</span>
         <div className="window-controls" onMouseDown={(e) => e.stopPropagation()}>
+          {extraHeader}
           {onToggleFullscreen && (
             <button
               className="window-btn window-expand-btn"

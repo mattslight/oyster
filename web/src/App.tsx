@@ -438,6 +438,7 @@ export default function App() {
           const currentIdx = docArtifacts.findIndex((a) => a.url === w.artifactPath);
           const hasPrev = currentIdx > 0;
           const hasNext = currentIdx >= 0 && currentIdx < docArtifacts.length - 1;
+          const viewerArtifact = currentIdx >= 0 ? docArtifacts[currentIdx] : undefined;
 
           return (
             <ViewerWindow
@@ -462,6 +463,9 @@ export default function App() {
                 window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
               }}
               onFixError={handleFixError}
+              onShare={viewerArtifact ? () => handleArtifactPublish(viewerArtifact) : undefined}
+              shareDisabled={!viewerArtifact || viewerArtifact.builtin || viewerArtifact.plugin || viewerArtifact.status === "generating"}
+              shareLabel={viewerArtifact?.publication?.unpublishedAt === null ? "Published" : "Publish"}
               onNavigate={(dir) => {
                 const nextIdx = currentIdx + dir;
                 const next = docArtifacts[nextIdx];

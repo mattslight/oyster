@@ -1,4 +1,5 @@
 import { useRef, useMemo, useCallback, useState, useEffect } from "react";
+import { Share2 } from "lucide-react";
 import { WindowChrome } from "./WindowChrome";
 import { subscribeToEvents } from "../data/chat-api";
 
@@ -24,6 +25,9 @@ interface Props {
   onFixError?: (error: { title: string; path: string; message: string; stack: string; console: Array<{ type: string; message: string }> }) => Promise<string>;
   onHashChange?: (hash: string) => void;
   initialHash?: string;
+  onShare?: () => void;
+  shareDisabled?: boolean;
+  shareLabel?: "Publish" | "Published";
 }
 
 const toolLabels: Record<string, string> = {
@@ -109,6 +113,9 @@ export function ViewerWindow({
   onFixError,
   onHashChange,
   initialHash,
+  onShare,
+  shareDisabled,
+  shareLabel,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<ArtifactError | null>(null);
@@ -476,6 +483,18 @@ export function ViewerWindow({
     content = <iframe key={iframeKey} ref={iframeRef} src={iframeSrc} className="viewer-iframe" title={title} />;
   }
 
+  const shareButton = onShare && !shareDisabled ? (
+    <button
+      type="button"
+      className="window-btn"
+      onClick={(e) => { e.stopPropagation(); onShare(); }}
+      title={shareLabel === "Published" ? "Manage publication" : "Publish"}
+      style={shareLabel === "Published" ? { color: "#a78bfa" } : undefined}
+    >
+      <Share2 size={14} strokeWidth={2} />
+    </button>
+  ) : null;
+
   return (
     <WindowChrome
       title={fullscreen ? "" : title}
@@ -488,6 +507,7 @@ export function ViewerWindow({
       zIndex={zIndex}
       fullscreen={fullscreen}
       onToggleFullscreen={onToggleFullscreen}
+      extraHeader={shareButton}
     >
       {fullscreen && (
         <div
