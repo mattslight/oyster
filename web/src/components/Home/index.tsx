@@ -447,6 +447,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
+  // If the user has the published filter active and the count drops to 0
+  // (e.g. they just unpublished the last live artefact), the pill hides
+  // — without this reset they'd be left on an empty grid with no active
+  // pill, a visibly broken radio state. The coupling here is bounded:
+  // it only fires for an otherwise-impossible visible state.
+  useEffect(() => {
+    if (artefactSource === "published" && artefactSourceCounts.published === 0) {
+      setArtefactSource("all");
+    }
+  }, [artefactSource, artefactSourceCounts.published]);
+
   // Per-source artefact counts for the project tile grid. "vault"
   // collects everything without a source_id (manual + ai_generated tiles
   // that didn't come from a linked folder). The tile grid itself drives
