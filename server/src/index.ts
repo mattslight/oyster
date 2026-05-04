@@ -26,6 +26,7 @@ import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
+import { tryHandleSetupRoute } from "./routes/setup.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
 import { tryHandlePublishRoute } from "./routes/publish.js";
@@ -394,6 +395,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/spaces/* — collapsed from the legacy spaces-routes.ts and the
   // inline /api/spaces/:id/sources* + /api/spaces/from-path handlers.
   if (await tryHandleSpaceRoute(req, res, url, ctx, {
+    spaceService, broadcastUiEvent,
+  })) return;
+
+  // /api/setup/apply — fans the user's confirmed SetupProposal out to
+  // onboard_space. Triggered by the SetupProposalPanel's Apply button.
+  if (await tryHandleSetupRoute(req, res, url, ctx, {
     spaceService, broadcastUiEvent,
   })) return;
 

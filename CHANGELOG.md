@@ -13,6 +13,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **"Set up Oyster" is a panel now, not a wall of text.** When the agent finishes scanning your dev folder it surfaces a structured proposal: each suggested space with its folders as draggable chips, plus an "Everything else" bucket for the rest. Click `×` on a chip to push it back, drag chips between spaces, click a name to rename, +Add space for an empty starter, untick what you don't want — then hit Create. No open questions to answer, no copy-paste, no markdown.
 - **Set up Oyster is a checklist now.** One required item — set up your spaces — and three optional ones (publish your first artefact, connect another agent, import memories). The dock pill stops nagging once the required step is done; the optional items wait quietly in the popover for when you want them.
 - **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. ([#281](https://github.com/mattslight/oyster/issues/281))
 
