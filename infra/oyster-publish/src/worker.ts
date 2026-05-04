@@ -1,8 +1,16 @@
 // oyster-publish — R5 publish endpoints + viewer scaffold.
 // Spec: docs/superpowers/specs/2026-05-03-r5-publish-backend-design.md
 
-import type { Env } from "./types";
-import { CAPS, generateShareToken, parseMetadataHeader, r2KeyFor, type Tier } from "./publish-helpers";
+import type { Env, PublicationRow } from "./types";
+import { CAPS, generateShareToken, IFRAME_KINDS, parseMetadataHeader, parseShareTokenPath, r2KeyFor, type Tier, isLoopback } from "./publish-helpers";
+import { resolveViewerAccess } from "./viewer-access";
+import { signViewerCookie } from "./viewer-cookie";
+import {
+  passwordGatePage, gonePage, notFoundPage, internalErrorPage, rateLimitedPage,
+} from "./viewer-pages";
+import {
+  renderMarkdownPage, renderMermaidPage, renderChromeWithIframe, renderRawHtmlBody, renderImageInline,
+} from "./viewer-render";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -17,9 +25,19 @@ export default {
       return handlePublishDelete(req, env, token);
     }
 
-    if (url.pathname.startsWith("/p/") && req.method === "GET") {
-      // Viewer body lands in #316.
-      return jsonError(501, "not_implemented", "viewer lands in #316");
+    if (url.pathname.startsWith("/p/")) {
+      const parsed = parseShareTokenPath(url.pathname);
+      if (!parsed) return new Response("Not Found", { status: 404 });
+      if (req.method === "GET" && parsed.raw) {
+        return handleViewerRaw(req, env, parsed.shareToken);
+      }
+      if (req.method === "GET") {
+        return handleViewerGet(req, env, parsed.shareToken);
+      }
+      if (req.method === "POST" && !parsed.raw) {
+        return handleViewerPost(req, env, parsed.shareToken);
+      }
+      return new Response("Method Not Allowed", { status: 405 });
     }
 
     return new Response("Not Found", { status: 404 });
@@ -331,4 +349,185 @@ async function collectWithSizeCap(
     offset += chunk.byteLength;
   }
   return { bytes: out, exceeded: false };
+}
+
+// ─── Viewer handlers (#316) ────────────────────────────────────────────────
+
+async function handleViewerGet(req: Request, env: Env, shareToken: string): Promise<Response> {
+  const access = await resolveViewerAccess(req, env, shareToken);
+  switch (access.kind) {
+    case "not_found":
+      return htmlPage(404, notFoundPage());
+    case "gone":
+      return htmlPage(410, gonePage());
+    case "redirect":
+      return new Response(null, {
+        status: 302,
+        headers: { location: access.location, "cache-control": "private, no-store" },
+      });
+    case "gate":
+      return htmlPage(200, passwordGatePage(shareToken));
+    case "ok":
+      return renderForRow(env, access.row, req);
+  }
+}
+
+async function handleViewerRaw(req: Request, env: Env, shareToken: string): Promise<Response> {
+  const access = await resolveViewerAccess(req, env, shareToken);
+  if (access.kind === "not_found") return htmlPage(404, notFoundPage());
+  if (access.kind === "gone") return htmlPage(410, gonePage());
+  if (access.kind === "redirect") {
+    return new Response(null, { status: 302, headers: { location: access.location, "cache-control": "private, no-store" } });
+  }
+  if (access.kind === "gate") return htmlPage(200, passwordGatePage(shareToken));
+  // OK — only iframe kinds are served via /raw; everything else 404s.
+  if (!IFRAME_KINDS.has(access.row.artifact_kind)) {
+    return htmlPage(404, notFoundPage());
+  }
+  const obj = await env.ARTIFACTS.get(access.row.r2_key);
+  if (!obj) {
+    console.error("[viewer] R2 object missing for token", shareToken, "key", access.row.r2_key);
+    return htmlPage(500, internalErrorPage());
+  }
+  const bytes = new Uint8Array(await obj.arrayBuffer());
+  return renderRawHtmlBody(bytes, access.row);
+}
+
+async function handleViewerPost(req: Request, env: Env, shareToken: string): Promise<Response> {
+  const access = await resolveViewerAccess(req, env, shareToken);
+  if (access.kind === "not_found") return htmlPage(404, notFoundPage());
+  if (access.kind === "gone") return htmlPage(410, gonePage());
+  if (access.kind === "redirect") {
+    return new Response(null, { status: 302, headers: { location: access.location, "cache-control": "private, no-store" } });
+  }
+  // POST is only meaningful in password mode.
+  // For password: gate state OR ok state both indicate "the visitor wants
+  // to (re-)authenticate via the form" — accept the POST. For other modes
+  // (open/signin), POST is method-not-allowed.
+  if (access.kind !== "gate" && !(access.kind === "ok" && access.row.mode === "password")) {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+  const row = (access as { row: PublicationRow }).row;
+
+  // Rate limit per IP + token.
+  const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
+  const gate = await env.VIEWER_PASSWORD_LIMIT.limit({ key: `${ip}:${shareToken}` });
+  if (!gate.success) return htmlPage(429, rateLimitedPage());
+
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }));
+  }
+  const password = form.get("password");
+  if (typeof password !== "string" || password.length === 0) {
+    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }));
+  }
+
+  if (!row.password_hash) {
+    console.error("[viewer] password mode row has no password_hash:", shareToken);
+    return htmlPage(500, internalErrorPage());
+  }
+  const ok = await verifyPbkdf2(password, row.password_hash);
+  if (!ok) {
+    return htmlPage(200, passwordGatePage(shareToken, { error: "wrong_password" }));
+  }
+
+  const cookieValue = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+  const host = new URL(req.url).host;
+  const secureFlag = isLoopback(host) ? "" : " Secure;";
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "set-cookie": `oyster_view_${shareToken}=${cookieValue}; HttpOnly;${secureFlag} SameSite=Lax; Path=/p/${shareToken}; Max-Age=86400`,
+      "location": `/p/${shareToken}`,
+      "cache-control": "private, no-store",
+    },
+  });
+}
+
+async function renderForRow(env: Env, row: PublicationRow, req?: Request): Promise<Response> {
+  // Short-circuit on If-None-Match (open mode only — others are no-store).
+  if (req && row.mode === "open") {
+    const ifNoneMatch = req.headers.get("If-None-Match");
+    const etag = `"${row.share_token}-${row.updated_at}"`;
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          etag,
+          "cache-control": "public, max-age=60, must-revalidate",
+        },
+      });
+    }
+  }
+
+  const obj = await env.ARTIFACTS.get(row.r2_key);
+  if (!obj) {
+    console.error("[viewer] R2 object missing for token", row.share_token, "key", row.r2_key);
+    return htmlPage(500, internalErrorPage());
+  }
+  const bytes = new Uint8Array(await obj.arrayBuffer());
+
+  if (row.content_type.startsWith("image/")) return renderImageInline(bytes, row);
+  if (row.artifact_kind === "notes") return renderMarkdownPage(bytes, row);
+  if (row.artifact_kind === "diagram") return renderMermaidPage(bytes, row);
+  if (IFRAME_KINDS.has(row.artifact_kind)) return renderChromeWithIframe(row);
+  // text/* fallback for unknown kinds with text content_type
+  if (row.content_type.startsWith("text/")) return renderMarkdownPage(bytes, row);
+  // Unknown kind with non-text content — reject rather than silently iframe-loading a 404.
+  console.error("[viewer] unsupported artifact_kind for token", row.share_token, "kind", row.artifact_kind, "content_type", row.content_type);
+  return htmlPage(500, internalErrorPage());
+}
+
+function htmlPage(status: number, body: string): Response {
+  const headers: Record<string, string> = {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "private, no-store",
+    "x-content-type-options": "nosniff",
+  };
+  return new Response(body, { status, headers });
+}
+
+// PBKDF2-SHA256 verify, matches server/src/password-hash.ts producer.
+async function verifyPbkdf2(plaintext: string, encoded: string): Promise<boolean> {
+  // Format: pbkdf2$<iter>$<salt_b64url>$<hash_b64url>
+  const parts = encoded.split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+  const [, iterRaw, saltB64, hashB64] = parts as [string, string, string, string];
+  const iter = Number(iterRaw);
+  if (!Number.isSafeInteger(iter) || iter < 1) return false;
+  const salt = base64urlDecode(saltB64);
+  const expected = base64urlDecode(hashB64);
+  if (!salt || !expected) return false;
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(plaintext),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"],
+  );
+  const derived = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" },
+    key,
+    expected.byteLength * 8,
+  ));
+  if (derived.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < derived.length; i++) diff |= (derived[i] as number) ^ (expected[i] as number);
+  return diff === 0;
+}
+
+function base64urlDecode(s: string): Uint8Array | null {
+  try {
+    const padded = s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);
+    const binary = atob(padded);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
 }

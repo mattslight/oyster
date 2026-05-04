@@ -10,6 +10,9 @@ export default defineWorkersConfig({
           // Use isolated in-memory D1 + R2 per test file.
           d1Databases: ["DB"],
           r2Buckets: ["ARTIFACTS"],
+          bindings: {
+            VIEWER_COOKIE_SECRET: "test-secret-for-vitest-only",
+          },
         },
       },
     },

@@ -3,6 +3,7 @@
 // docs/plans/auth.md for the full design.
 
 import { pkceVerifier, codeChallengeS256, pickPrimaryVerifiedEmail, type GitHubEmail } from "./oauth-helpers";
+import { validateReturnPath } from "./return-path";
 //
 // PR 2 endpoints:
 //   GET  /auth/sign-in       HTML form (also accepts ?d=<user_code> for the device flow)
@@ -69,7 +70,7 @@ function htmlEscape(s: string): string {
   )[c]!);
 }
 
-async function sha256Hex(s: string): Promise<string> {
+export async function sha256Hex(s: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -157,10 +158,12 @@ const NO_STORE: Record<string, string> = { "cache-control": "no-store" };
 
 const GITHUB_MARK_SVG = `<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="vertical-align: -4px; margin-right: 0.5rem;"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.4 3-.405 1.02.005 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`;
 
-const SIGN_IN_HTML = (userCode: string | null) => {
+const SIGN_IN_HTML = (userCode: string | null, returnPath: string | null) => {
   const githubHref = userCode
     ? `/auth/github/start?d=${encodeURIComponent(userCode)}`
-    : "/auth/github/start";
+    : returnPath
+      ? `/auth/github/start?return=${encodeURIComponent(returnPath)}`
+      : "/auth/github/start";
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -190,6 +193,7 @@ const SIGN_IN_HTML = (userCode: string | null) => {
 <form id="f">
   <label for="email">Email</label>
   <input id="email" name="email" type="email" required autocomplete="email">
+  <input type="hidden" id="return_path" name="return_path" value="${returnPath ? returnPath.replace(/[<>"]/g, "") : ""}">
   <button type="submit">Send magic link</button>
 </form>
 <p id="status" hidden></p>
@@ -200,6 +204,7 @@ const userCode = ${userCode ? JSON.stringify(userCode) : "null"};
 f.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = f.email.value.trim();
+  const returnPath = document.getElementById('return_path').value || null;
   const btn = f.querySelector('button');
   btn.disabled = true;
   btn.textContent = 'Sending…';
@@ -207,7 +212,7 @@ f.addEventListener('submit', async (e) => {
     const res = await fetch('/auth/magic-link', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, user_code: userCode }),
+      body: JSON.stringify({ email, user_code: userCode, return_path: returnPath }),
     });
     if (res.ok) {
       f.style.display = 'none';
@@ -335,7 +340,7 @@ async function handleMagicLink(req: Request, env: Env, ctx: ExecutionContext, ur
   const ipGate = await env.MAGIC_LINK_LIMIT.limit({ key: ip });
   if (!ipGate.success) return json({ error: "rate_limited" }, 429);
 
-  let payload: { email?: unknown; user_code?: unknown };
+  let payload: { email?: unknown; user_code?: unknown; return_path?: unknown };
   try {
     payload = await req.json();
   } catch {
@@ -384,12 +389,18 @@ async function handleMagicLink(req: Request, env: Env, ctx: ExecutionContext, ur
     deviceCode = dc.device_code;
   }
 
+  // Mutual exclusion: device flow's destination is the device. Return path
+  // only carries through when there is no user_code.
+  const returnPath = userCode
+    ? null
+    : (typeof payload.return_path === "string" ? validateReturnPath(payload.return_path) : null);
+
   const rawToken = randomToken(32);
   const tokenHash = await sha256Hex(rawToken);
   const expiresAt = now + MAGIC_LINK_TTL_MS;
   await env.DB
-    .prepare("INSERT INTO magic_link_tokens (token_hash, user_id, device_code, expires_at) VALUES (?, ?, ?, ?)")
-    .bind(tokenHash, user.id, deviceCode, expiresAt)
+    .prepare("INSERT INTO magic_link_tokens (token_hash, user_id, device_code, expires_at, return_path) VALUES (?, ?, ?, ?, ?)")
+    .bind(tokenHash, user.id, deviceCode, expiresAt, returnPath)
     .run();
 
   const verifyUrl = `${url.origin}/auth/verify?t=${encodeURIComponent(rawToken)}`;
@@ -430,10 +441,10 @@ async function handleVerify(env: Env, url: URL): Promise<Response> {
       `UPDATE magic_link_tokens
          SET consumed_at = ?
        WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?
-       RETURNING user_id, device_code`
+       RETURNING user_id, device_code, return_path`
     )
     .bind(now, tokenHash, now)
-    .first<{ user_id: string; device_code: string | null }>();
+    .first<{ user_id: string; device_code: string | null; return_path: string | null }>();
 
   if (!consumed) {
     return htmlResponse(
@@ -483,10 +494,12 @@ async function handleVerify(env: Env, url: URL): Promise<Response> {
       ...NO_STORE,
     });
   }
+  const safeReturn = validateReturnPath(consumed.return_path);
+  const location = safeReturn ?? "/auth/welcome";
   return new Response(null, {
     status: 302,
     headers: {
-      location: "/auth/welcome",
+      location,
       "set-cookie": cookie,
       ...NO_STORE,
     },
@@ -697,15 +710,17 @@ async function handleGithubStart(req: Request, env: Env, url: URL): Promise<Resp
     }
   }
 
+  const returnPath = userCode ? null : validateReturnPath(url.searchParams.get("return"));
+
   const state = randomState();
   const verifier = pkceVerifier();
   const challenge = await codeChallengeS256(verifier);
 
   await env.DB
     .prepare(
-      "INSERT INTO oauth_states (state, provider, pkce_verifier, user_code, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO oauth_states (state, provider, pkce_verifier, user_code, created_at, expires_at, return_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(state, "github", verifier, userCode, now, now + OAUTH_STATE_TTL_MS)
+    .bind(state, "github", verifier, userCode, now, now + OAUTH_STATE_TTL_MS, returnPath)
     .run();
 
   const githubUrl = new URL("https://github.com/login/oauth/authorize");
@@ -926,10 +941,10 @@ async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<R
       `UPDATE oauth_states
           SET consumed_at = ?
         WHERE state = ? AND provider = ? AND consumed_at IS NULL AND expires_at > ?
-        RETURNING pkce_verifier, user_code`,
+        RETURNING pkce_verifier, user_code, return_path`,
     )
     .bind(now, state, "github", now)
-    .first<{ pkce_verifier: string; user_code: string | null }>();
+    .first<{ pkce_verifier: string; user_code: string | null; return_path: string | null }>();
 
   if (!stateRow) {
     return htmlResponse(SIGN_IN_EXPIRED_HTML(false), 400, NO_STORE);
@@ -1024,10 +1039,11 @@ async function handleGithubCallback(req: Request, env: Env, url: URL): Promise<R
       ...NO_STORE,
     });
   }
+  const safeReturn = validateReturnPath(stateRow.return_path);
   return new Response(null, {
     status: 302,
     headers: {
-      location: "/auth/welcome",
+      location: safeReturn ?? "/auth/welcome",
       "set-cookie": cookie,
       ...NO_STORE,
     },
@@ -1042,7 +1058,11 @@ export default {
         // /auth/sign-in carries an optional ?d=<user_code> for the device
         // flow; no-store stops browsers and intermediaries from caching a
         // URL that contains a login-related code.
-        return htmlResponse(SIGN_IN_HTML(url.searchParams.get("d")), 200, NO_STORE);
+        const userCode = url.searchParams.get("d");
+        // Mutual exclusion: if ?d= is present, it wins (device flow is its own
+        // destination); ?return= is dropped.
+        const returnPath = userCode ? null : validateReturnPath(url.searchParams.get("return"));
+        return htmlResponse(SIGN_IN_HTML(userCode, returnPath), 200, NO_STORE);
       }
       if (url.pathname === "/auth/magic-link" && req.method === "POST") {
         return await handleMagicLink(req, env, ctx, url);

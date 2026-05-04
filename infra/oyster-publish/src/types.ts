@@ -4,6 +4,15 @@
 export interface Env {
   DB: D1Database;          // shared with oyster-auth (same database_id)
   ARTIFACTS: R2Bucket;     // oyster-artifacts
+  VIEWER_COOKIE_SECRET: string;     // HMAC key for password-mode unlock cookies (#316)
+  VIEWER_PASSWORD_LIMIT: RateLimit; // wrong-password gate (#316)
+}
+
+// `RateLimit` is a Workers binding — typed inline since it's not in
+// @cloudflare/workers-types yet. The runtime shape is:
+//   limit({ key: string }) → Promise<{ success: boolean }>
+interface RateLimit {
+  limit(opts: { key: string }): Promise<{ success: boolean }>;
 }
 
 // Decoded X-Publish-Metadata payload — produced by the local server.
