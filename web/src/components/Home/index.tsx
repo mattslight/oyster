@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
 import type { SessionState } from "../../data/sessions-api";
@@ -41,6 +41,11 @@ interface Props {
   onSpaceDelete?: (spaceId: string) => Promise<void> | void;
   /** Used by the breadcrumb-pill context menu (rename). */
   onSpaceUpdate?: (id: string, fields: { displayName?: string; color?: string }) => void;
+  /** Fires when the user toggles between the bare Home feed and a Home
+   *  sub-view (Pro vault preview or Unsorted orphans). App uses this to
+   *  drop the chat bar out of hero mode so it stops occluding sub-view
+   *  content. */
+  onSubViewActiveChange?: (active: boolean) => void;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered"];
@@ -106,7 +111,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange }: Props) {
   const { sessions, error, loading } = useSessions();
   const {
     memories,
@@ -190,6 +195,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
       setShowVault(false);
     }
   }, [isHomeView]);
+
+  // Tell App when the user is on a Home sub-view so it can drop the chat
+  // bar out of hero mode (otherwise the centered overlay occludes the
+  // vault preview / orphan tiles). Sub-views only exist while on Home.
+  useLayoutEffect(() => {
+    onSubViewActiveChange?.(isHomeView && (showVault || showElsewhere));
+  }, [isHomeView, showVault, showElsewhere, onSubViewActiveChange]);
 
   const showVaultPage = showVault && isHomeView;
 
@@ -633,6 +645,22 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               active scope, so a separate "HOME" / "OYSTER" label is
               redundant. */}
           <h1 className="home-title">{isHomeView ? (showElsewhere ? "Everything else." : "Everything active.") : eyebrow}</h1>
+          {/* First-run teaching line on Unsorted: orphan tiles look passive,
+              so point at the per-tile affordance. With zero spaces the action
+              is *creating* one (the popover says "promote this folder"), not
+              attaching — so frame as "set up". Drops once any real space
+              exists; by then the user has met the model. Inlines the actual
+              FolderPlus glyph (size + stroke matches the tile button) so the
+              instruction visually points at exactly the icon to click. */}
+          {isHomeView && showElsewhere && realSpaces.length === 0 && (
+            <div className="home-subtitle">
+              Click the
+              {" "}
+              <FolderPlus size={14} strokeWidth={2} role="img" aria-label="folder plus" className="home-subtitle-glyph" />
+              {" "}
+              on a tile to set up your first space.
+            </div>
+          )}
           {error && <div className="home-error">Couldn't load sessions: {error.message}</div>}
         </header>
 

@@ -134,6 +134,20 @@
   color: var(--text);
 }
 
+.home-subtitle {
+  margin-top: 12px;
+  max-width: 640px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-muted, rgba(255, 255, 255, 0.55));
+}
+
+.home-subtitle-glyph {
+  display: inline-block;
+  vertical-align: -2px;
+  color: var(--text);
+}
+
 .home-error {
   margin-top: 12px;
   font-size: 0.85rem;
