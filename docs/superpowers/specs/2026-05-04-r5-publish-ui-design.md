@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-04
 **Status:** Approved for implementation
-**Scope:** UI-only. The action that lets a user publish or unpublish an artefact without going through an agent. Backend (`publish_artifact` / `unpublish_artifact` MCP tools, `POST` / `DELETE /api/artifacts/:id/publish` HTTP routes, the `oyster-publish` Worker, the public viewer) shipped in #315 and #316.
+**Scope:** Publish surface/UI plus required local-server plumbing: artefact wire-format extension and `artifact_changed` SSE broadcasts. Cloud Worker and publish/unpublish behaviour already shipped in #315 and #316 — unchanged here.
 
 **Tracks:** Issue #317. Final piece of R5 in [`docs/requirements/oyster-cloud.md`](../../requirements/oyster-cloud.md). Builds on [`2026-05-03-r5-publish-backend-design.md`](./2026-05-03-r5-publish-backend-design.md) and [`2026-05-03-r5-viewer-design.md`](./2026-05-03-r5-viewer-design.md).
 
@@ -108,11 +108,13 @@ export interface ArtefactPublication {
 }
 ```
 
-**Live vs retired:** the chip's "is published" check is `publication != null && publication.unpublishedAt == null`. Retired publications stay on the wire so the UI can later add a "previously published at /p/abc, now offline" affordance — out of scope here, but the format doesn't preclude it.
+**Live vs retired:** the chip's "is published" check is `publication && publication.unpublishedAt == null`. Retired publications stay on the wire so the UI can later add a "previously published at /p/abc, now offline" affordance — out of scope here, but the format doesn't preclude it.
+
+**Wire convention:** when a row has no share token, the JSON omits the `publication` field entirely (rather than serialising it as `null`). On the client, `artifact.publication` is therefore `undefined`, not `null`. Tests should assert `expect(artifact.publication).toBeUndefined()` for unpublished rows.
 
 ### Server mapping
 
-`server/src/routes/artifacts.ts` (or whichever module emits the artefact wire format) maps SQLite snake_case to the camelCase wire shape. `publication` is built from `artifacts.share_token`, `share_mode`, `share_updated_at`, `published_at`, `unpublished_at`. When `share_token IS NULL`, `publication` is omitted from the JSON. `shareUrl` is rendered server-side from `${workerBase}/p/${share_token}`, where `workerBase` is the same constant already wired into `publish-service.ts` (created in `server/src/index.ts` alongside the rest of the service deps). One source of URL truth.
+`server/src/routes/artifacts.ts` (or whichever module emits the artefact wire format) maps SQLite snake_case to the camelCase wire shape. `publication` is built from `artifacts.share_token`, `share_mode`, `share_updated_at`, `published_at`, `unpublished_at`. When `share_token IS NULL`, the `publication` field is omitted from the JSON entirely (per wire convention above). `shareUrl` is rendered server-side from `${workerBase}/p/${share_token}`, where `workerBase` is the same constant already wired into `publish-service.ts` (created in `server/src/index.ts` alongside the rest of the service deps). One source of URL truth.
 
 ### Existing fields untouched
 
@@ -219,7 +221,7 @@ One component, five visible states. Driven by `artifact.publication` and an inte
 │ competitor-analysis.notes       │
 │                                 │
 │ Sign in to Oyster to publish.   │
-│ Free account; takes ~30s.       │
+│ Publishing requires an account. │
 │                                 │
 │         [Cancel] [Sign in]      │
 │                                 │
@@ -239,7 +241,7 @@ One component, five visible states. Driven by `artifact.publication` and an inte
 
 - Buttons disabled.
 - Spinner replaces the Publish (or Unpublish) button label.
-- Modal cannot be dismissed via Esc / backdrop while in-flight (close button still works for hard-cancel — but the request continues in the background and the eventual SSE event will reconcile state).
+- Modal cannot be dismissed via Esc / backdrop while in-flight. Close button still works — Close hides the modal; the in-flight request continues and the eventual SSE event reconciles state.
 - No progress bar in v1 (10 MB cap; typical publish is <1 s on broadband; over-engineering otherwise).
 - Aborting an in-flight upload is not exposed as a UI action — partial-state recovery is deferred.
 
@@ -267,8 +269,8 @@ One component, five visible states. Driven by `artifact.publication` and an inte
 ```
 
 - **URL trophy** — readonly input + full-width Copy button + small QR icon button beside it. Copy button label flashes "Copied" for 1.5 s on click.
-- **QR toggle** — clicking the icon button reveals an inline SVG below, regenerated from `publication.shareUrl`. Library: `qrcode-generator` (~6 KB, no DOM, no peer deps). Mode picker stays visible while QR is open; modal grows vertically.
-- **Access picker** — same radio rows as the unpublished state, pre-selected to current `publication.shareMode`. **Edge case: signin-mode publication.** If `publication.shareMode === 'signin'` (created by an agent), the picker shows only Open and Password rows, neither selected by default, with a helper line: *"This publication was set to sign-in via an agent. Pick a mode to manage it."* Save appears as soon as the user picks one. The user cannot keep it in signin mode from the UI; they can keep ignoring the modal (Done) and the publication stays signin.
+- **QR toggle** — clicking the icon button reveals an inline SVG below, regenerated from `publication.shareUrl`. Library: `qrcode-generator` (~6 KB, no DOM, no peer deps), lazy-loaded via dynamic `import()` on first toggle so the QR module isn't in the initial bundle. Mode picker stays visible while QR is open; modal grows vertically.
+- **Access picker** — same radio rows as the unpublished state, pre-selected to current `publication.shareMode`. **Edge case (currently empty):** if a publication is somehow already `signin`-mode (set by an agent), show the URL and a helper line — *"This publication is sign-in restricted. Pick Open or Password to manage it from the UI."* — and let the user pick one. Save appears once they do. No agents currently create signin-mode publications, so this branch is defensive.
 - **Save** — appears next to **Done** *only* when (a) the picker differs from the current mode, OR (b) the user has typed a non-empty password while still on Password mode. Otherwise Save is hidden — no clutter on a no-op.
 - Switching modes within the modal clears the password input (same logic as state A).
 - **Password field on re-open** — when current mode is Password and modal opens, password input is empty with placeholder "Password is set. Leave blank to keep it." Save is hidden if mode unchanged and password input is empty (no-op locally — never reaches the backend).
@@ -333,7 +335,9 @@ Switching mode in the published-state modal and clicking Save calls `POST /api/a
 
 ### Password-only update
 
-User on Password mode wants to rotate the password: types a new password into the previously-empty input, clicks Save. Same `POST` call with `mode='password'` + new `password`. Backend re-hashes; the previous unlock cookies on visitor browsers are invalidated by the change of `password_hash` (those cookies are HMAC'd against the share_token alone, but the gate's PBKDF2 verify uses the new hash — so existing visitors are gated again on next visit).
+User on Password mode wants to rotate the password: types a new password into the previously-empty input, clicks Save. Same `POST` call with `mode='password'` + new `password`. Backend re-hashes the stored `password_hash`.
+
+**Open question for implementation:** whether existing visitor unlock cookies (`oyster_view_<token>`) are invalidated by the hash change. The cookie is HMAC'd against `share_token` plus a timestamp, not against the password hash, so a password rotation does not by itself force re-entry — the cookie's path-scope and Max-Age remain. Verify the viewer cookie-verify code path before claiming password rotation re-gates current visitors. If today it doesn't, two paths: (a) accept it as-is and document, (b) extend the cookie to embed the password-hash version so verify-time mismatch invalidates. Decision deferred to implementation; spec must not assert otherwise.
 
 ### Copy-on-tile vs copy-in-modal
 
@@ -371,7 +375,7 @@ Same filter for "no match" messages.
 - Password-on-reopen — placeholder shows, save hidden when input empty + mode unchanged.
 - Slash-command filter — `/p pomodoro` excludes plugin artefacts from scoring results.
 - `useCopyLink` — same behaviour from chip and modal.
-- Wire-format mapper — server response with snake_case columns produces correct `publication` camelCase. `share_token = NULL` produces no `publication` field.
+- Wire-format mapper — server response with snake_case columns produces correct `publication` camelCase. `share_token = NULL` produces no `publication` field at all (assert `publication === undefined`, not `null`).
 
 ### Integration (existing server test pattern)
 
@@ -400,7 +404,7 @@ Same filter for "no match" messages.
 1. **Cross-device blindness.** Publishing from one machine doesn't update the surface on another machine until R3 cloud sync. The chip on machine B will be stale.
 2. **Archive doesn't unpublish.** Archiving a currently-published artefact retains the share URL. Filed as a separate issue. Worth a banner-or-confirm in a follow-up that says "This artefact is published — also unpublish?" but out of scope here.
 3. **Cap-exceeded UX.** No "show me my 5 publications, let me unpublish one" affordance. User has to find the tiles themselves.
-4. **No auto-republish on content change.** Editing an artefact's content doesn't push fresh bytes to the cloud. The user has to re-open the modal and Save (or have an agent run `publish_artifact`). Acceptable for v1.
+4. **No UI republish-content action.** Editing an artefact after publication does not update the published copy. The UI can change access mode or password only — Save is hidden when neither differs from current state. Agents can still republish fresh bytes via MCP. A "Republish content" affordance is deferred.
 5. **Mode-only change re-uploads bytes.** `POST /api/artifacts/:id/publish` always reads the artefact bytes and forwards them — there is no "only update mode" path. For a 10 MB artefact this is a wasted upload on a mode switch. Cost is bounded; not worth a backend extension yet.
 6. **Sign-in flow leaves a tab.** The device flow opens a new tab; if the user signs in there and never closes it, the tab lingers. Same as today's AuthBadge behaviour.
 7. **Tile chip can't show retired publications.** Once `unpublishedAt` is set, the chip vanishes. No "was published, now offline" affordance.
