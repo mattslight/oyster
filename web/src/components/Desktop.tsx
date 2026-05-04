@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Archive } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { archiveArtifact, archiveGroup, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, updateArtifact } from "../data/artifacts-api";
+import { unpublishArtifact } from "../data/publish-api";
 import { ArtifactIcon } from "./ArtifactIcon";
 import { ConfirmModal } from "./ConfirmModal";
 import { PromptModal } from "./PromptModal";
@@ -287,13 +288,21 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               {!isArchivedView && !artifactCtx.artifact.builtin && !artifactCtx.artifact.plugin && artifactCtx.artifact.status !== "generating" && onArtifactPublish && (
                 <button
                   className="space-ctx-item"
-                  onClick={() => {
+                  onClick={async () => {
                     const a = artifactCtx.artifact;
                     setArtifactCtx(null);
-                    onArtifactPublish(a);
+                    // Already published → unpublish directly. Mode / password
+                    // changes are reachable via /p <name>, which re-opens the
+                    // picker on a live publication.
+                    if (a.publication?.unpublishedAt === null) {
+                      try { await unpublishArtifact(a.id); }
+                      catch (err) { setAlertState({ open: true, title: "Unpublish failed", body: (err as Error).message }); }
+                    } else {
+                      onArtifactPublish(a);
+                    }
                   }}
                 >
-                  {artifactCtx.artifact.publication?.unpublishedAt === null ? "Manage publication…" : "Publish…"}
+                  {artifactCtx.artifact.publication?.unpublishedAt === null ? "Unpublish" : "Publish…"}
                 </button>
               )}
               <div className="space-ctx-sep" />
