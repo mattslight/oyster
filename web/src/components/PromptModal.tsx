@@ -25,19 +25,31 @@ export function PromptModal({
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset the field whenever the modal opens with a new default.
-  useEffect(() => { if (open) setValue(initialValue); }, [open, initialValue]);
-
+  // Reset + focus + select once per open transition. `onCancel` from a parent
+  // is typically a fresh closure each render — including it as a dep used to
+  // re-fire focus()+select() on every parent re-render, which (combined with
+  // App.tsx's 5s artefacts poll) wiped the user's in-progress typing because
+  // the next keystroke replaced the freshly-selected text.
   useEffect(() => {
     if (!open) return;
+    setValue(initialValue);
     inputRef.current?.focus();
     inputRef.current?.select();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Escape handler tracks the latest onCancel via a ref so it stays current
+  // across re-renders without rebinding the listener.
+  const onCancelRef = useRef(onCancel);
+  useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
+  useEffect(() => {
+    if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") { e.stopPropagation(); onCancel(); }
+      if (e.key === "Escape") { e.stopPropagation(); onCancelRef.current(); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
+  }, [open]);
 
   if (!open) return null;
 
