@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Archive } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { archiveArtifact, archiveGroup, pinArtifact, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, unpinArtifact, updateArtifact } from "../data/artifacts-api";
-import { unpublishArtifact, unpublishCloudShare } from "../data/publish-api";
+import { unpublishArtifact, unpublishCloudShare, updateCloudShare } from "../data/publish-api";
 import { ArtifactIcon } from "./ArtifactIcon";
 import { ConfirmModal } from "./ConfirmModal";
 import { PromptModal } from "./PromptModal";
@@ -292,11 +292,28 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
           {isArchivedView ? (
             <button className="space-ctx-item" onClick={() => handleRestoreArtifact(artifactCtx.artifact)}>Restore</button>
           ) : artifactCtx.artifact.cloudOnly ? (
-            // Cloud-only ghost: no local file to rename or re-upload, but the
-            // user can still change mode / password / retire the publication
-            // from this device. Edit share routes through the same modal which
-            // detects cloudOnly and uses the metadata-only PATCH path.
+            // Cloud-only ghost: no local file to re-upload, but the user can
+            // still rename, change mode/password, and retire the publication
+            // from this device. All routes through the metadata-only PATCH —
+            // no bytes leave or arrive.
             <>
+              <button
+                className="space-ctx-item"
+                onClick={async () => {
+                  const a = artifactCtx.artifact;
+                  setArtifactCtx(null);
+                  const next = window.prompt("Rename publication", a.label);
+                  const trimmed = next?.trim();
+                  if (!trimmed || trimmed === a.label) return;
+                  try {
+                    await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
+                  } catch (err) {
+                    setAlertState({ open: true, title: "Rename failed", body: (err as Error).message });
+                  }
+                }}
+              >
+                Rename
+              </button>
               {onArtifactPublish && (
                 <button
                   className="space-ctx-item"

@@ -79,11 +79,16 @@ export async function tryHandlePublishRoute(
       sendJson({ error: "invalid_password_type", message: "password must be a string." }, 400);
       return true;
     }
+    if (body.label !== undefined && typeof body.label !== "string") {
+      sendJson({ error: "invalid_label_type", message: "label must be a string." }, 400);
+      return true;
+    }
     try {
       const result = await deps.publishService.updateShareByToken({
         share_token: shareToken,
         mode,
         password: typeof body.password === "string" ? body.password : undefined,
+        label: typeof body.label === "string" ? body.label.trim() : undefined,
       });
       sendJson(result);
       deps.broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });

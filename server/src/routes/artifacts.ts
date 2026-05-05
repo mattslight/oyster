@@ -32,6 +32,10 @@ export interface ArtifactRouteDeps {
   OYSTER_HOME: string;
   APPS_DIR: string;
   SPACES_DIR: string;
+  /** Optional publish service. When the renamed artefact is currently
+   *  published, the new label is mirrored to D1 so other devices catch
+   *  up without needing the artefact to be re-published. */
+  publishService?: import("../publish-service.js").PublishService;
 }
 
 export async function tryHandleArtifactRoute(
@@ -44,7 +48,7 @@ export async function tryHandleArtifactRoute(
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
   const {
     artifactService, sessionStore, iconGenerator, pendingReveals,
-    clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR,
+    clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR, publishService,
   } = deps;
 
   // GET /api/artifacts/:id/sessions — sessions that touched this artefact (M:N reverse).
@@ -148,6 +152,23 @@ export async function tryHandleArtifactRoute(
       }
       const updated = await artifactService.updateArtifact(id, fields);
       sendJson(updated);
+      // Mirror label changes onto the cloud publication if one is live —
+      // keeps the chip + ghost rendering consistent across devices without
+      // forcing a re-publish (R5 hardening).
+      if (
+        publishService &&
+        fields.label &&
+        updated.publication &&
+        updated.publication.unpublishedAt === null
+      ) {
+        publishService.updateShareByToken({
+          share_token: updated.publication.shareToken,
+          mode: updated.publication.shareMode,
+          label: fields.label,
+        }).catch((err) => {
+          console.warn("[publish] label mirror failed:", err);
+        });
+      }
     } catch (err) {
       sendError(err);
     }

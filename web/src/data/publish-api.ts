@@ -98,16 +98,21 @@ export interface UpdateShareResponse {
 // Change mode + password on an existing publication without re-uploading
 // bytes. Required for cloud-only ghosts; also works for locally-backed
 // publications (cheaper than the full re-upload path when bytes haven't
-// changed).
+// changed). `label` is optional — pass it when renaming.
 export async function updateCloudShare(
   shareToken: string,
   mode: "open" | "password" | "signin",
   password?: string,
+  label?: string,
 ): Promise<UpdateShareResponse> {
   const res = await fetch(`/api/publish/by-token/${encodeURIComponent(shareToken)}/update`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ mode, ...(password !== undefined ? { password } : {}) }),
+    body: JSON.stringify({
+      mode,
+      ...(password !== undefined ? { password } : {}),
+      ...(label !== undefined ? { label } : {}),
+    }),
   });
   if (!res.ok) {
     const json = (await res.json().catch(() => ({}))) as PublishErrorBody;

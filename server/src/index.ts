@@ -441,7 +441,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/artifacts/*, /api/groups/*, /api/plugins/:id/uninstall.
   if (await tryHandleArtifactRoute(req, res, url, ctx, {
     artifactService, sessionStore, iconGenerator, pendingReveals,
-    clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR,
+    clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR, publishService,
   })) return;
 
   // /api/spaces/* — collapsed from the legacy spaces-routes.ts and the

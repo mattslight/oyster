@@ -7,7 +7,7 @@ import type { Desktop } from "../Desktop";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 import { formatRelative } from "./utils";
 import { pinArtifact, unpinArtifact } from "../../data/artifacts-api";
-import { unpublishArtifact, unpublishCloudShare } from "../../data/publish-api";
+import { unpublishArtifact, unpublishCloudShare, updateCloudShare } from "../../data/publish-api";
 
 interface ArtefactTableProps {
   artifacts: Parameters<typeof Desktop>[0]["artifacts"];
@@ -105,11 +105,28 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
           className="space-ctx-menu"
           style={{ left: ctx.x, top: ctx.y, transform: "translateY(-100%)", marginTop: -8 }}
         >
-          {/* Cloud-only ghosts: Edit share + Unpublish. Both go through routes
-              that don't require local bytes (PATCH for mode change, DELETE for
-              retire). No pin / rename — those need a local row. */}
+          {/* Cloud-only ghosts: Rename, Publish settings, Unpublish. All go
+              through metadata-only routes — no bytes required. Pin needs a
+              local row, so it's skipped. */}
           {isCloudOnly && isPublished && (
             <>
+              <button
+                className="space-ctx-item"
+                onClick={async () => {
+                  const a = ctx.artifact;
+                  setCtx(null);
+                  const next = window.prompt("Rename publication", a.label);
+                  const trimmed = next?.trim();
+                  if (!trimmed || trimmed === a.label) return;
+                  try {
+                    await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
+                }}
+              >
+                Rename
+              </button>
               {onArtifactPublish && (
                 <button
                   className="space-ctx-item"

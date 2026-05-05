@@ -209,14 +209,19 @@ export class ArtifactService {
       for (const s of this.spaceStore.getAll()) localSpaceIds.add(s.id);
     }
     const out: Artifact[] = [];
+    // Hide the artefact_id when it's a UUID — bare UUIDs read as garbage in
+    // a list. Slug-style ids (e.g. "deposit-cards-comparison") still render
+    // since they're at least human-readable. Properly-set labels always win.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     for (const pub of cloud) {
       if (localIds.has(pub.artifactId)) continue;
       const kind = toArtifactKind(pub.artifactKind);
       const shareUrl = `${this.workerBase.replace(/\/$/, "")}/p/${pub.shareToken}`;
       const spaceId = pub.spaceId && localSpaceIds.has(pub.spaceId) ? pub.spaceId : "_cloud";
+      const fallback = UUID_RE.test(pub.artifactId) ? `Untitled ${pub.artifactKind}` : pub.artifactId;
       out.push({
         id: `cloud:${pub.shareToken}`,
-        label: pub.label || pub.artifactId,    // friendly label, fallback to id
+        label: pub.label || fallback,
         artifactKind: kind,
         spaceId,
         status: "ready",

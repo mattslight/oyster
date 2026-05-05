@@ -81,6 +81,10 @@ export interface UpdateShareArgs {
   share_token: string;
   mode: "open" | "password" | "signin";
   password?: string;
+  /** New display label (used by Rename for cloud-only publications + by
+   *  local-side rename mirroring). Worker COALESCEs — undefined preserves
+   *  the existing label, so renames don't have to also re-pass mode. */
+  label?: string;
 }
 
 export interface UpdateShareResult {
@@ -279,7 +283,11 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
           Cookie: `oyster_session=${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ mode: args.mode, password_hash: passwordHash }),
+        body: JSON.stringify({
+          mode: args.mode,
+          password_hash: passwordHash,
+          ...(args.label !== undefined ? { label: args.label } : {}),
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -300,9 +308,11 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       } catch { /* defensive */ }
 
       // Refresh the cloud-only cache entry so the next /api/artifacts call
-      // sees the updated mode without waiting for a backfill.
+      // sees the updated mode + label without waiting for a backfill.
       cloudOnly = cloudOnly.map((p) =>
-        p.shareToken === args.share_token ? { ...p, mode: args.mode, updatedAt: result.updated_at } : p
+        p.shareToken === args.share_token
+          ? { ...p, mode: args.mode, updatedAt: result.updated_at, ...(args.label !== undefined ? { label: args.label } : {}) }
+          : p
       );
 
       return result;
