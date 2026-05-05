@@ -429,7 +429,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   })) return;
 
   // /api/memories
-  if (await tryHandleMemoryRoute(req, res, url, ctx, { memoryProvider })) return;
+  if (await tryHandleMemoryRoute(req, res, url, ctx, { memoryProvider, broadcastUiEvent })) return;
 
   // /api/auth/* — local glue (whoami / startSignIn / signOut). Real auth
   // (magic-link, OAuth) lives in the Cloudflare Worker.

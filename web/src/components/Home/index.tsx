@@ -26,6 +26,8 @@ import { VaultInfo } from "./VaultInfo";
 import { homeRelative, renderPipCounts, stateColor } from "./utils";
 import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./types";
 import { addSpaceSource } from "../../data/spaces-api";
+import { deleteMemory, type Memory } from "../../data/memories-api";
+import { ApiError } from "../../data/http";
 import "./Home.css";
 
 interface Props {
@@ -149,6 +151,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "table");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
   const [activePanel, setActivePanel] = useState<ActivePanel | null>(null);
+  const [pendingMemoryDelete, setPendingMemoryDelete] = useState<Memory | null>(null);
 
   // Local "Elsewhere" scope: filters Sessions to those whose spaceId is null
   // (claude/codex sessions started in folders that aren't attached to any
@@ -1111,6 +1114,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                     spaces={spaces}
                     showSpaceChip={isMetaView}
                     onOpenSession={(id) => setActivePanel({ kind: "session", id })}
+                    onRequestDelete={setPendingMemoryDelete}
                   />
                 ))}
               </div>
@@ -1234,6 +1238,36 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           />
         );
       })()}
+      {pendingMemoryDelete && (
+        <ConfirmModal
+          open={true}
+          title="Forget this memory?"
+          body={
+            <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--text)", whiteSpace: "pre-wrap" }}>
+              {pendingMemoryDelete.content}
+            </div>
+          }
+          confirmLabel="Forget"
+          destructive
+          onConfirm={async () => {
+            const target = pendingMemoryDelete;
+            try {
+              await deleteMemory(target.id);
+            } catch (err) {
+              // 404 means another tab already forgot it — same end state.
+              const status = err instanceof ApiError ? err.status : null;
+              if (status !== 404) {
+                alert(`Couldn't forget memory: ${err instanceof Error ? err.message : String(err)}`);
+                setPendingMemoryDelete(null);
+                return;
+              }
+            }
+            refreshMemories();
+            setPendingMemoryDelete(null);
+          }}
+          onCancel={() => setPendingMemoryDelete(null)}
+        />
+      )}
     </div>
   );
 }

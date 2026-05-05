@@ -4,9 +4,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
+import { safeDecode } from "../http-utils.js";
+import type { UiCommand } from "../../../shared/types.js";
 
 export interface MemoryRouteDeps {
   memoryProvider: MemoryProvider;
+  broadcastUiEvent: (event: UiCommand) => void;
 }
 
 export async function tryHandleMemoryRoute(
@@ -17,12 +20,42 @@ export async function tryHandleMemoryRoute(
   deps: MemoryRouteDeps,
 ): Promise<boolean> {
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
-  const { memoryProvider } = deps;
+  const { memoryProvider, broadcastUiEvent } = deps;
+
+  const memoriesPath = url.split("?")[0];
+
+  // DELETE /api/memories/:id — soft-delete (mark forgotten). Mirrors the MCP
+  // `forget` tool. 404 if the id doesn't exist so the UI can distinguish
+  // missing rows from server errors.
+  if (req.method === "DELETE" && memoriesPath.startsWith("/api/memories/")) {
+    if (rejectIfNonLocalOrigin()) return true;
+    const id = safeDecode(memoriesPath.slice("/api/memories/".length));
+    if (id === null) {
+      sendJson({ error: "malformed id encoding" }, 400);
+      return true;
+    }
+    if (!id) {
+      sendJson({ error: "id is required" }, 400);
+      return true;
+    }
+    try {
+      const removed = await memoryProvider.forget(id);
+      if (!removed) {
+        sendJson({ error: "memory not found" }, 404);
+        return true;
+      }
+      broadcastUiEvent({ version: 1, command: "memory_changed", payload: { id, op: "forget" } });
+      res.statusCode = 204;
+      res.end();
+    } catch (err) {
+      sendError(err);
+    }
+    return true;
+  }
 
   // GET /api/memories — list memories, optionally scoped to a space.
   // Strip the query string before path-matching (same trap the events
   // route had — `$`-anchored regex would silently reject `?space_id=…`).
-  const memoriesPath = url.split("?")[0];
   if (memoriesPath !== "/api/memories") return false;
 
   if (req.method === "GET") {
