@@ -313,11 +313,14 @@ async function handlePublishPatch(req: Request, env: Env, shareToken: string): P
   if (body.password_hash !== undefined && typeof body.password_hash !== "string") {
     return jsonError(400, "invalid_metadata");
   }
-  if (body.mode === "password" && (!body.password_hash || body.password_hash.length === 0)) {
-    return jsonError(400, "password_required");
-  }
   if (body.mode !== "password" && body.password_hash) {
     return jsonError(400, "invalid_metadata");
+  }
+  // Explicit empty hash on a password-mode update is a contract violation —
+  // either a real new hash or undefined (preserve existing). Worker is the
+  // last line of defence; the local server filters undefined out earlier.
+  if (body.mode === "password" && body.password_hash === "") {
+    return jsonError(400, "password_required");
   }
 
   const tier = (Object.hasOwn(CAPS, user.tier) ? user.tier : "free") as Tier;
@@ -328,13 +331,26 @@ async function handlePublishPatch(req: Request, env: Env, shareToken: string): P
       { required_tier: "pro", mode: body.mode });
   }
 
-  type Row = { owner_user_id: string; unpublished_at: number | null };
+  type Row = { owner_user_id: string; unpublished_at: number | null; password_hash: string | null };
   const row = await env.DB.prepare(
-    "SELECT owner_user_id, unpublished_at FROM published_artifacts WHERE share_token = ?"
+    "SELECT owner_user_id, unpublished_at, password_hash FROM published_artifacts WHERE share_token = ?"
   ).bind(shareToken).first<Row>();
   if (!row) return jsonError(404, "publication_not_found");
   if (row.owner_user_id !== user.id) return jsonError(403, "not_publication_owner");
   if (row.unpublished_at !== null) return jsonError(410, "publication_retired");
+
+  // Cross-row check: switching INTO password mode without providing a hash
+  // is only valid if the row already has one (rename / mode-stable update).
+  if (body.mode === "password" && body.password_hash === undefined && !row.password_hash) {
+    return jsonError(400, "password_required");
+  }
+
+  // Final hash:
+  //   mode = password → new hash if provided, else preserve existing
+  //   mode ≠ password → null (CHECK constraint requires it)
+  const finalHash = body.mode === "password"
+    ? (body.password_hash ?? row.password_hash)
+    : null;
 
   const updatedAt = Date.now();
   await env.DB.prepare(
@@ -343,7 +359,7 @@ async function handlePublishPatch(req: Request, env: Env, shareToken: string): P
             label = COALESCE(?, label), space_id = COALESCE(?, space_id)
       WHERE share_token = ?`
   ).bind(
-    body.mode, body.password_hash ?? null, updatedAt,
+    body.mode, finalHash, updatedAt,
     body.label ?? null, body.space_id ?? null,
     shareToken,
   ).run();

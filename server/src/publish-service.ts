@@ -270,11 +270,13 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
           "Password-protected shares are a Pro feature.",
           { required_tier: "pro", mode: args.mode });
       }
-      if (args.mode === "password" && (!args.password || args.password.length === 0)) {
-        throw new PublishError(400, "password_required", "Password mode requires a non-empty password.");
-      }
-      const passwordHash = args.mode === "password"
-        ? await deps.hashPassword(args.password!)
+      // Preserve-existing semantics: password = undefined means "leave the
+      // current hash as-is" (used by rename, mode-only changes, and the
+      // modal's "leave blank to keep" affordance). password = "" is an
+      // explicit empty — only valid when leaving password mode (and even
+      // then it's a no-op since the worker will null the hash anyway).
+      const passwordHash = args.mode === "password" && args.password
+        ? await deps.hashPassword(args.password)
         : undefined;
 
       const res = await deps.fetch(`${deps.workerBase}/api/publish/${args.share_token}`, {
