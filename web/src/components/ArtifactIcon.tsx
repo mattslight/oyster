@@ -176,7 +176,7 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
         )}
 
         {artifact.pinnedAt != null && (
-          <span className="pin-glyph" title="Pinned" aria-hidden="true">
+          <span className="pin-glyph" role="img" aria-label="Pinned" title="Pinned">
             <Pin size={11} strokeWidth={2.5} />
           </span>
         )}

@@ -15,6 +15,13 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTa
     return <div className="home-empty">No artefacts here yet.</div>;
   }
   const sorted = [...artifacts].sort((a, b) => {
+    // Pinned-first (#387) — pinned artefacts always bubble to the top in
+    // both icon and table views. Order within the pinned group is by pin
+    // time DESC (newest pin first); unpinned rows then fall through to
+    // the existing createdAt DESC sort.
+    const ap = a.pinnedAt ?? 0;
+    const bp = b.pinnedAt ?? 0;
+    if (ap !== bp) return bp - ap;
     const ta = parseTimestamp(a.createdAt);
     const tb = parseTimestamp(b.createdAt);
     return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
