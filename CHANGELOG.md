@@ -4,41 +4,37 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-05
+
+Identity and the open web — sign in, publish artefacts, share them anywhere.
+
 ### Added
 
-- **Publish artefacts from the surface.** Right-click any artefact for a Publish entry, or use the Share button in the file viewer, or type `/p <artefact>` in the chat bar. Modal supports Open and Password modes; published tiles show a small chip with one-click copy. QR toggle for mobile handoff. ([#317](https://github.com/mattslight/oyster/issues/317))
-- **Sign in to Oyster.** A free account in three clicks — Continue with GitHub, or send a sign-in link to your email as a fallback. The badge in the top-left corner shows your address; sign-out is one click. The same identity will unlock Publish & share artefacts later in 0.7.0 and cross-device continuity in 0.8.0. ([#295](https://github.com/mattslight/oyster/issues/295), [#340](https://github.com/mattslight/oyster/issues/340))
-- **Attach an Unsorted folder to an existing space.** The folder button on each Unsorted tile now opens a picker — choose any space to take it in (with a "Best match" hint when the folder name resembles one), or create a new space as before.
-- **Public viewer for shared artefacts.** Visiting a published share URL now renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, and inline images — with three access modes: open links resolve immediately, password-protected links unlock once for 24 hours per browser, and sign-in-required links route through the standard sign-in flow and land back on the share. ([#316](https://github.com/mattslight/oyster/issues/316))
-- **Filter Home to your published artefacts.** A new `published` pill in the Artefacts header narrows the grid to currently-live shares; clicking it before you've published anything lands on a quick how-to instead of an empty grid. ([#374](https://github.com/mattslight/oyster/issues/374))
-- **Unpublish from the chat bar.** `/u <artefact>` mirrors `/p` — fuzzy-matches your live publications and retires the picked one in one keystroke. ([#388](https://github.com/mattslight/oyster/issues/388))
-- **Pin artefacts to the top.** Right-click any artefact for `Pin`; pinned items sort above folder tiles and other artefacts in the active scope, most-recent pin first, with a gold pin glyph in the corner. Right-click again for `Unpin`. New `pinned` filter chip on Home to focus on just the pinned set. Filters still apply — pinning doesn't override filter visibility. ([#387](https://github.com/mattslight/oyster/issues/387))
-- **Delete a memory you didn't mean to keep.** Hover any row in the Memories list — a small trash icon appears. Click it, confirm, and the memory is gone everywhere it was visible. Other open tabs update live. ([#398](https://github.com/mattslight/oyster/issues/398))
+- **Sign in to Oyster.** Free account in three clicks. Continue with GitHub, or magic-link via email as a fallback. ([#295](https://github.com/mattslight/oyster/issues/295), [#340](https://github.com/mattslight/oyster/issues/340))
+- **Publish artefacts.** Right-click an artefact, hit Share in the file viewer, or type `/p` in the chat bar. Open, password, and sign-in-required modes. Published tiles get a copy-link chip and a QR toggle for mobile. ([#317](https://github.com/mattslight/oyster/issues/317))
+- **Public viewer.** Visiting a share URL renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, inline images. Password links unlock once for 24 hours per browser. ([#316](https://github.com/mattslight/oyster/issues/316))
+- **Filter Home to published artefacts.** A `published` pill in the Artefacts header narrows the grid to currently-live shares. ([#374](https://github.com/mattslight/oyster/issues/374))
+- **Unpublish from the chat bar.** `/u <artefact>` retires a live share in one keystroke. ([#388](https://github.com/mattslight/oyster/issues/388))
+- **Pin artefacts.** Right-click for Pin / Unpin; pinned items sort above the rest with a gold corner. New `pinned` filter chip on Home. ([#387](https://github.com/mattslight/oyster/issues/387))
+- **Delete a memory.** Hover any row in the Memories list for a trash icon. ([#398](https://github.com/mattslight/oyster/issues/398))
 
 ### Changed
 
-- **Password-protected shares are a Pro feature.** Free accounts can publish open links and sign-in-required links; the Password option in the publish modal now shows a `Pro` pill and links to [oyster.to/pricing](https://oyster.to/pricing) for the waitlist. Existing password publications keep working until unpublished.
-- **"Set up Oyster" is a panel now, not a wall of text.** When the agent finishes scanning your dev folder it surfaces a structured proposal: each suggested space with its folders as draggable chips, plus an "Everything else" bucket for the rest. Click `×` on a chip to push it back, drag chips between spaces, click a name to rename, +Add space for an empty starter, untick what you don't want — then hit Create. No open questions to answer, no copy-paste, no markdown.
-- **Set up Oyster is a checklist now.** One required item — set up your spaces — and three optional ones (publish your first artefact, connect another agent, import memories). The dock pill stops nagging once the required step is done; the optional items wait quietly in the popover for when you want them.
-- **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. ([#281](https://github.com/mattslight/oyster/issues/281))
-- **Sessions section on Home is capped.** Long session lists used to push Artefacts below the fold; the section now shows the first ten with a `Show more` toggle below — applies to both icon and table views. ([#389](https://github.com/mattslight/oyster/issues/389))
-- **Artefacts table view picks up the same cap.** Table view used to dump every artefact in the active scope; it now matches the icon view's `Show more` pager so spaces with dozens of artefacts stay scannable.
-- **Refreshed share-page chrome.** Public viewer pages drop the top header for a single centered footer line — *Published with [oyster.to](https://oyster.to)* with the Oyster brand mark. Dark-mode brand surface throughout (navy background with purple gradient bloom), Barlow for headings and Space Grotesk for body, matching oyster.to.
-- **Published shares now live on `share.oyster.to`.** Share URLs moved to a dedicated origin so untrusted content can't reach the main app's session, and so sandboxed apps can use real `localStorage` and `sessionStorage` instead of a no-op shim. Already-shared `oyster.to/p/...` links keep working via redirect. ([#397](https://github.com/mattslight/oyster/issues/397))
+- **Password-protected shares are a Pro feature.** Free accounts get open and sign-in-required links; the Password option shows a Pro pill linking to [oyster.to/pricing](https://oyster.to/pricing). Existing password publications keep working until unpublished.
+- **Published shares live on `share.oyster.to`.** Untrusted content runs on its own origin so it can't reach the main app's session; sandboxed apps regain real `localStorage`. Existing `oyster.to/p/...` links redirect. ([#397](https://github.com/mattslight/oyster/issues/397))
+- **"Set up Oyster" is a panel, not a wall of text.** After scanning your dev folder, the agent surfaces a structured proposal — drag chips between suggested spaces, rename, untick what you don't want, then Create.
+- **Setup is a checklist.** One required step (set up your spaces), three optional. The dock pill stops nagging once the required step is done.
+- **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are excluded from scan results. ([#281](https://github.com/mattslight/oyster/issues/281))
+- **Home sections cap their preview.** Sessions and Artefacts each show ten with a `Show more` toggle in both icon and table views. ([#389](https://github.com/mattslight/oyster/issues/389))
 
 ### Fixed
 
-- **Faster startup.** Chat is usable in ~1.5s on cold boot (was ~14s). The terminal-window backend now spawns on demand instead of at launch, so two heavyweight processes no longer fight for CPU during init. ([#385](https://github.com/mattslight/oyster/issues/385))
-- **"Set up Oyster" no longer ignores early clicks.** If you click the prompt before the chat has finished booting, the click is now queued and fires automatically the moment the session is ready — instead of silently doing nothing.
-- **Setup pill no longer reads as "done" while optionals remain.** Once you set up your spaces (the required step), the pill now says *Continue setup* with a green check — invitation, not full stop. It only collapses to the silent green badge when every optional is also ticked or skipped.
-- **Clicking an artefact in the session inspector** now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.
-- **Attaching a folder to a space** now sweeps in any sessions already running in that folder, instead of leaving them stranded under Unsorted.
-- **Published apps and wireframes no longer load blank.** The public viewer was serving stored bytes as `application/octet-stream`, which the browser refused to render as HTML inside the sandboxed iframe. The viewer now forces `text/html` for app, deck, wireframe, table, and map kinds — fixes existing publications without re-uploading.
-- **Sign-in re-syncs your published artefacts.** Signing in on a fresh device — or after a workspace reset — now pulls your currently-live publications from the cloud so the `published` filter on Home is accurate again. Previously, the local list could show `0 published` even when shares were live on the internet. Publications without a matching local copy surface as `On cloud` tiles with their original label and space — click opens the public URL in a new tab. (Older publications made before this update show their artefact id as the label until you re-publish them.)
-- **Right-click works on the artefacts list view.** Pin / Unpin, Publish settings, Unpublish, and Publish… now appear on a context menu in the table view too — previously the browser default menu took over.
-- **Manage cloud-only publications from any signed-in device.** Right-click an `On cloud` tile (or list-view row) for **Publish settings…** and **Unpublish**. Publish settings opens the regular publish modal so you can change mode, set/clear/reset the password, or switch to sign-in-required — without needing the original artefact bytes on this device.
-- **Existing publications self-heal their label + space.** Sign-in backfill now opportunistically pushes your local label and space onto cloud rows when the cloud copy is stale or missing. Older publications (made before the publish flow carried that context) populate on the next sign-in instead of forcing a re-publish — list-view space column starts showing the real space name.
-- **Google Fonts loads in published apps.** The iframe CSP now allows `fonts.googleapis.com` and `fonts.gstatic.com` so AI-generated apps that pull typography render with their intended fonts.
+- **Faster startup.** Chat is usable in ~1.5s on cold boot, down from ~14s. ([#385](https://github.com/mattslight/oyster/issues/385))
+- **Sign-in re-syncs your published artefacts.** Fresh device or after a workspace reset, the cloud is the source of truth. Publications without a local copy surface as `On cloud` tiles you can manage from any signed-in device.
+- **Existing publications self-heal their label and space.** Older shares populate proper context on next sign-in instead of forcing a re-publish.
+- **Right-click works on the artefacts list view.** Pin, Publish settings, Unpublish, and Publish… now appear in a context menu in list view too.
+- **Published apps and wireframes no longer load blank.** The viewer forces `text/html` for app, deck, wireframe, table, and map kinds.
+- **Google Fonts loads in published apps.** The iframe CSP now allows `fonts.googleapis.com` and `fonts.gstatic.com`.
 
 ## [0.6.0] - 2026-05-02
 
