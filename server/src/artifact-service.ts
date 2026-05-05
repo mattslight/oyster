@@ -632,6 +632,7 @@ export class ArtifactService {
       sourceOrigin: row.source_origin,
       ...this.resolveIcon(row),
       ...(publication ? { publication } : {}),
+      ...(row.pinned_at != null ? { pinnedAt: row.pinned_at } : {}),
     };
   }
 

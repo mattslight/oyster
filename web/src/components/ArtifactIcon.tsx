@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link2 } from "lucide-react";
+import { Link2, Pin } from "lucide-react";
 import type { Artifact, ArtifactKind } from "../data/artifacts-api";
 import { parseTimestamp } from "../utils/parseTimestamp";
 import { PublishedChip } from "./PublishedChip";
@@ -172,6 +172,12 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
         {artifact.sourceLabel && (
           <span className="source-glyph" title={`Linked source: ${artifact.sourceLabel}`} aria-hidden="true">
             <Link2 size={11} strokeWidth={2.5} />
+          </span>
+        )}
+
+        {artifact.pinnedAt != null && (
+          <span className="pin-glyph" title="Pinned" aria-hidden="true">
+            <Pin size={11} strokeWidth={2.5} />
           </span>
         )}
 
