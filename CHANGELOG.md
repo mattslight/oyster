@@ -24,6 +24,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Sessions section on Home is capped.** Long session lists used to push Artefacts below the fold; the section now shows the first ten with a `Show more` toggle below — applies to both icon and table views. ([#389](https://github.com/mattslight/oyster/issues/389))
 - **Artefacts table view picks up the same cap.** Table view used to dump every artefact in the active scope; it now matches the icon view's `Show more` pager so spaces with dozens of artefacts stay scannable.
 - **Refreshed share-page chrome.** Public viewer pages drop the top header for a single centered footer line — *Published with [oyster.to](https://oyster.to)* with the Oyster brand mark. Dark-mode brand surface throughout (navy background with purple gradient bloom), Barlow for headings and Space Grotesk for body, matching oyster.to.
+- **Published shares now live on `share.oyster.to`.** Share URLs moved to a dedicated origin so untrusted content can't reach the main app's session, and so sandboxed apps can use real `localStorage` and `sessionStorage` instead of a no-op shim. Already-shared `oyster.to/p/...` links keep working via redirect. ([#397](https://github.com/mattslight/oyster/issues/397))
 
 ### Fixed
 
@@ -37,7 +38,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Right-click works on the artefacts list view.** Pin / Unpin, Publish settings, Unpublish, and Publish… now appear on a context menu in the table view too — previously the browser default menu took over.
 - **Manage cloud-only publications from any signed-in device.** Right-click an `On cloud` tile (or list-view row) for **Publish settings…** and **Unpublish**. Publish settings opens the regular publish modal so you can change mode, set/clear/reset the password, or switch to sign-in-required — without needing the original artefact bytes on this device.
 - **Existing publications self-heal their label + space.** Sign-in backfill now opportunistically pushes your local label and space onto cloud rows when the cloud copy is stale or missing. Older publications (made before the publish flow carried that context) populate on the next sign-in instead of forcing a re-publish — list-view space column starts showing the real space name.
-- **Published apps that read `localStorage` at boot no longer crash to a blank page.** The sandboxed iframe blocks storage access by design, but apps that touched `localStorage`/`sessionStorage` during startup (e.g. to restore a font preference) raised an uncaught `SecurityError` and halted before rendering. The viewer now injects no-op storage shims so apps boot through; persistence is still off, which is correct for sandboxed content. Plus Google Fonts is allowed in the iframe CSP so apps that pull typography from `fonts.googleapis.com` render with their intended fonts.
+- **Google Fonts loads in published apps.** The iframe CSP now allows `fonts.googleapis.com` and `fonts.gstatic.com` so AI-generated apps that pull typography render with their intended fonts.
 
 ## [0.6.0] - 2026-05-02
 

@@ -119,7 +119,7 @@ npm run dev                # runs the Worker on localhost:8787
 # Open http://localhost:8787/auth/sign-in
 ```
 
-The Worker detects the `localhost` host and drops `Domain=` and `Secure` from the session cookie, so the cookie flow works end-to-end on `http://localhost:8787` — no HTTPS or hosts-file aliasing required.
+The session cookie is host-only (no `Domain=` attribute) so it can't leak to `share.oyster.to` where untrusted published content runs. The Worker also drops `Secure` on localhost so the cookie flow works end-to-end on `http://localhost:8787` — no HTTPS or hosts-file aliasing required.
 
 Without `RESEND_API_KEY` set, `/auth/magic-link` still returns `{ ok: true }` and writes the token row, but logs the verify URL to the Worker console instead of sending an email:
 

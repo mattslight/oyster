@@ -141,16 +141,8 @@ describe("renderChromeWithIframe", () => {
   it("contains a sandboxed iframe pointing at /p/<token>/raw", async () => {
     const res = renderChromeWithIframe(ROW);
     const body = await res.text();
-    expect(body).toContain('sandbox="allow-scripts"');
+    expect(body).toContain('sandbox="allow-scripts allow-same-origin"');
     expect(body).toContain('src="/p/app1/raw"');
-    // Critical: sandbox attribute must NOT include allow-same-origin (would defeat origin isolation)
-    expect(body).not.toMatch(/sandbox="[^"]*allow-same-origin/);
-  });
-
-  it("includes the deliberate-omission comment in source", async () => {
-    const res = renderChromeWithIframe(ROW);
-    const body = await res.text();
-    expect(body).toContain("Deliberately omit allow-same-origin");
   });
 });
 
@@ -171,11 +163,12 @@ describe("renderRawHtmlBody — strict CSP for iframe content", () => {
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 
-  it("sets a strict CSP including connect-src 'none' and form-action 'none'", async () => {
+  it("sets a CSP that allows same-origin + HTTPS fetches and blocks frames + forms", async () => {
     const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
     const res = renderRawHtmlBody(new TextEncoder().encode(""), ROW);
     const csp = res.headers.get("content-security-policy") ?? "";
-    expect(csp).toContain("connect-src 'none'");
+    // Origin-isolated apps can fetch their own subdomain and any HTTPS API.
+    expect(csp).toContain("connect-src 'self' https:");
     expect(csp).toContain("frame-src 'none'");
     expect(csp).toContain("base-uri 'none'");
     expect(csp).toContain("form-action 'none'");
@@ -196,106 +189,32 @@ describe("renderRawHtmlBody — strict CSP for iframe content", () => {
   });
 });
 
-describe("renderRawHtmlBody — storage shim injection", () => {
+describe("renderRawHtmlBody — passthrough", () => {
   const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
 
-  it("injects a no-op localStorage/sessionStorage shim into the served HTML", async () => {
-    const bytes = new TextEncoder().encode("<!doctype html><html><head><title>x</title></head><body>hi</body></html>");
-    const body = await renderRawHtmlBody(bytes, ROW).text();
-    expect(body).toContain("localStorage");
-    expect(body).toContain("sessionStorage");
-    expect(body).toContain("Object.defineProperty");
+  it("passes the user's HTML through byte-for-byte (no transform)", async () => {
+    const original = "<!doctype html><html><head></head><body><p>Hello</p></body></html>";
+    const body = await renderRawHtmlBody(new TextEncoder().encode(original), ROW).text();
+    expect(body).toBe(original);
   });
 
-  it("places the shim immediately after <head> so it runs before any user script", async () => {
-    const bytes = new TextEncoder().encode(
-      "<!doctype html><html><head><script>window.userCode='ran'</script></head><body></body></html>",
-    );
-    const body = await renderRawHtmlBody(bytes, ROW).text();
-    const shimIdx = body.indexOf("Object.defineProperty");
-    const userIdx = body.indexOf("userCode");
-    expect(shimIdx).toBeGreaterThan(-1);
-    expect(userIdx).toBeGreaterThan(-1);
-    expect(shimIdx).toBeLessThan(userIdx);
-  });
-
-  it("falls back to <html> when no <head> is present", async () => {
-    const bytes = new TextEncoder().encode("<!doctype html><html><body>hi</body></html>");
-    const body = await renderRawHtmlBody(bytes, ROW).text();
-    const shimIdx = body.indexOf("Object.defineProperty");
-    const htmlIdx = body.indexOf("<html>");
-    const bodyIdx = body.indexOf("<body");
-    expect(shimIdx).toBeGreaterThan(htmlIdx); // after <html>
-    expect(shimIdx).toBeLessThan(bodyIdx); // before <body>
-  });
-
-  it("falls back to <!doctype> when neither <head> nor <html> is present (avoids quirks mode)", async () => {
-    // A <script> before <!doctype> would put the browser in quirks mode.
-    // Insert AFTER the doctype instead.
-    const bytes = new TextEncoder().encode("<!doctype html><body>fragment</body>");
-    const body = await renderRawHtmlBody(bytes, ROW).text();
-    const shimIdx = body.indexOf("Object.defineProperty");
-    expect(body.toLowerCase().startsWith("<!doctype html>")).toBe(true);
-    expect(shimIdx).toBeGreaterThan("<!doctype html>".length - 1);
-  });
-
-  it("leaves the document untouched when no <head>/<html>/<!doctype> marker is present (avoids corruption)", async () => {
-    const bytes = new TextEncoder().encode("<div>fragment</div>");
-    const out = renderRawHtmlBody(bytes, ROW);
-    const body = await out.text();
-    expect(body).toBe("<div>fragment</div>");
-    expect(body).not.toContain("Object.defineProperty");
-  });
-
-  it("does not mistake <header> for <head> (tag-name boundary check)", async () => {
-    // <header> shares a 5-char prefix with <head>; we must not pick up the
-    // wrong tag and inject mid-document. Doc has no real <head>, so the
-    // shim should fall through to <html> instead.
-    const bytes = new TextEncoder().encode(
-      "<!doctype html><html><body><header>nav</header><p>hi</p></body></html>",
-    );
-    const body = await renderRawHtmlBody(bytes, ROW).text();
-    const shimIdx = body.indexOf("Object.defineProperty");
-    const htmlOpen = body.indexOf("<html>");
-    const headerOpen = body.indexOf("<header>");
-    expect(shimIdx).toBeGreaterThan(htmlOpen);
-    expect(shimIdx).toBeLessThan(headerOpen); // not after <header>
-  });
-
-  it("does not mistake <html5> or similar for <html>", async () => {
-    // No real <html>/<head>/<!doctype>; only a fake <html5> tag-like prefix.
-    // Should leave the doc untouched.
-    const bytes = new TextEncoder().encode("<html5-not-a-tag>x</html5-not-a-tag>");
-    const out = renderRawHtmlBody(bytes, ROW);
-    const body = await out.text();
-    expect(body).not.toContain("Object.defineProperty");
-  });
-
-  it("preserves arbitrary bytes after the insertion point (no UTF-8 round-trip)", async () => {
-    // Use a payload with a non-UTF-8-safe byte after the head. A byte-level
-    // splice should leave it untouched; a TextDecoder round-trip would
-    // replace it with U+FFFD or otherwise mangle it.
-    const head = new TextEncoder().encode("<!doctype html><html><head></head><body>");
+  it("preserves invalid-UTF-8 bytes (no string round-trip)", async () => {
+    // A non-UTF-8-safe byte in the user's payload must reach the response
+    // bytes unchanged; a TextDecoder round-trip would replace it with U+FFFD.
+    const head = new TextEncoder().encode("<!doctype html><html><body>");
     const tail = new TextEncoder().encode("</body></html>");
-    const lonelyContinuation = new Uint8Array([0xc3, 0x28]); // invalid UTF-8 sequence
+    const lonelyContinuation = new Uint8Array([0xc3, 0x28]); // invalid UTF-8
     const bytes = new Uint8Array(head.length + lonelyContinuation.length + tail.length);
     bytes.set(head, 0);
     bytes.set(lonelyContinuation, head.length);
     bytes.set(tail, head.length + lonelyContinuation.length);
 
     const out = new Uint8Array(await renderRawHtmlBody(bytes, ROW).arrayBuffer());
-    // Find the lonely continuation bytes are still present, byte-for-byte.
     let found = false;
     for (let i = 0; i < out.length - 1; i++) {
       if (out[i] === 0xc3 && out[i + 1] === 0x28) { found = true; break; }
     }
     expect(found).toBe(true);
-  });
-
-  it("preserves the user's original HTML byte-for-byte after the shim", async () => {
-    const original = "<!doctype html><html><head></head><body><p>Hello</p></body></html>";
-    const body = await renderRawHtmlBody(new TextEncoder().encode(original), ROW).text();
-    expect(body).toContain("<body><p>Hello</p></body></html>");
   });
 });
 

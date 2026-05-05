@@ -112,7 +112,7 @@ describe("publishArtifact", () => {
       expect(allHeaders).not.toContain("hunter2");
       return new Response(JSON.stringify({
         share_token: "tok123",
-        share_url: "https://oyster.to/p/tok123",
+        share_url: "https://share.oyster.to/p/tok123",
         mode: "password",
         published_at: 1700000000000,
         updated_at: 1700000005000,
@@ -131,7 +131,7 @@ describe("publishArtifact", () => {
 
     const out = await svc.publishArtifact({ artifact_id: "art_1", mode: "password", password: "hunter2" });
     expect(out.share_token).toBe("tok123");
-    expect(out.share_url).toBe("https://oyster.to/p/tok123");
+    expect(out.share_url).toBe("https://share.oyster.to/p/tok123");
 
     const row = db.prepare("SELECT * FROM artifacts WHERE id = 'art_1'").get() as any;
     expect(row.owner_id).toBe("u1");                  // set on first publish
@@ -238,7 +238,7 @@ describe("publishArtifact additional coverage", () => {
     const db = makeDb();
     seedArtifact(db, { id: "art_1", owner_id: "u1" });
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      share_token: "tok123", share_url: "https://oyster.to/p/tok123",
+      share_token: "tok123", share_url: "https://share.oyster.to/p/tok123",
       mode: "open", published_at: 1, updated_at: 1,
     }), { status: 200, headers: { "content-type": "application/json" } }));
     const svc = createPublishService({
@@ -297,7 +297,7 @@ describe("publishArtifact tier mode gating", () => {
     const db = makeDb();
     seedArtifact(db, { id: "art_1", owner_id: "u1" });
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      share_token: "tok", share_url: "https://oyster.to/p/tok",
+      share_token: "tok", share_url: "https://share.oyster.to/p/tok",
       mode: "password", published_at: 1, updated_at: 1,
     }), { status: 200, headers: { "content-type": "application/json" } }));
     const svc = createPublishService({
@@ -342,7 +342,7 @@ describe("updateShareByToken", () => {
       captured = { url, method: init.method, body: JSON.parse(init.body as string) };
       return new Response(JSON.stringify({
         share_token: "tokABC",
-        share_url: "https://oyster.to/p/tokABC",
+        share_url: "https://share.oyster.to/p/tokABC",
         mode: "password",
         updated_at: 9999,
       }), { status: 200, headers: { "content-type": "application/json" } });
@@ -380,7 +380,7 @@ describe("updateShareByToken", () => {
     db.prepare(`UPDATE artifacts SET share_token='tokA', share_mode='password', share_password_hash='pbkdf2$old' WHERE id='art_local'`).run();
 
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      share_token: "tokA", share_url: "https://oyster.to/p/tokA",
+      share_token: "tokA", share_url: "https://share.oyster.to/p/tokA",
       mode: "open", updated_at: 1,
     }), { status: 200, headers: { "content-type": "application/json" } }));
     const svc = createPublishService({

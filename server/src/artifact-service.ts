@@ -105,7 +105,7 @@ export class ArtifactService {
     this.getCloudOnlyPublications = source;
   }
 
-  constructor(private store: ArtifactStore, private workerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
+  constructor(private store: ArtifactStore, private workerBase: string, private viewerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const allRows = this.store.getAll();
@@ -216,7 +216,7 @@ export class ArtifactService {
     for (const pub of cloud) {
       if (localIds.has(pub.artifactId)) continue;
       const kind = toArtifactKind(pub.artifactKind);
-      const shareUrl = `${this.workerBase.replace(/\/$/, "")}/p/${pub.shareToken}`;
+      const shareUrl = `${this.viewerBase.replace(/\/$/, "")}/p/${pub.shareToken}`;
       const spaceId = pub.spaceId && localSpaceIds.has(pub.spaceId) ? pub.spaceId : "_cloud";
       const fallback = UUID_RE.test(pub.artifactId) ? `Untitled ${pub.artifactKind}` : pub.artifactId;
       out.push({
@@ -643,7 +643,7 @@ export class ArtifactService {
     const publication = row.share_token
       ? {
           shareToken: row.share_token,
-          shareUrl: `${this.workerBase}/p/${row.share_token}`,
+          shareUrl: `${this.viewerBase.replace(/\/$/, "")}/p/${row.share_token}`,
           shareMode: row.share_mode!,
           publishedAt: row.published_at!,
           updatedAt: row.share_updated_at!,

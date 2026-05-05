@@ -76,7 +76,7 @@ describe("artifact wire format — publication", () => {
   beforeEach(() => {
     db = makeDb();
     const store = new SqliteArtifactStore(db);
-    service = new ArtifactService(store, "https://oyster.to");
+    service = new ArtifactService(store, "https://oyster.to", "https://share.oyster.to");
   });
 
   it("omits the publication field when share_token is NULL", async () => {
@@ -95,7 +95,7 @@ describe("artifact wire format — publication", () => {
     const [a] = await service.getAllArtifacts(() => {});
     expect((a as any).publication).toEqual({
       shareToken: "Hk3qm9p_ZxN",
-      shareUrl: "https://oyster.to/p/Hk3qm9p_ZxN",
+      shareUrl: "https://share.oyster.to/p/Hk3qm9p_ZxN",
       shareMode: "open",
       publishedAt: 1717000000000,
       updatedAt: 1717000000000,
@@ -123,7 +123,7 @@ describe("artifact wire format — cloud-only ghosts", () => {
 
   beforeEach(() => {
     db = makeDb();
-    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to");
+    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
   });
 
   it("synthesises a cloudOnly ghost using the cloud label, falling back to artifact_id", async () => {
@@ -190,7 +190,7 @@ describe("artifact wire format — pin (#387)", () => {
 
   beforeEach(() => {
     db = makeDb();
-    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to");
+    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
   });
 
   it("omits pinnedAt when pinned_at is NULL", async () => {
@@ -215,7 +215,7 @@ describe("ArtifactService.pinArtifact / unpinArtifact (#387)", () => {
 
   beforeEach(() => {
     db = makeDb();
-    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to");
+    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
   });
 
   it("pinArtifact stamps pinned_at and returns the timestamp", () => {

@@ -18,7 +18,7 @@ describe("routes/publish — SSE broadcast", () => {
     const broadcast = vi.fn();
     const publishService = {
       publishArtifact: vi.fn().mockResolvedValue({
-        share_token: "tok", share_url: "https://oyster.to/p/tok",
+        share_token: "tok", share_url: "https://share.oyster.to/p/tok",
         mode: "open", published_at: 1, updated_at: 1,
       }),
       unpublishArtifact: vi.fn(),
