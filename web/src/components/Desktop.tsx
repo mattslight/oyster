@@ -306,7 +306,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                     onArtifactPublish(a);
                   }}
                 >
-                  Edit share…
+                  Publish settings…
                 </button>
               )}
               <button
@@ -365,7 +365,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                         onArtifactPublish(a);
                       }}
                     >
-                      Edit share…
+                      Publish settings…
                     </button>
                     <button
                       className="space-ctx-item"

@@ -119,7 +119,7 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
                     onArtifactPublish(a);
                   }}
                 >
-                  Edit share…
+                  Publish settings…
                 </button>
               )}
               <button
@@ -175,7 +175,7 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
                         onArtifactPublish(a);
                       }}
                     >
-                      Edit share…
+                      Publish settings…
                     </button>
                     <button
                       className="space-ctx-item"
