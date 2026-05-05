@@ -111,9 +111,10 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
      With allow-scripts only, the sandboxed document gets an opaque origin
      and cannot access oyster.to cookies or same-origin storage. -->
 <iframe sandbox="allow-scripts" src="/p/${escapeAttr(row.share_token)}/raw"
-        style="border:0;width:100%;height:calc(100vh - 76px);display:block;"></iframe>`;
-  // Body's main padding is removed for iframe so it fills naturally.
-  const cssExtra = `main { padding: 0; max-width: none; }`;
+        style="border:0;width:100%;flex:1;display:block;"></iframe>`;
+  // Iframe view: main fills remaining flex space and stretches the iframe to it.
+  // Avoids vh-math that would drift when header height changes at responsive breakpoints.
+  const cssExtra = `main { padding: 0; max-width: none; display: flex; }`;
   const page = renderChromePage({ title: "Shared via Oyster", bodyHtml: iframe, cssExtra, showActionSlot: row.mode !== "signin" });
   return new Response(page, {
     status: 200,

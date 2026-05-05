@@ -48,7 +48,7 @@ export function renderChromePage(opts: ChromeOpts): string {
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     color: var(--fg);
     background: var(--bg);
     display: flex;
@@ -94,7 +94,6 @@ export function renderChromePage(opts: ChromeOpts): string {
     flex-shrink: 0;
   }
   header .brand-name {
-    font-family: 'Barlow', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     font-weight: 700;
     font-size: 1rem;
   }
@@ -141,7 +140,7 @@ export function renderChromePage(opts: ChromeOpts): string {
 </style>
 </head><body>
 <header>
-  <a class="brand" href="https://oyster.to" target="_blank" rel="noopener">
+  <a class="brand" href="https://oyster.to" target="_blank" rel="noopener" aria-label="Oyster">
     <span class="brand-mark" aria-hidden="true">🦪</span>
     <span class="brand-name">oyster</span>
   </a>
