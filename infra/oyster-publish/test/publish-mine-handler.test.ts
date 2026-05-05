@@ -114,12 +114,109 @@ describe("GET /api/publish/mine", () => {
   });
 
   it("never returns rows owned by another user", async () => {
-    const a = await seedUser({ id: "user_a", email: "a@example.com" });
-    const b = await seedUser({ id: "user_b", email: "b@example.com" });
-    await seedPublication({ ownerId: b.id, shareToken: "tok_b", artifactId: "art_b" });
-
+    const a = await seedUser({ id: "uA", email: "a@a" });
+    const b = await seedUser({ id: "uB", email: "b@b" });
+    await seedPublication({ ownerId: b.id, shareToken: "tok_b_only", artifactId: "art_b_only" });
     const res = await call(mineRequest(authHeader(a.sessionToken).Cookie));
     const json = await res.json() as any;
     expect(json.publications).toHaveLength(0);
   });
+});
+
+describe("PATCH /api/publish/:share_token", () => {
+  async function patchRequest(opts: { cookie?: string; token: string; body: unknown }): Promise<Response> {
+    const headers = new Headers();
+    if (opts.cookie) headers.set("Cookie", opts.cookie);
+    headers.set("Content-Type", "application/json");
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      new Request(`https://oyster.to/api/publish/${opts.token}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(opts.body),
+      }),
+      env, ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
+  it("returns 401 when cookie missing", async () => {
+    const res = await patchRequest({ token: "tok", body: { mode: "open" } });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 publication_not_found for unknown share_token", async () => {
+    const u = await seedUser();
+    const res = await patchRequest({ cookie: authHeader(u.sessionToken).Cookie, token: "missing", body: { mode: "open" } });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 not_publication_owner when caller is not the owner", async () => {
+    const a = await seedUser({ id: "a", email: "a@a" });
+    const b = await seedUser({ id: "b", email: "b@b" });
+    await seedPublication({ ownerId: a.id, shareToken: "tok_a", artifactId: "art_a" });
+    const res = await patchRequest({ cookie: authHeader(b.sessionToken).Cookie, token: "tok_a", body: { mode: "signin" } });
+    expect(res.status).toBe(403);
+  });
+
+  it("free user cannot switch a publication TO password mode (402 pro_required)", async () => {
+    const u = await seedUser({ tier: "free" });
+    await seedPublication({ ownerId: u.id, shareToken: "tok_p", artifactId: "art_p" });
+    const res = await patchRequest({
+      cookie: authHeader(u.sessionToken).Cookie,
+      token: "tok_p",
+      body: { mode: "password", password_hash: "pbkdf2$x" },
+    });
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({ error: "pro_required" });
+  });
+
+  it("pro user can flip an existing open publication to password and back", async () => {
+    const u = await seedUser({ tier: "pro" });
+    await seedPublication({ ownerId: u.id, shareToken: "tok_q", artifactId: "art_q" });
+
+    const r1 = await patchRequest({
+      cookie: authHeader(u.sessionToken).Cookie,
+      token: "tok_q",
+      body: { mode: "password", password_hash: "pbkdf2$secret" },
+    });
+    expect(r1.status).toBe(200);
+    const row1 = await env.DB.prepare("SELECT mode, password_hash FROM published_artifacts WHERE share_token = 'tok_q'").first<{ mode: string; password_hash: string | null }>();
+    expect(row1?.mode).toBe("password");
+    expect(row1?.password_hash).toBe("pbkdf2$secret");
+
+    const r2 = await patchRequest({
+      cookie: authHeader(u.sessionToken).Cookie,
+      token: "tok_q",
+      body: { mode: "open" },
+    });
+    expect(r2.status).toBe(200);
+    const row2 = await env.DB.prepare("SELECT mode, password_hash FROM published_artifacts WHERE share_token = 'tok_q'").first<{ mode: string; password_hash: string | null }>();
+    expect(row2?.mode).toBe("open");
+    expect(row2?.password_hash).toBeNull();
+  });
+
+  it("rejects open mode that smuggles a password_hash", async () => {
+    const u = await seedUser();
+    await seedPublication({ ownerId: u.id, shareToken: "tok_x", artifactId: "art_x" });
+    const res = await patchRequest({
+      cookie: authHeader(u.sessionToken).Cookie,
+      token: "tok_x",
+      body: { mode: "open", password_hash: "pbkdf2$x" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 410 publication_retired for an already-unpublished row", async () => {
+    const u = await seedUser({ tier: "pro" });
+    await seedPublication({ ownerId: u.id, shareToken: "tok_dead", artifactId: "art_dead", unpublishedAt: Date.now() });
+    const res = await patchRequest({
+      cookie: authHeader(u.sessionToken).Cookie,
+      token: "tok_dead",
+      body: { mode: "open" },
+    });
+    expect(res.status).toBe(410);
+  });
+
 });

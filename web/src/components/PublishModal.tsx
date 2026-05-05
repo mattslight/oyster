@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link2 } from "lucide-react";
 import type { Artifact, ArtefactPublication } from "../../../shared/types";
-import { publishArtifact, unpublishArtifact, PublishApiError } from "../data/publish-api";
+import { publishArtifact, unpublishArtifact, unpublishCloudShare, updateCloudShare, PublishApiError } from "../data/publish-api";
 import { useCopyLink } from "../hooks/useCopyLink";
 import { ConfirmModal } from "./ConfirmModal";
 import { subscribeUiEvents } from "../data/ui-events";
@@ -180,12 +180,17 @@ export function PublishModal({ artifact, onClose }: Props) {
     setPhase("publishing");
     setError(null);
     try {
-      const result = await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
+      // Cloud-only artefact: update mode/password without re-uploading bytes
+      // (the bytes live in R2 and we don't have them locally). Otherwise
+      // the normal full re-publish path runs (legacy behaviour).
+      const result = artifact.cloudOnly && publication
+        ? await updateCloudShare(publication.shareToken, mode, mode === "password" ? password : undefined)
+        : await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
       setOptimisticPublication({
         shareToken: result.share_token,
         shareUrl: result.share_url,
         shareMode: result.mode,
-        publishedAt: result.published_at,
+        publishedAt: publication?.publishedAt ?? ("published_at" in result ? result.published_at : Date.now()),
         updatedAt: result.updated_at,
         unpublishedAt: null,
       });
@@ -204,7 +209,11 @@ export function PublishModal({ artifact, onClose }: Props) {
     setPhase("unpublishing");
     setError(null);
     try {
-      await unpublishArtifact(artifact.id);
+      if (artifact.cloudOnly && publication) {
+        await unpublishCloudShare(publication.shareToken);
+      } else {
+        await unpublishArtifact(artifact.id);
+      }
       setOptimisticPublication(null);
       // SSE will flip publication.unpublishedAt → modal returns to unpublished state.
       setPhase("idle");

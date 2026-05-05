@@ -29,6 +29,11 @@ export default {
       return handlePublishDelete(req, env, token);
     }
 
+    if (url.pathname.startsWith("/api/publish/") && req.method === "PATCH") {
+      const token = url.pathname.slice("/api/publish/".length);
+      return handlePublishPatch(req, env, token);
+    }
+
     if (url.pathname.startsWith("/p/")) {
       const parsed = parseShareTokenPath(url.pathname);
       if (!parsed) return new Response("Not Found", { status: 404 });
@@ -286,6 +291,69 @@ async function handlePublishMine(req: Request, env: Env): Promise<Response> {
   ).bind(user.id).all<Row>();
 
   return jsonOk({ publications: rows.results ?? [] });
+}
+
+async function handlePublishPatch(req: Request, env: Env, shareToken: string): Promise<Response> {
+  // Metadata-only update: change mode + password without re-uploading bytes.
+  // Used by the cloud-only "Edit share…" flow so a publication can be reset
+  // from any signed-in device, with or without a local copy of the artefact.
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+
+  let body: { mode?: string; password_hash?: string; label?: string; space_id?: string };
+  try {
+    body = await req.json() as typeof body;
+  } catch {
+    return jsonError(400, "invalid_metadata");
+  }
+
+  if (body.mode !== "open" && body.mode !== "password" && body.mode !== "signin") {
+    return jsonError(400, "invalid_mode");
+  }
+  if (body.password_hash !== undefined && typeof body.password_hash !== "string") {
+    return jsonError(400, "invalid_metadata");
+  }
+  if (body.mode === "password" && (!body.password_hash || body.password_hash.length === 0)) {
+    return jsonError(400, "password_required");
+  }
+  if (body.mode !== "password" && body.password_hash) {
+    return jsonError(400, "invalid_metadata");
+  }
+
+  const tier = (Object.hasOwn(CAPS, user.tier) ? user.tier : "free") as Tier;
+  const cap = CAPS[tier];
+  if (!cap.allowed_modes.includes(body.mode)) {
+    return jsonError(402, "pro_required",
+      "Password-protected shares are a Pro feature.",
+      { required_tier: "pro", mode: body.mode });
+  }
+
+  type Row = { owner_user_id: string; unpublished_at: number | null };
+  const row = await env.DB.prepare(
+    "SELECT owner_user_id, unpublished_at FROM published_artifacts WHERE share_token = ?"
+  ).bind(shareToken).first<Row>();
+  if (!row) return jsonError(404, "publication_not_found");
+  if (row.owner_user_id !== user.id) return jsonError(403, "not_publication_owner");
+  if (row.unpublished_at !== null) return jsonError(410, "publication_retired");
+
+  const updatedAt = Date.now();
+  await env.DB.prepare(
+    `UPDATE published_artifacts
+        SET mode = ?, password_hash = ?, updated_at = ?,
+            label = COALESCE(?, label), space_id = COALESCE(?, space_id)
+      WHERE share_token = ?`
+  ).bind(
+    body.mode, body.password_hash ?? null, updatedAt,
+    body.label ?? null, body.space_id ?? null,
+    shareToken,
+  ).run();
+
+  return jsonOk({
+    share_token: shareToken,
+    share_url: `https://oyster.to/p/${shareToken}`,
+    mode: body.mode,
+    updated_at: updatedAt,
+  });
 }
 
 async function handlePublishDelete(req: Request, env: Env, shareToken: string): Promise<Response> {

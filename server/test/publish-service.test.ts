@@ -314,6 +314,130 @@ describe("publishArtifact tier mode gating", () => {
   });
 });
 
+describe("updateShareByToken", () => {
+  it("rejects free-tier switch to password mode locally with 402 pro_required", async () => {
+    const db = makeDb();
+    const fetchMock = vi.fn();
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await expect(svc.updateShareByToken({ share_token: "tok", mode: "password", password: "p" }))
+      .rejects.toMatchObject({ status: 402, code: "pro_required" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("posts PATCH to the worker with hashed password when mode=password", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_local", owner_id: "u1" });
+    db.prepare(`UPDATE artifacts SET share_token='tokABC', share_mode='open' WHERE id='art_local'`).run();
+
+    let captured: { url?: string; method?: string; body?: any } = {};
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      captured = { url, method: init.method, body: JSON.parse(init.body as string) };
+      return new Response(JSON.stringify({
+        share_token: "tokABC",
+        share_url: "https://oyster.to/p/tokABC",
+        mode: "password",
+        updated_at: 9999,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async (p) => `pbkdf2$${p}`,
+      fetch: fetchMock as any,
+    });
+
+    const out = await svc.updateShareByToken({ share_token: "tokABC", mode: "password", password: "hunter2" });
+    expect(out.mode).toBe("password");
+    expect(captured.url).toBe("https://oyster.to/api/publish/tokABC");
+    expect(captured.method).toBe("PATCH");
+    expect(captured.body.mode).toBe("password");
+    expect(captured.body.password_hash).toBe("pbkdf2$hunter2");
+    // Plaintext password must never appear in the proxied body.
+    expect(captured.body.password).toBeUndefined();
+
+    // Local row should be mirrored to match new mode + hash.
+    const row = db.prepare("SELECT share_mode, share_password_hash, share_updated_at FROM artifacts WHERE id='art_local'").get() as any;
+    expect(row.share_mode).toBe("password");
+    expect(row.share_password_hash).toBe("pbkdf2$hunter2");
+    expect(row.share_updated_at).toBe(9999);
+  });
+
+  it("clears local password_hash when switching to open mode", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_local", owner_id: "u1" });
+    db.prepare(`UPDATE artifacts SET share_token='tokA', share_mode='password', share_password_hash='pbkdf2$old' WHERE id='art_local'`).run();
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      share_token: "tokA", share_url: "https://oyster.to/p/tokA",
+      mode: "open", updated_at: 1,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await svc.updateShareByToken({ share_token: "tokA", mode: "open" });
+    const row = db.prepare("SELECT share_mode, share_password_hash FROM artifacts WHERE id='art_local'").get() as any;
+    expect(row.share_mode).toBe("open");
+    expect(row.share_password_hash).toBeNull();
+  });
+});
+
+describe("unpublishByShareToken", () => {
+  it("returns 401 when signed out", async () => {
+    const db = makeDb();
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => null,
+      sessionToken: () => null,
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: vi.fn() as any,
+    });
+    await expect(svc.unpublishByShareToken("tok")).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("posts DELETE to the worker keyed by share_token, no local row required", async () => {
+    const db = makeDb();
+    let captured: { url?: string; method?: string } = {};
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      captured = { url, method: init.method };
+      return new Response(JSON.stringify({ ok: true, share_token: "tok", unpublished_at: 5 }),
+        { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+    const out = await svc.unpublishByShareToken("tok");
+    expect(out.unpublished_at).toBe(5);
+    expect(captured.url).toBe("https://oyster.to/api/publish/tok");
+    expect(captured.method).toBe("DELETE");
+  });
+});
+
 describe("backfillPublications", () => {
   it("returns {0,0} and does nothing when signed-out", async () => {
     const db = makeDb();

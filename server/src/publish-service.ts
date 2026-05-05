@@ -77,9 +77,30 @@ export interface CloudPublication {
   spaceId: string | null;
 }
 
+export interface UpdateShareArgs {
+  share_token: string;
+  mode: "open" | "password" | "signin";
+  password?: string;
+}
+
+export interface UpdateShareResult {
+  share_token: string;
+  share_url: string;
+  mode: "open" | "password" | "signin";
+  updated_at: number;
+}
+
 export interface PublishService {
   publishArtifact(args: PublishArgs): Promise<PublishResult>;
   unpublishArtifact(args: { artifact_id: string }): Promise<UnpublishResult>;
+  /** Retire a cloud publication by share_token alone — no local artefact row
+   *  required. Lets the surface unpublish ghost rows produced by backfill so
+   *  publications can be managed from any signed-in device. */
+  unpublishByShareToken(shareToken: string): Promise<UnpublishResult>;
+  /** Change a publication's mode (and password when applicable) without
+   *  re-uploading bytes. Used by the cloud-only Edit-share flow. Tier check
+   *  enforced; Worker remains canonical. */
+  updateShareByToken(args: UpdateShareArgs): Promise<UpdateShareResult>;
   backfillPublications(): Promise<{ mirrored: number; skipped: number }>;
   /** Cloud publications with no matching local artefact_id (set by the most
    *  recent backfill). Used by artifact-service to synthesise `cloudOnly: true`
@@ -229,6 +250,91 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
         `UPDATE artifacts SET unpublished_at = ? WHERE id = ?`
       ).run(result.unpublished_at, artifact_id);
 
+      return result;
+    },
+
+    async updateShareByToken(args) {
+      const user = deps.currentUser();
+      const token = deps.sessionToken();
+      if (!user || !token) {
+        throw new PublishError(401, "sign_in_required", "Sign in to update share settings.");
+      }
+      // Tier mode gating mirrors the Worker so the UI gets a fast 402 path.
+      const limits = tierLimits(user.tier);
+      if (!limits.allowedModes.has(args.mode)) {
+        throw new PublishError(402, "pro_required",
+          "Password-protected shares are a Pro feature.",
+          { required_tier: "pro", mode: args.mode });
+      }
+      if (args.mode === "password" && (!args.password || args.password.length === 0)) {
+        throw new PublishError(400, "password_required", "Password mode requires a non-empty password.");
+      }
+      const passwordHash = args.mode === "password"
+        ? await deps.hashPassword(args.password!)
+        : undefined;
+
+      const res = await deps.fetch(`${deps.workerBase}/api/publish/${args.share_token}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `oyster_session=${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ mode: args.mode, password_hash: passwordHash }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const code = (typeof body.error === "string" ? body.error : "update_failed");
+        const { error: _e, message: _m, ...details } = body;
+        throw new PublishError(res.status, code, (body.message as string) ?? code, details);
+      }
+      const result = await res.json() as UpdateShareResult;
+
+      // Mirror onto the local artefact row if one exists for this share_token —
+      // keeps the icon-view chip in sync without waiting for a backfill.
+      try {
+        deps.db.prepare(
+          `UPDATE artifacts
+              SET share_mode = ?, share_password_hash = ?, share_updated_at = ?
+            WHERE share_token = ?`
+        ).run(args.mode, passwordHash ?? null, result.updated_at, args.share_token);
+      } catch { /* defensive */ }
+
+      // Refresh the cloud-only cache entry so the next /api/artifacts call
+      // sees the updated mode without waiting for a backfill.
+      cloudOnly = cloudOnly.map((p) =>
+        p.shareToken === args.share_token ? { ...p, mode: args.mode, updatedAt: result.updated_at } : p
+      );
+
+      return result;
+    },
+
+    async unpublishByShareToken(shareToken) {
+      const user = deps.currentUser();
+      const token = deps.sessionToken();
+      if (!user || !token) {
+        throw new PublishError(401, "sign_in_required", "Sign in to unpublish artefacts.");
+      }
+      const res = await deps.fetch(`${deps.workerBase}/api/publish/${shareToken}`, {
+        method: "DELETE",
+        headers: { Cookie: `oyster_session=${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const code = (typeof body.error === "string" ? body.error : "unpublish_failed");
+        throw new PublishError(res.status, code, (body.message as string) ?? code);
+      }
+      const result = await res.json() as UnpublishResult;
+      // Drop the entry from the cloud-only cache so the next /api/artifacts
+      // call doesn't keep emitting the ghost. A full backfill on next
+      // sign-in / restart would clean up anyway, but this is faster.
+      cloudOnly = cloudOnly.filter((p) => p.shareToken !== shareToken);
+      // Mirror onto the local row too if one happens to exist (rare — if it
+      // existed at backfill time it wouldn't have been a ghost). Defensive.
+      try {
+        deps.db.prepare(
+          `UPDATE artifacts SET unpublished_at = ? WHERE share_token = ?`
+        ).run(result.unpublished_at, shareToken);
+      } catch { /* no-op if no matching local row */ }
       return result;
     },
 

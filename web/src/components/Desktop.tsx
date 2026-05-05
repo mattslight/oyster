@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Archive } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
 import { archiveArtifact, archiveGroup, pinArtifact, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, unpinArtifact, updateArtifact } from "../data/artifacts-api";
-import { unpublishArtifact } from "../data/publish-api";
+import { unpublishArtifact, unpublishCloudShare } from "../data/publish-api";
 import { ArtifactIcon } from "./ArtifactIcon";
 import { ConfirmModal } from "./ConfirmModal";
 import { PromptModal } from "./PromptModal";
@@ -234,14 +234,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 index={i}
                 onClick={() => onArtifactClick(item.artifact)}
                 onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
-                onContextMenu={
-                  // Cloud-only ghosts have no local row — pin/rename/unpublish
-                  // would all 404. Suppress the menu rather than offer broken
-                  // actions; click still opens the public URL.
-                  item.artifact.cloudOnly
-                    ? (e) => e.preventDefault()
-                    : (e) => { e.preventDefault(); setFolderCtx(null); setArtifactCtx({ artifact: item.artifact, x: e.clientX, y: e.clientY }); }
-                }
+                onContextMenu={(e) => { e.preventDefault(); setFolderCtx(null); setArtifactCtx({ artifact: item.artifact, x: e.clientX, y: e.clientY }); }}
                 reveal={item.artifact.id === revealId}
                 isRenaming={renamingId === item.artifact.id}
                 onRenameCommit={(label) => commitArtifactRename(item.artifact, label)}
@@ -298,6 +291,36 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
         >
           {isArchivedView ? (
             <button className="space-ctx-item" onClick={() => handleRestoreArtifact(artifactCtx.artifact)}>Restore</button>
+          ) : artifactCtx.artifact.cloudOnly ? (
+            // Cloud-only ghost: no local file to rename or re-upload, but the
+            // user can still change mode / password / retire the publication
+            // from this device. Edit share routes through the same modal which
+            // detects cloudOnly and uses the metadata-only PATCH path.
+            <>
+              {onArtifactPublish && (
+                <button
+                  className="space-ctx-item"
+                  onClick={() => {
+                    const a = artifactCtx.artifact;
+                    setArtifactCtx(null);
+                    onArtifactPublish(a);
+                  }}
+                >
+                  Edit share…
+                </button>
+              )}
+              <button
+                className="space-ctx-item"
+                onClick={async () => {
+                  const a = artifactCtx.artifact;
+                  setArtifactCtx(null);
+                  try { await unpublishCloudShare(a.publication!.shareToken); }
+                  catch (err) { setAlertState({ open: true, title: "Unpublish failed", body: (err as Error).message }); }
+                }}
+              >
+                Unpublish
+              </button>
+            </>
           ) : artifactCtx.artifact.builtin ? (
             <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
           ) : (
