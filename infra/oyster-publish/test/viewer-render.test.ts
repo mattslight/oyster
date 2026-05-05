@@ -133,7 +133,7 @@ describe("renderChromeWithIframe", () => {
     const res = renderChromeWithIframe(ROW);
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("🦪");
+    expect(body).toMatch(/class="brand-mark"/);
     expect(body).toMatch(/class="brand-name"/);
     expect(body).toContain("Powered by");
     expect(body).toContain(">Oyster<");

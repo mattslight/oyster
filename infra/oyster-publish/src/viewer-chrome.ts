@@ -59,17 +59,29 @@ export function renderChromePage(opts: ChromeOpts): string {
     -moz-osx-font-smoothing: grayscale;
   }
 
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.55rem 1.1rem;
-    height: 48px;
+  header, footer {
     flex-shrink: 0;
     background: var(--chrome-bg);
+    padding: 0.55rem 1.1rem;
+    display: flex;
+    align-items: center;
+  }
+  header {
+    justify-content: space-between;
+    gap: 1rem;
+    height: 48px;
     border-bottom: 1px solid var(--bd);
   }
+  footer {
+    justify-content: center;
+    gap: 0.4rem;
+    height: 36px;
+    border-top: 1px solid var(--bd);
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1;
+  }
+
   header .brand {
     display: inline-flex;
     align-items: center;
@@ -81,16 +93,9 @@ export function renderChromePage(opts: ChromeOpts): string {
     letter-spacing: -0.01em;
   }
   header .brand-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 26px;
     height: 26px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #7c6bff 0%, #a99eff 100%);
-    color: #fff;
-    font-size: 0.95rem;
-    box-shadow: 0 2px 8px rgba(124, 107, 255, 0.35);
+    display: block;
     flex-shrink: 0;
   }
   header .brand-name {
@@ -111,6 +116,7 @@ export function renderChromePage(opts: ChromeOpts): string {
 
   @media (max-width: 540px) {
     header { padding: 0.5rem 0.85rem; height: 44px; }
+    footer { padding: 0.5rem 0.85rem; height: 32px; font-size: 0.72rem; }
     header .brand-name { display: none; }
     header .cta { font-size: 0.8rem; }
     header .cta-text { display: none; }
@@ -119,15 +125,12 @@ export function renderChromePage(opts: ChromeOpts): string {
 
   main { flex: 1; padding: 1.5rem; max-width: 48rem; width: 100%; margin: 0 auto; }
 
-  footer {
+  footer .footer-mark {
+    width: 14px;
+    height: 14px;
+    display: block;
     flex-shrink: 0;
-    background: var(--chrome-bg);
-    border-top: 1px solid var(--bd);
-    padding: 0.6rem 1rem;
-    text-align: center;
-    font-size: 0.72rem;
-    color: var(--muted);
-    line-height: 1;
+    opacity: 0.85;
   }
   footer a {
     color: var(--muted);
@@ -141,13 +144,16 @@ export function renderChromePage(opts: ChromeOpts): string {
 </head><body>
 <header>
   <a class="brand" href="https://oyster.to" target="_blank" rel="noopener" aria-label="Oyster">
-    <span class="brand-mark" aria-hidden="true">🦪</span>
+    <img class="brand-mark" src="https://oyster.to/logo.png" alt="" width="26" height="26">
     <span class="brand-name">oyster</span>
   </a>
   ${action}
 </header>
 <main>${opts.bodyHtml}</main>
-<footer>Powered by <a href="https://oyster.to" target="_blank" rel="noopener">Oyster</a> · <a href="https://oyster.to" target="_blank" rel="noopener">oyster.to</a></footer>
+<footer>
+  <img class="footer-mark" src="https://oyster.to/logo.png" alt="" width="14" height="14" aria-hidden="true">
+  <span>Powered by <a href="https://oyster.to" target="_blank" rel="noopener">Oyster</a> · <a href="https://oyster.to" target="_blank" rel="noopener">oyster.to</a></span>
+</footer>
 </body></html>`;
 }
 

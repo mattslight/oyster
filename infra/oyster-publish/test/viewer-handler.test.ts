@@ -70,7 +70,7 @@ describe("GET /p/:token — open mode", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain("<h1>Hello world</h1>");
-    expect(body).toContain("🦪"); // chrome present
+    expect(body).toMatch(/class="brand-mark"/); // chrome present
     expect(body).toMatch(/class="brand-name"/);
     expect(body).toContain("Powered by");
   });
