@@ -486,12 +486,18 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     } else if (artefactSource !== "all") {
       list = list.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
     }
-    // Pinned-first within the active scope (#387). Stable for unpinned —
-    // .sort() in V8 is stable since 2018, so original feed order survives.
+    // Pinned-first within the active scope (#387), then most-recent
+    // first. Sorting by createdAt here (not just inside ArtefactTable)
+    // means the artefactsLimit slice picks the freshest rows; each
+    // view (icon = alpha, table = createdAt DESC) can still re-arrange
+    // that sliced set however it wants.
     list = [...list].sort((a, b) => {
       const ap = a.pinnedAt ?? 0;
       const bp = b.pinnedAt ?? 0;
-      return bp - ap;
+      if (ap !== bp) return bp - ap;
+      const ta = parseTimestamp(a.createdAt);
+      const tb = parseTimestamp(b.createdAt);
+      return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
     });
     return list;
   }, [effectiveDesktopProps.artifacts, artefactSource, selectedFolderId]);
