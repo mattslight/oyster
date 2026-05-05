@@ -20,6 +20,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Set up Oyster is a checklist now.** One required item — set up your spaces — and three optional ones (publish your first artefact, connect another agent, import memories). The dock pill stops nagging once the required step is done; the optional items wait quietly in the popover for when you want them.
 - **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. ([#281](https://github.com/mattslight/oyster/issues/281))
 - **Sessions section on Home is capped.** Long session lists used to push Artefacts below the fold; the section now shows the first ten with a `Show more` toggle below — applies to both icon and table views. ([#389](https://github.com/mattslight/oyster/issues/389))
+- **Refreshed share-page chrome.** Public viewer pages drop the top header for a single centered footer line — *Published with [oyster.to](https://oyster.to)* with the Oyster brand mark. Dark-mode brand surface throughout (navy background with purple gradient bloom), Barlow for headings and Space Grotesk for body, matching oyster.to.
 
 ### Fixed
 
@@ -28,6 +29,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Setup pill no longer reads as "done" while optionals remain.** Once you set up your spaces (the required step), the pill now says *Continue setup* with a green check — invitation, not full stop. It only collapses to the silent green badge when every optional is also ticked or skipped.
 - **Clicking an artefact in the session inspector** now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.
 - **Attaching a folder to a space** now sweeps in any sessions already running in that folder, instead of leaving them stranded under Unsorted.
+- **Published apps and wireframes no longer load blank.** The public viewer was serving stored bytes as `application/octet-stream`, which the browser refused to render as HTML inside the sandboxed iframe. The viewer now forces `text/html` for app, deck, wireframe, table, and map kinds — fixes existing publications without re-uploading.
 
 ## [0.6.0] - 2026-05-02
 

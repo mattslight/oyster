@@ -22,12 +22,12 @@ export function renderMarkdownPage(bytes: Uint8Array, row: PublicationRow): Resp
   // Title: first H1 if present, else fallback.
   const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
   const title = titleMatch ? stripTags(titleMatch[1]!) : "Shared via Oyster";
-  const page = renderChromePage({ title, bodyHtml: html, showActionSlot: row.mode !== "signin" });
+  const page = renderChromePage({ title, bodyHtml: html });
 
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
-    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'",
   );
   return new Response(page, { status: 200, headers });
 }
@@ -88,11 +88,11 @@ export function renderMermaidPage(bytes: Uint8Array, row: PublicationRow): Respo
 })();
 </script>
 `;
-  const page = renderChromePage({ title: "Diagram", bodyHtml: body, showActionSlot: row.mode !== "signin" });
+  const page = renderChromePage({ title: "Diagram", bodyHtml: body });
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
   );
   return new Response(page, { status: 200, headers });
 }
@@ -111,10 +111,11 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
      With allow-scripts only, the sandboxed document gets an opaque origin
      and cannot access oyster.to cookies or same-origin storage. -->
 <iframe sandbox="allow-scripts" src="/p/${escapeAttr(row.share_token)}/raw"
-        style="border:0;width:100%;height:calc(100vh - 60px);display:block;"></iframe>`;
-  // Body's main padding is removed for iframe so it fills naturally.
-  const cssExtra = `main { padding: 0; max-width: none; }`;
-  const page = renderChromePage({ title: "Shared via Oyster", bodyHtml: iframe, cssExtra, showActionSlot: row.mode !== "signin" });
+        style="border:0;width:100%;flex:1;display:block;"></iframe>`;
+  // Iframe view: main fills remaining flex space and stretches the iframe to it.
+  // Avoids vh-math that would drift when header height changes at responsive breakpoints.
+  const cssExtra = `main { padding: 0; max-width: none; display: flex; }`;
+  const page = renderChromePage({ title: "Shared via Oyster", bodyHtml: iframe, cssExtra });
   return new Response(page, {
     status: 200,
     headers: cacheHeaders(row, "text/html; charset=utf-8"),
@@ -122,7 +123,12 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
 }
 
 export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Response {
-  const headers = new Headers(cacheHeaders(row, row.content_type));
+  // Iframe kinds (app/deck/wireframe/table/map) are always HTML. Force
+  // text/html regardless of the stored content_type — older publications
+  // were uploaded with application/octet-stream, which combined with
+  // x-content-type-options: nosniff makes the browser refuse to render
+  // them inside the iframe.
+  const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
     "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",

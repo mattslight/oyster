@@ -70,8 +70,9 @@ describe("GET /p/:token — open mode", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain("<h1>Hello world</h1>");
-    expect(body).toContain("🦪 oyster"); // chrome present
-    expect(body).toContain("Powered by Oyster");
+    expect(body).toMatch(/class="brand-mark"/); // chrome present
+    expect(body).toContain("Published with");
+    expect(body).toContain("https://oyster.to");
   });
 
   it("sets open-mode cache headers + ETag", async () => {
@@ -122,7 +123,7 @@ describe("GET /p/:token/raw — iframe content", () => {
     });
     const res = await call(getReq(`/p/${shareToken}/raw`));
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/html");
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const csp = res.headers.get("content-security-policy") ?? "";
     expect(csp).toContain("connect-src 'none'");
     expect(csp).toContain("form-action 'none'");
@@ -374,7 +375,20 @@ describe("GET /p/:token — signin mode", () => {
     expect(await res.text()).toContain("private");
   });
 
-  it("signin viewer (signed in) does NOT show 'Get your own at oyster.to' CTA", async () => {
+});
+
+describe("GET /p/:token — footer copy is mode-invariant", () => {
+  it("open viewer shows 'Published with oyster.to' footer", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_cta_open", body: "# open",
+    });
+    const res = await call(getReq(`/p/${shareToken}`));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Published with");
+  });
+
+  it("signin viewer (signed in) shows the same 'Published with' footer", async () => {
     const u = await seedUser();
     const { shareToken } = await seedActiveOpenWithBody({
       ownerUserId: u.id, artifactId: "art3cta", body: "# signin-only",
@@ -384,18 +398,6 @@ describe("GET /p/:token — signin mode", () => {
     const cookie = `oyster_session=${u.sessionToken}`;
     const res = await call(getReq(`/p/${shareToken}`, { cookie }));
     expect(res.status).toBe(200);
-    expect(await res.text()).not.toContain("Get your own at oyster.to");
-  });
-});
-
-describe("GET /p/:token — CTA in open mode", () => {
-  it("open viewer shows 'Get your own at oyster.to' CTA", async () => {
-    const u = await seedUser();
-    const { shareToken } = await seedActiveOpenWithBody({
-      ownerUserId: u.id, artifactId: "art_cta_open", body: "# open",
-    });
-    const res = await call(getReq(`/p/${shareToken}`));
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Get your own at oyster.to");
+    expect(await res.text()).toContain("Published with");
   });
 });
