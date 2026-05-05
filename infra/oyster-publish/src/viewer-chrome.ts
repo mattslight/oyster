@@ -6,23 +6,23 @@
 // single centered "Published with oyster.to" line with the brand
 // mark — same on every mode (open / password post-unlock / signin
 // post-auth).
+//
+// Note: dark-only by design; the published surface is part of the
+// Oyster brand (which is dark navy + purple). prefers-color-scheme
+// is intentionally not honored.
 
 export interface ChromeOpts {
   title: string;
   bodyHtml: string;
   cssExtra?: string;        // e.g. iframe sizing override
-  showActionSlot?: boolean; // retained for caller compat; the footer copy is identical across modes now
 }
 
 export function renderChromePage(opts: ChromeOpts): string {
-  void opts.showActionSlot; // accepted for back-compat; footer is mode-invariant in v2 chrome
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(opts.title)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@600;700&family=Space+Grotesk:wght@400;500;600&display=swap">
 <style>
   :root {
