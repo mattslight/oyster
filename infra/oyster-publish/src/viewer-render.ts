@@ -122,6 +122,48 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
   });
 }
 
+// Inline shim injected into every iframe-content document. Sandboxed iframes
+// without allow-same-origin can't access localStorage/sessionStorage — every
+// access throws SecurityError. Most AI-generated apps read storage at boot
+// (e.g. to restore a font preference), and a single uncaught SecurityError
+// halts the rest of the bootstrap, leaving the iframe blank.
+//
+// The shim defines no-op replacements when the native APIs are unreachable
+// so apps boot. State doesn't persist (correct for sandboxed content — each
+// visitor gets a fresh load anyway).
+const STORAGE_SHIM = `<script>
+(function() {
+  function noop() { return {
+    getItem: function() { return null; },
+    setItem: function() {},
+    removeItem: function() {},
+    clear: function() {},
+    key: function() { return null; },
+    get length() { return 0; },
+  }; }
+  try { localStorage.length; } catch (e) {
+    Object.defineProperty(window, 'localStorage', { value: noop(), configurable: false });
+  }
+  try { sessionStorage.length; } catch (e) {
+    Object.defineProperty(window, 'sessionStorage', { value: noop(), configurable: false });
+  }
+})();
+</script>`;
+
+export function injectStorageShim(bytes: Uint8Array): Uint8Array {
+  const text = new TextDecoder().decode(bytes);
+  const headMatch = text.match(/<head[^>]*>/i);
+  let injected: string;
+  if (headMatch) {
+    const at = (headMatch.index ?? 0) + headMatch[0].length;
+    injected = text.slice(0, at) + STORAGE_SHIM + text.slice(at);
+  } else {
+    // No <head> in the doc — prepend so the shim still runs first.
+    injected = STORAGE_SHIM + text;
+  }
+  return new TextEncoder().encode(injected);
+}
+
 export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Response {
   // Iframe kinds (app/deck/wireframe/table/map) are always HTML. Force
   // text/html regardless of the stored content_type — older publications
@@ -131,13 +173,13 @@ export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Respo
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
-    "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+    "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
   );
   headers.set("x-frame-options", "SAMEORIGIN");
   headers.set("content-disposition", "inline");
-  // Buffer.from wrap is required for Workers fetch BodyInit — raw Uint8Array
-  // doesn't satisfy the type in cf-types.
-  return new Response(bytes, { status: 200, headers });
+  // Inject the storage shim so apps that touch localStorage/sessionStorage
+  // at startup can boot rather than crashing on SecurityError.
+  return new Response(injectStorageShim(bytes), { status: 200, headers });
 }
 
 function escapeAttr(s: string): string {

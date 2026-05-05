@@ -128,7 +128,7 @@ describe("GET /p/:token/raw — iframe content", () => {
     expect(csp).toContain("connect-src 'none'");
     expect(csp).toContain("form-action 'none'");
     expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
-    expect(await res.text()).toBe("<h1>raw app</h1>");
+    expect(await res.text()).toContain("<h1>raw app</h1>");
   });
 
   it("returns 404 for unknown token on /raw", async () => {

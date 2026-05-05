@@ -161,7 +161,7 @@ describe("renderRawHtmlBody — strict CSP for iframe content", () => {
     const res = renderRawHtmlBody(bytes, ROW);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
-    expect(await res.text()).toBe("<h1>my app</h1>");
+    expect(await res.text()).toContain("<h1>my app</h1>");
   });
 
   it("overrides application/octet-stream so browsers render the HTML (regression for early publish uploads)", async () => {
@@ -181,10 +181,55 @@ describe("renderRawHtmlBody — strict CSP for iframe content", () => {
     expect(csp).toContain("form-action 'none'");
   });
 
+  it("allows Google Fonts in style-src and font-src so AI-generated apps can load typography", async () => {
+    const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
+    const res = renderRawHtmlBody(new TextEncoder().encode(""), ROW);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toMatch(/style-src [^;]*https:\/\/fonts\.googleapis\.com/);
+    expect(csp).toMatch(/font-src [^;]*https:\/\/fonts\.gstatic\.com/);
+  });
+
   it("sets X-Frame-Options: SAMEORIGIN", async () => {
     const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
     const res = renderRawHtmlBody(new TextEncoder().encode(""), ROW);
     expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+  });
+});
+
+describe("renderRawHtmlBody — storage shim injection", () => {
+  const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
+
+  it("injects a no-op localStorage/sessionStorage shim into the served HTML", async () => {
+    const bytes = new TextEncoder().encode("<!doctype html><html><head><title>x</title></head><body>hi</body></html>");
+    const body = await renderRawHtmlBody(bytes, ROW).text();
+    expect(body).toContain("localStorage");
+    expect(body).toContain("sessionStorage");
+    expect(body).toContain("Object.defineProperty");
+  });
+
+  it("places the shim immediately after <head> so it runs before any user script", async () => {
+    const bytes = new TextEncoder().encode(
+      "<!doctype html><html><head><script>window.userCode='ran'</script></head><body></body></html>",
+    );
+    const body = await renderRawHtmlBody(bytes, ROW).text();
+    const shimIdx = body.indexOf("Object.defineProperty");
+    const userIdx = body.indexOf("userCode");
+    expect(shimIdx).toBeGreaterThan(-1);
+    expect(userIdx).toBeGreaterThan(-1);
+    expect(shimIdx).toBeLessThan(userIdx);
+  });
+
+  it("falls back to prepending when the doc has no <head>", async () => {
+    const bytes = new TextEncoder().encode("<div>fragment</div>");
+    const body = await renderRawHtmlBody(bytes, ROW).text();
+    expect(body.startsWith("<script>")).toBe(true);
+    expect(body).toContain("<div>fragment</div>");
+  });
+
+  it("preserves the user's original HTML byte-for-byte after the shim", async () => {
+    const original = "<!doctype html><html><head></head><body><p>Hello</p></body></html>";
+    const body = await renderRawHtmlBody(new TextEncoder().encode(original), ROW).text();
+    expect(body).toContain("<body><p>Hello</p></body></html>");
   });
 });
 

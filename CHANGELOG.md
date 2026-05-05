@@ -30,6 +30,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Clicking an artefact in the session inspector** now opens the file viewer directly on top of the panel — the inspector stays open behind it, instead of being swapped out for a metadata sidebar that closed the session you were reading.
 - **Attaching a folder to a space** now sweeps in any sessions already running in that folder, instead of leaving them stranded under Unsorted.
 - **Published apps and wireframes no longer load blank.** The public viewer was serving stored bytes as `application/octet-stream`, which the browser refused to render as HTML inside the sandboxed iframe. The viewer now forces `text/html` for app, deck, wireframe, table, and map kinds — fixes existing publications without re-uploading.
+- **Published apps that read `localStorage` at boot no longer crash to a blank page.** The sandboxed iframe blocks storage access by design, but apps that touched `localStorage`/`sessionStorage` during startup (e.g. to restore a font preference) raised an uncaught `SecurityError` and halted before rendering. The viewer now injects no-op storage shims so apps boot through; persistence is still off, which is correct for sandboxed content. Plus Google Fonts is allowed in the iframe CSP so apps that pull typography from `fonts.googleapis.com` render with their intended fonts.
 
 ## [0.6.0] - 2026-05-02
 
