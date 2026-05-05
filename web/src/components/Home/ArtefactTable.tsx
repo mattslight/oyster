@@ -15,9 +15,12 @@ interface ArtefactTableProps {
   spaces: Space[];
   onArtifactClick: Parameters<typeof Desktop>[0]["onArtifactClick"];
   onArtifactPublish?: (artifact: Artifact) => void;
+  /** Optimistic patch into the parent artefacts list (rename, etc.) so the
+   *  surface updates without waiting for the next SSE round-trip. */
+  onArtifactUpdate?: (id: string, fields: Partial<Artifact>) => void;
 }
 
-export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPublish }: ArtefactTableProps) {
+export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPublish, onArtifactUpdate }: ArtefactTableProps) {
   const [ctx, setCtx] = useState<{ artifact: Artifact; x: number; y: number } | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -245,9 +248,16 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
           if (!a) return;
           const trimmed = value.trim();
           if (!trimmed || trimmed === a.label) return;
+          // Optimistic: flip the label immediately so the row reads the new
+          // name straight away. SSE refetch lands a moment later with the
+          // server-canonical value (will be identical on success).
+          const previous = a.label;
+          onArtifactUpdate?.(a.id, { label: trimmed });
           try {
             await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
           } catch (err) {
+            // Revert the optimistic patch on failure.
+            onArtifactUpdate?.(a.id, { label: previous });
             setError((err as Error).message);
           }
         }}

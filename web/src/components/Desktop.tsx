@@ -308,9 +308,12 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                       setPromptState((s) => ({ ...s, open: false }));
                       const trimmed = value.trim();
                       if (!trimmed || trimmed === a.label) return;
+                      const previous = a.label;
+                      onArtifactUpdate?.(a.id, { label: trimmed });
                       try {
                         await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
                       } catch (err) {
+                        onArtifactUpdate?.(a.id, { label: previous });
                         setAlertState({ open: true, title: "Rename failed", body: (err as Error).message });
                       }
                     },

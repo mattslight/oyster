@@ -1087,6 +1087,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 spaces={spaces}
                 onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
                 onArtifactPublish={desktopProps.onArtifactPublish}
+                onArtifactUpdate={desktopProps.onArtifactUpdate}
               />
               {artefactsLimit < filteredArtefactsTotal && (
                 <ShowMore
