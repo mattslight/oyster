@@ -306,12 +306,27 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
 
       // Mirror onto the local artefact row if one exists for this share_token —
       // keeps the icon-view chip in sync without waiting for a backfill.
+      // Three cases for share_password_hash:
+      //   - mode → not password: NULL it out (CHECK-style consistency).
+      //   - mode = password + new hash: write new hash.
+      //   - mode = password + no new hash: preserve existing (rename / mode-
+      //     stable update). Without this branch a rename would silently wipe
+      //     the local hash even though the worker COALESCEd cloud's, leaving
+      //     the local mirror inconsistent until the next backfill.
       try {
-        deps.db.prepare(
-          `UPDATE artifacts
-              SET share_mode = ?, share_password_hash = ?, share_updated_at = ?
-            WHERE share_token = ?`
-        ).run(args.mode, passwordHash ?? null, result.updated_at, args.share_token);
+        if (args.mode === "password" && passwordHash === undefined) {
+          deps.db.prepare(
+            `UPDATE artifacts
+                SET share_mode = ?, share_updated_at = ?
+              WHERE share_token = ?`
+          ).run(args.mode, result.updated_at, args.share_token);
+        } else {
+          deps.db.prepare(
+            `UPDATE artifacts
+                SET share_mode = ?, share_password_hash = ?, share_updated_at = ?
+              WHERE share_token = ?`
+          ).run(args.mode, passwordHash ?? null, result.updated_at, args.share_token);
+        }
       } catch { /* defensive */ }
 
       // Refresh the cloud-only cache entry so the next /api/artifacts call
@@ -420,10 +435,11 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
           WHERE id = ?`
       );
 
-      // Used to opportunistically push label + space_id from local rows up
-      // to D1 when the cloud row is missing or stale on either field. Lets
-      // older publications (made before publish metadata carried context)
-      // self-heal on next sign-in instead of forcing a re-publish.
+      // Match detection is by an explicit SELECT rather than `stmt.run().changes`.
+      // Some SQLite paths return changes=0 for UPDATEs that match a row but
+      // happen to be a value-level no-op (re-running backfill with identical
+      // inputs); using changes alone would mis-classify such rows as ghosts.
+      // The local-context SELECT below also doubles as the existence check.
       const localContextStmt = deps.db.prepare(
         "SELECT label, space_id FROM artifacts WHERE id = ?"
       );
@@ -432,35 +448,34 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       let synced = 0;
       const unmatched: CloudPublication[] = [];
       for (const row of rows) {
-        const result = stmt.run(
-          user.id, row.share_token, row.mode,
-          row.published_at, row.updated_at, row.artifact_id,
-        );
-        if (result.changes > 0) {
+        const local = localContextStmt.get(row.artifact_id) as
+          { label: string; space_id: string } | undefined;
+        if (local) {
+          stmt.run(
+            user.id, row.share_token, row.mode,
+            row.published_at, row.updated_at, row.artifact_id,
+          );
           mirrored++;
-          // Opportunistic context up-sync (fire-and-forget).
-          const local = localContextStmt.get(row.artifact_id) as
-            { label: string; space_id: string } | undefined;
-          if (local) {
-            const labelStale = row.label !== local.label;
-            const spaceStale = row.space_id !== local.space_id;
-            if (labelStale || spaceStale) {
-              synced++;
-              void deps.fetch(`${deps.workerBase}/api/publish/${row.share_token}`, {
-                method: "PATCH",
-                headers: {
-                  Cookie: `oyster_session=${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  mode: row.mode,
-                  label: local.label,
-                  space_id: local.space_id,
-                }),
-              }).catch((err) => {
-                console.warn("[publish] context up-sync failed:", err);
-              });
-            }
+          // Opportunistic context up-sync (fire-and-forget): if the cloud
+          // row's label or space_id is stale, push the local values up.
+          const labelStale = row.label !== local.label;
+          const spaceStale = row.space_id !== local.space_id;
+          if (labelStale || spaceStale) {
+            synced++;
+            void deps.fetch(`${deps.workerBase}/api/publish/${row.share_token}`, {
+              method: "PATCH",
+              headers: {
+                Cookie: `oyster_session=${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                mode: row.mode,
+                label: local.label,
+                space_id: local.space_id,
+              }),
+            }).catch((err) => {
+              console.warn("[publish] context up-sync failed:", err);
+            });
           }
         } else {
           unmatched.push({

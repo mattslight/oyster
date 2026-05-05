@@ -318,8 +318,11 @@ function logBackfill(label: string, result: { mirrored: number; skipped: number 
 // itself is just a getter on publish-service.
 artifactService.setCloudOnlyPublicationsSource(() => publishService.getCloudOnlyPublications());
 
-authService.onAuthChanged((state) => {
-  if (!state.user || !state.sessionToken) return;
+authService.onAuthChanged(() => {
+  // Run on every auth transition — including sign-out. backfillPublications
+  // handles the signed-out case by clearing the cloudOnly cache and returning
+  // {0,0}, and logBackfill broadcasts artifact_changed unconditionally so the
+  // surface drops any ghost rows on the spot.
   void publishService.backfillPublications().then((r) => logBackfill("auth-backfill", r));
 });
 if (authService.getState().user) {

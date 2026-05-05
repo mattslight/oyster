@@ -1028,7 +1028,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           </div>
           {artefactSource === "published" && filteredArtefactsTotal === 0 ? (
             <div className="home-empty">
-              {signedIn === false ? (
+              {signedIn === null ? (
+                // First whoami in flight — render a placeholder rather than
+                // flashing either copy. The auth check is fast, so the empty
+                // gap is barely perceptible vs. flicking through wrong text.
+                <>&nbsp;</>
+              ) : signedIn === false ? (
                 <>
                   <div>Sign in to see your published artefacts. Publishing requires an account.</div>
                   <button
