@@ -753,10 +753,14 @@
   color: var(--text-dim);
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 .home-memory:hover .home-memory-delete,
-.home-memory-delete:focus-visible { opacity: 1; }
+.home-memory-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
 .home-memory-delete:hover {
   background: rgba(255, 90, 90, 0.12);
   color: #ff7a7a;

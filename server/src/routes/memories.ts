@@ -4,6 +4,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
+import { safeDecode } from "../http-utils.js";
 import type { UiCommand } from "../../../shared/types.js";
 
 export interface MemoryRouteDeps {
@@ -28,7 +29,11 @@ export async function tryHandleMemoryRoute(
   // missing rows from server errors.
   if (req.method === "DELETE" && memoriesPath.startsWith("/api/memories/")) {
     if (rejectIfNonLocalOrigin()) return true;
-    const id = memoriesPath.slice("/api/memories/".length);
+    const id = safeDecode(memoriesPath.slice("/api/memories/".length));
+    if (id === null) {
+      sendJson({ error: "malformed id encoding" }, 400);
+      return true;
+    }
     if (!id) {
       sendJson({ error: "id is required" }, 400);
       return true;

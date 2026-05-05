@@ -27,6 +27,7 @@ import { homeRelative, renderPipCounts, stateColor } from "./utils";
 import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./types";
 import { addSpaceSource } from "../../data/spaces-api";
 import { deleteMemory, type Memory } from "../../data/memories-api";
+import { ApiError } from "../../data/http";
 import "./Home.css";
 
 interface Props {
@@ -1252,10 +1253,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             const target = pendingMemoryDelete;
             try {
               await deleteMemory(target.id);
-              refreshMemories();
-            } finally {
-              setPendingMemoryDelete(null);
+            } catch (err) {
+              // 404 means another tab already forgot it — same end state.
+              const status = err instanceof ApiError ? err.status : null;
+              if (status !== 404) {
+                alert(`Couldn't forget memory: ${err instanceof Error ? err.message : String(err)}`);
+                setPendingMemoryDelete(null);
+                return;
+              }
             }
+            refreshMemories();
+            setPendingMemoryDelete(null);
           }}
           onCancel={() => setPendingMemoryDelete(null)}
         />
