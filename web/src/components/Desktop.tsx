@@ -297,7 +297,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
               <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
-              {!isArchivedView && !artifactCtx.artifact.plugin && artifactCtx.artifact.status !== "generating" && (
+              {!isArchivedView && artifactCtx.artifact.status !== "generating" && (
                 artifactCtx.artifact.pinnedAt != null ? (
                   <button
                     className="space-ctx-item"

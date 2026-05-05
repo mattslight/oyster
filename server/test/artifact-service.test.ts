@@ -28,7 +28,8 @@ function makeDb(): Database.Database {
       share_password_hash  TEXT,
       published_at         INTEGER,
       share_updated_at     INTEGER,
-      unpublished_at       INTEGER
+      unpublished_at       INTEGER,
+      pinned_at            INTEGER
     );
   `);
   return db;
@@ -43,6 +44,8 @@ function seed(
     published_at: number | null;
     share_updated_at: number | null;
     unpublished_at: number | null;
+    pinned_at: number | null;
+    removed_at: string | null;
   }> = {},
 ) {
   const id = fields.id ?? "art_1";
@@ -50,9 +53,9 @@ function seed(
     `INSERT INTO artifacts
        (id, space_id, label, artifact_kind, storage_kind, storage_config,
         runtime_kind, runtime_config, share_token, share_mode, published_at,
-        share_updated_at, unpublished_at)
+        share_updated_at, unpublished_at, pinned_at, removed_at)
      VALUES (?, 'home', 'Test artefact', 'notes', 'url', '{}',
-             'static_file', '{}', ?, ?, ?, ?, ?)`,
+             'static_file', '{}', ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     fields.share_token ?? null,
@@ -60,6 +63,8 @@ function seed(
     fields.published_at ?? null,
     fields.share_updated_at ?? null,
     fields.unpublished_at ?? null,
+    fields.pinned_at ?? null,
+    fields.removed_at ?? null,
   );
   return id;
 }
@@ -109,5 +114,82 @@ describe("artifact wire format — publication", () => {
     const [a] = await service.getAllArtifacts(() => {});
     expect((a as any).publication?.unpublishedAt).toBe(1717000005000);
     expect((a as any).publication?.shareMode).toBe("password");
+  });
+});
+
+describe("artifact wire format — pin (#387)", () => {
+  let db: Database.Database;
+  let service: ArtifactService;
+
+  beforeEach(() => {
+    db = makeDb();
+    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to");
+  });
+
+  it("omits pinnedAt when pinned_at is NULL", async () => {
+    seed(db);
+    const [a] = await service.getAllArtifacts(() => {});
+    expect((a as any).pinnedAt).toBeUndefined();
+  });
+
+  it("emits pinnedAt when pinned_at is set (static_file path)", async () => {
+    // Regression guard: the static_file branch of rowToArtifact dropped
+    // pinnedAt in the initial implementation. notes/markdown/html flow
+    // through this branch.
+    seed(db, { pinned_at: 1717000000000 });
+    const [a] = await service.getAllArtifacts(() => {});
+    expect((a as any).pinnedAt).toBe(1717000000000);
+  });
+});
+
+describe("ArtifactService.pinArtifact / unpinArtifact (#387)", () => {
+  let db: Database.Database;
+  let service: ArtifactService;
+
+  beforeEach(() => {
+    db = makeDb();
+    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to");
+  });
+
+  it("pinArtifact stamps pinned_at and returns the timestamp", () => {
+    const id = seed(db);
+    const before = Date.now();
+    const result = service.pinArtifact(id);
+    const after = Date.now();
+    expect(result.id).toBe(id);
+    expect(result.pinnedAt).toBeGreaterThanOrEqual(before);
+    expect(result.pinnedAt).toBeLessThanOrEqual(after);
+    const row = db.prepare("SELECT pinned_at FROM artifacts WHERE id = ?").get(id) as { pinned_at: number };
+    expect(row.pinned_at).toBe(result.pinnedAt);
+  });
+
+  it("pinArtifact rejects archived artefacts", () => {
+    const id = seed(db, { removed_at: "2026-01-01 00:00:00" });
+    expect(() => service.pinArtifact(id)).toThrow(/archived/);
+  });
+
+  it("pinArtifact rejects unknown ids", () => {
+    expect(() => service.pinArtifact("does-not-exist")).toThrow(/not found/);
+  });
+
+  it("re-pinning bumps pinned_at to the current timestamp", async () => {
+    const id = seed(db, { pinned_at: 1000 });
+    const result = service.pinArtifact(id);
+    expect(result.pinnedAt).toBeGreaterThan(1000);
+  });
+
+  it("unpinArtifact clears pinned_at", () => {
+    const id = seed(db, { pinned_at: 1717000000000 });
+    const result = service.unpinArtifact(id);
+    expect(result).toEqual({ id, pinnedAt: null });
+    const row = db.prepare("SELECT pinned_at FROM artifacts WHERE id = ?").get(id) as { pinned_at: number | null };
+    expect(row.pinned_at).toBeNull();
+  });
+
+  it("unpinArtifact is idempotent on already-unpinned artefacts", () => {
+    const id = seed(db);
+    expect(() => service.unpinArtifact(id)).not.toThrow();
+    const row = db.prepare("SELECT pinned_at FROM artifacts WHERE id = ?").get(id) as { pinned_at: number | null };
+    expect(row.pinned_at).toBeNull();
   });
 });
