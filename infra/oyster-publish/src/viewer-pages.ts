@@ -62,6 +62,8 @@ function basePage(title: string, bodyHtml: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
+<link rel="icon" type="image/png" href="https://oyster.to/logo.png">
+<link rel="apple-touch-icon" href="https://oyster.to/logo.png">
 <style>
   :root { color-scheme: light dark; --fg: #111; --muted: #666; --bd: #d4d4d8; --bg: #fff; }
   @media (prefers-color-scheme: dark) { :root { --fg: #f4f4f5; --muted: #a1a1aa; --bd: #3f3f46; --bg: #18181b; } }

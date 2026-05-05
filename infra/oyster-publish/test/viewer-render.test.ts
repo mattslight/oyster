@@ -219,11 +219,53 @@ describe("renderRawHtmlBody — storage shim injection", () => {
     expect(shimIdx).toBeLessThan(userIdx);
   });
 
-  it("falls back to prepending when the doc has no <head>", async () => {
-    const bytes = new TextEncoder().encode("<div>fragment</div>");
+  it("falls back to <html> when no <head> is present", async () => {
+    const bytes = new TextEncoder().encode("<!doctype html><html><body>hi</body></html>");
     const body = await renderRawHtmlBody(bytes, ROW).text();
-    expect(body.startsWith("<script>")).toBe(true);
-    expect(body).toContain("<div>fragment</div>");
+    const shimIdx = body.indexOf("Object.defineProperty");
+    const htmlIdx = body.indexOf("<html>");
+    const bodyIdx = body.indexOf("<body");
+    expect(shimIdx).toBeGreaterThan(htmlIdx); // after <html>
+    expect(shimIdx).toBeLessThan(bodyIdx); // before <body>
+  });
+
+  it("falls back to <!doctype> when neither <head> nor <html> is present (avoids quirks mode)", async () => {
+    // A <script> before <!doctype> would put the browser in quirks mode.
+    // Insert AFTER the doctype instead.
+    const bytes = new TextEncoder().encode("<!doctype html><body>fragment</body>");
+    const body = await renderRawHtmlBody(bytes, ROW).text();
+    const shimIdx = body.indexOf("Object.defineProperty");
+    expect(body.toLowerCase().startsWith("<!doctype html>")).toBe(true);
+    expect(shimIdx).toBeGreaterThan("<!doctype html>".length - 1);
+  });
+
+  it("leaves the document untouched when no <head>/<html>/<!doctype> marker is present (avoids corruption)", async () => {
+    const bytes = new TextEncoder().encode("<div>fragment</div>");
+    const out = renderRawHtmlBody(bytes, ROW);
+    const body = await out.text();
+    expect(body).toBe("<div>fragment</div>");
+    expect(body).not.toContain("Object.defineProperty");
+  });
+
+  it("preserves arbitrary bytes after the insertion point (no UTF-8 round-trip)", async () => {
+    // Use a payload with a non-UTF-8-safe byte after the head. A byte-level
+    // splice should leave it untouched; a TextDecoder round-trip would
+    // replace it with U+FFFD or otherwise mangle it.
+    const head = new TextEncoder().encode("<!doctype html><html><head></head><body>");
+    const tail = new TextEncoder().encode("</body></html>");
+    const lonelyContinuation = new Uint8Array([0xc3, 0x28]); // invalid UTF-8 sequence
+    const bytes = new Uint8Array(head.length + lonelyContinuation.length + tail.length);
+    bytes.set(head, 0);
+    bytes.set(lonelyContinuation, head.length);
+    bytes.set(tail, head.length + lonelyContinuation.length);
+
+    const out = new Uint8Array(await renderRawHtmlBody(bytes, ROW).arrayBuffer());
+    // Find the lonely continuation bytes are still present, byte-for-byte.
+    let found = false;
+    for (let i = 0; i < out.length - 1; i++) {
+      if (out[i] === 0xc3 && out[i + 1] === 0x28) { found = true; break; }
+    }
+    expect(found).toBe(true);
   });
 
   it("preserves the user's original HTML byte-for-byte after the shim", async () => {

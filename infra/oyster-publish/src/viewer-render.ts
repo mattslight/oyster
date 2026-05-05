@@ -151,17 +151,55 @@ const STORAGE_SHIM = `<script>
 </script>`;
 
 export function injectStorageShim(bytes: Uint8Array): Uint8Array {
-  const text = new TextDecoder().decode(bytes);
-  const headMatch = text.match(/<head[^>]*>/i);
-  let injected: string;
-  if (headMatch) {
-    const at = (headMatch.index ?? 0) + headMatch[0].length;
-    injected = text.slice(0, at) + STORAGE_SHIM + text.slice(at);
-  } else {
-    // No <head> in the doc — prepend so the shim still runs first.
-    injected = STORAGE_SHIM + text;
+  // Byte-level splice — never decode the user's HTML to a string, so we don't
+  // corrupt non-UTF-8 (or invalid-UTF-8) payloads on the round trip. Tag names
+  // are ASCII; we case-fold the haystack bytes manually.
+  //
+  // Insertion priority: <head> > <html> > <!doctype>. Putting a <script> before
+  // an existing <!doctype> would trigger quirks mode, so we always inject AFTER
+  // any structural marker we recognise. If none are present (e.g. a bare HTML
+  // fragment), we leave the doc untouched rather than risking corruption.
+  const at = findShimInsertionPoint(bytes);
+  if (at < 0) return bytes;
+
+  const shimBytes = new TextEncoder().encode(STORAGE_SHIM);
+  const out = new Uint8Array(bytes.length + shimBytes.length);
+  out.set(bytes.subarray(0, at), 0);
+  out.set(shimBytes, at);
+  out.set(bytes.subarray(at), at + shimBytes.length);
+  return out;
+}
+
+function findShimInsertionPoint(bytes: Uint8Array): number {
+  for (const tag of ["<head", "<html", "<!doctype"]) {
+    const start = findTagOpen(bytes, tag);
+    if (start < 0) continue;
+    const close = findByte(bytes, 0x3e /* > */, start + tag.length);
+    if (close >= 0) return close + 1;
   }
-  return new TextEncoder().encode(injected);
+  return -1;
+}
+
+function findTagOpen(haystack: Uint8Array, lowerNeedle: string): number {
+  // Case-insensitive ASCII match. `lowerNeedle` must already be lowercase.
+  const n = lowerNeedle.length;
+  outer: for (let i = 0; i + n <= haystack.length; i++) {
+    for (let j = 0; j < n; j++) {
+      const c = haystack[i + j]!;
+      const want = lowerNeedle.charCodeAt(j);
+      const cl = c >= 0x41 && c <= 0x5a ? c + 0x20 : c;
+      if (cl !== want) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+function findByte(haystack: Uint8Array, byte: number, start: number): number {
+  for (let i = start; i < haystack.length; i++) {
+    if (haystack[i] === byte) return i;
+  }
+  return -1;
 }
 
 export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Response {
