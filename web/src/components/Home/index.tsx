@@ -48,13 +48,14 @@ interface Props {
   onSubViewActiveChange?: (active: boolean) => void;
 }
 
-const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published"];
+const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
 const ARTEFACT_SOURCE_LABELS: Record<ArtefactSource, string> = {
   all: "all",
   manual: "mine",
   ai_generated: "from agents",
   discovered: "linked",
   published: "published",
+  pinned: "pinned",
 };
 
 // Mirrors PublishedChip's live-check. A publication exists once a share token
@@ -444,12 +445,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // Source-origin counts over the scoped artefacts (so the chip totals
   // reflect the current space pill, not the global pile).
   const artefactSourceCounts = useMemo(() => {
-    const counts: Record<ArtefactSource, number> = { all: 0, manual: 0, ai_generated: 0, discovered: 0, published: 0 };
+    const counts: Record<ArtefactSource, number> = { all: 0, manual: 0, ai_generated: 0, discovered: 0, published: 0, pinned: 0 };
     counts.all = effectiveDesktopProps.artifacts.length;
     for (const a of effectiveDesktopProps.artifacts) {
       const o = a.sourceOrigin ?? "manual";
       if (o === "manual" || o === "ai_generated" || o === "discovered") counts[o]++;
       if (isLivePublication(a)) counts.published++;
+      if (a.pinnedAt != null) counts.pinned++;
     }
     return counts;
   }, [effectiveDesktopProps.artifacts]);
@@ -479,6 +481,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     }
     if (artefactSource === "published") {
       list = list.filter(isLivePublication);
+    } else if (artefactSource === "pinned") {
+      list = list.filter((a) => a.pinnedAt != null);
     } else if (artefactSource !== "all") {
       list = list.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
     }
@@ -965,9 +969,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               {ARTEFACT_SOURCE_ORDER.map((src) => {
                 const count = artefactSourceCounts[src];
                 // Origin pills hide at 0 (clutter); "all" stays unconditional;
-                // "published" stays visible as a discoverability surface — clicking
-                // it at 0 lands on a how-to-publish hint instead of an empty grid.
-                if (count === 0 && src !== "all" && src !== "published") return null;
+                // "published" and "pinned" stay visible as discoverability surfaces —
+                // clicking them at 0 lands on a how-to hint instead of an empty grid.
+                if (count === 0 && src !== "all" && src !== "published" && src !== "pinned") return null;
                 return (
                   <button
                     key={src}
@@ -975,6 +979,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                     onClick={() => setArtefactSource(src)}
                   >
                     {src === "published" && <span className="pip pip-published" />}
+                    {src === "pinned" && <span className="pip pip-pinned" />}
                     {count} {ARTEFACT_SOURCE_LABELS[src]}
                   </button>
                 );
@@ -1013,6 +1018,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <div className="home-empty">
               No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong>
             </div>
+          ) : artefactSource === "pinned" && filteredArtefactsTotal === 0 ? (
+            <div className="home-empty">
+              No pinned artefacts yet — right-click any artefact and choose <strong>Pin</strong> to keep it at the top of the surface.
+            </div>
           ) : artefactsView === "icons" ? (
             <>
               <div className="home-artefacts">
@@ -1021,7 +1030,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   artifacts={visibleArtefacts}
                   isHero={false}
                   showMeta
-                  flatten={artefactSource === "published"}
+                  flatten={artefactSource === "published" || artefactSource === "pinned"}
                   onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
                 />
               </div>
