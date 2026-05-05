@@ -41,19 +41,33 @@ async function call(req: Request): Promise<Response> {
   return res;
 }
 
-describe("GET /p/:token — legacy origin redirect (#397)", () => {
-  it("301s oyster.to/p/<token> to share.oyster.to/p/<token>", async () => {
+describe("GET/POST /p/:token — legacy origin redirect (#397)", () => {
+  it("308s GET oyster.to/p/<token> to share.oyster.to/p/<token>", async () => {
     const req = new Request("https://oyster.to/p/abc123", { method: "GET" });
     const res = await call(req);
-    expect(res.status).toBe(301);
+    expect(res.status).toBe(308);
     expect(res.headers.get("location")).toBe("https://share.oyster.to/p/abc123");
   });
 
-  it("301s www.oyster.to/p/<token>/raw to share.oyster.to/p/<token>/raw with query preserved", async () => {
+  it("308s www.oyster.to/p/<token>/raw with query preserved", async () => {
     const req = new Request("https://www.oyster.to/p/abc123/raw?x=1", { method: "GET" });
     const res = await call(req);
-    expect(res.status).toBe(301);
+    expect(res.status).toBe(308);
     expect(res.headers.get("location")).toBe("https://share.oyster.to/p/abc123/raw?x=1");
+  });
+
+  it("308s POST so password-form submissions keep their method+body intact", async () => {
+    // 301 would coerce POST→GET in many clients, dropping the password
+    // body. 308 is method-preserving, so a stale bookmark that POSTs
+    // against the legacy origin still completes its unlock on the new one.
+    const req = new Request("https://oyster.to/p/abc123", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+    });
+    const res = await call(req);
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe("https://share.oyster.to/p/abc123");
   });
 });
 

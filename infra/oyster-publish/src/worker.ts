@@ -36,11 +36,13 @@ export default {
 
     if (url.pathname.startsWith("/p/")) {
       // Issue #397: viewer canonical origin is share.oyster.to. Anything that
-      // still hits oyster.to/p/* (or www.) gets a 301 to the new origin so
-      // already-shared links keep working. The path is unchanged.
+      // still hits oyster.to/p/* (or www.) gets a 308 to the new origin so
+      // already-shared links keep working. 308 (not 301) so the rare POST
+      // against the legacy origin — e.g. a password-form submission from a
+      // bookmarked oyster.to/p/<token> — keeps its method and body intact.
       if (url.hostname === "oyster.to" || url.hostname === "www.oyster.to") {
         return new Response(null, {
-          status: 301,
+          status: 308,
           headers: {
             location: `https://share.oyster.to${url.pathname}${url.search}`,
             "cache-control": "public, max-age=3600",
