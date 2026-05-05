@@ -231,7 +231,7 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
         return rel ? <span className="icon-label-meta">{rel}</span> : null;
       })()}
       {!isRenaming && artifact.publication && artifact.publication.unpublishedAt === null && (
-        <PublishedChip publication={artifact.publication} />
+        <PublishedChip publication={artifact.publication} cloudOnly={artifact.cloudOnly} />
       )}
     </button>
   );

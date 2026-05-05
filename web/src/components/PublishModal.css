@@ -87,6 +87,49 @@
   border-radius: 50%;
 }
 
+.publish-modal-mode--locked {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.publish-modal-mode--locked .publish-modal-mode__radio {
+  border-color: #334155;
+}
+
+.publish-modal-pro-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* Gold to match the OYSTER PRO eyebrow on oyster.to/pricing. */
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.publish-modal-pro-pill:hover {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+/* Owned variant: rendered for Pro users so the pill stays as a value
+   indicator rather than an upsell CTA. No hover, no link affordance. */
+.publish-modal-pro-pill--owned {
+  cursor: default;
+}
+
+.publish-modal-pro-pill--owned:hover {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
 .publish-modal-password {
   width: 100%;
   background: #0f1118;

@@ -1,16 +1,49 @@
 // Artefact table view. Extracted from Home/index.tsx.
-import type { Space } from "../../../../shared/types";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Lock } from "lucide-react";
+import type { Artifact, Space } from "../../../../shared/types";
 import type { Desktop } from "../Desktop";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 import { formatRelative } from "./utils";
+import { pinArtifact, unpinArtifact } from "../../data/artifacts-api";
+import { unpublishArtifact, unpublishCloudShare, updateCloudShare } from "../../data/publish-api";
+import { PromptModal } from "../PromptModal";
 
 interface ArtefactTableProps {
   artifacts: Parameters<typeof Desktop>[0]["artifacts"];
   spaces: Space[];
   onArtifactClick: Parameters<typeof Desktop>[0]["onArtifactClick"];
+  onArtifactPublish?: (artifact: Artifact) => void;
+  /** Optimistic patch into the parent artefacts list (rename, etc.) so the
+   *  surface updates without waiting for the next SSE round-trip. */
+  onArtifactUpdate?: (id: string, fields: Partial<Artifact>) => void;
 }
 
-export function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTableProps) {
+export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPublish, onArtifactUpdate }: ArtefactTableProps) {
+  const [ctx, setCtx] = useState<{ artifact: Artifact; x: number; y: number } | null>(null);
+  const ctxRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [renameState, setRenameState] = useState<{
+    open: boolean;
+    artifact: Artifact | null;
+  }>({ open: false, artifact: null });
+
+  // Click-outside / Escape closes the menu.
+  useEffect(() => {
+    if (!ctx) return;
+    function onDocClick(e: MouseEvent) {
+      if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) setCtx(null);
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setCtx(null); }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctx]);
+
   if (artifacts.length === 0) {
     return <div className="home-empty">No artefacts here yet.</div>;
   }
@@ -26,6 +59,10 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTa
     const tb = parseTimestamp(b.createdAt);
     return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
   });
+
+  const isPublished = ctx?.artifact.publication?.unpublishedAt === null;
+  const isCloudOnly = !!ctx?.artifact.cloudOnly;
+
   return (
     <div className="home-table-wrap">
       <div className="home-table">
@@ -38,6 +75,10 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTa
               role="button"
               tabIndex={0}
               onClick={() => onArtifactClick(art)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setCtx({ artifact: art, x: e.clientX, y: e.clientY });
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -45,14 +86,183 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTa
                 }
               }}
             >
-              <span className="home-artefact-row-title">{art.label}</span>
-              <span className="home-artefact-row-space">{space?.displayName ?? art.spaceId}</span>
+              <span className="home-artefact-row-title">
+                {art.label}
+                {art.publication?.unpublishedAt === null && art.publication.shareMode === "password" && (
+                  <Lock
+                    size={11}
+                    strokeWidth={2.5}
+                    style={{ marginLeft: 6, color: "#fbbf24", verticalAlign: "-1px" }}
+                    aria-label="Password-protected"
+                  />
+                )}
+              </span>
+              <span className="home-artefact-row-space">
+                {art.cloudOnly ? "Cloud" : (space?.displayName ?? art.spaceId)}
+              </span>
               <span className="home-artefact-row-kind">{art.artifactKind}</span>
               <span className="home-artefact-row-time">{formatRelative(art.createdAt) ?? "—"}</span>
             </div>
           );
         })}
       </div>
+
+      {ctx && createPortal(
+        <div
+          ref={ctxRef}
+          className="space-ctx-menu"
+          style={{ left: ctx.x, top: ctx.y, transform: "translateY(-100%)", marginTop: -8 }}
+        >
+          {/* Cloud-only ghosts: Rename, Publish settings, Unpublish. All go
+              through metadata-only routes — no bytes required. Pin needs a
+              local row, so it's skipped. */}
+          {isCloudOnly && isPublished && (
+            <>
+              <button
+                className="space-ctx-item"
+                onClick={() => {
+                  const a = ctx.artifact;
+                  setCtx(null);
+                  setRenameState({ open: true, artifact: a });
+                }}
+              >
+                Rename
+              </button>
+              {onArtifactPublish && (
+                <button
+                  className="space-ctx-item"
+                  onClick={() => {
+                    const a = ctx.artifact;
+                    setCtx(null);
+                    onArtifactPublish(a);
+                  }}
+                >
+                  Publish settings…
+                </button>
+              )}
+              <button
+                className="space-ctx-item"
+                onClick={async () => {
+                  const a = ctx.artifact;
+                  setCtx(null);
+                  try { await unpublishCloudShare(a.publication!.shareToken); }
+                  catch (err) { setError((err as Error).message); }
+                }}
+              >
+                Unpublish
+              </button>
+            </>
+          )}
+
+          {!isCloudOnly && (
+            <>
+              {ctx.artifact.pinnedAt != null ? (
+                <button
+                  className="space-ctx-item"
+                  onClick={async () => {
+                    const a = ctx.artifact;
+                    setCtx(null);
+                    try { await unpinArtifact(a.id); }
+                    catch (err) { setError((err as Error).message); }
+                  }}
+                >
+                  Unpin
+                </button>
+              ) : (
+                <button
+                  className="space-ctx-item"
+                  onClick={async () => {
+                    const a = ctx.artifact;
+                    setCtx(null);
+                    try { await pinArtifact(a.id); }
+                    catch (err) { setError((err as Error).message); }
+                  }}
+                >
+                  Pin
+                </button>
+              )}
+
+              {!ctx.artifact.builtin && !ctx.artifact.plugin && onArtifactPublish && (
+                isPublished ? (
+                  <>
+                    <button
+                      className="space-ctx-item"
+                      onClick={() => {
+                        const a = ctx.artifact;
+                        setCtx(null);
+                        onArtifactPublish(a);
+                      }}
+                    >
+                      Publish settings…
+                    </button>
+                    <button
+                      className="space-ctx-item"
+                      onClick={async () => {
+                        const a = ctx.artifact;
+                        setCtx(null);
+                        try { await unpublishArtifact(a.id); }
+                        catch (err) { setError((err as Error).message); }
+                      }}
+                    >
+                      Unpublish
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="space-ctx-item"
+                    onClick={() => {
+                      const a = ctx.artifact;
+                      setCtx(null);
+                      onArtifactPublish(a);
+                    }}
+                  >
+                    Publish…
+                  </button>
+                )
+              )}
+            </>
+          )}
+        </div>,
+        document.body,
+      )}
+
+      {error && createPortal(
+        <div
+          className="space-ctx-menu"
+          style={{ left: "50%", top: "50%", transform: "translate(-50%, -50%)", padding: "12px 16px", maxWidth: 360 }}
+        >
+          <div style={{ marginBottom: 8 }}>{error}</div>
+          <button className="space-ctx-item" onClick={() => setError(null)}>Dismiss</button>
+        </div>,
+        document.body,
+      )}
+
+      <PromptModal
+        open={renameState.open}
+        title="Rename publication"
+        initialValue={renameState.artifact?.label ?? ""}
+        confirmLabel="Save"
+        onSubmit={async (value) => {
+          const a = renameState.artifact;
+          setRenameState({ open: false, artifact: null });
+          if (!a) return;
+          const trimmed = value.trim();
+          if (!trimmed || trimmed === a.label) return;
+          // Optimistic: flip the label immediately so the row reads the new
+          // name straight away. SSE refetch lands a moment later with the
+          // server-canonical value (will be identical on success).
+          const previous = a.label;
+          onArtifactUpdate?.(a.id, { label: trimmed });
+          try {
+            await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
+          } catch (err) {
+            // Revert the optimistic patch on failure.
+            onArtifactUpdate?.(a.id, { label: previous });
+            setError((err as Error).message);
+          }
+        }}
+        onCancel={() => setRenameState({ open: false, artifact: null })}
+      />
     </div>
   );
 }

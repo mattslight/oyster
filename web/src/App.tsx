@@ -321,6 +321,14 @@ export default function App() {
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
 
+    // Cloud-only ghost: this user's publication, no local artefact backing it.
+    // Click opens the public URL so they can verify what's live without a
+    // local copy. (Pro lazy-pulls bytes on edit; that's R7 in 0.9.0.)
+    if (artifact.cloudOnly) {
+      window.open(artifact.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
     if (artifact.runtimeKind === "redirect") {
       window.open(artifact.url, "_blank");
       return;

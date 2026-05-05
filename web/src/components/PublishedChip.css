@@ -26,6 +26,10 @@
   color: #fbbf24;
 }
 
+.published-chip__cloud {
+  color: #a78bfa;
+}
+
 .published-chip__btn {
   width: 14px;
   height: 14px;

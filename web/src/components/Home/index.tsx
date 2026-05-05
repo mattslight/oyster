@@ -5,6 +5,7 @@ import type { SessionState } from "../../data/sessions-api";
 import type { Artifact, Space } from "../../../../shared/types";
 import { useSessions } from "../../hooks/useSessions";
 import { useMemories } from "../../hooks/useMemories";
+import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
 import { useSpaceSources } from "../../hooks/useSpaceSources";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 import { Desktop } from "../Desktop";
@@ -126,6 +127,8 @@ const FILTER_LABELS: Record<StateFilter, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange }: Props) {
   const { sessions, error, loading } = useSessions();
+  const signedIn = useAuthSignedIn();
+  const [signingIn, setSigningIn] = useState(false);
   const {
     memories,
     loading: memoriesLoading,
@@ -1025,7 +1028,38 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           </div>
           {artefactSource === "published" && filteredArtefactsTotal === 0 ? (
             <div className="home-empty">
-              No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong>
+              {signedIn === null ? (
+                // First whoami in flight — render a placeholder rather than
+                // flashing either copy. The auth check is fast, so the empty
+                // gap is barely perceptible vs. flicking through wrong text.
+                <>&nbsp;</>
+              ) : signedIn === false ? (
+                <>
+                  <div>Sign in to see your published artefacts. Publishing requires an account.</div>
+                  <button
+                    type="button"
+                    className="home-empty__cta"
+                    disabled={signingIn}
+                    onClick={async () => {
+                      setSigningIn(true);
+                      try {
+                        const res = await fetch("/api/auth/login", { method: "POST" });
+                        if (!res.ok) throw new Error(String(res.status));
+                        const body = (await res.json()) as { sign_in_url: string };
+                        window.open(body.sign_in_url, "_blank", "noopener,noreferrer");
+                      } catch (err) {
+                        console.error("[home] sign-in trigger failed:", err);
+                      } finally {
+                        setSigningIn(false);
+                      }
+                    }}
+                  >
+                    {signingIn ? "Opening sign-in…" : "Sign in"}
+                  </button>
+                </>
+              ) : (
+                <>No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong></>
+              )}
             </div>
           ) : artefactSource === "pinned" && filteredArtefactsTotal === 0 ? (
             <div className="home-empty">
@@ -1040,7 +1074,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   isHero={false}
                   showMeta
                   flatten={artefactSource === "published" || artefactSource === "pinned"}
-                  onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+                  onArtifactClick={(a) => {
+                  // Cloud-only ghosts have no local file — open the public URL
+                  // (consistent with icon-view click behaviour in App.tsx).
+                  if (a.cloudOnly) {
+                    window.open(a.url, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  setActivePanel({ kind: "artefact", id: a.id });
+                }}
                 />
               </div>
               {artefactsLimit < filteredArtefactsTotal && (
@@ -1056,7 +1098,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               <ArtefactTable
                 artifacts={visibleArtefacts}
                 spaces={spaces}
-                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+                onArtifactClick={(a) => {
+                  // Cloud-only ghosts have no local file — open the public URL
+                  // (consistent with icon-view click behaviour in App.tsx).
+                  if (a.cloudOnly) {
+                    window.open(a.url, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  setActivePanel({ kind: "artefact", id: a.id });
+                }}
+                onArtifactPublish={desktopProps.onArtifactPublish}
+                onArtifactUpdate={desktopProps.onArtifactUpdate}
               />
               {artefactsLimit < filteredArtefactsTotal && (
                 <ShowMore

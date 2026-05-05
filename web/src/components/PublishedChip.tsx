@@ -1,15 +1,17 @@
 // web/src/components/PublishedChip.tsx
 
-import { Link2, Check, Lock } from "lucide-react";
+import { Link2, Check, Lock, Cloud } from "lucide-react";
 import type { ArtefactPublication } from "../../../shared/types";
 import { useCopyLink } from "../hooks/useCopyLink";
 import "./PublishedChip.css";
 
 interface Props {
   publication: ArtefactPublication;
+  /** Set on synthetic ghost rows (cloud publication, no local artefact). */
+  cloudOnly?: boolean;
 }
 
-export function PublishedChip({ publication }: Props) {
+export function PublishedChip({ publication, cloudOnly }: Props) {
   const { copied, copy } = useCopyLink(publication.shareUrl);
   const isPassword = publication.shareMode === "password";
   const btnClass = `published-chip__btn${copied ? " published-chip__btn--copied" : ""}`;
@@ -18,7 +20,8 @@ export function PublishedChip({ publication }: Props) {
     <span className="published-chip">
       <span className="published-chip__tag" title={publication.shareUrl}>
         {isPassword && <Lock className="published-chip__lock" size={9} strokeWidth={2.5} />}
-        Published
+        {cloudOnly && <Cloud className="published-chip__cloud" size={9} strokeWidth={2.5} />}
+        {cloudOnly ? "On cloud" : "Published"}
       </span>
       <button
         type="button"

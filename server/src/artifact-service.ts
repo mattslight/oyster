@@ -71,6 +71,20 @@ function normalizeExtension(raw: string): string {
   return withDot;
 }
 
+// Loose shape for the cloud-publications source. Mirrors publish-service's
+// CloudPublication; redeclared here so artifact-service stays free of a
+// cyclic import on publish-service.
+interface CloudPublicationLike {
+  shareToken: string;
+  artifactId: string;
+  artifactKind: string;
+  mode: "open" | "password" | "signin";
+  publishedAt: number;
+  updatedAt: number;
+  label: string | null;
+  spaceId: string | null;
+}
+
 // ── Service ──
 
 export class ArtifactService {
@@ -80,6 +94,16 @@ export class ArtifactService {
   // artifacts) in steady state instead of O(archived).
   private archivedPathsCache: Set<string> | null = null;
   private invalidateArchivedPaths(): void { this.archivedPathsCache = null; }
+
+  // Optional cloud-publication source. When set, getAllArtifacts appends
+  // synthetic `cloudOnly: true` ghosts for publications whose artifact_id
+  // doesn't match any local row. Wired by index.ts after publish-service is
+  // constructed; left undefined in tests that don't need it.
+  private getCloudOnlyPublications?: () => readonly CloudPublicationLike[];
+
+  setCloudOnlyPublicationsSource(source: () => readonly CloudPublicationLike[]): void {
+    this.getCloudOnlyPublications = source;
+  }
 
   constructor(private store: ArtifactStore, private workerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
 
@@ -164,7 +188,59 @@ export class ArtifactService {
       }
     }
 
-    return [...persisted, ...gen];
+    const ghosts = this.synthesiseCloudOnlyGhosts(new Set([...persisted, ...gen].map((a) => a.id)));
+    return [...persisted, ...gen, ...ghosts];
+  }
+
+  // Build synthetic Artifact entries for cloud publications whose artifact_id
+  // doesn't match any local row. Lets the surface admit cloud truth — pill
+  // count + published filter cover all live publications, not just the ones
+  // happening to be on this device.
+  private synthesiseCloudOnlyGhosts(localIds: Set<string>): Artifact[] {
+    if (!this.getCloudOnlyPublications) return [];
+    const cloud = this.getCloudOnlyPublications();
+    if (cloud.length === 0) return [];
+    // Local space lookup — cloud publications carry their original space_id;
+    // if we have a matching space locally we render the friendly label and
+    // (eventually) the right pill colour. Falls back to "_cloud" when the
+    // space hasn't synced to this device yet.
+    const localSpaceIds = new Set<string>();
+    if (this.spaceStore) {
+      for (const s of this.spaceStore.getAll()) localSpaceIds.add(s.id);
+    }
+    const out: Artifact[] = [];
+    // Hide the artefact_id when it's a UUID — bare UUIDs read as garbage in
+    // a list. Slug-style ids (e.g. "deposit-cards-comparison") still render
+    // since they're at least human-readable. Properly-set labels always win.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    for (const pub of cloud) {
+      if (localIds.has(pub.artifactId)) continue;
+      const kind = toArtifactKind(pub.artifactKind);
+      const shareUrl = `${this.workerBase.replace(/\/$/, "")}/p/${pub.shareToken}`;
+      const spaceId = pub.spaceId && localSpaceIds.has(pub.spaceId) ? pub.spaceId : "_cloud";
+      const fallback = UUID_RE.test(pub.artifactId) ? `Untitled ${pub.artifactKind}` : pub.artifactId;
+      out.push({
+        id: `cloud:${pub.shareToken}`,
+        label: pub.label || fallback,
+        artifactKind: kind,
+        spaceId,
+        status: "ready",
+        runtimeKind: "cloud_only",
+        runtimeConfig: {},
+        url: shareUrl,
+        createdAt: new Date(pub.publishedAt).toISOString(),
+        cloudOnly: true,
+        publication: {
+          shareToken: pub.shareToken,
+          shareUrl,
+          shareMode: pub.mode,
+          publishedAt: pub.publishedAt,
+          updatedAt: pub.updatedAt,
+          unpublishedAt: null,
+        },
+      });
+    }
+    return out;
   }
 
   async getArtifactById(id: string): Promise<Artifact | undefined> {

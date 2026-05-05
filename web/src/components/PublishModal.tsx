@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link2 } from "lucide-react";
 import type { Artifact, ArtefactPublication } from "../../../shared/types";
-import { publishArtifact, unpublishArtifact, PublishApiError } from "../data/publish-api";
+import { publishArtifact, unpublishArtifact, unpublishCloudShare, updateCloudShare, PublishApiError } from "../data/publish-api";
 import { useCopyLink } from "../hooks/useCopyLink";
 import { ConfirmModal } from "./ConfirmModal";
 import { subscribeUiEvents } from "../data/ui-events";
@@ -22,7 +22,9 @@ type AuthState =
   | { status: "loading" }
   | { status: "signed-out" }
   | { status: "signing-in"; expiresAt: number }
-  | { status: "signed-in"; email: string };
+  | { status: "signed-in"; email: string; tier: string };
+
+const PRICING_URL = "https://oyster.to/pricing";
 
 export function PublishModal({ artifact, onClose }: Props) {
   const [mode, setMode] = useState<Mode>("open");
@@ -57,9 +59,13 @@ export function PublishModal({ artifact, onClose }: Props) {
       try {
         const res = await fetch("/api/auth/whoami");
         if (!res.ok) throw new Error(String(res.status));
-        const body = (await res.json()) as { user: { email: string } | null };
+        const body = (await res.json()) as { user: { email: string; tier?: string } | null };
         if (cancelled) return;
-        setAuth(body.user ? { status: "signed-in", email: body.user.email } : { status: "signed-out" });
+        setAuth(
+          body.user
+            ? { status: "signed-in", email: body.user.email, tier: body.user.tier ?? "free" }
+            : { status: "signed-out" },
+        );
       } catch {
         if (cancelled) return;
         setAuth({ status: "signed-out" });
@@ -174,12 +180,17 @@ export function PublishModal({ artifact, onClose }: Props) {
     setPhase("publishing");
     setError(null);
     try {
-      const result = await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
+      // Cloud-only artefact: update mode/password without re-uploading bytes
+      // (the bytes live in R2 and we don't have them locally). Otherwise
+      // the normal full re-publish path runs (legacy behaviour).
+      const result = artifact.cloudOnly && publication
+        ? await updateCloudShare(publication.shareToken, mode, mode === "password" ? password : undefined)
+        : await publishArtifact(artifact.id, mode, mode === "password" ? password : undefined);
       setOptimisticPublication({
         shareToken: result.share_token,
         shareUrl: result.share_url,
         shareMode: result.mode,
-        publishedAt: result.published_at,
+        publishedAt: publication?.publishedAt ?? ("published_at" in result ? result.published_at : Date.now()),
         updatedAt: result.updated_at,
         unpublishedAt: null,
       });
@@ -198,7 +209,11 @@ export function PublishModal({ artifact, onClose }: Props) {
     setPhase("unpublishing");
     setError(null);
     try {
-      await unpublishArtifact(artifact.id);
+      if (artifact.cloudOnly && publication) {
+        await unpublishCloudShare(publication.shareToken);
+      } else {
+        await unpublishArtifact(artifact.id);
+      }
       setOptimisticPublication(null);
       // SSE will flip publication.unpublishedAt → modal returns to unpublished state.
       setPhase("idle");
@@ -208,7 +223,10 @@ export function PublishModal({ artifact, onClose }: Props) {
     }
   }
 
+  const isPro = auth.status === "signed-in" && auth.tier === "pro";
+
   function handleModeChange(next: Mode) {
+    if (next === "password" && !isPro) return;  // Pro-gated; UI also disables the radio
     setMode(next);
     if (next === "open") setPassword("");  // see spec: switching to Open clears password
   }
@@ -239,10 +257,10 @@ export function PublishModal({ artifact, onClose }: Props) {
       try {
         const res = await fetch("/api/auth/whoami");
         if (!res.ok) return;
-        const body = (await res.json()) as { user: { email: string } | null };
+        const body = (await res.json()) as { user: { email: string; tier?: string } | null };
         if (cancelled) return;
         if (body.user) {
-          setAuth({ status: "signed-in", email: body.user.email });
+          setAuth({ status: "signed-in", email: body.user.email, tier: body.user.tier ?? "free" });
         } else if (Date.now() > auth.expiresAt) {
           setAuth({ status: "signed-out" });
         }
@@ -365,12 +383,33 @@ export function PublishModal({ artifact, onClose }: Props) {
               <label className={`publish-modal-mode${mode === "open" ? " publish-modal-mode--selected" : ""}`}>
                 <input type="radio" name="publish-mode" value="open" checked={mode === "open"} onChange={() => handleModeChange("open")} style={{ display: "none" }} />
                 <span className="publish-modal-mode__radio" />
-                <span><strong>Open</strong> · <span style={{ color: "#94a3b8" }}>anyone with the link</span></span>
+                <span><strong>Public</strong> · <span style={{ color: "#94a3b8" }}>anyone with the link</span></span>
               </label>
-              <label className={`publish-modal-mode${mode === "password" ? " publish-modal-mode--selected" : ""}`}>
-                <input type="radio" name="publish-mode" value="password" checked={mode === "password"} onChange={() => handleModeChange("password")} style={{ display: "none" }} />
+              <label
+                className={`publish-modal-mode${mode === "password" ? " publish-modal-mode--selected" : ""}${!isPro ? " publish-modal-mode--locked" : ""}`}
+                title={!isPro ? "Password-protected shares are a Pro feature" : undefined}
+              >
+                <input type="radio" name="publish-mode" value="password" checked={mode === "password"} disabled={!isPro} onChange={() => handleModeChange("password")} style={{ display: "none" }} />
                 <span className="publish-modal-mode__radio" />
-                <span><strong>Password</strong> · <span style={{ color: "#94a3b8" }}>link + password</span></span>
+                <span>
+                  <strong>Password</strong> · <span style={{ color: "#94a3b8" }}>link + password</span>
+                  {isPro ? (
+                    // Pro user — pill is a value indicator, not an upsell.
+                    // Keeps users aware of what their tier actually unlocks.
+                    <span
+                      className="publish-modal-pro-pill publish-modal-pro-pill--owned"
+                      title="Pro feature — included in your plan"
+                    >Pro</span>
+                  ) : (
+                    <a
+                      className="publish-modal-pro-pill"
+                      href={PRICING_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    >Pro</a>
+                  )}
+                </span>
               </label>
             </div>
 

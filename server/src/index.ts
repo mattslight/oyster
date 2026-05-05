@@ -290,13 +290,44 @@ const publishService = createPublishService({
   },
   currentUser: () => {
     const u = authService.getState().user;
-    return u ? { id: u.id, email: u.email } : null;
+    return u ? { id: u.id, email: u.email, tier: u.tier } : null;
   },
   sessionToken: () => authService.getState().sessionToken,
   workerBase: WORKER_BASE,
   hashPassword,
   fetch,
 });
+
+// Refresh the local publish-state mirror whenever a user is signed in — at
+// boot if loadFromDisk() rehydrated a session, and on every subsequent
+// auth_changed transition. logBackfill always emits, even on {0,0}, so the
+// dev log shows whether we ran and what happened (artefact-ID mismatches
+// surface as `skipped` and would otherwise look like silence).
+function logBackfill(label: string, result: { mirrored: number; skipped: number }): void {
+  console.log(`[publish] ${label}: mirrored=${result.mirrored} skipped=${result.skipped}` +
+    (result.skipped ? " (skipped → surfaced as cloud-only ghosts)" : ""));
+  // Broadcast unconditionally — backfill may also CLEAR previously-surfaced
+  // ghosts (skipped 3 → 0 because everything was unpublished elsewhere). The
+  // surface needs a refetch in that case too, even though both counters are
+  // zero. Refetch is cheap; keeping a stale pill is the worse failure mode.
+  broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+}
+
+// Wire the cloud-only publication source into artifact-service so ghosts
+// appear in /api/artifacts. Done after both services exist; the source
+// itself is just a getter on publish-service.
+artifactService.setCloudOnlyPublicationsSource(() => publishService.getCloudOnlyPublications());
+
+authService.onAuthChanged(() => {
+  // Run on every auth transition — including sign-out. backfillPublications
+  // handles the signed-out case by clearing the cloudOnly cache and returning
+  // {0,0}, and logBackfill broadcasts artifact_changed unconditionally so the
+  // surface drops any ghost rows on the spot.
+  void publishService.backfillPublications().then((r) => logBackfill("auth-backfill", r));
+});
+if (authService.getState().user) {
+  void publishService.backfillPublications().then((r) => logBackfill("startup-backfill", r));
+}
 
 // ── Initialize subsystems ──
 
@@ -413,7 +444,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/artifacts/*, /api/groups/*, /api/plugins/:id/uninstall.
   if (await tryHandleArtifactRoute(req, res, url, ctx, {
     artifactService, sessionStore, iconGenerator, pendingReveals,
-    clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR,
+    clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR, publishService,
   })) return;
 
   // /api/spaces/* — collapsed from the legacy spaces-routes.ts and the

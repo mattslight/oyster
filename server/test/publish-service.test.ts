@@ -66,7 +66,7 @@ describe("publishArtifact", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array([1, 2, 3]),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "pbkdf2$x",
@@ -82,7 +82,7 @@ describe("publishArtifact", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array([1, 2, 3]),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "pbkdf2$x",
@@ -122,7 +122,7 @@ describe("publishArtifact", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array([1, 2, 3]),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "pbkdf2$test",
@@ -153,7 +153,7 @@ describe("publishArtifact", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array([1]),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "pbkdf2$x",
@@ -171,7 +171,7 @@ describe("unpublishArtifact", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array(),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "",
@@ -196,7 +196,7 @@ describe("unpublishArtifact", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array(),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "",
@@ -220,7 +220,7 @@ describe("unpublishArtifact", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array(),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "",
@@ -244,7 +244,7 @@ describe("publishArtifact additional coverage", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array([1]),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "pbkdf2$x",
@@ -262,7 +262,7 @@ describe("publishArtifact additional coverage", () => {
     const svc = createPublishService({
       db,
       readArtifactBytes: async () => new Uint8Array(11 * 1024 * 1024),
-      currentUser: () => ({ id: "u1", email: "a@a" }),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
       sessionToken: () => "s1",
       workerBase: "https://oyster.to",
       hashPassword: async () => "pbkdf2$x",
@@ -271,5 +271,364 @@ describe("publishArtifact additional coverage", () => {
     await expect(svc.publishArtifact({ artifact_id: "art_big", mode: "open" }))
       .rejects.toMatchObject({ status: 413, code: "artifact_too_large", details: { limit_bytes: 10 * 1024 * 1024 } });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("publishArtifact tier mode gating", () => {
+  it("rejects free-tier password publish locally with 402 pro_required and never contacts the Worker", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_1", owner_id: "u1" });
+    const fetchMock = vi.fn();
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array([1, 2]),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await expect(svc.publishArtifact({ artifact_id: "art_1", mode: "password", password: "hunter2" }))
+      .rejects.toMatchObject({ status: 402, code: "pro_required", details: { required_tier: "pro", mode: "password" } });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows pro-tier password publish through to the Worker", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_1", owner_id: "u1" });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      share_token: "tok", share_url: "https://oyster.to/p/tok",
+      mode: "password", published_at: 1, updated_at: 1,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array([1]),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await svc.publishArtifact({ artifact_id: "art_1", mode: "password", password: "hunter2" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("updateShareByToken", () => {
+  it("rejects free-tier switch to password mode locally with 402 pro_required", async () => {
+    const db = makeDb();
+    const fetchMock = vi.fn();
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await expect(svc.updateShareByToken({ share_token: "tok", mode: "password", password: "p" }))
+      .rejects.toMatchObject({ status: 402, code: "pro_required" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("posts PATCH to the worker with hashed password when mode=password", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_local", owner_id: "u1" });
+    db.prepare(`UPDATE artifacts SET share_token='tokABC', share_mode='open' WHERE id='art_local'`).run();
+
+    let captured: { url?: string; method?: string; body?: any } = {};
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      captured = { url, method: init.method, body: JSON.parse(init.body as string) };
+      return new Response(JSON.stringify({
+        share_token: "tokABC",
+        share_url: "https://oyster.to/p/tokABC",
+        mode: "password",
+        updated_at: 9999,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async (p) => `pbkdf2$${p}`,
+      fetch: fetchMock as any,
+    });
+
+    const out = await svc.updateShareByToken({ share_token: "tokABC", mode: "password", password: "hunter2" });
+    expect(out.mode).toBe("password");
+    expect(captured.url).toBe("https://oyster.to/api/publish/tokABC");
+    expect(captured.method).toBe("PATCH");
+    expect(captured.body.mode).toBe("password");
+    expect(captured.body.password_hash).toBe("pbkdf2$hunter2");
+    // Plaintext password must never appear in the proxied body.
+    expect(captured.body.password).toBeUndefined();
+
+    // Local row should be mirrored to match new mode + hash.
+    const row = db.prepare("SELECT share_mode, share_password_hash, share_updated_at FROM artifacts WHERE id='art_local'").get() as any;
+    expect(row.share_mode).toBe("password");
+    expect(row.share_password_hash).toBe("pbkdf2$hunter2");
+    expect(row.share_updated_at).toBe(9999);
+  });
+
+  it("clears local password_hash when switching to open mode", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_local", owner_id: "u1" });
+    db.prepare(`UPDATE artifacts SET share_token='tokA', share_mode='password', share_password_hash='pbkdf2$old' WHERE id='art_local'`).run();
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      share_token: "tokA", share_url: "https://oyster.to/p/tokA",
+      mode: "open", updated_at: 1,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "pbkdf2$x",
+      fetch: fetchMock as any,
+    });
+    await svc.updateShareByToken({ share_token: "tokA", mode: "open" });
+    const row = db.prepare("SELECT share_mode, share_password_hash FROM artifacts WHERE id='art_local'").get() as any;
+    expect(row.share_mode).toBe("open");
+    expect(row.share_password_hash).toBeNull();
+  });
+});
+
+describe("unpublishByShareToken", () => {
+  it("returns 401 when signed out", async () => {
+    const db = makeDb();
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => null,
+      sessionToken: () => null,
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: vi.fn() as any,
+    });
+    await expect(svc.unpublishByShareToken("tok")).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("posts DELETE to the worker keyed by share_token, no local row required", async () => {
+    const db = makeDb();
+    let captured: { url?: string; method?: string } = {};
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      captured = { url, method: init.method };
+      return new Response(JSON.stringify({ ok: true, share_token: "tok", unpublished_at: 5 }),
+        { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+    const out = await svc.unpublishByShareToken("tok");
+    expect(out.unpublished_at).toBe(5);
+    expect(captured.url).toBe("https://oyster.to/api/publish/tok");
+    expect(captured.method).toBe("DELETE");
+  });
+});
+
+describe("backfillPublications", () => {
+  it("returns {0,0} and does nothing when signed-out", async () => {
+    const db = makeDb();
+    const fetchMock = vi.fn();
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => null,
+      sessionToken: () => null,
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+    expect(await svc.backfillPublications()).toEqual({ mirrored: 0, skipped: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("mirrors live publications onto matching local rows; skips rows missing locally", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_present", owner_id: null });
+
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe("https://oyster.to/api/publish/mine");
+      expect(new Headers(init.headers).get("Cookie")).toBe("oyster_session=s1");
+      return new Response(JSON.stringify({
+        publications: [
+          { share_token: "tok_present", artifact_id: "art_present", artifact_kind: "notes",
+            mode: "open", content_type: "text/plain", size_bytes: 10,
+            published_at: 1700000000000, updated_at: 1700000005000,
+            label: "Test artefact", space_id: "home" },
+          { share_token: "tok_missing", artifact_id: "art_missing", artifact_kind: "notes",
+            mode: "open", content_type: "text/plain", size_bytes: 10,
+            published_at: 1700000000000, updated_at: 1700000005000,
+            label: "Missing locally", space_id: "client-projects" },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+
+    const out = await svc.backfillPublications();
+    expect(out).toEqual({ mirrored: 1, skipped: 1 });
+
+    const row = db.prepare("SELECT * FROM artifacts WHERE id='art_present'").get() as any;
+    expect(row.share_token).toBe("tok_present");
+    expect(row.share_mode).toBe("open");
+    expect(row.published_at).toBe(1700000000000);
+    expect(row.share_updated_at).toBe(1700000005000);
+    expect(row.unpublished_at).toBeNull();
+    expect(row.owner_id).toBe("u1");          // backfilled (was null)
+  });
+
+  it("preserves a non-null owner_id (COALESCE), never overwriting a real owner", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_present", owner_id: "u_pre_existing" });
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      publications: [{
+        share_token: "tok", artifact_id: "art_present", artifact_kind: "notes",
+        mode: "open", content_type: "text/plain", size_bytes: 10,
+        published_at: 1, updated_at: 1,
+        label: null, space_id: null,
+      }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+    await svc.backfillPublications();
+
+    const row = db.prepare("SELECT owner_id FROM artifacts WHERE id='art_present'").get() as any;
+    expect(row.owner_id).toBe("u_pre_existing");
+  });
+
+  it("opportunistically pushes local label + space_id to D1 when cloud row is stale", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_present", owner_id: null });
+    db.prepare("UPDATE artifacts SET label = ?, space_id = ? WHERE id = ?")
+      .run("Friendly Label", "client-projects", "art_present");
+
+    let mineCalls = 0;
+    let patchCall: { url?: string; body?: any } = {};
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      if (url.endsWith("/api/publish/mine")) {
+        mineCalls++;
+        return new Response(JSON.stringify({
+          publications: [{
+            share_token: "tok", artifact_id: "art_present", artifact_kind: "notes",
+            mode: "open", content_type: "text/plain", size_bytes: 10,
+            published_at: 1, updated_at: 1,
+            label: null, space_id: null,    // stale — local has both
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (init.method === "PATCH") {
+        patchCall = { url, body: JSON.parse(init.body as string) };
+        return new Response(JSON.stringify({
+          share_token: "tok", share_url: "x", mode: "open", updated_at: 9,
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`unexpected: ${url}`);
+    });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+
+    await svc.backfillPublications();
+    // The PATCH is fire-and-forget — give it a tick to settle.
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mineCalls).toBe(1);
+    expect(patchCall.url).toBe("https://oyster.to/api/publish/tok");
+    expect(patchCall.body).toMatchObject({
+      mode: "open",
+      label: "Friendly Label",
+      space_id: "client-projects",
+    });
+  });
+
+  it("does NOT fire context up-sync when cloud + local already agree", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_present", owner_id: null });
+    db.prepare("UPDATE artifacts SET label = ?, space_id = ? WHERE id = ?")
+      .run("Same Label", "home", "art_present");
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/publish/mine")) {
+        return new Response(JSON.stringify({
+          publications: [{
+            share_token: "tok", artifact_id: "art_present", artifact_kind: "notes",
+            mode: "open", content_type: "text/plain", size_bytes: 10,
+            published_at: 1, updated_at: 1,
+            label: "Same Label", space_id: "home",    // matches local
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error("unexpected PATCH — no sync should have fired");
+    });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+    await svc.backfillPublications();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // /mine only
+  });
+
+  it("returns {0,0} and leaves DB alone when Worker is unreachable", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_present", owner_id: null });
+    const fetchMock = vi.fn(async () => { throw new Error("network down"); });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+    expect(await svc.backfillPublications()).toEqual({ mirrored: 0, skipped: 0 });
+    const row = db.prepare("SELECT share_token FROM artifacts WHERE id='art_present'").get() as any;
+    expect(row.share_token).toBeNull();
   });
 });

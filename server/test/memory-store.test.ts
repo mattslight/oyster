@@ -125,8 +125,13 @@ describe("SqliteFtsMemoryProvider", () => {
   });
 
   describe("forget", () => {
-    it("is a no-op for an unknown id (does not throw)", async () => {
-      await expect(provider.forget("does-not-exist")).resolves.toBeUndefined();
+    it("returns false for an unknown id (does not throw)", async () => {
+      await expect(provider.forget("does-not-exist")).resolves.toBe(false);
+    });
+
+    it("returns true when a row is actually removed", async () => {
+      const m = await provider.remember({ content: "delete me" });
+      await expect(provider.forget(m.id)).resolves.toBe(true);
     });
   });
 
