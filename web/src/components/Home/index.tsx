@@ -102,6 +102,11 @@ const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
 
 const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
+// Sessions list cap. Busy spaces can run dozens of concurrent sessions
+// and previously pushed Artefacts below the fold; ten leaves both icon
+// and table views compact while keeping all live state visible by default.
+const SESSIONS_PREVIEW = 10;
+
 // Memory list shows this many rows by default; user clicks "Show all N"
 // to expand. Five is small enough to fit alongside Sessions and Artefacts
 // without scroll-thrash, large enough that single-space views (typically
@@ -159,6 +164,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // space starts collapsed too.
   const [memoriesLimit, setMemoriesLimit] = useState(MEMORIES_PREVIEW);
   const [showAddMemory, setShowAddMemory] = useState(false);
+  const [sessionsLimit, setSessionsLimit] = useState(SESSIONS_PREVIEW);
   // Artefact source filter (#280) + 3-row collapse. Reset on scope change
   // so each space starts compact and at "all".
   const [artefactSource, setArtefactSource] = useState<ArtefactSource>("all");
@@ -222,6 +228,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   useEffect(() => {
     setMemoriesLimit(MEMORIES_PREVIEW);
     setArtefactsLimit(ARTEFACTS_PREVIEW);
+    setSessionsLimit(SESSIONS_PREVIEW);
     setArtefactSource("all");
     if (pendingFolderSelection.current) {
       setSelectedFolderId(pendingFolderSelection.current);
@@ -906,31 +913,41 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <div className="home-empty">Loading sessions…</div>
           ) : visibleSessions.length === 0 ? (
             <div className="home-empty">No sessions match this filter.</div>
-          ) : sessionsView === "icons" ? (
-            <div className="home-surface">
-              {visibleSessions.map((session) => (
-                <SessionTile
-                  key={session.id}
-                  session={session}
-                  spaces={spaces}
-                  showSpaceChip={isMetaView}
-                  onOpen={(id) => setActivePanel({ kind: "session", id })}
-                />
-              ))}
-            </div>
           ) : (
-            <div className="home-table-wrap">
-              <div className="home-table">
-                {visibleSessions.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    session={session}
-                    spaces={spaces}
-                    onOpen={(id) => setActivePanel({ kind: "session", id })}
-                  />
-                ))}
-              </div>
-            </div>
+            <>
+              {sessionsView === "icons" ? (
+                <div className="home-surface">
+                  {visibleSessions.slice(0, sessionsLimit).map((session) => (
+                    <SessionTile
+                      key={session.id}
+                      session={session}
+                      spaces={spaces}
+                      showSpaceChip={isMetaView}
+                      onOpen={(id) => setActivePanel({ kind: "session", id })}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="home-table-wrap">
+                  <div className="home-table">
+                    {visibleSessions.slice(0, sessionsLimit).map((session) => (
+                      <SessionRow
+                        key={session.id}
+                        session={session}
+                        spaces={spaces}
+                        onOpen={(id) => setActivePanel({ kind: "session", id })}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sessionsLimit < visibleSessions.length && (
+                <ShowMore
+                  onClick={() => setSessionsLimit((n) => n + SESSIONS_PREVIEW)}
+                  remaining={visibleSessions.length - sessionsLimit}
+                />
+              )}
+            </>
           )}
         </section>
 
