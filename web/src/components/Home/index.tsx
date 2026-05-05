@@ -103,8 +103,8 @@ const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
 const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
 // Sessions list cap. Busy spaces can run dozens of concurrent sessions
-// and previously pushed Artefacts below the fold; ten leaves both icon
-// and table views compact while keeping all live state visible by default.
+// and previously pushed Artefacts below the fold; ten keeps the section
+// compact in both icon and table views and Show more surfaces the rest.
 const SESSIONS_PREVIEW = 10;
 
 // Memory list shows this many rows by default; user clicks "Show all N"
