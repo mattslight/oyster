@@ -182,6 +182,8 @@ function findShimInsertionPoint(bytes: Uint8Array): number {
 
 function findTagOpen(haystack: Uint8Array, lowerNeedle: string): number {
   // Case-insensitive ASCII match. `lowerNeedle` must already be lowercase.
+  // Also enforces a tag-name boundary after the needle so `<head` doesn't
+  // falsely match `<header>` and `<html` doesn't match `<html5>` etc.
   const n = lowerNeedle.length;
   outer: for (let i = 0; i + n <= haystack.length; i++) {
     for (let j = 0; j < n; j++) {
@@ -190,9 +192,19 @@ function findTagOpen(haystack: Uint8Array, lowerNeedle: string): number {
       const cl = c >= 0x41 && c <= 0x5a ? c + 0x20 : c;
       if (cl !== want) continue outer;
     }
+    // Tag-name boundary: the byte after the needle must NOT be an ASCII
+    // letter or digit, otherwise this is the prefix of a longer tag.
+    const after = haystack[i + n];
+    if (after !== undefined && isTagNameByte(after)) continue outer;
     return i;
   }
   return -1;
+}
+
+function isTagNameByte(byte: number): boolean {
+  return (byte >= 0x41 && byte <= 0x5a) || // A-Z
+    (byte >= 0x61 && byte <= 0x7a) || // a-z
+    (byte >= 0x30 && byte <= 0x39); // 0-9
 }
 
 function findByte(haystack: Uint8Array, byte: number, start: number): number {

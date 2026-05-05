@@ -247,6 +247,30 @@ describe("renderRawHtmlBody — storage shim injection", () => {
     expect(body).not.toContain("Object.defineProperty");
   });
 
+  it("does not mistake <header> for <head> (tag-name boundary check)", async () => {
+    // <header> shares a 5-char prefix with <head>; we must not pick up the
+    // wrong tag and inject mid-document. Doc has no real <head>, so the
+    // shim should fall through to <html> instead.
+    const bytes = new TextEncoder().encode(
+      "<!doctype html><html><body><header>nav</header><p>hi</p></body></html>",
+    );
+    const body = await renderRawHtmlBody(bytes, ROW).text();
+    const shimIdx = body.indexOf("Object.defineProperty");
+    const htmlOpen = body.indexOf("<html>");
+    const headerOpen = body.indexOf("<header>");
+    expect(shimIdx).toBeGreaterThan(htmlOpen);
+    expect(shimIdx).toBeLessThan(headerOpen); // not after <header>
+  });
+
+  it("does not mistake <html5> or similar for <html>", async () => {
+    // No real <html>/<head>/<!doctype>; only a fake <html5> tag-like prefix.
+    // Should leave the doc untouched.
+    const bytes = new TextEncoder().encode("<html5-not-a-tag>x</html5-not-a-tag>");
+    const out = renderRawHtmlBody(bytes, ROW);
+    const body = await out.text();
+    expect(body).not.toContain("Object.defineProperty");
+  });
+
   it("preserves arbitrary bytes after the insertion point (no UTF-8 round-trip)", async () => {
     // Use a payload with a non-UTF-8-safe byte after the head. A byte-level
     // splice should leave it untouched; a TextDecoder round-trip would
