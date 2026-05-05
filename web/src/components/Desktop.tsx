@@ -292,36 +292,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
           {isArchivedView ? (
             <button className="space-ctx-item" onClick={() => handleRestoreArtifact(artifactCtx.artifact)}>Restore</button>
           ) : artifactCtx.artifact.builtin ? (
-            <>
-              <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
-              {artifactCtx.artifact.status !== "generating" && (
-                artifactCtx.artifact.pinnedAt != null ? (
-                  <button
-                    className="space-ctx-item"
-                    onClick={async () => {
-                      const a = artifactCtx.artifact;
-                      setArtifactCtx(null);
-                      try { await unpinArtifact(a.id); }
-                      catch (err) { setAlertState({ open: true, title: "Unpin failed", body: (err as Error).message }); }
-                    }}
-                  >
-                    Unpin
-                  </button>
-                ) : (
-                  <button
-                    className="space-ctx-item"
-                    onClick={async () => {
-                      const a = artifactCtx.artifact;
-                      setArtifactCtx(null);
-                      try { await pinArtifact(a.id); }
-                      catch (err) { setAlertState({ open: true, title: "Pin failed", body: (err as Error).message }); }
-                    }}
-                  >
-                    Pin to top
-                  </button>
-                )
-              )}
-            </>
+            <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
           ) : (
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
