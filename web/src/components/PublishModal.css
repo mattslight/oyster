@@ -119,6 +119,17 @@
   border-color: rgba(251, 191, 36, 0.6);
 }
 
+/* Owned variant: rendered for Pro users so the pill stays as a value
+   indicator rather than an upsell CTA. No hover, no link affordance. */
+.publish-modal-pro-pill--owned {
+  cursor: default;
+}
+
+.publish-modal-pro-pill--owned:hover {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
 .publish-modal-password {
   width: 100%;
   background: #0f1118;

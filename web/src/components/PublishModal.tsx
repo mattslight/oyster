@@ -393,7 +393,14 @@ export function PublishModal({ artifact, onClose }: Props) {
                 <span className="publish-modal-mode__radio" />
                 <span>
                   <strong>Password</strong> · <span style={{ color: "#94a3b8" }}>link + password</span>
-                  {!isPro && (
+                  {isPro ? (
+                    // Pro user — pill is a value indicator, not an upsell.
+                    // Keeps users aware of what their tier actually unlocks.
+                    <span
+                      className="publish-modal-pro-pill publish-modal-pro-pill--owned"
+                      title="Pro feature — included in your plan"
+                    >Pro</span>
+                  ) : (
                     <a
                       className="publish-modal-pro-pill"
                       href={PRICING_URL}
