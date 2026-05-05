@@ -104,9 +104,10 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #a78bfa;
-  background: rgba(167, 139, 250, 0.12);
-  border: 1px solid rgba(167, 139, 250, 0.35);
+  /* Gold to match the OYSTER PRO eyebrow on oyster.to/pricing. */
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
   border-radius: 999px;
   text-decoration: none;
   cursor: pointer;
@@ -114,8 +115,8 @@
 }
 
 .publish-modal-pro-pill:hover {
-  background: rgba(167, 139, 250, 0.22);
-  border-color: rgba(167, 139, 250, 0.6);
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.6);
 }
 
 .publish-modal-password {
