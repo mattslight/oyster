@@ -63,11 +63,10 @@ const ARTEFACT_SOURCE_LABELS: Record<ArtefactSource, string> = {
 const isLivePublication = (a: Artifact): boolean =>
   a.publication != null && a.publication.unpublishedAt == null;
 
-// 3 rows × ~7 tiles in the default 1100px column ≈ 21. The grid is
-// responsive so the visible count varies by width — picking a fixed cap
-// keeps the truncation predictable, and the "Show all N" toggle is the
-// safety valve for narrow viewports where 21 fills less of the screen.
-const ARTEFACTS_PREVIEW = 21;
+// Artefacts list cap. Matches Sessions (10) so both sections stay
+// compact and the table view doesn't dump dozens of rows at once;
+// Show more pages an extra ten in.
+const ARTEFACTS_PREVIEW = 10;
 
 // Persists a view toggle (icons / table) to localStorage so it survives
 // reloads. Returns a useState-shaped pair so callsites stay one-liner.
@@ -470,8 +469,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [effectiveDesktopProps.artifacts]);
 
   // Filter + collapse to an incremental preview. Each "Show more" click
-  // grows artefactsLimit by ARTEFACTS_PREVIEW; the table view bypasses
-  // the cap because it's already linear and easy to scan.
+  // grows artefactsLimit by ARTEFACTS_PREVIEW; the cap applies to both
+  // icon and table views so busy spaces don't push later sections far
+  // below the fold.
   const filteredArtefacts = useMemo(() => {
     let list = effectiveDesktopProps.artifacts;
     if (selectedFolderId === VAULT) {
@@ -486,19 +486,25 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     } else if (artefactSource !== "all") {
       list = list.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
     }
-    // Pinned-first within the active scope (#387). Stable for unpinned —
-    // .sort() in V8 is stable since 2018, so original feed order survives.
+    // Pinned-first within the active scope (#387), then most-recent
+    // first. Sorting by createdAt here (not just inside ArtefactTable)
+    // means the artefactsLimit slice picks the freshest rows; each
+    // view (icon = alpha, table = createdAt DESC) can still re-arrange
+    // that sliced set however it wants.
     list = [...list].sort((a, b) => {
       const ap = a.pinnedAt ?? 0;
       const bp = b.pinnedAt ?? 0;
-      return bp - ap;
+      if (ap !== bp) return bp - ap;
+      const ta = parseTimestamp(a.createdAt);
+      const tb = parseTimestamp(b.createdAt);
+      return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
     });
     return list;
   }, [effectiveDesktopProps.artifacts, artefactSource, selectedFolderId]);
-  const visibleArtefacts = useMemo(() => {
-    if (artefactsView === "table") return filteredArtefacts;
-    return filteredArtefacts.slice(0, artefactsLimit);
-  }, [filteredArtefacts, artefactsView, artefactsLimit]);
+  const visibleArtefacts = useMemo(
+    () => filteredArtefacts.slice(0, artefactsLimit),
+    [filteredArtefacts, artefactsLimit],
+  );
   const filteredArtefactsTotal = filteredArtefacts.length;
 
   // Resolve the active artefact against the FULL artifact list, not the
@@ -1043,11 +1049,20 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               )}
             </>
           ) : (
-            <ArtefactTable
-              artifacts={visibleArtefacts}
-              spaces={spaces}
-              onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
-            />
+            <>
+              <ArtefactTable
+                artifacts={visibleArtefacts}
+                spaces={spaces}
+                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+              />
+              {artefactsLimit < filteredArtefactsTotal && (
+                <ShowMore
+                  onClick={() => setArtefactsLimit((n) => n + ARTEFACTS_PREVIEW)}
+                  remaining={filteredArtefactsTotal - artefactsLimit}
+                  searchHint
+                />
+              )}
+            </>
           )}
         </section>
 
