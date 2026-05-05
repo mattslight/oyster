@@ -72,7 +72,7 @@ describe("GET /p/:token — open mode", () => {
     expect(body).toContain("<h1>Hello world</h1>");
     expect(body).toMatch(/class="brand-mark"/); // chrome present
     expect(body).toMatch(/class="brand-name"/);
-    expect(body).toContain("Powered by");
+    expect(body).toContain("https://oyster.to");
   });
 
   it("sets open-mode cache headers + ETag", async () => {

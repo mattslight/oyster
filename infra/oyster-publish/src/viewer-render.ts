@@ -27,7 +27,7 @@ export function renderMarkdownPage(bytes: Uint8Array, row: PublicationRow): Resp
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
-    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'",
   );
   return new Response(page, { status: 200, headers });
 }
@@ -92,7 +92,7 @@ export function renderMermaidPage(bytes: Uint8Array, row: PublicationRow): Respo
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
   );
   return new Response(page, { status: 200, headers });
 }

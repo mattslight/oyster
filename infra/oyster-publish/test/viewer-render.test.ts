@@ -135,8 +135,8 @@ describe("renderChromeWithIframe", () => {
     const body = await res.text();
     expect(body).toMatch(/class="brand-mark"/);
     expect(body).toMatch(/class="brand-name"/);
-    expect(body).toContain("Powered by");
     expect(body).toContain(">Oyster<");
+    expect(body).toContain("https://oyster.to");
   });
 
   it("contains a sandboxed iframe pointing at /p/<token>/raw", async () => {
