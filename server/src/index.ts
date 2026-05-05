@@ -284,30 +284,25 @@ const publishService = createPublishService({
   fetch,
 });
 
-// Refresh the local publish-state mirror whenever the user transitions into
-// signed-in. Covers fresh-device sign-in, re-sign-in after sign-out, and the
-// boot path where validatePersistedSession() finds an already-valid session.
+// Refresh the local publish-state mirror whenever a user is signed in — at
+// boot if loadFromDisk() rehydrated a session, and on every subsequent
+// auth_changed transition. logBackfill always emits, even on {0,0}, so the
+// dev log shows whether we ran and what happened (artefact-ID mismatches
+// surface as `skipped` and would otherwise look like silence).
+function logBackfill(label: string, result: { mirrored: number; skipped: number }): void {
+  console.log(`[publish] ${label}: mirrored=${result.mirrored} skipped=${result.skipped}` +
+    (result.skipped ? " (skipped = cloud publication has no matching local artefact id)" : ""));
+  if (result.mirrored > 0) {
+    broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+  }
+}
+
 authService.onAuthChanged((state) => {
   if (!state.user || !state.sessionToken) return;
-  void publishService.backfillPublications().then((result) => {
-    if (result.mirrored > 0) {
-      console.log(`[publish] backfilled ${result.mirrored} live publication${result.mirrored === 1 ? "" : "s"}` +
-        (result.skipped ? ` (skipped ${result.skipped} — no matching local artefact)` : ""));
-      broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
-    }
-  });
+  void publishService.backfillPublications().then((r) => logBackfill("auth-backfill", r));
 });
-// Boot path: if loadFromDisk() rehydrated a signed-in user, validatePersistedSession
-// won't fire onAuthChanged unless the tier changes. Run a one-shot backfill so a
-// returning user's pill matches cloud immediately.
 if (authService.getState().user) {
-  void publishService.backfillPublications().then((result) => {
-    if (result.mirrored > 0) {
-      console.log(`[publish] startup-backfilled ${result.mirrored} live publication${result.mirrored === 1 ? "" : "s"}` +
-        (result.skipped ? ` (skipped ${result.skipped} — no matching local artefact)` : ""));
-      broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
-    }
-  });
+  void publishService.backfillPublications().then((r) => logBackfill("startup-backfill", r));
 }
 
 // ── Initialize subsystems ──
