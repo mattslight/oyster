@@ -81,6 +81,7 @@ const SLASH_COMMANDS = [
   { cmd: "/s", args: "<prefix>", desc: "Switch space", example: "/s bf → blunderfixer" },
   { cmd: "/o", args: "<search>", desc: "Open artifact", example: "/o competitor analysis" },
   { cmd: "/p", args: "<artefact>", desc: "Publish artifact", example: "/p competitor analysis" },
+  { cmd: "/u", args: "<artefact>", desc: "Unpublish artifact", example: "/u competitor analysis" },
   { cmd: "#", args: "<space>", desc: "Quick switch", example: "#bf · #all · #archived" },
 ];
 
@@ -94,11 +95,12 @@ interface Props {
   artifacts?: Artifact[];
   onArtifactOpen?: (artifact: Artifact) => void;
   onArtifactPublish?: (artifact: Artifact) => void;
+  onArtifactUnpublish?: (artifact: Artifact) => void;
   isFirstRun?: boolean;
   onAiError?: (message: string | null) => void;
 }
 
-export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, inputRef: externalInputRef, artifacts = [], onArtifactOpen, onArtifactPublish, isFirstRun, onAiError }: Props) {
+export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activeSpace, onSpaceChange, inputRef: externalInputRef, artifacts = [], onArtifactOpen, onArtifactPublish, onArtifactUnpublish, isFirstRun, onAiError }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -147,6 +149,11 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
 
   const publishableArtifacts = useMemo(
     () => artifacts.filter((a) => !a.builtin && !a.plugin && a.status !== "generating"),
+    [artifacts],
+  );
+
+  const livePublications = useMemo(
+    () => artifacts.filter((a) => a.publication != null && a.publication.unpublishedAt == null),
     [artifacts],
   );
 
@@ -217,6 +224,25 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         .map(x => ({ key: x.a.id, label: x.a.label, desc: x.a.spaceId, type: "publish-artifact" as const, score: x.score }));
     }
 
+    // /u prefix — unpublish, scoped to currently-live publications
+    const unpublishArgMatch = lower.match(/^\/u(\s+(.*))?$/);
+    if (unpublishArgMatch !== null && (lower === "/u" || lower.startsWith("/u "))) {
+      const q = (unpublishArgMatch[2] || "").trim();
+      if (!q) {
+        const sorted = [...livePublications].sort((a, b) => {
+          if (a.spaceId === activeSpace && b.spaceId !== activeSpace) return -1;
+          if (b.spaceId === activeSpace && a.spaceId !== activeSpace) return 1;
+          return a.label.localeCompare(b.label);
+        });
+        return sorted.slice(0, 8).map(a => ({ key: a.id, label: a.label, desc: a.spaceId, type: "unpublish-artifact" as const, score: 0 }));
+      }
+      const allowed = new Set(livePublications.map((a) => a.id));
+      return scoreArtifacts(q)
+        .filter(({ a }) => allowed.has(a.id))
+        .slice(0, 8)
+        .map(x => ({ key: x.a.id, label: x.a.label, desc: x.a.spaceId, type: "unpublish-artifact" as const, score: x.score }));
+    }
+
     // / prefix — command list
     if (!input.includes(" ") && lower !== "/s") {
       return SLASH_COMMANDS
@@ -225,7 +251,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
     }
 
     return [];
-  }, [input, spaces, subseq, artifacts, activeSpace, scoreArtifacts, publishableArtifacts]);
+  }, [input, spaces, subseq, artifacts, activeSpace, scoreArtifacts, publishableArtifacts, livePublications]);
 
   const slashOpen = slashItems.length > 0;
 
@@ -364,6 +390,20 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
             return; // keep input, don't clear — dropdown stays open
           }
         }
+
+        if (cmd === "u" && onArtifactUnpublish) {
+          const allowed = new Set(livePublications.map((a) => a.id));
+          const scored = scoreArtifacts(q).filter(({ a }) => allowed.has(a.id));
+          if (scored.length === 0) {
+            setMessages(prev => [...prev, { role: "assistant", content: `No live publication matching "${arg.trim()}"` }]);
+            setExpanded(true);
+          } else if (scored.length === 1 || scored[0].score >= scored[1].score * 2) {
+            onArtifactUnpublish(scored[0].a);
+          } else {
+            setInput(`/u ${arg.trim()}`);
+            return; // keep input, don't clear — dropdown stays open
+          }
+        }
       }
       return;
     }
@@ -392,7 +432,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
         : "Can't reach Oyster — check that the server is running";
       onAiError?.(msg);
     }
-  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError, onArtifactPublish, publishableArtifacts]);
+  }, [input, streaming, sessionId, setMessages, setExpanded, pushSessionUrl, resetTracking, spaces, onSpaceChange, subseq, artifacts, activeSpace, onArtifactOpen, scoreArtifacts, onAiError, onArtifactPublish, publishableArtifacts, onArtifactUnpublish, livePublications]);
 
   // Drain any queued prompt as soon as the session is ready AND nothing
   // is streaming. handleSend's other guard is `streaming`; if we drained
@@ -575,6 +615,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                   if (item.type === "space") { setInput(""); onSpaceChange?.(item.key); }
                   else if (item.type === "artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactOpen?.(a); }
                   else if (item.type === "publish-artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactPublish?.(a); }
+                  else if (item.type === "unpublish-artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactUnpublish?.(a); }
                   else { setInput(item.label + ("args" in item && item.args ? " " : "")); inputRef.current?.focus(); }
                 }}
                 onMouseEnter={() => setSlashIndex(i)}
@@ -638,6 +679,9 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                 } else if (item.type === "publish-artifact") {
                   const a = artifacts.find((x) => x.id === item.key);
                   if (a) setInput(`/p ${a.label}`);
+                } else if (item.type === "unpublish-artifact") {
+                  const a = artifacts.find((x) => x.id === item.key);
+                  if (a) setInput(`/u ${a.label}`);
                 } else {
                   setInput(item.label + ("args" in item && item.args ? " " : ""));
                 }
@@ -650,6 +694,7 @@ export function ChatBar({ onOpenTerminal, isHero: isHeroProp, spaces = [], activ
                 if (item.type === "space") { setInput(""); onSpaceChange?.(item.key); }
                 else if (item.type === "artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactOpen?.(a); }
                 else if (item.type === "publish-artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactPublish?.(a); }
+                else if (item.type === "unpublish-artifact") { setInput(""); const a = artifacts.find(x => x.id === item.key); if (a) onArtifactUnpublish?.(a); }
                 else { setInput(item.label + ("args" in item && item.args ? " " : "")); }
                 return;
               }
