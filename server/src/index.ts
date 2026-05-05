@@ -291,11 +291,18 @@ const publishService = createPublishService({
 // surface as `skipped` and would otherwise look like silence).
 function logBackfill(label: string, result: { mirrored: number; skipped: number }): void {
   console.log(`[publish] ${label}: mirrored=${result.mirrored} skipped=${result.skipped}` +
-    (result.skipped ? " (skipped = cloud publication has no matching local artefact id)" : ""));
-  if (result.mirrored > 0) {
+    (result.skipped ? " (skipped → surfaced as cloud-only ghosts)" : ""));
+  // Always broadcast — mirrored publications update local rows, skipped ones
+  // populate the cloud-only ghost cache. Either way the surface needs a refetch.
+  if (result.mirrored > 0 || result.skipped > 0) {
     broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
   }
 }
+
+// Wire the cloud-only publication source into artifact-service so ghosts
+// appear in /api/artifacts. Done after both services exist; the source
+// itself is just a getter on publish-service.
+artifactService.setCloudOnlyPublicationsSource(() => publishService.getCloudOnlyPublications());
 
 authService.onAuthChanged((state) => {
   if (!state.user || !state.sessionToken) return;

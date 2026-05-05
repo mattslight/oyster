@@ -48,6 +48,11 @@ export interface Artifact {
    *  the artefact is currently public; when `unpublishedAt` is non-null the
    *  publication has been retired (chip hides; URL serves 410). */
   publication?: ArtefactPublication | null;
+  /** Synthetic ghost row for a publication that lives in the cloud with no
+   *  matching local artefact (other device, fresh worktree, vault drift).
+   *  Read-only — surfaces in the `published` filter, click opens the public
+   *  URL. Cloud is the source of truth; this is the surface admitting it. */
+  cloudOnly?: boolean;
   /** Unix-ms timestamp the user pinned this artefact to the top of its
    *  space (#387). Null/omitted = unpinned. Pinned artefacts sort before
    *  others in the active scope, most-recent first. Filters still apply —

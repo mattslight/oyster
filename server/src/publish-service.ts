@@ -63,10 +63,26 @@ function tierLimits(tier: string) {
   return TIER_LIMITS[tier] ?? TIER_LIMITS.free!;
 }
 
+export interface CloudPublication {
+  shareToken: string;
+  artifactId: string;
+  artifactKind: string;
+  mode: "open" | "password" | "signin";
+  contentType: string;
+  sizeBytes: number;
+  publishedAt: number;
+  updatedAt: number;
+}
+
 export interface PublishService {
   publishArtifact(args: PublishArgs): Promise<PublishResult>;
   unpublishArtifact(args: { artifact_id: string }): Promise<UnpublishResult>;
   backfillPublications(): Promise<{ mirrored: number; skipped: number }>;
+  /** Cloud publications with no matching local artefact_id (set by the most
+   *  recent backfill). Used by artifact-service to synthesise `cloudOnly: true`
+   *  ghost rows so the surface reflects cloud truth even when local SQLite
+   *  doesn't know about the artefact. */
+  getCloudOnlyPublications(): readonly CloudPublication[];
 }
 
 interface ArtifactRow {
@@ -78,6 +94,11 @@ interface ArtifactRow {
 }
 
 export function createPublishService(deps: PublishServiceDeps): PublishService {
+  // Refreshed every backfill. Empty until the user signs in and we contact
+  // the cloud. Reset on sign-out via deps.currentUser() returning null
+  // before backfill is invoked (no-op early return inside backfill).
+  let cloudOnly: CloudPublication[] = [];
+
   return {
     async publishArtifact(args) {
       const user = deps.currentUser();
@@ -260,16 +281,33 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       );
 
       let mirrored = 0;
-      let skipped = 0;
+      const unmatched: CloudPublication[] = [];
       for (const row of rows) {
         const result = stmt.run(
           user.id, row.share_token, row.mode,
           row.published_at, row.updated_at, row.artifact_id,
         );
-        if (result.changes > 0) mirrored++;
-        else skipped++;
+        if (result.changes > 0) {
+          mirrored++;
+        } else {
+          unmatched.push({
+            shareToken: row.share_token,
+            artifactId: row.artifact_id,
+            artifactKind: row.artifact_kind,
+            mode: row.mode,
+            contentType: row.content_type,
+            sizeBytes: row.size_bytes,
+            publishedAt: row.published_at,
+            updatedAt: row.updated_at,
+          });
+        }
       }
-      return { mirrored, skipped };
+      cloudOnly = unmatched;
+      return { mirrored, skipped: unmatched.length };
+    },
+
+    getCloudOnlyPublications() {
+      return cloudOnly;
     },
   };
 }

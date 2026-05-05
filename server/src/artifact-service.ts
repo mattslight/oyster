@@ -71,6 +71,18 @@ function normalizeExtension(raw: string): string {
   return withDot;
 }
 
+// Loose shape for the cloud-publications source. Mirrors publish-service's
+// CloudPublication; redeclared here so artifact-service stays free of a
+// cyclic import on publish-service.
+interface CloudPublicationLike {
+  shareToken: string;
+  artifactId: string;
+  artifactKind: string;
+  mode: "open" | "password" | "signin";
+  publishedAt: number;
+  updatedAt: number;
+}
+
 // ── Service ──
 
 export class ArtifactService {
@@ -80,6 +92,16 @@ export class ArtifactService {
   // artifacts) in steady state instead of O(archived).
   private archivedPathsCache: Set<string> | null = null;
   private invalidateArchivedPaths(): void { this.archivedPathsCache = null; }
+
+  // Optional cloud-publication source. When set, getAllArtifacts appends
+  // synthetic `cloudOnly: true` ghosts for publications whose artifact_id
+  // doesn't match any local row. Wired by index.ts after publish-service is
+  // constructed; left undefined in tests that don't need it.
+  private getCloudOnlyPublications?: () => readonly CloudPublicationLike[];
+
+  setCloudOnlyPublicationsSource(source: () => readonly CloudPublicationLike[]): void {
+    this.getCloudOnlyPublications = source;
+  }
 
   constructor(private store: ArtifactStore, private workerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
 
@@ -164,7 +186,44 @@ export class ArtifactService {
       }
     }
 
-    return [...persisted, ...gen];
+    const ghosts = this.synthesiseCloudOnlyGhosts(new Set([...persisted, ...gen].map((a) => a.id)));
+    return [...persisted, ...gen, ...ghosts];
+  }
+
+  // Build synthetic Artifact entries for cloud publications whose artifact_id
+  // doesn't match any local row. Lets the surface admit cloud truth — pill
+  // count + published filter cover all live publications, not just the ones
+  // happening to be on this device.
+  private synthesiseCloudOnlyGhosts(localIds: Set<string>): Artifact[] {
+    if (!this.getCloudOnlyPublications) return [];
+    const cloud = this.getCloudOnlyPublications();
+    const out: Artifact[] = [];
+    for (const pub of cloud) {
+      if (localIds.has(pub.artifactId)) continue;  // local row exists; skip ghost
+      const kind = toArtifactKind(pub.artifactKind);
+      const shareUrl = `${this.workerBase.replace(/\/$/, "")}/p/${pub.shareToken}`;
+      out.push({
+        id: `cloud:${pub.shareToken}`,
+        label: pub.artifactId,        // best we have until D1 carries label
+        artifactKind: kind,
+        spaceId: "_cloud",            // synthetic — UI treats as no-space
+        status: "ready",
+        runtimeKind: "cloud_only",
+        runtimeConfig: {},
+        url: shareUrl,
+        createdAt: new Date(pub.publishedAt).toISOString(),
+        cloudOnly: true,
+        publication: {
+          shareToken: pub.shareToken,
+          shareUrl,
+          shareMode: pub.mode,
+          publishedAt: pub.publishedAt,
+          updatedAt: pub.updatedAt,
+          unpublishedAt: null,
+        },
+      });
+    }
+    return out;
   }
 
   async getArtifactById(id: string): Promise<Artifact | undefined> {

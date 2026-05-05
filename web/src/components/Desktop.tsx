@@ -234,7 +234,14 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 index={i}
                 onClick={() => onArtifactClick(item.artifact)}
                 onStop={onArtifactStop ? () => onArtifactStop(item.artifact) : undefined}
-                onContextMenu={(e) => { e.preventDefault(); setFolderCtx(null); setArtifactCtx({ artifact: item.artifact, x: e.clientX, y: e.clientY }); }}
+                onContextMenu={
+                  // Cloud-only ghosts have no local row — pin/rename/unpublish
+                  // would all 404. Suppress the menu rather than offer broken
+                  // actions; click still opens the public URL.
+                  item.artifact.cloudOnly
+                    ? (e) => e.preventDefault()
+                    : (e) => { e.preventDefault(); setFolderCtx(null); setArtifactCtx({ artifact: item.artifact, x: e.clientX, y: e.clientY }); }
+                }
                 reveal={item.artifact.id === revealId}
                 isRenaming={renamingId === item.artifact.id}
                 onRenameCommit={(label) => commitArtifactRename(item.artifact, label)}

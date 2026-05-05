@@ -46,7 +46,9 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick }: ArtefactTa
               }}
             >
               <span className="home-artefact-row-title">{art.label}</span>
-              <span className="home-artefact-row-space">{space?.displayName ?? art.spaceId}</span>
+              <span className="home-artefact-row-space">
+                {art.cloudOnly ? "Cloud" : (space?.displayName ?? art.spaceId)}
+              </span>
               <span className="home-artefact-row-kind">{art.artifactKind}</span>
               <span className="home-artefact-row-time">{formatRelative(art.createdAt) ?? "—"}</span>
             </div>

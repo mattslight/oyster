@@ -117,6 +117,67 @@ describe("artifact wire format — publication", () => {
   });
 });
 
+describe("artifact wire format — cloud-only ghosts", () => {
+  let db: Database.Database;
+  let service: ArtifactService;
+
+  beforeEach(() => {
+    db = makeDb();
+    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to");
+  });
+
+  it("synthesises a cloudOnly ghost when no local artefact matches the publication", async () => {
+    service.setCloudOnlyPublicationsSource(() => [
+      {
+        shareToken: "tok_abc",
+        artifactId: "missing_locally",
+        artifactKind: "notes",
+        mode: "open",
+        publishedAt: 1717000000000,
+        updatedAt: 1717000000500,
+      },
+    ]);
+    const list = await service.getAllArtifacts(() => {});
+    expect(list).toHaveLength(1);
+    const ghost = list[0]!;
+    expect(ghost.id).toBe("cloud:tok_abc");
+    expect(ghost.cloudOnly).toBe(true);
+    expect(ghost.label).toBe("missing_locally");
+    expect(ghost.spaceId).toBe("_cloud");
+    expect(ghost.runtimeKind).toBe("cloud_only");
+    expect(ghost.url).toBe("https://oyster.to/p/tok_abc");
+    expect(ghost.publication).toMatchObject({
+      shareToken: "tok_abc",
+      shareUrl: "https://oyster.to/p/tok_abc",
+      shareMode: "open",
+      unpublishedAt: null,
+    });
+  });
+
+  it("does NOT emit a ghost when a local artefact has the matching id", async () => {
+    seed(db, { id: "art_local" });
+    service.setCloudOnlyPublicationsSource(() => [
+      {
+        shareToken: "tok",
+        artifactId: "art_local",
+        artifactKind: "notes",
+        mode: "open",
+        publishedAt: 1, updatedAt: 1,
+      },
+    ]);
+    const list = await service.getAllArtifacts(() => {});
+    expect(list).toHaveLength(1);
+    expect(list[0]!.id).toBe("art_local");
+    expect(list[0]!.cloudOnly).toBeUndefined();
+  });
+
+  it("emits no ghosts when the source returns an empty list", async () => {
+    service.setCloudOnlyPublicationsSource(() => []);
+    const list = await service.getAllArtifacts(() => {});
+    expect(list).toHaveLength(0);
+  });
+});
+
 describe("artifact wire format — pin (#387)", () => {
   let db: Database.Database;
   let service: ArtifactService;
