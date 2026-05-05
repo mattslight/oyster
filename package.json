@@ -21,7 +21,7 @@
     "build": "npm run build:web && npm run build:server && node -e \"const fs=require('fs');fs.cpSync('web/dist','server/dist/public',{recursive:true})\"",
     "build:changelog": "node scripts/build-changelog.mjs",
     "serve:docs": "npm run build:changelog && npx --yes serve@14 docs",
-    "dev": "npx concurrently -n web,server -c blue,green \"npx wait-on tcp:3333 && cd web && npm run dev\" \"cd server && npm run dev\"",
+    "dev": "npx concurrently -n web,server -c blue,green \"npx wait-on file:userland/.dev-port && cd web && npm run dev\" \"cd server && npm run dev\"",
     "dev:web": "cd web && npm run dev",
     "dev:server": "cd server && npm run dev",
     "version": "npm run build:changelog && git add docs/changelog.html",

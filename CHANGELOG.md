@@ -13,6 +13,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Filter Home to your published artefacts.** A new `published` pill in the Artefacts header narrows the grid to currently-live shares; clicking it before you've published anything lands on a quick how-to instead of an empty grid. ([#374](https://github.com/mattslight/oyster/issues/374))
 - **Unpublish from the chat bar.** `/u <artefact>` mirrors `/p` — fuzzy-matches your live publications and retires the picked one in one keystroke. ([#388](https://github.com/mattslight/oyster/issues/388))
 - **Pin artefacts to the top.** Right-click any artefact for `Pin`; pinned items sort above folder tiles and other artefacts in the active scope, most-recent pin first, with a gold pin glyph in the corner. Right-click again for `Unpin`. New `pinned` filter chip on Home to focus on just the pinned set. Filters still apply — pinning doesn't override filter visibility. ([#387](https://github.com/mattslight/oyster/issues/387))
+- **Delete a memory you didn't mean to keep.** Hover any row in the Memories list — a small trash icon appears. Click it, confirm, and the memory is gone everywhere it was visible. Other open tabs update live. ([#398](https://github.com/mattslight/oyster/issues/398))
 
 ### Changed
 
@@ -21,6 +22,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Set up Oyster is a checklist now.** One required item — set up your spaces — and three optional ones (publish your first artefact, connect another agent, import memories). The dock pill stops nagging once the required step is done; the optional items wait quietly in the popover for when you want them.
 - **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. ([#281](https://github.com/mattslight/oyster/issues/281))
 - **Sessions section on Home is capped.** Long session lists used to push Artefacts below the fold; the section now shows the first ten with a `Show more` toggle below — applies to both icon and table views. ([#389](https://github.com/mattslight/oyster/issues/389))
+- **Artefacts table view picks up the same cap.** Table view used to dump every artefact in the active scope; it now matches the icon view's `Show more` pager so spaces with dozens of artefacts stay scannable.
 - **Refreshed share-page chrome.** Public viewer pages drop the top header for a single centered footer line — *Published with [oyster.to](https://oyster.to)* with the Oyster brand mark. Dark-mode brand surface throughout (navy background with purple gradient bloom), Barlow for headings and Space Grotesk for body, matching oyster.to.
 
 ### Fixed
