@@ -122,6 +122,98 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
   });
 }
 
+// Inline shim injected into every iframe-content document. Sandboxed iframes
+// without allow-same-origin can't access localStorage/sessionStorage — every
+// access throws SecurityError. Most AI-generated apps read storage at boot
+// (e.g. to restore a font preference), and a single uncaught SecurityError
+// halts the rest of the bootstrap, leaving the iframe blank.
+//
+// The shim defines no-op replacements when the native APIs are unreachable
+// so apps boot. State doesn't persist (correct for sandboxed content — each
+// visitor gets a fresh load anyway).
+const STORAGE_SHIM = `<script>
+(function() {
+  function noop() { return {
+    getItem: function() { return null; },
+    setItem: function() {},
+    removeItem: function() {},
+    clear: function() {},
+    key: function() { return null; },
+    get length() { return 0; },
+  }; }
+  try { localStorage.length; } catch (e) {
+    Object.defineProperty(window, 'localStorage', { value: noop(), configurable: false });
+  }
+  try { sessionStorage.length; } catch (e) {
+    Object.defineProperty(window, 'sessionStorage', { value: noop(), configurable: false });
+  }
+})();
+</script>`;
+
+export function injectStorageShim(bytes: Uint8Array): Uint8Array {
+  // Byte-level splice — never decode the user's HTML to a string, so we don't
+  // corrupt non-UTF-8 (or invalid-UTF-8) payloads on the round trip. Tag names
+  // are ASCII; we case-fold the haystack bytes manually.
+  //
+  // Insertion priority: <head> > <html> > <!doctype>. Putting a <script> before
+  // an existing <!doctype> would trigger quirks mode, so we always inject AFTER
+  // any structural marker we recognise. If none are present (e.g. a bare HTML
+  // fragment), we leave the doc untouched rather than risking corruption.
+  const at = findShimInsertionPoint(bytes);
+  if (at < 0) return bytes;
+
+  const shimBytes = new TextEncoder().encode(STORAGE_SHIM);
+  const out = new Uint8Array(bytes.length + shimBytes.length);
+  out.set(bytes.subarray(0, at), 0);
+  out.set(shimBytes, at);
+  out.set(bytes.subarray(at), at + shimBytes.length);
+  return out;
+}
+
+function findShimInsertionPoint(bytes: Uint8Array): number {
+  for (const tag of ["<head", "<html", "<!doctype"]) {
+    const start = findTagOpen(bytes, tag);
+    if (start < 0) continue;
+    const close = findByte(bytes, 0x3e /* > */, start + tag.length);
+    if (close >= 0) return close + 1;
+  }
+  return -1;
+}
+
+function findTagOpen(haystack: Uint8Array, lowerNeedle: string): number {
+  // Case-insensitive ASCII match. `lowerNeedle` must already be lowercase.
+  // Also enforces a tag-name boundary after the needle so `<head` doesn't
+  // falsely match `<header>` and `<html` doesn't match `<html5>` etc.
+  const n = lowerNeedle.length;
+  outer: for (let i = 0; i + n <= haystack.length; i++) {
+    for (let j = 0; j < n; j++) {
+      const c = haystack[i + j]!;
+      const want = lowerNeedle.charCodeAt(j);
+      const cl = c >= 0x41 && c <= 0x5a ? c + 0x20 : c;
+      if (cl !== want) continue outer;
+    }
+    // Tag-name boundary: the byte after the needle must NOT be an ASCII
+    // letter or digit, otherwise this is the prefix of a longer tag.
+    const after = haystack[i + n];
+    if (after !== undefined && isTagNameByte(after)) continue outer;
+    return i;
+  }
+  return -1;
+}
+
+function isTagNameByte(byte: number): boolean {
+  return (byte >= 0x41 && byte <= 0x5a) || // A-Z
+    (byte >= 0x61 && byte <= 0x7a) || // a-z
+    (byte >= 0x30 && byte <= 0x39); // 0-9
+}
+
+function findByte(haystack: Uint8Array, byte: number, start: number): number {
+  for (let i = start; i < haystack.length; i++) {
+    if (haystack[i] === byte) return i;
+  }
+  return -1;
+}
+
 export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Response {
   // Iframe kinds (app/deck/wireframe/table/map) are always HTML. Force
   // text/html regardless of the stored content_type — older publications
@@ -131,13 +223,13 @@ export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Respo
   const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
-    "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+    "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
   );
   headers.set("x-frame-options", "SAMEORIGIN");
   headers.set("content-disposition", "inline");
-  // Buffer.from wrap is required for Workers fetch BodyInit — raw Uint8Array
-  // doesn't satisfy the type in cf-types.
-  return new Response(bytes, { status: 200, headers });
+  // Inject the storage shim so apps that touch localStorage/sessionStorage
+  // at startup can boot rather than crashing on SecurityError.
+  return new Response(injectStorageShim(bytes), { status: 200, headers });
 }
 
 function escapeAttr(s: string): string {
