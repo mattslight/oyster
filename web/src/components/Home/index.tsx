@@ -1069,7 +1069,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   isHero={false}
                   showMeta
                   flatten={artefactSource === "published" || artefactSource === "pinned"}
-                  onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+                  onArtifactClick={(a) => {
+                  // Cloud-only ghosts have no local file — open the public URL
+                  // (consistent with icon-view click behaviour in App.tsx).
+                  if (a.cloudOnly) {
+                    window.open(a.url, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  setActivePanel({ kind: "artefact", id: a.id });
+                }}
                 />
               </div>
               {artefactsLimit < filteredArtefactsTotal && (
@@ -1085,7 +1093,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               <ArtefactTable
                 artifacts={visibleArtefacts}
                 spaces={spaces}
-                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+                onArtifactClick={(a) => {
+                  // Cloud-only ghosts have no local file — open the public URL
+                  // (consistent with icon-view click behaviour in App.tsx).
+                  if (a.cloudOnly) {
+                    window.open(a.url, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  setActivePanel({ kind: "artefact", id: a.id });
+                }}
                 onArtifactPublish={desktopProps.onArtifactPublish}
                 onArtifactUpdate={desktopProps.onArtifactUpdate}
               />

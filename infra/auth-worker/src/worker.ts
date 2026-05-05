@@ -107,11 +107,11 @@ async function findOrCreateUser(db: D1Database, email: string, now: number): Pro
     .bind(id, email, now, now)
     .run();
   const row = await db
-    .prepare("SELECT id, email FROM users WHERE email = ?")
+    .prepare("SELECT id, email, tier FROM users WHERE email = ?")
     .bind(email)
     .first<UserRow>();
   if (!row) throw new Error("user upsert failed");
-  return row;
+  return { ...row, tier: row.tier ?? "free" };
 }
 
 async function getSession(db: D1Database, sessionId: string, now: number): Promise<{ session: SessionRow; user: UserRow } | null> {

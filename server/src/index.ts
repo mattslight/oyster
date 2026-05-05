@@ -306,11 +306,11 @@ const publishService = createPublishService({
 function logBackfill(label: string, result: { mirrored: number; skipped: number }): void {
   console.log(`[publish] ${label}: mirrored=${result.mirrored} skipped=${result.skipped}` +
     (result.skipped ? " (skipped → surfaced as cloud-only ghosts)" : ""));
-  // Always broadcast — mirrored publications update local rows, skipped ones
-  // populate the cloud-only ghost cache. Either way the surface needs a refetch.
-  if (result.mirrored > 0 || result.skipped > 0) {
-    broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
-  }
+  // Broadcast unconditionally — backfill may also CLEAR previously-surfaced
+  // ghosts (skipped 3 → 0 because everything was unpublished elsewhere). The
+  // surface needs a refetch in that case too, even though both counters are
+  // zero. Refetch is cheap; keeping a stale pill is the worse failure mode.
+  broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
 }
 
 // Wire the cloud-only publication source into artifact-service so ghosts

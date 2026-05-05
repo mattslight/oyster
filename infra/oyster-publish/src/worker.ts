@@ -290,7 +290,8 @@ async function handlePublishMine(req: Request, env: Env): Promise<Response> {
       ORDER BY published_at DESC`
   ).bind(user.id).all<Row>();
 
-  return jsonOk({ publications: rows.results ?? [] });
+  // Per-user data — never cache at the browser, proxy, or edge layer.
+  return jsonOk({ publications: rows.results ?? [] }, 200, { "cache-control": "private, no-store" });
 }
 
 async function handlePublishPatch(req: Request, env: Env, shareToken: string): Promise<Response> {
@@ -313,7 +314,7 @@ async function handlePublishPatch(req: Request, env: Env, shareToken: string): P
   if (body.password_hash !== undefined && typeof body.password_hash !== "string") {
     return jsonError(400, "invalid_metadata");
   }
-  if (body.mode !== "password" && body.password_hash) {
+  if (body.mode !== "password" && body.password_hash !== undefined) {
     return jsonError(400, "invalid_metadata");
   }
   // Explicit empty hash on a password-mode update is a contract violation —
@@ -443,11 +444,12 @@ export function jsonError(status: number, code: string, message?: string, extra:
   });
 }
 
-export function jsonOk(payload: object, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
+export function jsonOk(payload: object, status = 200, extraHeaders?: HeadersInit): Response {
+  const headers = new Headers({ "content-type": "application/json" });
+  if (extraHeaders) {
+    new Headers(extraHeaders).forEach((v, k) => headers.set(k, v));
+  }
+  return new Response(JSON.stringify(payload), { status, headers });
 }
 
 // collectWithSizeCap reads a ReadableStream into a Uint8Array, aborting if

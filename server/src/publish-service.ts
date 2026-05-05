@@ -367,7 +367,13 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       // re-publish, so old unpublished_at rows aren't load-bearing).
       const user = deps.currentUser();
       const token = deps.sessionToken();
-      if (!user || !token) return { mirrored: 0, skipped: 0 };
+      if (!user || !token) {
+        // Clear the ghost cache on the signed-out path so a previous user's
+        // publications can't leak into a new signed-in session, and so the
+        // surface stops emitting stale ghost rows after sign-out.
+        cloudOnly = [];
+        return { mirrored: 0, skipped: 0 };
+      }
 
       let res: Response;
       try {
@@ -479,6 +485,10 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
     },
 
     getCloudOnlyPublications() {
+      // Defence in depth: ghosts are strictly tied to an active session.
+      // Even if the cache somehow held stale entries (race between sign-out
+      // and the next backfill, etc.), don't surface them.
+      if (!deps.currentUser()) return [];
       return cloudOnly;
     },
   };
