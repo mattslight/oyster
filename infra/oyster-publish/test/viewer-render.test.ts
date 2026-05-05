@@ -134,8 +134,7 @@ describe("renderChromeWithIframe", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toMatch(/class="brand-mark"/);
-    expect(body).toMatch(/class="brand-name"/);
-    expect(body).toContain(">Oyster<");
+    expect(body).toContain("Published with");
     expect(body).toContain("https://oyster.to");
   });
 

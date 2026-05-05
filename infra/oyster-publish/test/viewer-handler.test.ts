@@ -71,7 +71,7 @@ describe("GET /p/:token — open mode", () => {
     const body = await res.text();
     expect(body).toContain("<h1>Hello world</h1>");
     expect(body).toMatch(/class="brand-mark"/); // chrome present
-    expect(body).toMatch(/class="brand-name"/);
+    expect(body).toContain("Published with");
     expect(body).toContain("https://oyster.to");
   });
 
@@ -375,7 +375,20 @@ describe("GET /p/:token — signin mode", () => {
     expect(await res.text()).toContain("private");
   });
 
-  it("signin viewer (signed in) does NOT show 'Publish AI content' CTA", async () => {
+});
+
+describe("GET /p/:token — footer copy is mode-invariant", () => {
+  it("open viewer shows 'Published with oyster.to' footer", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_cta_open", body: "# open",
+    });
+    const res = await call(getReq(`/p/${shareToken}`));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Published with");
+  });
+
+  it("signin viewer (signed in) shows the same 'Published with' footer", async () => {
     const u = await seedUser();
     const { shareToken } = await seedActiveOpenWithBody({
       ownerUserId: u.id, artifactId: "art3cta", body: "# signin-only",
@@ -385,18 +398,6 @@ describe("GET /p/:token — signin mode", () => {
     const cookie = `oyster_session=${u.sessionToken}`;
     const res = await call(getReq(`/p/${shareToken}`, { cookie }));
     expect(res.status).toBe(200);
-    expect(await res.text()).not.toContain("Publish AI content with oyster.to");
-  });
-});
-
-describe("GET /p/:token — CTA in open mode", () => {
-  it("open viewer shows 'Publish AI content' CTA", async () => {
-    const u = await seedUser();
-    const { shareToken } = await seedActiveOpenWithBody({
-      ownerUserId: u.id, artifactId: "art_cta_open", body: "# open",
-    });
-    const res = await call(getReq(`/p/${shareToken}`));
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Publish AI content with oyster.to");
+    expect(await res.text()).toContain("Published with");
   });
 });

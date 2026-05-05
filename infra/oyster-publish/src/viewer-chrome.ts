@@ -2,23 +2,20 @@
 // Spec: docs/superpowers/specs/2026-05-03-r5-viewer-design.md (Chrome).
 // Dark-mode brand surface (matches oyster.to and the Oyster app):
 // navy background with subtle purple gradient bloom, light copy in
-// Space Grotesk, brand-purple accent on links. Bottom strip carries
-// the Oyster brand mark on the left and (mode-aware) CTA on the right.
-//   - open viewer (action: "Publish AI content with oyster.to")
-//   - password viewer post-unlock (action: same)
-//   - signin viewer post-auth (action: omitted)
+// Space Grotesk, brand-purple accent on links. Bottom strip is a
+// single centered "Published with oyster.to" line with the brand
+// mark — same on every mode (open / password post-unlock / signin
+// post-auth).
 
 export interface ChromeOpts {
   title: string;
   bodyHtml: string;
   cssExtra?: string;        // e.g. iframe sizing override
-  showActionSlot?: boolean; // default true; password viewer + open viewer get true; signin viewer gets false
+  showActionSlot?: boolean; // retained for caller compat; the footer copy is identical across modes now
 }
 
 export function renderChromePage(opts: ChromeOpts): string {
-  const action = opts.showActionSlot === false
-    ? `<span></span>` // keeps space-between balance when CTA hidden
-    : `<a class="cta" href="https://oyster.to" target="_blank" rel="noopener"><span class="cta-text">Publish AI content with oyster.to</span><span class="cta-text-short">Publish with oyster.to</span></a>`;
+  void opts.showActionSlot; // accepted for back-compat; footer is mode-invariant in v2 chrome
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -94,50 +91,31 @@ export function renderChromePage(opts: ChromeOpts): string {
     padding: 0.6rem 1.25rem;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    justify-content: center;
+    gap: 0.55rem;
     height: 48px;
     font-size: 0.85rem;
+    color: var(--muted);
     line-height: 1;
   }
-  footer .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.55rem;
-    color: var(--accent);
-    text-decoration: none;
-    transition: color 0.15s ease;
-  }
-  footer .brand:hover { color: var(--accent-hover); }
   footer .brand-mark {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     display: block;
     flex-shrink: 0;
   }
-  footer .brand-name {
-    font-family: 'Barlow', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    font-weight: 700;
-    font-size: 0.95rem;
-    letter-spacing: -0.005em;
-  }
-  footer .cta {
+  footer a {
     color: var(--accent);
-    text-decoration: none;
-    font-weight: 500;
-    white-space: nowrap;
+    text-decoration: underline;
+    text-underline-offset: 3px;
     transition: color 0.15s ease;
   }
-  footer .cta:hover { color: var(--accent-hover); }
-  footer .cta-text-short { display: none; }
+  footer a:hover { color: var(--accent-hover); }
 
   @media (max-width: 540px) {
     main { padding: 1.5rem 1rem; }
     main h1 { font-size: 1.65rem; }
-    footer { padding: 0.55rem 0.9rem; height: 44px; font-size: 0.8rem; gap: 0.5rem; }
-    footer .brand-name { display: none; }
-    footer .cta-text { display: none; }
-    footer .cta-text-short { display: inline; }
+    footer { padding: 0.55rem 0.9rem; height: 44px; font-size: 0.8rem; }
   }
 
   ${opts.cssExtra ?? ""}
@@ -145,11 +123,8 @@ export function renderChromePage(opts: ChromeOpts): string {
 </head><body>
 <main>${opts.bodyHtml}</main>
 <footer>
-  <a class="brand" href="https://oyster.to" target="_blank" rel="noopener" aria-label="Oyster">
-    <img class="brand-mark" src="https://oyster.to/logo.png" alt="" width="20" height="20">
-    <span class="brand-name">Oyster</span>
-  </a>
-  ${action}
+  <img class="brand-mark" src="https://oyster.to/logo.png" alt="" width="18" height="18" aria-hidden="true">
+  <span>Published with <a href="https://oyster.to" target="_blank" rel="noopener">oyster.to</a></span>
 </footer>
 </body></html>`;
 }
