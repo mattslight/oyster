@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 export interface AuthUser {
   id: string;
   email: string;
+  tier: string;
 }
 
 export interface AuthState {
@@ -31,6 +32,7 @@ interface PersistedAuth {
   user_id: string;
   email: string;
   signed_in_at: number;
+  tier?: string;
 }
 
 interface DeviceInitResponse {
@@ -107,9 +109,22 @@ export class AuthService {
         catch (err) { console.error("[auth] failed to delete auth.json:", err); }
         return;
       }
-      // 200 or any other status: leave state untouched. 5xx / network
-      // errors are handled the same as success here — we trust the disk
-      // cache until the Worker tells us otherwise (401).
+      if (res.status === 200 && this.state.user) {
+        // Refresh tier from cloud — covers a free→pro upgrade since this
+        // device last signed in. ID + email are immutable so we keep them.
+        try {
+          const body = await res.json() as { id?: string; email?: string; tier?: string };
+          if (typeof body.tier === "string" && body.tier !== this.state.user.tier) {
+            this.setState({
+              ...this.state,
+              user: { ...this.state.user, tier: body.tier },
+            });
+            this.persistToDisk();
+          }
+        } catch { /* response wasn't JSON; ignore */ }
+      }
+      // 5xx / network errors fall through silently — trust the disk cache
+      // until the Worker tells us otherwise (401).
     } catch (err) {
       console.error("[auth] startup whoami probe failed (offline?); keeping cached session:", err);
     }
@@ -160,7 +175,7 @@ export class AuthService {
         return;
       }
       this.state = {
-        user: { id: parsed.user_id, email: parsed.email },
+        user: { id: parsed.user_id, email: parsed.email, tier: parsed.tier ?? "free" },
         sessionToken: parsed.session_token,
         signedInAt: parsed.signed_in_at ?? null,
       };
@@ -175,6 +190,7 @@ export class AuthService {
       session_token: this.state.sessionToken,
       user_id: this.state.user.id,
       email: this.state.user.email,
+      tier: this.state.user.tier,
       signed_in_at: this.state.signedInAt ?? Date.now(),
     };
     try {

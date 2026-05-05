@@ -155,7 +155,9 @@ describe("POST /api/publish/upload — first publish (open mode)", () => {
 
 describe("POST /api/publish/upload — re-publish (upsert)", () => {
   it("keeps share_token, refreshes bytes + mode, preserves published_at", async () => {
-    const u = await seedUser();
+    // Pro user — second publish flips to password mode (free-tier-only test fixture
+    // would be rejected with 402 pro_required).
+    const u = await seedUser({ tier: "pro" });
     const firstBody = "v1";
     const first = await call(uploadRequest({
       cookieHeader: authHeader(u.sessionToken),
@@ -322,6 +324,59 @@ describe("POST /api/publish/upload — cross-owner non-conflict", () => {
       "SELECT owner_user_id FROM published_artifacts WHERE artifact_id = ? AND unpublished_at IS NULL ORDER BY owner_user_id"
     ).bind("shared_id").all<{ owner_user_id: string }>();
     expect(rows.results.map(r => r.owner_user_id)).toEqual(["user_a", "user_b"]);
+  });
+});
+
+describe("POST /api/publish/upload — tier mode gating", () => {
+  it("rejects free-tier password publish with 402 pro_required", async () => {
+    const u = await seedUser({ tier: "free" });
+    const body = "secret";
+    const res = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({
+        artifact_id: "art_pwd", artifact_kind: "notes", mode: "password",
+        password_hash: "pbkdf2$100000$x$y",
+      }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    expect(res.status).toBe(402);
+    const json = await res.json() as any;
+    expect(json.error).toBe("pro_required");
+    expect(json.required_tier).toBe("pro");
+    expect(json.mode).toBe("password");
+  });
+
+  it("allows free-tier open + signin modes", async () => {
+    const u = await seedUser({ tier: "free" });
+    for (const mode of ["open", "signin"] as const) {
+      const body = `body-${mode}`;
+      const res = await call(uploadRequest({
+        cookieHeader: authHeader(u.sessionToken),
+        metadata: metadataHeader({ artifact_id: `art_${mode}`, artifact_kind: "notes", mode }),
+        contentType: "text/plain",
+        contentLength: String(body.length),
+        body,
+      }));
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it("allows pro-tier password publish", async () => {
+    const u = await seedUser({ tier: "pro" });
+    const body = "shh";
+    const res = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({
+        artifact_id: "art_pro_pwd", artifact_kind: "notes", mode: "password",
+        password_hash: "pbkdf2$100000$x$y",
+      }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    expect(res.status).toBe(200);
   });
 });
 

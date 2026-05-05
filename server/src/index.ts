@@ -276,13 +276,39 @@ const publishService = createPublishService({
   },
   currentUser: () => {
     const u = authService.getState().user;
-    return u ? { id: u.id, email: u.email } : null;
+    return u ? { id: u.id, email: u.email, tier: u.tier } : null;
   },
   sessionToken: () => authService.getState().sessionToken,
   workerBase: WORKER_BASE,
   hashPassword,
   fetch,
 });
+
+// Refresh the local publish-state mirror whenever the user transitions into
+// signed-in. Covers fresh-device sign-in, re-sign-in after sign-out, and the
+// boot path where validatePersistedSession() finds an already-valid session.
+authService.onAuthChanged((state) => {
+  if (!state.user || !state.sessionToken) return;
+  void publishService.backfillPublications().then((result) => {
+    if (result.mirrored > 0) {
+      console.log(`[publish] backfilled ${result.mirrored} live publication${result.mirrored === 1 ? "" : "s"}` +
+        (result.skipped ? ` (skipped ${result.skipped} — no matching local artefact)` : ""));
+      broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+    }
+  });
+});
+// Boot path: if loadFromDisk() rehydrated a signed-in user, validatePersistedSession
+// won't fire onAuthChanged unless the tier changes. Run a one-shot backfill so a
+// returning user's pill matches cloud immediately.
+if (authService.getState().user) {
+  void publishService.backfillPublications().then((result) => {
+    if (result.mirrored > 0) {
+      console.log(`[publish] startup-backfilled ${result.mirrored} live publication${result.mirrored === 1 ? "" : "s"}` +
+        (result.skipped ? ` (skipped ${result.skipped} — no matching local artefact)` : ""));
+      broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+    }
+  });
+}
 
 // ── Initialize subsystems ──
 

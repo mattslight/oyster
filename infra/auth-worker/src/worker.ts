@@ -94,7 +94,7 @@ function parseCookies(req: Request): Record<string, string> {
   return out;
 }
 
-interface UserRow { id: string; email: string }
+interface UserRow { id: string; email: string; tier: string }
 interface SessionRow { id: string; user_id: string; expires_at: number; revoked_at: number | null }
 
 async function findOrCreateUser(db: D1Database, email: string, now: number): Promise<UserRow> {
@@ -117,16 +117,16 @@ async function findOrCreateUser(db: D1Database, email: string, now: number): Pro
 async function getSession(db: D1Database, sessionId: string, now: number): Promise<{ session: SessionRow; user: UserRow } | null> {
   const row = await db
     .prepare(
-      `SELECT s.id, s.user_id, s.expires_at, s.revoked_at, u.email
+      `SELECT s.id, s.user_id, s.expires_at, s.revoked_at, u.email, u.tier
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.id = ? AND s.revoked_at IS NULL AND s.expires_at > ?`
     )
     .bind(sessionId, now)
-    .first<SessionRow & { email: string }>();
+    .first<SessionRow & { email: string; tier: string }>();
   if (!row) return null;
   return {
     session: { id: row.id, user_id: row.user_id, expires_at: row.expires_at, revoked_at: row.revoked_at },
-    user: { id: row.user_id, email: row.email },
+    user: { id: row.user_id, email: row.email, tier: row.tier ?? "free" },
   };
 }
 
@@ -605,14 +605,14 @@ async function handleDevicePoll(env: Env, deviceCode: string): Promise<Response>
   // UPDATE+meta.changes is the gate.
   const candidate = await env.DB
     .prepare(
-      `SELECT d.session_id, d.claimed_at, d.expires_at, u.id AS user_id, u.email
+      `SELECT d.session_id, d.claimed_at, d.expires_at, u.id AS user_id, u.email, u.tier
        FROM device_codes d
        LEFT JOIN sessions s ON s.id = d.session_id AND s.revoked_at IS NULL AND s.expires_at > ?
        LEFT JOIN users u ON u.id = s.user_id
        WHERE d.device_code = ?`
     )
     .bind(now, deviceCode)
-    .first<{ session_id: string | null; claimed_at: number | null; expires_at: number; user_id: string | null; email: string | null }>();
+    .first<{ session_id: string | null; claimed_at: number | null; expires_at: number; user_id: string | null; email: string | null; tier: string | null }>();
 
   if (!candidate) return json({ error: "unknown_device_code" }, 410, NO_STORE);
   if (candidate.claimed_at !== null) return json({ error: "already_claimed" }, 410, NO_STORE);
@@ -635,7 +635,10 @@ async function handleDevicePoll(env: Env, deviceCode: string): Promise<Response>
   }
 
   return json(
-    { session_token: candidate.session_id, user: { id: candidate.user_id, email: candidate.email } },
+    {
+      session_token: candidate.session_id,
+      user: { id: candidate.user_id, email: candidate.email, tier: candidate.tier ?? "free" },
+    },
     200,
     NO_STORE,
   );
@@ -672,7 +675,7 @@ async function handleWhoami(req: Request, env: Env, host: string): Promise<Respo
   if (!lookup) {
     return json({ error: "unauthenticated" }, 401, { "set-cookie": clearedCookie(host), ...NO_STORE });
   }
-  return json({ id: lookup.user.id, email: lookup.user.email }, 200, NO_STORE);
+  return json({ id: lookup.user.id, email: lookup.user.email, tier: lookup.user.tier }, 200, NO_STORE);
 }
 
 async function handleGithubStart(req: Request, env: Env, url: URL): Promise<Response> {

@@ -4,11 +4,20 @@
 import type { PublishMetadata } from "./types";
 
 export const CAPS = {
-  free: { max_active: 5, max_size_bytes: 10 * 1024 * 1024 },
-  // pro: { … }   ← lands in 0.8.0+
+  free: {
+    max_active: 5,
+    max_size_bytes: 10 * 1024 * 1024,
+    allowed_modes: ["open", "signin"] as readonly PublishMode[],
+  },
+  pro: {
+    max_active: 100,
+    max_size_bytes: 100 * 1024 * 1024,
+    allowed_modes: ["open", "password", "signin"] as readonly PublishMode[],
+  },
 } as const;
 
 export type Tier = keyof typeof CAPS;
+export type PublishMode = "open" | "password" | "signin";
 
 export function generateShareToken(): string {
   const bytes = new Uint8Array(24);

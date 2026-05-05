@@ -6,6 +6,7 @@ import type Database from "better-sqlite3";
 export interface PublishUser {
   id: string;
   email: string;
+  tier: string;
 }
 
 export interface PublishServiceDeps {
@@ -50,14 +51,22 @@ export class PublishError extends Error {
   }
 }
 
-// Free-tier publish ceiling. Worker is authoritative (CAPS in publish-helpers.ts);
-// this is a local pre-check so we don't proxy bytes that will bounce. Tier-aware
-// lookup lands when Pro arrives in 0.8.0.
-const FREE_MAX_SIZE_BYTES = 10 * 1024 * 1024;
+// Tier-keyed pre-checks. Worker is canonical (CAPS in publish-helpers.ts);
+// these mirror the Worker's rules so we don't proxy bytes that will bounce
+// and can give the UI a fast 402 / 413 without a round trip. Keep in sync
+// with infra/oyster-publish/src/publish-helpers.ts.
+const TIER_LIMITS: Record<string, { maxSizeBytes: number; allowedModes: ReadonlySet<string> }> = {
+  free: { maxSizeBytes: 10 * 1024 * 1024,  allowedModes: new Set(["open", "signin"]) },
+  pro:  { maxSizeBytes: 100 * 1024 * 1024, allowedModes: new Set(["open", "password", "signin"]) },
+};
+function tierLimits(tier: string) {
+  return TIER_LIMITS[tier] ?? TIER_LIMITS.free!;
+}
 
 export interface PublishService {
   publishArtifact(args: PublishArgs): Promise<PublishResult>;
   unpublishArtifact(args: { artifact_id: string }): Promise<UnpublishResult>;
+  backfillPublications(): Promise<{ mirrored: number; skipped: number }>;
 }
 
 interface ArtifactRow {
@@ -88,15 +97,24 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
         throw new PublishError(400, "password_required", "Password mode requires a non-empty password.");
       }
 
+      // Tier mode gating — worker is canonical, this mirrors the rule so the
+      // UI gets a fast 402 + Pro upsell without bouncing through Cloudflare.
+      const limits = tierLimits(user.tier);
+      if (!limits.allowedModes.has(args.mode)) {
+        throw new PublishError(402, "pro_required",
+          "Password-protected shares are a Pro feature.",
+          { required_tier: "pro", mode: args.mode });
+      }
+
       const passwordHash = args.mode === "password" ? await deps.hashPassword(args.password!) : undefined;
       const bytes = await deps.readArtifactBytes(args.artifact_id);
 
       // Local pre-check: skip the round trip when we already know the Worker
       // will reject with 413. Worker remains authoritative.
-      if (bytes.byteLength > FREE_MAX_SIZE_BYTES) {
+      if (bytes.byteLength > limits.maxSizeBytes) {
         throw new PublishError(413, "artifact_too_large",
-          "Free tier allows published artefacts up to 10 MB.",
-          { limit_bytes: FREE_MAX_SIZE_BYTES });
+          `${user.tier === "pro" ? "Pro" : "Free"} tier allows published artefacts up to ${Math.floor(limits.maxSizeBytes / (1024 * 1024))} MB.`,
+          { limit_bytes: limits.maxSizeBytes });
       }
 
       const meta = {
@@ -182,6 +200,76 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       ).run(result.unpublished_at, artifact_id);
 
       return result;
+    },
+
+    async backfillPublications() {
+      // Pull this user's currently-live publications from the cloud and mirror
+      // them into the local artifacts table. Necessary on a fresh device, after
+      // a worktree wipe, or whenever the local mirror has drifted from the
+      // cloud (the original publish UPDATE only writes to whichever local DB
+      // happened to be running at publish time).
+      //
+      // Live-only — tombstones add bytes for no surface benefit (the published
+      // filter excludes them anyway and the worker re-mints tokens on
+      // re-publish, so old unpublished_at rows aren't load-bearing).
+      const user = deps.currentUser();
+      const token = deps.sessionToken();
+      if (!user || !token) return { mirrored: 0, skipped: 0 };
+
+      let res: Response;
+      try {
+        res = await deps.fetch(`${deps.workerBase}/api/publish/mine`, {
+          headers: { Cookie: `oyster_session=${token}` },
+        });
+      } catch (err) {
+        // Network failure — leave local state alone, no point throwing
+        // through to the caller (auth-service or boot wiring).
+        console.warn("[publish] backfill fetch failed:", err);
+        return { mirrored: 0, skipped: 0 };
+      }
+      if (!res.ok) {
+        console.warn(`[publish] backfill non-ok ${res.status}`);
+        return { mirrored: 0, skipped: 0 };
+      }
+
+      type Row = {
+        share_token: string;
+        artifact_id: string;
+        artifact_kind: string;
+        mode: "open" | "password" | "signin";
+        content_type: string;
+        size_bytes: number;
+        published_at: number;
+        updated_at: number;
+      };
+      const body = await res.json().catch(() => null) as { publications?: Row[] } | null;
+      const rows = body?.publications ?? [];
+
+      // UPDATE rather than UPSERT — we don't want to fabricate artefact rows
+      // that don't exist locally (they'd be orphans pointing at no bytes).
+      // If a local row appears later (scan, sync) we can re-run backfill.
+      const stmt = deps.db.prepare(
+        `UPDATE artifacts
+            SET owner_id = COALESCE(owner_id, ?),
+                share_token = ?,
+                share_mode = ?,
+                published_at = ?,
+                share_updated_at = ?,
+                unpublished_at = NULL
+          WHERE id = ?`
+      );
+
+      let mirrored = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        const result = stmt.run(
+          user.id, row.share_token, row.mode,
+          row.published_at, row.updated_at, row.artifact_id,
+        );
+        if (result.changes > 0) mirrored++;
+        else skipped++;
+      }
+      return { mirrored, skipped };
     },
   };
 }

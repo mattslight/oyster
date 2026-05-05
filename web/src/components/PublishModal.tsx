@@ -22,7 +22,9 @@ type AuthState =
   | { status: "loading" }
   | { status: "signed-out" }
   | { status: "signing-in"; expiresAt: number }
-  | { status: "signed-in"; email: string };
+  | { status: "signed-in"; email: string; tier: string };
+
+const PRICING_URL = "https://oyster.to/pricing";
 
 export function PublishModal({ artifact, onClose }: Props) {
   const [mode, setMode] = useState<Mode>("open");
@@ -57,9 +59,13 @@ export function PublishModal({ artifact, onClose }: Props) {
       try {
         const res = await fetch("/api/auth/whoami");
         if (!res.ok) throw new Error(String(res.status));
-        const body = (await res.json()) as { user: { email: string } | null };
+        const body = (await res.json()) as { user: { email: string; tier?: string } | null };
         if (cancelled) return;
-        setAuth(body.user ? { status: "signed-in", email: body.user.email } : { status: "signed-out" });
+        setAuth(
+          body.user
+            ? { status: "signed-in", email: body.user.email, tier: body.user.tier ?? "free" }
+            : { status: "signed-out" },
+        );
       } catch {
         if (cancelled) return;
         setAuth({ status: "signed-out" });
@@ -208,7 +214,10 @@ export function PublishModal({ artifact, onClose }: Props) {
     }
   }
 
+  const isPro = auth.status === "signed-in" && auth.tier === "pro";
+
   function handleModeChange(next: Mode) {
+    if (next === "password" && !isPro) return;  // Pro-gated; UI also disables the radio
     setMode(next);
     if (next === "open") setPassword("");  // see spec: switching to Open clears password
   }
@@ -239,10 +248,10 @@ export function PublishModal({ artifact, onClose }: Props) {
       try {
         const res = await fetch("/api/auth/whoami");
         if (!res.ok) return;
-        const body = (await res.json()) as { user: { email: string } | null };
+        const body = (await res.json()) as { user: { email: string; tier?: string } | null };
         if (cancelled) return;
         if (body.user) {
-          setAuth({ status: "signed-in", email: body.user.email });
+          setAuth({ status: "signed-in", email: body.user.email, tier: body.user.tier ?? "free" });
         } else if (Date.now() > auth.expiresAt) {
           setAuth({ status: "signed-out" });
         }
@@ -367,10 +376,24 @@ export function PublishModal({ artifact, onClose }: Props) {
                 <span className="publish-modal-mode__radio" />
                 <span><strong>Open</strong> · <span style={{ color: "#94a3b8" }}>anyone with the link</span></span>
               </label>
-              <label className={`publish-modal-mode${mode === "password" ? " publish-modal-mode--selected" : ""}`}>
-                <input type="radio" name="publish-mode" value="password" checked={mode === "password"} onChange={() => handleModeChange("password")} style={{ display: "none" }} />
+              <label
+                className={`publish-modal-mode${mode === "password" ? " publish-modal-mode--selected" : ""}${!isPro ? " publish-modal-mode--locked" : ""}`}
+                title={!isPro ? "Password-protected shares are a Pro feature" : undefined}
+              >
+                <input type="radio" name="publish-mode" value="password" checked={mode === "password"} disabled={!isPro} onChange={() => handleModeChange("password")} style={{ display: "none" }} />
                 <span className="publish-modal-mode__radio" />
-                <span><strong>Password</strong> · <span style={{ color: "#94a3b8" }}>link + password</span></span>
+                <span>
+                  <strong>Password</strong> · <span style={{ color: "#94a3b8" }}>link + password</span>
+                  {!isPro && (
+                    <a
+                      className="publish-modal-pro-pill"
+                      href={PRICING_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    >Pro</a>
+                  )}
+                </span>
               </label>
             </div>
 

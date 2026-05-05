@@ -20,6 +20,10 @@ export default {
       return handlePublishUpload(req, env);
     }
 
+    if (url.pathname === "/api/publish/mine" && req.method === "GET") {
+      return handlePublishMine(req, env);
+    }
+
     if (url.pathname.startsWith("/api/publish/") && req.method === "DELETE") {
       const token = url.pathname.slice("/api/publish/".length);
       return handlePublishDelete(req, env, token);
@@ -80,14 +84,22 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
   const contentLength = Number(lenHeader);
   if (!Number.isSafeInteger(contentLength)) return jsonError(411, "content_length_required");
 
-  // Step 5: tier + size cap. Use Object.hasOwn so prototype keys (toString etc.)
+  // Step 5: tier + cap checks. Use Object.hasOwn so prototype keys (toString etc.)
   // can't masquerade as a tier and produce an undefined cap.
   const tier = (Object.hasOwn(CAPS, user.tier) ? user.tier : "free") as Tier;
   const cap = CAPS[tier];
+
+  // Mode entitlement: password mode is gated to Pro; open + signin are universal.
+  if (!cap.allowed_modes.includes(meta.mode)) {
+    return jsonError(402, "pro_required",
+      "Password-protected shares are a Pro feature.",
+      { required_tier: "pro", mode: meta.mode });
+  }
+
   if (contentLength > cap.max_size_bytes) {
-    return jsonError(413, "artifact_too_large", "Free tier allows published artefacts up to 10 MB.", {
-      limit_bytes: cap.max_size_bytes,
-    });
+    return jsonError(413, "artifact_too_large",
+      `${tier === "pro" ? "Pro" : "Free"} tier allows published artefacts up to ${Math.floor(cap.max_size_bytes / (1024 * 1024))} MB.`,
+      { limit_bytes: cap.max_size_bytes });
   }
 
   // Step 6: find-or-claim final share_token.
@@ -114,7 +126,7 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
     const current = countRow?.n ?? 0;
     if (current >= cap.max_active) {
       return jsonError(402, "publish_cap_exceeded",
-        `Free tier allows ${cap.max_active} active published artefacts. Unpublish one first.`,
+        `${tier === "pro" ? "Pro" : "Free"} tier allows ${cap.max_active} active published artefacts. Unpublish one first.`,
         { current, limit: cap.max_active });
     }
 
@@ -189,7 +201,7 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
 
     if (putError.message === "artifact_too_large") {
       return jsonError(413, "artifact_too_large",
-        "Free tier allows published artefacts up to 10 MB.",
+        `${tier === "pro" ? "Pro" : "Free"} tier allows published artefacts up to ${Math.floor(cap.max_size_bytes / (1024 * 1024))} MB.`,
         { limit_bytes: cap.max_size_bytes });
     }
     console.error("[publish] R2 put failed:", putError);
@@ -238,6 +250,35 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
       updated_at: publishedAt,
     });
   }
+}
+
+async function handlePublishMine(req: Request, env: Env): Promise<Response> {
+  // Returns this signed-in user's currently-live publications. Used by the local
+  // server to backfill its SQLite mirror after sign-in (e.g. on a fresh device,
+  // or when the worktree's userland was wiped). Live-only — tombstones aren't
+  // load-bearing for the surface and the worker re-mints tokens on re-publish.
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+
+  type Row = {
+    share_token: string;
+    artifact_id: string;
+    artifact_kind: string;
+    mode: string;
+    content_type: string;
+    size_bytes: number;
+    published_at: number;
+    updated_at: number;
+  };
+  const rows = await env.DB.prepare(
+    `SELECT share_token, artifact_id, artifact_kind, mode, content_type,
+            size_bytes, published_at, updated_at
+       FROM published_artifacts
+      WHERE owner_user_id = ? AND unpublished_at IS NULL
+      ORDER BY published_at DESC`
+  ).bind(user.id).all<Row>();
+
+  return jsonOk({ publications: rows.results ?? [] });
 }
 
 async function handlePublishDelete(req: Request, env: Env, shareToken: string): Promise<Response> {
