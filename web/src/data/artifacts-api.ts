@@ -1,6 +1,6 @@
 export type { Artifact, ArtifactKind, ArtifactStatus, IconStatus, SessionJoinedForArtifact } from "../../../shared/types";
 import type { Artifact, SessionJoinedForArtifact } from "../../../shared/types";
-import { getJson, patchJson, postJson, postEmpty } from "./http";
+import { getJson, patchJson, postJson, postEmpty, del } from "./http";
 
 export async function fetchArtifacts(): Promise<Artifact[]> {
   return getJson<Artifact[]>("/api/artifacts");
@@ -44,6 +44,14 @@ export async function uninstallPlugin(id: string): Promise<void> {
 
 export async function regenerateIcon(id: string): Promise<void> {
   return postEmpty(`/api/artifacts/${encodeURIComponent(id)}/icon/regenerate`);
+}
+
+export async function pinArtifact(id: string): Promise<{ id: string; pinnedAt: number }> {
+  return postJson<{ id: string; pinnedAt: number }>(`/api/artifacts/${encodeURIComponent(id)}/pin`);
+}
+
+export async function unpinArtifact(id: string): Promise<void> {
+  return del(`/api/artifacts/${encodeURIComponent(id)}/pin`);
 }
 
 export async function renameGroup(

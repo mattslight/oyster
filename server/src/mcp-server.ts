@@ -882,5 +882,57 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
   );
 
+  // ── pin_artifact ──
+
+  tool(
+    "pin_artifact",
+    "Pin an artefact so it sorts to the top of its space, ahead of folder tiles and other artefacts. Pinned artefacts are ordered by pin time, most recent first. Filters still apply — pinning does not override filter visibility. Calling pin_artifact on an already-pinned artefact bumps it to the most-recently-pinned slot.",
+    {
+      artifact_id: z.string().describe("The local artefact id to pin."),
+    },
+    async ({ artifact_id }) => {
+      try {
+        const row = deps.store.getById(artifact_id);
+        if (!row) throw new Error(`Artifact "${artifact_id}" not found`);
+        if (row.removed_at) throw new Error(`Artifact "${artifact_id}" is archived; restore it before pinning.`);
+        const pinnedAt = Date.now();
+        deps.store.pin(artifact_id, pinnedAt);
+        deps.broadcastUiEvent({
+          version: 1,
+          command: "artifact_changed",
+          payload: { id: artifact_id },
+        });
+        return withStructured({ id: artifact_id, pinnedAt }, { id: artifact_id, pinnedAt });
+      } catch (err) {
+        return publishErrorReturn(err);
+      }
+    },
+  );
+
+  // ── unpin_artifact ──
+
+  tool(
+    "unpin_artifact",
+    "Remove the pin from an artefact. Idempotent: calling on an unpinned artefact is a no-op.",
+    {
+      artifact_id: z.string().describe("The local artefact id to unpin."),
+    },
+    async ({ artifact_id }) => {
+      try {
+        const row = deps.store.getById(artifact_id);
+        if (!row) throw new Error(`Artifact "${artifact_id}" not found`);
+        deps.store.unpin(artifact_id);
+        deps.broadcastUiEvent({
+          version: 1,
+          command: "artifact_changed",
+          payload: { id: artifact_id },
+        });
+        return withStructured({ id: artifact_id, pinnedAt: null }, { id: artifact_id, pinnedAt: null });
+      } catch (err) {
+        return publishErrorReturn(err);
+      }
+    },
+  );
+
   return server;
 }

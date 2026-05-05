@@ -457,6 +457,29 @@ body {
   height: 11px;
 }
 
+/* ── Pin glyph (#387) — top-left corner badge for pinned artefacts.
+   Matches source-glyph's pill style; gold accent so the pin reads as a
+   user action distinct from the system-driven source link. */
+.pin-glyph {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fbbf24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.pin-glyph svg {
+  width: 11px;
+  height: 11px;
+  transform: rotate(45deg);
+}
+
 /* ── Status dot (app artifacts) ── */
 .status-dot {
   width: 10px;

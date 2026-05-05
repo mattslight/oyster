@@ -33,7 +33,7 @@ Browser → http://localhost:4444
 
 **Artefacts** — typed outputs on the surface (app, notes, diagram, deck, wireframe, table, map). Registered in SQLite, files in `~/Oyster/spaces/<space-id>/` (user work) or `~/Oyster/apps/` (installed bundles). `source_origin` tracks provenance: `manual` | `discovered` | `ai_generated`.
 
-**MCP** — the server exposes 19 tools at `/mcp/` (15 artifact/space + 4 memory). Any MCP client (Claude Code, Cursor, etc.) can connect and control the surface.
+**MCP** — the server exposes 21 tools at `/mcp/` (17 artifact/space + 4 memory). Any MCP client (Claude Code, Cursor, etc.) can connect and control the surface.
 
 ## Key Files
 

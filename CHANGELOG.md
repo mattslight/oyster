@@ -12,6 +12,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Public viewer for shared artefacts.** Visiting a published share URL now renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, and inline images — with three access modes: open links resolve immediately, password-protected links unlock once for 24 hours per browser, and sign-in-required links route through the standard sign-in flow and land back on the share. ([#316](https://github.com/mattslight/oyster/issues/316))
 - **Filter Home to your published artefacts.** A new `published` pill in the Artefacts header narrows the grid to currently-live shares; clicking it before you've published anything lands on a quick how-to instead of an empty grid. ([#374](https://github.com/mattslight/oyster/issues/374))
 - **Unpublish from the chat bar.** `/u <artefact>` mirrors `/p` — fuzzy-matches your live publications and retires the picked one in one keystroke. ([#388](https://github.com/mattslight/oyster/issues/388))
+- **Pin artefacts to the top.** Right-click any artefact for `Pin`; pinned items sort above folder tiles and other artefacts in the active scope, most-recent pin first, with a gold pin glyph in the corner. Right-click again for `Unpin`. New `pinned` filter chip on Home to focus on just the pinned set. Filters still apply — pinning doesn't override filter visibility. ([#387](https://github.com/mattslight/oyster/issues/387))
 
 ### Changed
 

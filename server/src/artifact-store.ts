@@ -25,11 +25,12 @@ export interface ArtifactRow {
   published_at: number | null;
   share_updated_at: number | null;
   unpublished_at: number | null;
+  pinned_at: number | null;
 }
 
 // ── Store interface ──
 
-export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "source_id" | "share_token" | "share_mode" | "share_password_hash" | "published_at" | "share_updated_at" | "unpublished_at"> & {
+export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "source_id" | "share_token" | "share_mode" | "share_password_hash" | "published_at" | "share_updated_at" | "unpublished_at" | "pinned_at"> & {
   source_origin?: "manual" | "discovered" | "ai_generated";
   source_ref?: string | null;
   source_id?: string | null;
@@ -48,6 +49,8 @@ export interface ArtifactStore {
   remove(id: string): void;
   removeBySourceId(sourceId: string): number;
   delete(id: string): void;
+  pin(id: string, pinnedAt: number): void;
+  unpin(id: string): void;
   getAllArchived(): ArtifactRow[];
   getArchivedFilePaths(): Set<string>;
 }
@@ -149,6 +152,14 @@ export class SqliteArtifactStore implements ArtifactStore {
 
   remove(id: string): void {
     this.db.prepare("UPDATE artifacts SET removed_at = datetime('now') WHERE id = ?").run(id);
+  }
+
+  pin(id: string, pinnedAt: number): void {
+    this.db.prepare("UPDATE artifacts SET pinned_at = ?, updated_at = datetime('now') WHERE id = ?").run(pinnedAt, id);
+  }
+
+  unpin(id: string): void {
+    this.db.prepare("UPDATE artifacts SET pinned_at = NULL, updated_at = datetime('now') WHERE id = ?").run(id);
   }
 
   // Bulk soft-delete every live artifact tied to a given source. Used by the

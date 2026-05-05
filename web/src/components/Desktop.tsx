@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Archive } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
-import { archiveArtifact, archiveGroup, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, updateArtifact } from "../data/artifacts-api";
+import { archiveArtifact, archiveGroup, pinArtifact, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, unpinArtifact, updateArtifact } from "../data/artifacts-api";
 import { unpublishArtifact } from "../data/publish-api";
 import { ArtifactIcon } from "./ArtifactIcon";
 import { ConfirmModal } from "./ConfirmModal";
@@ -160,15 +160,27 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
     });
   }
 
-  // ── Display items — groups first (alpha), then ungrouped (alpha) ──
+  // ── Display items — pinned (most-recent first), then groups (alpha), then ungrouped (alpha) ──
+  // Pinned artefacts (#387) escape their folder bucket so they always sit at
+  // the top, regardless of groupName.
   const displayItems = useMemo((): DisplayItem[] => {
-    const sorted = [...artifacts].sort((a, b) => a.label.localeCompare(b.label));
+    const pinned = artifacts
+      .filter((a) => a.pinnedAt != null)
+      .sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0));
+    const rest = artifacts
+      .filter((a) => a.pinnedAt == null)
+      .sort((a, b) => a.label.localeCompare(b.label));
+    const pinnedItems: DisplayItem[] = pinned.map((a) => ({ type: "artifact", key: a.id, artifact: a }));
+
     if (isMetaSpace || flatten) {
-      return sorted.map((a): DisplayItem => ({ type: "artifact", key: a.id, artifact: a }));
+      return [
+        ...pinnedItems,
+        ...rest.map((a): DisplayItem => ({ type: "artifact", key: a.id, artifact: a })),
+      ];
     }
     const groupMap = new Map<string, Artifact[]>();
     const ungrouped: Artifact[] = [];
-    for (const a of sorted) {
+    for (const a of rest) {
       if (a.groupName) {
         const g = groupMap.get(a.groupName) ?? [];
         g.push(a);
@@ -177,7 +189,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
         ungrouped.push(a);
       }
     }
-    const items: DisplayItem[] = [];
+    const items: DisplayItem[] = [...pinnedItems];
     for (const [name, arts] of [...groupMap.entries()].sort(([a], [b]) => a.localeCompare(b))) {
       items.push({ type: "group", key: `group:${name}`, name, artifacts: arts });
     }
@@ -285,6 +297,33 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
               <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
+              {!isArchivedView && artifactCtx.artifact.status !== "generating" && (
+                artifactCtx.artifact.pinnedAt != null ? (
+                  <button
+                    className="space-ctx-item"
+                    onClick={async () => {
+                      const a = artifactCtx.artifact;
+                      setArtifactCtx(null);
+                      try { await unpinArtifact(a.id); }
+                      catch (err) { setAlertState({ open: true, title: "Unpin failed", body: (err as Error).message }); }
+                    }}
+                  >
+                    Unpin
+                  </button>
+                ) : (
+                  <button
+                    className="space-ctx-item"
+                    onClick={async () => {
+                      const a = artifactCtx.artifact;
+                      setArtifactCtx(null);
+                      try { await pinArtifact(a.id); }
+                      catch (err) { setAlertState({ open: true, title: "Pin failed", body: (err as Error).message }); }
+                    }}
+                  >
+                    Pin
+                  </button>
+                )
+              )}
               {!isArchivedView && !artifactCtx.artifact.builtin && !artifactCtx.artifact.plugin && artifactCtx.artifact.status !== "generating" && onArtifactPublish && (
                 artifactCtx.artifact.publication?.unpublishedAt === null ? (
                   <>

@@ -30,6 +30,7 @@ import { tryHandleSetupRoute } from "./routes/setup.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
 import { tryHandlePublishRoute } from "./routes/publish.js";
+import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
@@ -422,6 +423,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // /api/artifacts/:id/publish — publish + unpublish an artefact.
   if (await tryHandlePublishRoute(req, res, url, ctx, { publishService, broadcastUiEvent })) return;
+
+  // /api/artifacts/:id/pin — pin / unpin an artefact (#387).
+  if (await tryHandlePinRoute(req, res, url, ctx, { artifactService, broadcastUiEvent })) return;
 
   // /oauth/*, /.well-known/oauth-*, /mcp/*, /api/mcp/status
   // Pass the actually-bound `port`, not PREFERRED_PORT — findPort() may
