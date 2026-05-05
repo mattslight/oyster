@@ -23,6 +23,7 @@ import { shouldOpenFullscreen } from "../../shared/types";
 import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace, promoteFolderToSpace } from "./data/spaces-api";
 import type { Space, SetupProposal } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
+import { unpublishArtifact } from "./data/publish-api";
 import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
@@ -377,6 +378,19 @@ export default function App() {
     if (artifact.builtin || artifact.plugin || artifact.status === "generating") return;
     setPublishingArtifact(artifact);
   }, []);
+
+  // /u path. SSE drives the surface (chip hides, count drops); on failure
+  // we surface via the same banner the chat bar already uses for AI errors —
+  // the user's last action came from the chat surface, so the banner is in
+  // their eyeline.
+  const handleArtifactUnpublish = useCallback(async (artifact: Artifact) => {
+    if (artifact.publication == null || artifact.publication.unpublishedAt != null) return;
+    try {
+      await unpublishArtifact(artifact.id);
+    } catch (err) {
+      setAiError(`Unpublish failed: ${(err as Error).message}`);
+    }
+  }, []);
   async function handleFixError(error: { title: string; path: string; message: string; stack: string; console: Array<{ type: string; message: string }> }): Promise<string> {
     // Use a fresh session so Oyster has clean context for the fix
     const session = await createSession();
@@ -587,6 +601,7 @@ export default function App() {
         artifacts={artifacts}
         onArtifactOpen={handleArtifactClick}
         onArtifactPublish={handleArtifactPublish}
+        onArtifactUnpublish={handleArtifactUnpublish}
         isFirstRun={isFirstRun}
         onAiError={setAiError}
       />
