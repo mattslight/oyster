@@ -137,14 +137,16 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
       await env.DB.prepare(
         `INSERT INTO published_artifacts
          (share_token, owner_user_id, artifact_id, artifact_kind, mode, password_hash,
-          r2_key, content_type, size_bytes, published_at, updated_at, unpublished_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+          r2_key, content_type, size_bytes, published_at, updated_at, unpublished_at,
+          label, space_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
       ).bind(
         candidate, user.id, meta.artifact_id, meta.artifact_kind, meta.mode,
         meta.password_hash ?? null,
         r2KeyFor(user.id, candidate),
         req.headers.get("Content-Type") ?? "application/octet-stream",
         contentLength, now, now,
+        meta.label ?? null, meta.space_id ?? null,
       ).run();
       shareToken = candidate;
       publishedAt = now;
@@ -216,12 +218,15 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
     const updatedAt = Date.now();
     await env.DB.prepare(
       `UPDATE published_artifacts
-          SET mode = ?, password_hash = ?, content_type = ?, size_bytes = ?, updated_at = ?
+          SET mode = ?, password_hash = ?, content_type = ?, size_bytes = ?, updated_at = ?,
+              label = COALESCE(?, label), space_id = COALESCE(?, space_id)
         WHERE share_token = ?`
     ).bind(
       meta.mode, meta.password_hash ?? null,
       req.headers.get("Content-Type") ?? "application/octet-stream",
-      actualSize, updatedAt, shareToken,
+      actualSize, updatedAt,
+      meta.label ?? null, meta.space_id ?? null,
+      shareToken,
     ).run();
 
     // Step 9: respond (upsert path).
@@ -269,10 +274,12 @@ async function handlePublishMine(req: Request, env: Env): Promise<Response> {
     size_bytes: number;
     published_at: number;
     updated_at: number;
+    label: string | null;
+    space_id: string | null;
   };
   const rows = await env.DB.prepare(
     `SELECT share_token, artifact_id, artifact_kind, mode, content_type,
-            size_bytes, published_at, updated_at
+            size_bytes, published_at, updated_at, label, space_id
        FROM published_artifacts
       WHERE owner_user_id = ? AND unpublished_at IS NULL
       ORDER BY published_at DESC`

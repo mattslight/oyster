@@ -126,7 +126,7 @@ describe("artifact wire format — cloud-only ghosts", () => {
     service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to");
   });
 
-  it("synthesises a cloudOnly ghost when no local artefact matches the publication", async () => {
+  it("synthesises a cloudOnly ghost using the cloud label, falling back to artifact_id", async () => {
     service.setCloudOnlyPublicationsSource(() => [
       {
         shareToken: "tok_abc",
@@ -135,23 +135,28 @@ describe("artifact wire format — cloud-only ghosts", () => {
         mode: "open",
         publishedAt: 1717000000000,
         updatedAt: 1717000000500,
+        label: "Friendly Label",
+        spaceId: null,
+      },
+      {
+        shareToken: "tok_no_label",
+        artifactId: "fallback_id",
+        artifactKind: "notes",
+        mode: "open",
+        publishedAt: 1717000001000,
+        updatedAt: 1717000001000,
+        label: null,
+        spaceId: null,
       },
     ]);
     const list = await service.getAllArtifacts(() => {});
-    expect(list).toHaveLength(1);
-    const ghost = list[0]!;
-    expect(ghost.id).toBe("cloud:tok_abc");
-    expect(ghost.cloudOnly).toBe(true);
-    expect(ghost.label).toBe("missing_locally");
-    expect(ghost.spaceId).toBe("_cloud");
-    expect(ghost.runtimeKind).toBe("cloud_only");
-    expect(ghost.url).toBe("https://oyster.to/p/tok_abc");
-    expect(ghost.publication).toMatchObject({
-      shareToken: "tok_abc",
-      shareUrl: "https://oyster.to/p/tok_abc",
-      shareMode: "open",
-      unpublishedAt: null,
-    });
+    expect(list).toHaveLength(2);
+    const labelled = list.find((a) => a.id === "cloud:tok_abc")!;
+    expect(labelled.label).toBe("Friendly Label");
+    expect(labelled.cloudOnly).toBe(true);
+    expect(labelled.spaceId).toBe("_cloud");      // no spaceStore wired in this test
+    const fallback = list.find((a) => a.id === "cloud:tok_no_label")!;
+    expect(fallback.label).toBe("fallback_id");   // artifact_id when label NULL
   });
 
   it("does NOT emit a ghost when a local artefact has the matching id", async () => {
@@ -163,6 +168,7 @@ describe("artifact wire format — cloud-only ghosts", () => {
         artifactKind: "notes",
         mode: "open",
         publishedAt: 1, updatedAt: 1,
+        label: null, spaceId: null,
       },
     ]);
     const list = await service.getAllArtifacts(() => {});

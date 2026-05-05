@@ -27,19 +27,23 @@ async function seedPublication(opts: {
   mode?: string;
   publishedAt?: number;
   unpublishedAt?: number | null;
+  label?: string | null;
+  spaceId?: string | null;
 }): Promise<void> {
   const now = Date.now();
   await env.DB.prepare(
     `INSERT INTO published_artifacts
      (share_token, owner_user_id, artifact_id, artifact_kind, mode, password_hash,
-      r2_key, content_type, size_bytes, published_at, updated_at, unpublished_at)
+      r2_key, content_type, size_bytes, published_at, updated_at, unpublished_at,
+      label, space_id)
      VALUES (?, ?, ?, 'notes', ?, NULL, ?, 'text/plain', 5,
-             ?, ?, ?)`
+             ?, ?, ?, ?, ?)`
   ).bind(
     opts.shareToken, opts.ownerId, opts.artifactId, opts.mode ?? "open",
     `published/${opts.ownerId}/${opts.shareToken}`,
     opts.publishedAt ?? now, opts.publishedAt ?? now,
     opts.unpublishedAt ?? null,
+    opts.label ?? null, opts.spaceId ?? null,
   ).run();
 }
 
@@ -81,6 +85,32 @@ describe("GET /api/publish/mine", () => {
     const json = await res.json() as any;
     expect(json.publications).toHaveLength(1);
     expect(json.publications[0].share_token).toBe("tok_live");
+  });
+
+  it("returns label + space_id when present", async () => {
+    const u = await seedUser();
+    await seedPublication({
+      ownerId: u.id, shareToken: "tok_ctx", artifactId: "art_ctx",
+      label: "Pricing v3", spaceId: "client-projects",
+    });
+    const res = await call(mineRequest(authHeader(u.sessionToken).Cookie));
+    const json = await res.json() as any;
+    expect(json.publications[0]).toMatchObject({
+      label: "Pricing v3",
+      space_id: "client-projects",
+    });
+  });
+
+  it("returns NULL label/space_id for older rows without context", async () => {
+    const u = await seedUser();
+    await seedPublication({
+      ownerId: u.id, shareToken: "tok_old", artifactId: "art_old",
+      label: null, spaceId: null,
+    });
+    const res = await call(mineRequest(authHeader(u.sessionToken).Cookie));
+    const json = await res.json() as any;
+    expect(json.publications[0].label).toBeNull();
+    expect(json.publications[0].space_id).toBeNull();
   });
 
   it("never returns rows owned by another user", async () => {

@@ -51,12 +51,16 @@ export function parseMetadataHeader(blob: string): PublishMetadata {
   if (typeof r.artifact_kind !== "string" || r.artifact_kind.length === 0) throw new Error("invalid_metadata");
   if (r.mode !== "open" && r.mode !== "password" && r.mode !== "signin") throw new Error("invalid_metadata");
   if (r.password_hash !== undefined && typeof r.password_hash !== "string") throw new Error("invalid_metadata");
+  if (r.label !== undefined && typeof r.label !== "string") throw new Error("invalid_metadata");
+  if (r.space_id !== undefined && typeof r.space_id !== "string") throw new Error("invalid_metadata");
 
   return {
     artifact_id: r.artifact_id,
     artifact_kind: r.artifact_kind,
     mode: r.mode,
     password_hash: r.password_hash as string | undefined,
+    label: r.label as string | undefined,
+    space_id: r.space_id as string | undefined,
   };
 }
 

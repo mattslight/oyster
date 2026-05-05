@@ -380,6 +380,58 @@ describe("POST /api/publish/upload — tier mode gating", () => {
   });
 });
 
+describe("POST /api/publish/upload — label + space_id round-trip", () => {
+  it("persists label and space_id on first publish", async () => {
+    const u = await seedUser();
+    const body = "x";
+    const res = await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({
+        artifact_id: "art_ctx", artifact_kind: "notes", mode: "open",
+        label: "Pricing v3", space_id: "client-projects",
+      }),
+      contentType: "text/plain",
+      contentLength: String(body.length),
+      body,
+    }));
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare(
+      "SELECT label, space_id FROM published_artifacts WHERE owner_user_id = ? AND artifact_id = ?"
+    ).bind(u.id, "art_ctx").first<{ label: string; space_id: string }>();
+    expect(row?.label).toBe("Pricing v3");
+    expect(row?.space_id).toBe("client-projects");
+  });
+
+  it("preserves prior label/space_id on upsert when meta omits them", async () => {
+    const u = await seedUser();
+    const body1 = "v1";
+    await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({
+        artifact_id: "art_keep", artifact_kind: "notes", mode: "open",
+        label: "Initial", space_id: "home",
+      }),
+      contentType: "text/plain",
+      contentLength: String(body1.length),
+      body: body1,
+    }));
+    // Second publish with no label/space_id — should NOT clobber to NULL.
+    const body2 = "v2";
+    await call(uploadRequest({
+      cookieHeader: authHeader(u.sessionToken),
+      metadata: metadataHeader({ artifact_id: "art_keep", artifact_kind: "notes", mode: "open" }),
+      contentType: "text/plain",
+      contentLength: String(body2.length),
+      body: body2,
+    }));
+    const row = await env.DB.prepare(
+      "SELECT label, space_id FROM published_artifacts WHERE owner_user_id = ? AND artifact_id = ?"
+    ).bind(u.id, "art_keep").first<{ label: string; space_id: string }>();
+    expect(row?.label).toBe("Initial");
+    expect(row?.space_id).toBe("home");
+  });
+});
+
 describe("POST /api/publish/upload — D1 CHECK enforcement", () => {
   it("rejects an open-mode publish that smuggles a password_hash", async () => {
     const u = await seedUser();

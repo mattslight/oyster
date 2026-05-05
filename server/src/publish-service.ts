@@ -72,6 +72,9 @@ export interface CloudPublication {
   sizeBytes: number;
   publishedAt: number;
   updatedAt: number;
+  // Surface context (nullable for older D1 rows published before R5 hardening).
+  label: string | null;
+  spaceId: string | null;
 }
 
 export interface PublishService {
@@ -91,6 +94,8 @@ interface ArtifactRow {
   owner_id: string | null;
   share_token: string | null;
   unpublished_at: number | null;
+  label: string;
+  space_id: string;
 }
 
 export function createPublishService(deps: PublishServiceDeps): PublishService {
@@ -106,7 +111,7 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
       if (!user || !token) throw new PublishError(401, "sign_in_required", "Sign in to publish artefacts.");
 
       const row = deps.db.prepare(
-        "SELECT id, artifact_kind, owner_id, share_token, unpublished_at FROM artifacts WHERE id = ?"
+        "SELECT id, artifact_kind, owner_id, share_token, unpublished_at, label, space_id FROM artifacts WHERE id = ?"
       ).get(args.artifact_id) as ArtifactRow | undefined;
       if (!row) throw new PublishError(404, "artifact_not_found", `No artefact with id ${args.artifact_id}`);
 
@@ -142,6 +147,10 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
         artifact_id: args.artifact_id,
         artifact_kind: row.artifact_kind,
         mode: args.mode,
+        // Carry surface context so ghosts on a fresh device know what this is
+        // and where it came from. Older Worker versions tolerate extra keys.
+        label: row.label,
+        space_id: row.space_id,
         ...(passwordHash ? { password_hash: passwordHash } : {}),
       };
       const metaHeader = Buffer.from(JSON.stringify(meta)).toString("base64url");
@@ -262,6 +271,8 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
         size_bytes: number;
         published_at: number;
         updated_at: number;
+        label: string | null;
+        space_id: string | null;
       };
       const body = await res.json().catch(() => null) as { publications?: Row[] } | null;
       const rows = body?.publications ?? [];
@@ -299,6 +310,8 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
             sizeBytes: row.size_bytes,
             publishedAt: row.published_at,
             updatedAt: row.updated_at,
+            label: row.label ?? null,
+            spaceId: row.space_id ?? null,
           });
         }
       }

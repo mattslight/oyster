@@ -34,6 +34,8 @@ CREATE TABLE published_artifacts (
   published_at      INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL,
   unpublished_at    INTEGER,
+  label             TEXT,
+  space_id          TEXT,
   CHECK (
     (mode = 'password' AND password_hash IS NOT NULL) OR
     (mode <> 'password' AND password_hash IS NULL)

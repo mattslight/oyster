@@ -342,10 +342,12 @@ describe("backfillPublications", () => {
         publications: [
           { share_token: "tok_present", artifact_id: "art_present", artifact_kind: "notes",
             mode: "open", content_type: "text/plain", size_bytes: 10,
-            published_at: 1700000000000, updated_at: 1700000005000 },
+            published_at: 1700000000000, updated_at: 1700000005000,
+            label: "Test artefact", space_id: "home" },
           { share_token: "tok_missing", artifact_id: "art_missing", artifact_kind: "notes",
             mode: "open", content_type: "text/plain", size_bytes: 10,
-            published_at: 1700000000000, updated_at: 1700000005000 },
+            published_at: 1700000000000, updated_at: 1700000005000,
+            label: "Missing locally", space_id: "client-projects" },
         ],
       }), { status: 200, headers: { "content-type": "application/json" } });
     });
@@ -381,6 +383,7 @@ describe("backfillPublications", () => {
         share_token: "tok", artifact_id: "art_present", artifact_kind: "notes",
         mode: "open", content_type: "text/plain", size_bytes: 10,
         published_at: 1, updated_at: 1,
+        label: null, space_id: null,
       }],
     }), { status: 200, headers: { "content-type": "application/json" } }));
 

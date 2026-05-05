@@ -21,6 +21,11 @@ export interface PublishMetadata {
   artifact_kind: string;
   mode: "open" | "password" | "signin";
   password_hash?: string;  // present iff mode === 'password'
+  // Optional context, carried so a publication is meaningful on a fresh
+  // device without a matching local artefact (R5 hardening). Older clients
+  // may omit these — we tolerate NULL throughout the read path.
+  label?: string;
+  space_id?: string;
 }
 
 // Row shape for published_artifacts.
@@ -37,4 +42,6 @@ export interface PublicationRow {
   published_at: number;
   updated_at: number;
   unpublished_at: number | null;
+  label: string | null;
+  space_id: string | null;
 }

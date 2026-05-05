@@ -81,6 +81,8 @@ interface CloudPublicationLike {
   mode: "open" | "password" | "signin";
   publishedAt: number;
   updatedAt: number;
+  label: string | null;
+  spaceId: string | null;
 }
 
 // ── Service ──
@@ -197,16 +199,26 @@ export class ArtifactService {
   private synthesiseCloudOnlyGhosts(localIds: Set<string>): Artifact[] {
     if (!this.getCloudOnlyPublications) return [];
     const cloud = this.getCloudOnlyPublications();
+    if (cloud.length === 0) return [];
+    // Local space lookup — cloud publications carry their original space_id;
+    // if we have a matching space locally we render the friendly label and
+    // (eventually) the right pill colour. Falls back to "_cloud" when the
+    // space hasn't synced to this device yet.
+    const localSpaceIds = new Set<string>();
+    if (this.spaceStore) {
+      for (const s of this.spaceStore.getAll()) localSpaceIds.add(s.id);
+    }
     const out: Artifact[] = [];
     for (const pub of cloud) {
-      if (localIds.has(pub.artifactId)) continue;  // local row exists; skip ghost
+      if (localIds.has(pub.artifactId)) continue;
       const kind = toArtifactKind(pub.artifactKind);
       const shareUrl = `${this.workerBase.replace(/\/$/, "")}/p/${pub.shareToken}`;
+      const spaceId = pub.spaceId && localSpaceIds.has(pub.spaceId) ? pub.spaceId : "_cloud";
       out.push({
         id: `cloud:${pub.shareToken}`,
-        label: pub.artifactId,        // best we have until D1 carries label
+        label: pub.label || pub.artifactId,    // friendly label, fallback to id
         artifactKind: kind,
-        spaceId: "_cloud",            // synthetic — UI treats as no-space
+        spaceId,
         status: "ready",
         runtimeKind: "cloud_only",
         runtimeConfig: {},
