@@ -19,9 +19,8 @@ export function PublishedChip({ publication, cloudOnly }: Props) {
   return (
     <span className="published-chip">
       <span className="published-chip__tag" title={publication.shareUrl}>
-        {cloudOnly
-          ? <Cloud className="published-chip__lock" size={9} strokeWidth={2.5} />
-          : isPassword && <Lock className="published-chip__lock" size={9} strokeWidth={2.5} />}
+        {isPassword && <Lock className="published-chip__lock" size={9} strokeWidth={2.5} />}
+        {cloudOnly && <Cloud className="published-chip__cloud" size={9} strokeWidth={2.5} />}
         {cloudOnly ? "On cloud" : "Published"}
       </span>
       <button

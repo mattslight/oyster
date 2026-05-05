@@ -1,6 +1,7 @@
 // Artefact table view. Extracted from Home/index.tsx.
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Lock } from "lucide-react";
 import type { Artifact, Space } from "../../../../shared/types";
 import type { Desktop } from "../Desktop";
 import { parseTimestamp } from "../../utils/parseTimestamp";
@@ -77,7 +78,17 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
                 }
               }}
             >
-              <span className="home-artefact-row-title">{art.label}</span>
+              <span className="home-artefact-row-title">
+                {art.label}
+                {art.publication?.unpublishedAt === null && art.publication.shareMode === "password" && (
+                  <Lock
+                    size={11}
+                    strokeWidth={2.5}
+                    style={{ marginLeft: 6, color: "#fbbf24", verticalAlign: "-1px" }}
+                    aria-label="Password-protected"
+                  />
+                )}
+              </span>
               <span className="home-artefact-row-space">
                 {art.cloudOnly ? "Cloud" : (space?.displayName ?? art.spaceId)}
               </span>
