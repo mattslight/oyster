@@ -1,6 +1,6 @@
 // Surfaces memories created via mcp__oyster__remember. v1 is read-only —
 // writes still go through the MCP tool surface.
-import { getJson, postJson } from "./http";
+import { getJson, postJson, del } from "./http";
 
 export interface Memory {
   id: string;
@@ -32,4 +32,8 @@ export async function createMemory(input: CreateMemoryInput): Promise<Memory> {
     space_id: input.space_id || undefined,
     tags: input.tags?.length ? input.tags : undefined,
   });
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  return del(`/api/memories/${encodeURIComponent(id)}`);
 }

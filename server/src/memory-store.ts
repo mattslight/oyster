@@ -47,7 +47,9 @@ export interface MemoryProvider {
   init(): Promise<void>;
   remember(input: RememberInput): Promise<Memory>;
   recall(input: RecallInput): Promise<Memory[]>;
-  forget(id: string): Promise<void>;
+  /** Marks a memory as forgotten. Returns true if a row was updated, false if
+   *  the id doesn't exist — callers can map false → 404. */
+  forget(id: string): Promise<boolean>;
   list(space_id?: string): Promise<Memory[]>;
   /** Synchronous existence check used by the import flow's dedupe — true
    *  when an active memory with this exact (content, space_id) already
@@ -327,10 +329,11 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     return rows.map((row) => ({ ...rowToMemory(row), recalled_at: row.recalled_at }));
   }
 
-  async forget(id: string): Promise<void> {
+  async forget(id: string): Promise<boolean> {
     const row = this.stmts.getById.get(id) as MemoryRow | undefined;
-    if (!row) return;
+    if (!row) return false;
     this.stmts.supersede.run("forgotten", id);
+    return true;
   }
 
   async list(space_id?: string): Promise<Memory[]> {
