@@ -143,6 +143,10 @@ export function initDb(userlandDir: string): Database.Database {
   }
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS artifacts_share_token_uq ON artifacts(share_token)");
 
+  // Pinning (#387). NULL = unpinned; non-null INTEGER unix-ms = the moment
+  // the user pinned the artefact, used to sort most-recently-pinned first.
+  try { db.exec("ALTER TABLE artifacts ADD COLUMN pinned_at INTEGER"); } catch { /* already exists */ }
+
   // Sessions arc (0.5.0). Three tables that capture agent activity (claude-code,
   // opencode, codex) read from external session logs. See
   // docs/plans/sessions-arc.md for the design.

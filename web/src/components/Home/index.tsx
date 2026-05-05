@@ -482,6 +482,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     } else if (artefactSource !== "all") {
       list = list.filter((a) => (a.sourceOrigin ?? "manual") === artefactSource);
     }
+    // Pinned-first within the active scope (#387). Stable for unpinned —
+    // .sort() in V8 is stable since 2018, so original feed order survives.
+    list = [...list].sort((a, b) => {
+      const ap = a.pinnedAt ?? 0;
+      const bp = b.pinnedAt ?? 0;
+      return bp - ap;
+    });
     return list;
   }, [effectiveDesktopProps.artifacts, artefactSource, selectedFolderId]);
   const visibleArtefacts = useMemo(() => {

@@ -476,6 +476,26 @@ export class ArtifactService {
     this.invalidateArchivedPaths();
   }
 
+  // ── Pin / unpin (#387) ──
+  // Pinned artefacts sort first within the active scope. Pin state lives
+  // on the row (pinned_at INTEGER), so it survives archive/restore cycles.
+
+  pinArtifact(id: string): { id: string; pinnedAt: number } {
+    const row = this.store.getById(id);
+    if (!row) throw new Error(`Artifact "${id}" not found`);
+    if (row.removed_at) throw new Error(`Artifact "${id}" is archived; restore it before pinning.`);
+    const pinnedAt = Date.now();
+    this.store.pin(id, pinnedAt);
+    return { id, pinnedAt };
+  }
+
+  unpinArtifact(id: string): { id: string; pinnedAt: null } {
+    const row = this.store.getById(id);
+    if (!row) throw new Error(`Artifact "${id}" not found`);
+    this.store.unpin(id);
+    return { id, pinnedAt: null };
+  }
+
   // ── Group (folder) bulk operations ──
   // group_name is just a string on each artifact — no separate groups table.
   // Renaming a group = bulk-update group_name on every artifact in the space
@@ -585,6 +605,7 @@ export class ArtifactService {
         sourceId: row.source_id,
         ...this.resolveIcon(row),
         ...(publication ? { publication } : {}),
+        ...(row.pinned_at != null ? { pinnedAt: row.pinned_at } : {}),
       };
     }
 

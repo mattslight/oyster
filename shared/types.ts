@@ -48,6 +48,11 @@ export interface Artifact {
    *  the artefact is currently public; when `unpublishedAt` is non-null the
    *  publication has been retired (chip hides; URL serves 410). */
   publication?: ArtefactPublication | null;
+  /** Unix-ms timestamp the user pinned this artefact to the top of its
+   *  space (#387). Null/omitted = unpinned. Pinned artefacts sort before
+   *  others in the active scope, most-recent first. Filters still apply —
+   *  pinning doesn't override filter visibility. */
+  pinnedAt?: number | null;
 }
 
 export interface ArtefactPublication {
