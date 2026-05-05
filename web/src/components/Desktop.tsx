@@ -320,7 +320,7 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                       catch (err) { setAlertState({ open: true, title: "Pin failed", body: (err as Error).message }); }
                     }}
                   >
-                    Pin to top
+                    Pin
                   </button>
                 )
               )}
