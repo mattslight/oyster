@@ -250,11 +250,19 @@ const WORKER_BASE = process.env.OYSTER_AUTH_BASE
   ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
   : "https://oyster.to";
 
+// VIEWER_BASE is the public origin where /p/{token} renders (issue #397).
+// In production it's a separate subdomain so untrusted published content
+// can't read main-app cookies/storage. In local wrangler dev, the API and
+// viewer paths are served from the same dev server, so default to
+// WORKER_BASE when the explicit env var is unset and we're not on prod.
+const VIEWER_BASE = process.env.OYSTER_VIEWER_BASE
+  ?? (WORKER_BASE === "https://oyster.to" ? "https://share.oyster.to" : WORKER_BASE);
+
 // artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
 // not inside DB_DIR. spaceStore is passed in so rowToArtifact can resolve the
 // linked-source path for tiles whose `source_id` is non-null.
-const artifactService = new ArtifactService(store, WORKER_BASE, OYSTER_HOME, spaceStore);
+const artifactService = new ArtifactService(store, WORKER_BASE, VIEWER_BASE, OYSTER_HOME, spaceStore);
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);

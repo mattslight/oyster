@@ -135,23 +135,24 @@ function isLocalHost(host: string): boolean {
 }
 
 // Cookie shape adapts to the request host so wrangler dev (http://localhost:8787)
-// can exercise the cookie flow. Production: Domain=.oyster.to + Secure so the
-// cookie is visible on the apex and any subdomain the publish/viewer flows
-// might end up on. Localhost: omit Domain (browsers reject Domain= on
-// localhost) and omit Secure (no HTTPS). HttpOnly + SameSite=Lax stay on both.
+// can exercise the cookie flow. Production: omit Domain so the cookie is
+// host-only on the apex (oyster.to) and does NOT leak to share.oyster.to,
+// where untrusted published content runs (issue #397). Localhost: omit
+// Domain (browsers reject Domain= on localhost) and omit Secure (no HTTPS).
+// HttpOnly + SameSite=Lax stay on both.
 function sessionCookie(sessionId: string, host: string): string {
   const maxAge = Math.floor(SESSION_TTL_MS / 1000);
   if (isLocalHost(host)) {
     return `${COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
   }
-  return `${COOKIE_NAME}=${sessionId}; Domain=.oyster.to; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+  return `${COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
 function clearedCookie(host: string): string {
   if (isLocalHost(host)) {
     return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
   }
-  return `${COOKIE_NAME}=; Domain=.oyster.to; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+  return `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
 const NO_STORE: Record<string, string> = { "cache-control": "no-store" };

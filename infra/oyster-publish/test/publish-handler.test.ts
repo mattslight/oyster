@@ -133,7 +133,7 @@ describe("POST /api/publish/upload — first publish (open mode)", () => {
     expect(res.status).toBe(200);
     const json = await res.json() as { share_token: string; share_url: string; mode: string; published_at: number; updated_at: number };
     expect(json.share_token).toMatch(/^[A-Za-z0-9_-]{32}$/);
-    expect(json.share_url).toBe(`https://oyster.to/p/${json.share_token}`);
+    expect(json.share_url).toBe(`https://share.oyster.to/p/${json.share_token}`);
     expect(json.mode).toBe("open");
     expect(json.published_at).toBeTypeOf("number");
     expect(json.updated_at).toBe(json.published_at);

@@ -35,6 +35,18 @@ export default {
     }
 
     if (url.pathname.startsWith("/p/")) {
+      // Issue #397: viewer canonical origin is share.oyster.to. Anything that
+      // still hits oyster.to/p/* (or www.) gets a 301 to the new origin so
+      // already-shared links keep working. The path is unchanged.
+      if (url.hostname === "oyster.to" || url.hostname === "www.oyster.to") {
+        return new Response(null, {
+          status: 301,
+          headers: {
+            location: `https://share.oyster.to${url.pathname}${url.search}`,
+            "cache-control": "public, max-age=3600",
+          },
+        });
+      }
       const parsed = parseShareTokenPath(url.pathname);
       if (!parsed) return new Response("Not Found", { status: 404 });
       if (req.method === "GET" && parsed.raw) {
@@ -237,7 +249,7 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
     // Step 9: respond (upsert path).
     return jsonOk({
       share_token: shareToken,
-      share_url: `https://oyster.to/p/${shareToken}`,
+      share_url: `https://share.oyster.to/p/${shareToken}`,
       mode: meta.mode,
       published_at: publishedAt,
       updated_at: updatedAt,
@@ -254,7 +266,7 @@ async function handlePublishUpload(req: Request, env: Env): Promise<Response> {
     // Return the same timestamp for both so published_at === updated_at on the wire.
     return jsonOk({
       share_token: shareToken,
-      share_url: `https://oyster.to/p/${shareToken}`,
+      share_url: `https://share.oyster.to/p/${shareToken}`,
       mode: meta.mode,
       published_at: publishedAt,
       updated_at: publishedAt,
@@ -367,7 +379,7 @@ async function handlePublishPatch(req: Request, env: Env, shareToken: string): P
 
   return jsonOk({
     share_token: shareToken,
-    share_url: `https://oyster.to/p/${shareToken}`,
+    share_url: `https://share.oyster.to/p/${shareToken}`,
     mode: body.mode,
     updated_at: updatedAt,
   });

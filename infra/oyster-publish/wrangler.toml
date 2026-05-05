@@ -36,6 +36,13 @@ zone_name = "oyster.to"
 pattern = "www.oyster.to/p/*"
 zone_name = "oyster.to"
 
+# Origin-isolated public viewer. Same handler as oyster.to/p/* — the host
+# split is what gives us cookie/storage isolation between the main app and
+# untrusted published content (issue #397).
+[[routes]]
+pattern = "share.oyster.to/p/*"
+zone_name = "oyster.to"
+
 # Rate limiter for password-gate POST attempts. Key = `${ip}:${share_token}`
 # so one IP cannot exhaust attempts across all of a publisher's shares.
 # Spec: docs/superpowers/specs/2026-05-03-r5-viewer-design.md

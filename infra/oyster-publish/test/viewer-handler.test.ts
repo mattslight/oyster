@@ -22,7 +22,7 @@ function getReq(path: string, opts: { cookie?: string; ifNoneMatch?: string } = 
   const headers = new Headers();
   if (opts.cookie) headers.set("Cookie", opts.cookie);
   if (opts.ifNoneMatch) headers.set("If-None-Match", opts.ifNoneMatch);
-  return new Request(`https://oyster.to${path}`, { method: "GET", headers });
+  return new Request(`https://share.oyster.to${path}`, { method: "GET", headers });
 }
 
 function postReq(path: string, opts: { cookie?: string; password?: string } = {}): Request {
@@ -31,7 +31,7 @@ function postReq(path: string, opts: { cookie?: string; password?: string } = {}
   headers.set("Content-Type", "application/x-www-form-urlencoded");
   const body = new URLSearchParams();
   if (opts.password !== undefined) body.set("password", opts.password);
-  return new Request(`https://oyster.to${path}`, { method: "POST", headers, body: body.toString() });
+  return new Request(`https://share.oyster.to${path}`, { method: "POST", headers, body: body.toString() });
 }
 
 async function call(req: Request): Promise<Response> {
@@ -40,6 +40,22 @@ async function call(req: Request): Promise<Response> {
   await waitOnExecutionContext(ctx);
   return res;
 }
+
+describe("GET /p/:token — legacy origin redirect (#397)", () => {
+  it("301s oyster.to/p/<token> to share.oyster.to/p/<token>", async () => {
+    const req = new Request("https://oyster.to/p/abc123", { method: "GET" });
+    const res = await call(req);
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("https://share.oyster.to/p/abc123");
+  });
+
+  it("301s www.oyster.to/p/<token>/raw to share.oyster.to/p/<token>/raw with query preserved", async () => {
+    const req = new Request("https://www.oyster.to/p/abc123/raw?x=1", { method: "GET" });
+    const res = await call(req);
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("https://share.oyster.to/p/abc123/raw?x=1");
+  });
+});
 
 describe("GET /p/:token — 404 / 410", () => {
   it("returns 404 for unknown token", async () => {
@@ -109,8 +125,7 @@ describe("GET /p/:token — open mode", () => {
     expect(res.headers.get("content-type")).toMatch(/^text\/html/);
     const body = await res.text();
     expect(body).toContain(`src="/p/${shareToken}/raw"`);
-    expect(body).toContain('sandbox="allow-scripts"');
-    expect(body).not.toMatch(/sandbox="[^"]*allow-same-origin/);
+    expect(body).toContain('sandbox="allow-scripts allow-same-origin"');
   });
 });
 
@@ -125,7 +140,7 @@ describe("GET /p/:token/raw — iframe content", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const csp = res.headers.get("content-security-policy") ?? "";
-    expect(csp).toContain("connect-src 'none'");
+    expect(csp).toContain("connect-src 'self' https:");
     expect(csp).toContain("form-action 'none'");
     expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
     expect(await res.text()).toContain("<h1>raw app</h1>");
