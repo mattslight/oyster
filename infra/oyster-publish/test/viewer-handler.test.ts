@@ -70,8 +70,9 @@ describe("GET /p/:token — open mode", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain("<h1>Hello world</h1>");
-    expect(body).toContain("🦪 oyster"); // chrome present
-    expect(body).toContain("Powered by Oyster");
+    expect(body).toContain("🦪"); // chrome present
+    expect(body).toMatch(/class="brand-name"/);
+    expect(body).toContain("Powered by");
   });
 
   it("sets open-mode cache headers + ETag", async () => {
@@ -374,7 +375,7 @@ describe("GET /p/:token — signin mode", () => {
     expect(await res.text()).toContain("private");
   });
 
-  it("signin viewer (signed in) does NOT show 'Get your own at oyster.to' CTA", async () => {
+  it("signin viewer (signed in) does NOT show 'Publish AI content' CTA", async () => {
     const u = await seedUser();
     const { shareToken } = await seedActiveOpenWithBody({
       ownerUserId: u.id, artifactId: "art3cta", body: "# signin-only",
@@ -384,18 +385,18 @@ describe("GET /p/:token — signin mode", () => {
     const cookie = `oyster_session=${u.sessionToken}`;
     const res = await call(getReq(`/p/${shareToken}`, { cookie }));
     expect(res.status).toBe(200);
-    expect(await res.text()).not.toContain("Get your own at oyster.to");
+    expect(await res.text()).not.toContain("Publish AI content with oyster.to");
   });
 });
 
 describe("GET /p/:token — CTA in open mode", () => {
-  it("open viewer shows 'Get your own at oyster.to' CTA", async () => {
+  it("open viewer shows 'Publish AI content' CTA", async () => {
     const u = await seedUser();
     const { shareToken } = await seedActiveOpenWithBody({
       ownerUserId: u.id, artifactId: "art_cta_open", body: "# open",
     });
     const res = await call(getReq(`/p/${shareToken}`));
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Get your own at oyster.to");
+    expect(await res.text()).toContain("Publish AI content with oyster.to");
   });
 });

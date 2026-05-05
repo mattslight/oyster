@@ -20,6 +20,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Set up Oyster is a checklist now.** One required item — set up your spaces — and three optional ones (publish your first artefact, connect another agent, import memories). The dock pill stops nagging once the required step is done; the optional items wait quietly in the popover for when you want them.
 - **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are now excluded from scan results, alongside the existing built-in skips. Patterns including negations and globs are honored. ([#281](https://github.com/mattslight/oyster/issues/281))
 - **Sessions section on Home is capped.** Long session lists used to push Artefacts below the fold; the section now shows the first ten with a `Show more` toggle below — applies to both icon and table views. ([#389](https://github.com/mattslight/oyster/issues/389))
+- **Refreshed share-page chrome.** Public viewer pages have a polished header with brand mark and a pill-shaped *Publish AI content with oyster.to* call-to-action, with light/dark adaptive styling and a tightened footer.
 
 ### Fixed
 
