@@ -515,6 +515,35 @@
   text-align: center;
 }
 
+.home-empty__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f1118;
+  background: #a78bfa;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 120ms ease, transform 80ms ease;
+}
+
+.home-empty__cta:hover {
+  background: #b89cff;
+}
+
+.home-empty__cta:active {
+  transform: translateY(1px);
+}
+
+.home-empty__cta:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ── Sessions table view ── */
 .home-table-wrap {
   position: relative;

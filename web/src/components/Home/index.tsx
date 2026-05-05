@@ -127,6 +127,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange }: Props) {
   const { sessions, error, loading } = useSessions();
   const signedIn = useAuthSignedIn();
+  const [signingIn, setSigningIn] = useState(false);
   const {
     memories,
     loading: memoriesLoading,
@@ -1019,7 +1020,29 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           {artefactSource === "published" && filteredArtefactsTotal === 0 ? (
             <div className="home-empty">
               {signedIn === false ? (
-                <>Sign in to see your published artefacts. Publishing requires an account.</>
+                <>
+                  <div>Sign in to see your published artefacts. Publishing requires an account.</div>
+                  <button
+                    type="button"
+                    className="home-empty__cta"
+                    disabled={signingIn}
+                    onClick={async () => {
+                      setSigningIn(true);
+                      try {
+                        const res = await fetch("/api/auth/login", { method: "POST" });
+                        if (!res.ok) throw new Error(String(res.status));
+                        const body = (await res.json()) as { sign_in_url: string };
+                        window.open(body.sign_in_url, "_blank", "noopener,noreferrer");
+                      } catch (err) {
+                        console.error("[home] sign-in trigger failed:", err);
+                      } finally {
+                        setSigningIn(false);
+                      }
+                    }}
+                  >
+                    {signingIn ? "Opening sign-in…" : "Sign in"}
+                  </button>
+                </>
               ) : (
                 <>No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong></>
               )}
