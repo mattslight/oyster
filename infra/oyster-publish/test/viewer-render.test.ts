@@ -156,13 +156,20 @@ describe("renderChromeWithIframe", () => {
 });
 
 describe("renderRawHtmlBody — strict CSP for iframe content", () => {
-  it("serves bytes with the recorded content-type", async () => {
+  it("forces text/html; charset=utf-8 regardless of stored content-type", async () => {
     const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "text/html" } as any;
     const bytes = new TextEncoder().encode("<h1>my app</h1>");
     const res = renderRawHtmlBody(bytes, ROW);
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/html");
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(await res.text()).toBe("<h1>my app</h1>");
+  });
+
+  it("overrides application/octet-stream so browsers render the HTML (regression for early publish uploads)", async () => {
+    const ROW = { share_token: "app1", mode: "open", updated_at: 3000, content_type: "application/octet-stream" } as any;
+    const bytes = new TextEncoder().encode("<h1>my app</h1>");
+    const res = renderRawHtmlBody(bytes, ROW);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 
   it("sets a strict CSP including connect-src 'none' and form-action 'none'", async () => {

@@ -123,7 +123,7 @@ describe("GET /p/:token/raw — iframe content", () => {
     });
     const res = await call(getReq(`/p/${shareToken}/raw`));
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/html");
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const csp = res.headers.get("content-security-policy") ?? "";
     expect(csp).toContain("connect-src 'none'");
     expect(csp).toContain("form-action 'none'");

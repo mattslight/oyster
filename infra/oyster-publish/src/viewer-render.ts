@@ -122,7 +122,12 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
 }
 
 export function renderRawHtmlBody(bytes: Uint8Array, row: PublicationRow): Response {
-  const headers = new Headers(cacheHeaders(row, row.content_type));
+  // Iframe kinds (app/deck/wireframe/table/map) are always HTML. Force
+  // text/html regardless of the stored content_type — older publications
+  // were uploaded with application/octet-stream, which combined with
+  // x-content-type-options: nosniff makes the browser refuse to render
+  // them inside the iframe.
+  const headers = new Headers(cacheHeaders(row, "text/html; charset=utf-8"));
   headers.set(
     "content-security-policy",
     "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
