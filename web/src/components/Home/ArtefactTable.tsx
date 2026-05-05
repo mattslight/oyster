@@ -8,6 +8,7 @@ import { parseTimestamp } from "../../utils/parseTimestamp";
 import { formatRelative } from "./utils";
 import { pinArtifact, unpinArtifact } from "../../data/artifacts-api";
 import { unpublishArtifact, unpublishCloudShare, updateCloudShare } from "../../data/publish-api";
+import { PromptModal } from "../PromptModal";
 
 interface ArtefactTableProps {
   artifacts: Parameters<typeof Desktop>[0]["artifacts"];
@@ -20,6 +21,10 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
   const [ctx, setCtx] = useState<{ artifact: Artifact; x: number; y: number } | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [renameState, setRenameState] = useState<{
+    open: boolean;
+    artifact: Artifact | null;
+  }>({ open: false, artifact: null });
 
   // Click-outside / Escape closes the menu.
   useEffect(() => {
@@ -112,17 +117,10 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
             <>
               <button
                 className="space-ctx-item"
-                onClick={async () => {
+                onClick={() => {
                   const a = ctx.artifact;
                   setCtx(null);
-                  const next = window.prompt("Rename publication", a.label);
-                  const trimmed = next?.trim();
-                  if (!trimmed || trimmed === a.label) return;
-                  try {
-                    await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
-                  } catch (err) {
-                    setError((err as Error).message);
-                  }
+                  setRenameState({ open: true, artifact: a });
                 }}
               >
                 Rename
@@ -235,6 +233,26 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
         </div>,
         document.body,
       )}
+
+      <PromptModal
+        open={renameState.open}
+        title="Rename publication"
+        initialValue={renameState.artifact?.label ?? ""}
+        confirmLabel="Save"
+        onSubmit={async (value) => {
+          const a = renameState.artifact;
+          setRenameState({ open: false, artifact: null });
+          if (!a) return;
+          const trimmed = value.trim();
+          if (!trimmed || trimmed === a.label) return;
+          try {
+            await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
+          } catch (err) {
+            setError((err as Error).message);
+          }
+        }}
+        onCancel={() => setRenameState({ open: false, artifact: null })}
+      />
     </div>
   );
 }

@@ -299,17 +299,22 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
             <>
               <button
                 className="space-ctx-item"
-                onClick={async () => {
+                onClick={() => {
                   const a = artifactCtx.artifact;
                   setArtifactCtx(null);
-                  const next = window.prompt("Rename publication", a.label);
-                  const trimmed = next?.trim();
-                  if (!trimmed || trimmed === a.label) return;
-                  try {
-                    await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
-                  } catch (err) {
-                    setAlertState({ open: true, title: "Rename failed", body: (err as Error).message });
-                  }
+                  setPromptState({
+                    open: true, title: "Rename publication", initialValue: a.label, confirmLabel: "Save",
+                    onSubmit: async (value: string) => {
+                      setPromptState((s) => ({ ...s, open: false }));
+                      const trimmed = value.trim();
+                      if (!trimmed || trimmed === a.label) return;
+                      try {
+                        await updateCloudShare(a.publication!.shareToken, a.publication!.shareMode, undefined, trimmed);
+                      } catch (err) {
+                        setAlertState({ open: true, title: "Rename failed", body: (err as Error).message });
+                      }
+                    },
+                  });
                 }}
               >
                 Rename
