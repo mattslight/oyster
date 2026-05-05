@@ -134,6 +134,20 @@ const BACKUPS_DIR = join(OYSTER_HOME, "backups");
 // Alias to OYSTER_HOME to minimise the surface of this PR.
 const USERLAND_DIR = OYSTER_HOME;
 
+// Dev handshake: write the actual bound port to userland/.dev-port so the
+// Vite dev server proxies to *this* backend, not whichever Oyster happens
+// to be on 3333. Each worktree has its own userland → its own file → no
+// cross-talk. Removed on shutdown so a stale file fails loud (connection
+// refused) rather than silent (talking to the wrong server). The pre-listen
+// delete closes the race where wait-on would otherwise succeed against a
+// crashed prior run's stale file. Declared up here (not next to listen())
+// so the SIGTERM/SIGINT handlers registered below don't hit a const TDZ if
+// a signal arrives mid-boot.
+const DEV_PORT_FILE = join(USERLAND_DIR, ".dev-port");
+function clearDevPortFile() {
+  try { rmSync(DEV_PORT_FILE, { force: true }); } catch { /* best effort */ }
+}
+
 // Resolver for a space's native folder (where `create_artifact` writes).
 // Every callsite that used to compute `join(USERLAND_DIR, space_id)` goes
 // through this, so swapping to a first-class sources table later (#208) is
@@ -339,8 +353,8 @@ startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
 });
 startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
 
-process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); process.exit(0); });
-process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); process.exit(0); });
+process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); process.exit(0); });
+process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); process.exit(0); });
 process.on("uncaughtException", (err) => {
   console.error(`[oyster] uncaught exception: ${err.message}`);
   markShuttingDown();
@@ -659,11 +673,16 @@ bootMark("opencode config written, about to listen");
 const httpServer = createServer(handleHttpRequest);
 attachWebSocket(httpServer, { shell: SHELL, shellArgs: SHELL_ARGS, cwd: WORKSPACE, env: cleanEnv });
 
+// Wipe any stale .dev-port from a prior crash before we listen, so wait-on
+// can never succeed against a dead server's port. (See declaration above.)
+clearDevPortFile();
+
 httpServer.listen(port, "127.0.0.1", () => {
   bootMark(`httpServer listening on ${port}`);
   console.log(`Oyster server listening on http://127.0.0.1:${port}`);
   console.log(`  WebSocket: ws://127.0.0.1:${port}`);
   console.log(`  API:       http://127.0.0.1:${port}/api/artifacts`);
+  try { writeFileSync(DEV_PORT_FILE, String(port)); } catch { /* best effort */ }
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
