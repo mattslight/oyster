@@ -383,7 +383,7 @@ export function PublishModal({ artifact, onClose }: Props) {
               <label className={`publish-modal-mode${mode === "open" ? " publish-modal-mode--selected" : ""}`}>
                 <input type="radio" name="publish-mode" value="open" checked={mode === "open"} onChange={() => handleModeChange("open")} style={{ display: "none" }} />
                 <span className="publish-modal-mode__radio" />
-                <span><strong>Open</strong> · <span style={{ color: "#94a3b8" }}>anyone with the link</span></span>
+                <span><strong>Public</strong> · <span style={{ color: "#94a3b8" }}>anyone with the link</span></span>
               </label>
               <label
                 className={`publish-modal-mode${mode === "password" ? " publish-modal-mode--selected" : ""}${!isPro ? " publish-modal-mode--locked" : ""}`}
