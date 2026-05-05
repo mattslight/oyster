@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -11,11 +11,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 // its own backend, even with multiple Oysters running on auto-bumped ports.
 // Falls back to OYSTER_PORT (explicit override) then 3333 (cold-start default).
 function resolveServerPort(): string {
-  const portFile = resolve(__dirname, '..', 'userland', '.dev-port')
-  if (existsSync(portFile)) {
+  // Best-effort read — if the file is missing, unreadable, or the read races
+  // with a delete, fall through to the env / default. Never let a bad hint
+  // file prevent vite from starting.
+  try {
+    const portFile = resolve(__dirname, '..', 'userland', '.dev-port')
     const v = readFileSync(portFile, 'utf8').trim()
     if (/^\d+$/.test(v)) return v
-  }
+  } catch { /* fall through */ }
   return process.env.OYSTER_PORT ?? '3333'
 }
 const serverPort = resolveServerPort()
