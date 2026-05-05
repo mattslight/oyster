@@ -470,8 +470,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [effectiveDesktopProps.artifacts]);
 
   // Filter + collapse to an incremental preview. Each "Show more" click
-  // grows artefactsLimit by ARTEFACTS_PREVIEW; the table view bypasses
-  // the cap because it's already linear and easy to scan.
+  // grows artefactsLimit by ARTEFACTS_PREVIEW; the cap applies to both
+  // icon and table views so busy spaces don't push later sections far
+  // below the fold.
   const filteredArtefacts = useMemo(() => {
     let list = effectiveDesktopProps.artifacts;
     if (selectedFolderId === VAULT) {
@@ -495,10 +496,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     });
     return list;
   }, [effectiveDesktopProps.artifacts, artefactSource, selectedFolderId]);
-  const visibleArtefacts = useMemo(() => {
-    if (artefactsView === "table") return filteredArtefacts;
-    return filteredArtefacts.slice(0, artefactsLimit);
-  }, [filteredArtefacts, artefactsView, artefactsLimit]);
+  const visibleArtefacts = useMemo(
+    () => filteredArtefacts.slice(0, artefactsLimit),
+    [filteredArtefacts, artefactsLimit],
+  );
   const filteredArtefactsTotal = filteredArtefacts.length;
 
   // Resolve the active artefact against the FULL artifact list, not the
@@ -1043,11 +1044,20 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               )}
             </>
           ) : (
-            <ArtefactTable
-              artifacts={visibleArtefacts}
-              spaces={spaces}
-              onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
-            />
+            <>
+              <ArtefactTable
+                artifacts={visibleArtefacts}
+                spaces={spaces}
+                onArtifactClick={(a) => setActivePanel({ kind: "artefact", id: a.id })}
+              />
+              {artefactsLimit < filteredArtefactsTotal && (
+                <ShowMore
+                  onClick={() => setArtefactsLimit((n) => n + ARTEFACTS_PREVIEW)}
+                  remaining={filteredArtefactsTotal - artefactsLimit}
+                  searchHint
+                />
+              )}
+            </>
           )}
         </section>
 
