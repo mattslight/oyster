@@ -526,6 +526,93 @@ describe("backfillPublications", () => {
     expect(row.owner_id).toBe("u_pre_existing");
   });
 
+  it("opportunistically pushes local label + space_id to D1 when cloud row is stale", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_present", owner_id: null });
+    db.prepare("UPDATE artifacts SET label = ?, space_id = ? WHERE id = ?")
+      .run("Friendly Label", "client-projects", "art_present");
+
+    let mineCalls = 0;
+    let patchCall: { url?: string; body?: any } = {};
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      if (url.endsWith("/api/publish/mine")) {
+        mineCalls++;
+        return new Response(JSON.stringify({
+          publications: [{
+            share_token: "tok", artifact_id: "art_present", artifact_kind: "notes",
+            mode: "open", content_type: "text/plain", size_bytes: 10,
+            published_at: 1, updated_at: 1,
+            label: null, space_id: null,    // stale — local has both
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (init.method === "PATCH") {
+        patchCall = { url, body: JSON.parse(init.body as string) };
+        return new Response(JSON.stringify({
+          share_token: "tok", share_url: "x", mode: "open", updated_at: 9,
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`unexpected: ${url}`);
+    });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+
+    await svc.backfillPublications();
+    // The PATCH is fire-and-forget — give it a tick to settle.
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mineCalls).toBe(1);
+    expect(patchCall.url).toBe("https://oyster.to/api/publish/tok");
+    expect(patchCall.body).toMatchObject({
+      mode: "open",
+      label: "Friendly Label",
+      space_id: "client-projects",
+    });
+  });
+
+  it("does NOT fire context up-sync when cloud + local already agree", async () => {
+    const db = makeDb();
+    seedArtifact(db, { id: "art_present", owner_id: null });
+    db.prepare("UPDATE artifacts SET label = ?, space_id = ? WHERE id = ?")
+      .run("Same Label", "home", "art_present");
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/publish/mine")) {
+        return new Response(JSON.stringify({
+          publications: [{
+            share_token: "tok", artifact_id: "art_present", artifact_kind: "notes",
+            mode: "open", content_type: "text/plain", size_bytes: 10,
+            published_at: 1, updated_at: 1,
+            label: "Same Label", space_id: "home",    // matches local
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error("unexpected PATCH — no sync should have fired");
+    });
+
+    const svc = createPublishService({
+      db,
+      readArtifactBytes: async () => new Uint8Array(),
+      currentUser: () => ({ id: "u1", email: "a@a", tier: "free" }),
+      sessionToken: () => "s1",
+      workerBase: "https://oyster.to",
+      hashPassword: async () => "",
+      fetch: fetchMock as any,
+    });
+    await svc.backfillPublications();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // /mine only
+  });
+
   it("returns {0,0} and leaves DB alone when Worker is unreachable", async () => {
     const db = makeDb();
     seedArtifact(db, { id: "art_present", owner_id: null });

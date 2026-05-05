@@ -85,6 +85,10 @@ export interface UpdateShareArgs {
    *  local-side rename mirroring). Worker COALESCEs — undefined preserves
    *  the existing label, so renames don't have to also re-pass mode. */
   label?: string;
+  /** Local space id, mirrored to D1 so other devices can resolve the
+   *  publication's space when they sync (R1, 0.8.0). Worker COALESCEs —
+   *  undefined preserves. */
+  space_id?: string;
 }
 
 export interface UpdateShareResult {
@@ -289,6 +293,7 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
           mode: args.mode,
           password_hash: passwordHash,
           ...(args.label !== undefined ? { label: args.label } : {}),
+          ...(args.space_id !== undefined ? { space_id: args.space_id } : {}),
         }),
       });
       if (!res.ok) {
@@ -409,7 +414,16 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
           WHERE id = ?`
       );
 
+      // Used to opportunistically push label + space_id from local rows up
+      // to D1 when the cloud row is missing or stale on either field. Lets
+      // older publications (made before publish metadata carried context)
+      // self-heal on next sign-in instead of forcing a re-publish.
+      const localContextStmt = deps.db.prepare(
+        "SELECT label, space_id FROM artifacts WHERE id = ?"
+      );
+
       let mirrored = 0;
+      let synced = 0;
       const unmatched: CloudPublication[] = [];
       for (const row of rows) {
         const result = stmt.run(
@@ -418,6 +432,30 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
         );
         if (result.changes > 0) {
           mirrored++;
+          // Opportunistic context up-sync (fire-and-forget).
+          const local = localContextStmt.get(row.artifact_id) as
+            { label: string; space_id: string } | undefined;
+          if (local) {
+            const labelStale = row.label !== local.label;
+            const spaceStale = row.space_id !== local.space_id;
+            if (labelStale || spaceStale) {
+              synced++;
+              void deps.fetch(`${deps.workerBase}/api/publish/${row.share_token}`, {
+                method: "PATCH",
+                headers: {
+                  Cookie: `oyster_session=${token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  mode: row.mode,
+                  label: local.label,
+                  space_id: local.space_id,
+                }),
+              }).catch((err) => {
+                console.warn("[publish] context up-sync failed:", err);
+              });
+            }
+          }
         } else {
           unmatched.push({
             shareToken: row.share_token,
@@ -434,6 +472,9 @@ export function createPublishService(deps: PublishServiceDeps): PublishService {
         }
       }
       cloudOnly = unmatched;
+      if (synced > 0) {
+        console.log(`[publish] queued ${synced} context up-sync${synced === 1 ? "" : "s"} (label/space_id)`);
+      }
       return { mirrored, skipped: unmatched.length };
     },
 

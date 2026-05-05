@@ -152,9 +152,9 @@ export async function tryHandleArtifactRoute(
       }
       const updated = await artifactService.updateArtifact(id, fields);
       sendJson(updated);
-      // Mirror label changes onto the cloud publication if one is live —
-      // keeps the chip + ghost rendering consistent across devices without
-      // forcing a re-publish (R5 hardening).
+      // Mirror label + space_id onto the cloud publication if one is live —
+      // keeps the chip, ghost rendering, and (eventually) cross-device space
+      // resolution consistent without forcing a re-publish.
       if (
         publishService &&
         fields.label &&
@@ -165,6 +165,7 @@ export async function tryHandleArtifactRoute(
           share_token: updated.publication.shareToken,
           mode: updated.publication.shareMode,
           label: fields.label,
+          space_id: updated.spaceId,
         }).catch((err) => {
           console.warn("[publish] label mirror failed:", err);
         });
