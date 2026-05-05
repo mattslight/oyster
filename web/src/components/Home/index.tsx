@@ -5,6 +5,7 @@ import type { SessionState } from "../../data/sessions-api";
 import type { Artifact, Space } from "../../../../shared/types";
 import { useSessions } from "../../hooks/useSessions";
 import { useMemories } from "../../hooks/useMemories";
+import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
 import { useSpaceSources } from "../../hooks/useSpaceSources";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 import { Desktop } from "../Desktop";
@@ -125,6 +126,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
 
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange }: Props) {
   const { sessions, error, loading } = useSessions();
+  const signedIn = useAuthSignedIn();
   const {
     memories,
     loading: memoriesLoading,
@@ -1016,7 +1018,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           </div>
           {artefactSource === "published" && filteredArtefactsTotal === 0 ? (
             <div className="home-empty">
-              No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong>
+              {signedIn === false ? (
+                <>Sign in to see your published artefacts. Publishing requires an account.</>
+              ) : (
+                <>No published artefacts yet — type <code>/p &lt;name&gt;</code> in the chat bar, or right-click any artefact and choose <strong>Publish…</strong></>
+              )}
             </div>
           ) : artefactSource === "pinned" && filteredArtefactsTotal === 0 ? (
             <div className="home-empty">
