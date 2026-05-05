@@ -63,11 +63,10 @@ const ARTEFACT_SOURCE_LABELS: Record<ArtefactSource, string> = {
 const isLivePublication = (a: Artifact): boolean =>
   a.publication != null && a.publication.unpublishedAt == null;
 
-// 3 rows × ~7 tiles in the default 1100px column ≈ 21. The grid is
-// responsive so the visible count varies by width — picking a fixed cap
-// keeps the truncation predictable, and the "Show all N" toggle is the
-// safety valve for narrow viewports where 21 fills less of the screen.
-const ARTEFACTS_PREVIEW = 21;
+// Artefacts list cap. Matches Sessions (10) so both sections stay
+// compact and the table view doesn't dump dozens of rows at once;
+// Show more pages an extra ten in.
+const ARTEFACTS_PREVIEW = 10;
 
 // Persists a view toggle (icons / table) to localStorage so it survives
 // reloads. Returns a useState-shaped pair so callsites stay one-liner.
