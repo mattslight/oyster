@@ -599,12 +599,13 @@ async function handlePublishDelete(req: Request, env: Env, shareToken: string): 
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
-/** Validates a synced-space optional field. Maps both undefined (field absent
- *  from JSON) and null (explicit clear) to null — appropriate for PUT semantics
- *  (full replacement). Do NOT reuse for PATCH-style preserve-on-undefined paths
- *  without rethinking; you'd silently clear fields the caller meant to leave alone. */
+/** Validates a synced-space optional field. PUT is full-replacement: every
+ *  optional field MUST be present in the body (null = clear, string = set).
+ *  Omitting a field returns { ok: false } so the caller gets a 400, not a
+ *  silent clear. The sync service always sends all 5 fields; this strictness
+ *  protects against future partial-PUT clients accidentally clearing data. */
 function validateOptional(v: unknown): { ok: true; value: string | null } | { ok: false } {
-  if (v === undefined || v === null) return { ok: true, value: null };
+  if (v === null) return { ok: true, value: null };
   if (typeof v === "string") return { ok: true, value: v };
   return { ok: false };
 }

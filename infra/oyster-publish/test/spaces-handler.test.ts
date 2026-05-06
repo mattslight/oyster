@@ -153,6 +153,17 @@ describe("PUT /api/spaces/:id", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: "invalid_metadata" });
   });
+
+  it("returns 400 invalid_metadata when an optional field is missing entirely (strict-required PUT contract)", async () => {
+    const u = await seedUser();
+    // color is omitted entirely — must 400, not silently clear.
+    const res = await call(putRequest("work", {
+      display_name: "Work", parent_id: null,
+      summary_title: null, summary_content: null, updated_at: 1000,
+    }, authHeader(u.sessionToken).Cookie));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_metadata" });
+  });
 });
 
 function deleteRequest(spaceId: string, cookie?: string): Request {

@@ -257,6 +257,12 @@ export class SpaceService {
       if (!/^#[0-9a-fA-F]{6}$/.test(fields.color)) throw new Error("color must be a 6-digit hex string");
       dbFields.color = fields.color;
     }
+    if (Object.keys(dbFields).length === 0) {
+      // No fields to update — caller's intent was a no-op (e.g. updateSpace(id, {})
+      // or all fields explicitly undefined). Don't mark dirty or push; doing so
+      // would overwrite a peer's legitimate edit via LWW with no local intent.
+      return rowToSpace(row);
+    }
     this.spaceStore.update(id, dbFields);
     this.spaceStore.markSyncDirty(id);
     void this.spaceSync?.pushOne(id);
