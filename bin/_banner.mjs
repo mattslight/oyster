@@ -8,17 +8,16 @@
 // clickable URLs and copy-paste commands on the top line. `\x1b[38;5;238m`
 // near-black grey via 256-colour palette — the logo's drop-shadow strokes,
 // chosen for high contrast with the bright magenta fill so the letter
-// outlines recede instead of competing with the body. (Plain `\x1b[35m`
-// regular magenta wasn't dim enough on most palettes — the shadow read
-// as loud as the fill.) `\x1b[90m` bright black (grey) for auxiliary
-// text that shouldn't compete. `\x1b[3;90m` adds italic; tips use it so
-// they read as quiet asides rather than equal-status alongside the
-// actionable URLs — terminals without italic support still get the grey.
+// outlines recede instead of competing with the body. `\x1b[90m` bright
+// black (grey) for auxiliary text that shouldn't compete. `\x1b[3;38;5;245m`
+// adds italic over a 256-colour medium grey; the centred tip uses it so
+// it reads as a quiet aside but stays legible — bright-black was a touch
+// too dim once the line was unpinned from the 💡 anchor.
 const M = "\x1b[95m";
 const MD = "\x1b[38;5;238m";
 const C = "\x1b[1;96m";
 const D = "\x1b[90m";
-const T = "\x1b[3;90m";
+const T = "\x1b[3;38;5;245m";
 const R = "\x1b[0m";
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -109,28 +108,35 @@ export function printHeroBox(url, tipIndex, options = {}) {
     ? tips[tipIndex]
     : tips[Math.floor(Math.random() * tips.length)];
 
-  // `.length` on strings with surrogate-pair emojis (👉, 🤖, 💡) returns 2
-  // and those emojis render as 2 terminal cells — so length ≈ display
-  // width in the modern terminals we target. Avoid BMP-presentation
-  // emojis like ✨ (U+2728) and emojis carrying a variation selector
-  // like 🖥️ (🖥 + U+FE0F) — both miscount, breaking the padding maths.
-  const contentLines = [
-    ``,
-    ` 👉  Open: ${C}${url}${R}    🤖  MCP server: ${C}${url}/mcp/${R}  ${D}(give this to your AI)${R}`,
-    ``,
-    ` 💡  ${T}${tip}${R}`,
-    ``,
-  ];
+  // `.length` on strings with surrogate-pair emojis (👉, 🤖) returns 2 and
+  // those emojis render as 2 terminal cells — so length ≈ display width
+  // in the modern terminals we target. Avoid BMP-presentation emojis
+  // like ✨ (U+2728) and emojis carrying a variation selector like 🖥️
+  // (🖥 + U+FE0F) — both miscount, breaking the padding maths.
+  const topLine = ` 👉  Open: ${C}${url}${R}    🤖  MCP server: ${C}${url}/mcp/${R}  ${D}(give this to your AI)${R}`;
 
   // Pad ASCII rows to a uniform width so the block centres as one shape.
   const artLineLen = Math.max(...logo.map((l) => l.length));
   const paddedArt = logo.map((l) => l + " ".repeat(artLineLen - l.length));
-  const contentMaxVis = Math.max(...contentLines.map((l) => stripAnsi(l).length));
-  // Floor the box width to the widest possible tip — otherwise the box
-  // visibly jitters between boots as different tips are drawn.
-  const allTipsMaxVis = Math.max(...tips.map((t) => stripAnsi(` 💡  ${t}`).length));
-  const maxVis = Math.max(contentMaxVis, artLineLen, allTipsMaxVis);
+  // Floor the box width to the widest possible tip text — otherwise the
+  // box visibly jitters between boots as different tips are drawn.
+  const allTipsMaxVis = Math.max(...tips.map((t) => stripAnsi(t).length));
+  const maxVis = Math.max(stripAnsi(topLine).length, artLineLen, allTipsMaxVis);
   const innerWidth = maxVis + 4; // 2 cells breathing room on each side
+
+  // Tip is centred (no anchor emoji) so it reads as a quiet inscription
+  // rather than a third equal-weight item under the actionable top line.
+  const tipPlainLen = stripAnsi(tip).length;
+  const tipLeftPad = Math.floor((innerWidth - 2 - tipPlainLen) / 2);
+  const tipLine = `${" ".repeat(tipLeftPad)}${T}${tip}${R}`;
+
+  const contentLines = [
+    ``,
+    topLine,
+    ``,
+    tipLine,
+    ``,
+  ];
 
   // Centre the ASCII block. The render loop already inserts 2 leading cells
   // before each line, so distribute the rest as left/right padding.
