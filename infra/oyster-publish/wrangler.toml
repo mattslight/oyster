@@ -28,6 +28,16 @@ zone_name = "oyster.to"
 pattern = "www.oyster.to/api/publish/*"
 zone_name = "oyster.to"
 
+# Spaces sync endpoints (#406): GET /api/spaces/mine, PUT/DELETE /api/spaces/:id.
+# Same worker, same auth flow as /api/publish/*. Both apex and www.
+[[routes]]
+pattern = "oyster.to/api/spaces/*"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "www.oyster.to/api/spaces/*"
+zone_name = "oyster.to"
+
 [[routes]]
 pattern = "oyster.to/p/*"
 zone_name = "oyster.to"

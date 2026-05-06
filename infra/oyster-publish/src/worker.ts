@@ -34,6 +34,29 @@ export default {
       return handlePublishPatch(req, env, token);
     }
 
+    if (url.pathname === "/api/spaces/mine" && req.method === "GET") {
+      return handleSpacesMine(req, env);
+    }
+
+    if (url.pathname.startsWith("/api/spaces/") && req.method === "PUT") {
+      const raw = url.pathname.slice("/api/spaces/".length);
+      // Reject any path with extra segments before decoding (defence in depth).
+      if (raw.includes("/")) return new Response("Not Found", { status: 404 });
+      let spaceId: string;
+      try { spaceId = decodeURIComponent(raw); }
+      catch { return jsonError(400, "invalid_space_id"); }
+      return handleSpacesPut(req, env, spaceId);
+    }
+
+    if (url.pathname.startsWith("/api/spaces/") && req.method === "DELETE") {
+      const raw = url.pathname.slice("/api/spaces/".length);
+      if (raw.includes("/")) return new Response("Not Found", { status: 404 });
+      let spaceId: string;
+      try { spaceId = decodeURIComponent(raw); }
+      catch { return jsonError(400, "invalid_space_id"); }
+      return handleSpacesDelete(req, env, spaceId);
+    }
+
     if (url.pathname.startsWith("/p/")) {
       // Issue #397: viewer canonical origin is share.oyster.to. Anything that
       // still hits oyster.to/p/* (or www.) gets a 308 to the new origin so
@@ -308,6 +331,166 @@ async function handlePublishMine(req: Request, env: Env): Promise<Response> {
   return jsonOk({ publications: rows.results ?? [] }, 200, { "cache-control": "private, no-store" });
 }
 
+async function handleSpacesMine(req: Request, env: Env): Promise<Response> {
+  // Returns this signed-in user's synced spaces — both live rows AND tombstones,
+  // so a peer device that's been offline can apply deletions on next reconcile.
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+
+  type Row = {
+    owner_id: string;
+    space_id: string;
+    display_name: string;
+    color: string | null;
+    parent_id: string | null;
+    summary_title: string | null;
+    summary_content: string | null;
+    updated_at: number;
+    deleted_at: number | null;
+    created_at: number;
+  };
+  const rows = await env.DB.prepare(
+    `SELECT owner_id, space_id, display_name, color, parent_id,
+            summary_title, summary_content, updated_at, deleted_at, created_at
+       FROM synced_spaces
+      WHERE owner_id = ?
+      ORDER BY updated_at DESC`,
+  ).bind(user.id).all<Row>();
+
+  // Per-user data — never cache at the browser, proxy, or edge layer.
+  return jsonOk({ spaces: rows.results ?? [] }, 200, { "cache-control": "private, no-store" });
+}
+
+async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (!spaceId || spaceId.includes("/")) return jsonError(400, "invalid_space_id");
+
+  let body: {
+    display_name?: unknown;
+    color?: unknown;
+    parent_id?: unknown;
+    summary_title?: unknown;
+    summary_content?: unknown;
+    updated_at?: unknown;
+  };
+  try { body = await req.json() as typeof body; }
+  catch { return jsonError(400, "invalid_metadata"); }
+
+  if (typeof body.display_name !== "string") {
+    return jsonError(400, "invalid_metadata");
+  }
+  const trimmedName = body.display_name.trim();
+  if (trimmedName.length === 0 || trimmedName.length > 200) {
+    // Empty after trim, or pathologically long. Length check is on visible chars.
+    return jsonError(400, "invalid_metadata");
+  }
+  if (typeof body.updated_at !== "number" || !Number.isFinite(body.updated_at) || body.updated_at < 0) {
+    return jsonError(400, "invalid_metadata");
+  }
+
+  // Strict optional-field validation — null (clear) or string (set). undefined
+  // is rejected as a strict-required PUT field (full replacement contract);
+  // omitting an optional field returns 400 rather than silently clearing.
+  const color          = validateOptional(body.color);
+  const parentId       = validateOptional(body.parent_id);
+  const summaryTitle   = validateOptional(body.summary_title);
+  const summaryContent = validateOptional(body.summary_content);
+  if (!color.ok || !parentId.ok || !summaryTitle.ok || !summaryContent.ok) {
+    return jsonError(400, "invalid_metadata");
+  }
+  const incomingUpdated = body.updated_at;
+
+  type Row = {
+    owner_id: string; space_id: string; display_name: string;
+    color: string | null; parent_id: string | null;
+    summary_title: string | null; summary_content: string | null;
+    updated_at: number; deleted_at: number | null; created_at: number;
+  };
+  const existing = await env.DB.prepare(
+    `SELECT owner_id, space_id, display_name, color, parent_id,
+            summary_title, summary_content, updated_at, deleted_at, created_at
+       FROM synced_spaces WHERE owner_id = ? AND space_id = ?`,
+  ).bind(user.id, spaceId).first<Row>();
+
+  // Resurrection rule — peer pushed an update after this device tombstoned.
+  // 410 tells the peer to apply the tombstone locally and stop dirty-retrying.
+  if (existing && existing.deleted_at !== null) {
+    return jsonError(410, "space_tombstoned");
+  }
+
+  // Last-write-wins: stale writes become no-ops returning the existing row.
+  if (existing && incomingUpdated <= existing.updated_at) {
+    return jsonOk({ space: existing });
+  }
+
+  const now = Date.now();
+  if (existing) {
+    await env.DB.prepare(
+      `UPDATE synced_spaces
+          SET display_name = ?, color = ?, parent_id = ?,
+              summary_title = ?, summary_content = ?, updated_at = ?
+        WHERE owner_id = ? AND space_id = ?`,
+    ).bind(
+      trimmedName, color.value, parentId.value,
+      summaryTitle.value, summaryContent.value, incomingUpdated,
+      user.id, spaceId,
+    ).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO synced_spaces
+       (owner_id, space_id, display_name, color, parent_id,
+        summary_title, summary_content, updated_at, deleted_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+    ).bind(
+      user.id, spaceId, trimmedName, color.value, parentId.value,
+      summaryTitle.value, summaryContent.value, incomingUpdated, now,
+    ).run();
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT owner_id, space_id, display_name, color, parent_id,
+            summary_title, summary_content, updated_at, deleted_at, created_at
+       FROM synced_spaces WHERE owner_id = ? AND space_id = ?`,
+  ).bind(user.id, spaceId).first<Row>();
+
+  return jsonOk({ space: row });
+}
+
+async function handleSpacesDelete(req: Request, env: Env, spaceId: string): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (!spaceId || spaceId.includes("/")) return jsonError(400, "invalid_space_id");
+
+  type Row = { deleted_at: number | null; updated_at: number };
+  const existing = await env.DB.prepare(
+    "SELECT deleted_at, updated_at FROM synced_spaces WHERE owner_id = ? AND space_id = ?",
+  ).bind(user.id, spaceId).first<Row>();
+
+  // 404 means: there's no cloud row to tombstone — the local delete is the
+  // only state that ever existed for this id. Caller treats 404 as "already
+  // gone elsewhere; mark the local tombstone synced and stop retrying."
+  if (!existing) return jsonError(404, "space_not_found");
+
+  // Idempotent: existing tombstone returns as-is.
+  if (existing.deleted_at !== null) {
+    return jsonOk({
+      space_id: spaceId,
+      deleted_at: existing.deleted_at,
+      updated_at: existing.updated_at,
+    });
+  }
+
+  const now = Date.now();
+  await env.DB.prepare(
+    `UPDATE synced_spaces
+        SET deleted_at = ?, updated_at = ?
+      WHERE owner_id = ? AND space_id = ?`,
+  ).bind(now, now, user.id, spaceId).run();
+
+  return jsonOk({ space_id: spaceId, deleted_at: now, updated_at: now });
+}
+
 async function handlePublishPatch(req: Request, env: Env, shareToken: string): Promise<Response> {
   // Metadata-only update: change mode + password without re-uploading bytes.
   // Used by the cloud-only "Edit share…" flow so a publication can be reset
@@ -416,6 +599,17 @@ async function handlePublishDelete(req: Request, env: Env, shareToken: string): 
 }
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
+
+/** Validates a synced-space optional field. PUT is full-replacement: every
+ *  optional field MUST be present in the body (null = clear, string = set).
+ *  Omitting a field returns { ok: false } so the caller gets a 400, not a
+ *  silent clear. The sync service always sends all 5 fields; this strictness
+ *  protects against future partial-PUT clients accidentally clearing data. */
+function validateOptional(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (v === null) return { ok: true, value: null };
+  if (typeof v === "string") return { ok: true, value: v };
+  return { ok: false };
+}
 
 interface SessionUser {
   id: string;
