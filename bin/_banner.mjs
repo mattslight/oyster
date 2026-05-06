@@ -102,14 +102,14 @@ export function printHeroBox(url, tipIndex, options = {}) {
     ? tips[tipIndex]
     : tips[Math.floor(Math.random() * tips.length)];
 
-  // `.length` on strings with surrogate-pair emojis (👉, 💡) returns 2 and
-  // those emojis render as 2 terminal cells — so length ≈ display width
-  // in the modern terminals we target. Avoid BMP-presentation emojis like
-  // ✨ (U+2728) here — they have .length 1 but render 2-wide, breaking the
-  // padding maths.
+  // `.length` on strings with surrogate-pair emojis (👉, 🤖, 💡) returns 2
+  // and those emojis render as 2 terminal cells — so length ≈ display
+  // width in the modern terminals we target. Avoid BMP-presentation
+  // emojis like ✨ (U+2728) and emojis carrying a variation selector
+  // like 🖥️ (🖥 + U+FE0F) — both miscount, breaking the padding maths.
   const contentLines = [
     ``,
-    ` 👉  Open: ${C}${url}${R}    ·    MCP server: ${C}${url}/mcp/${R}  ${D}(give this to your AI)${R}`,
+    ` 👉  Open: ${C}${url}${R}    🤖  MCP server: ${C}${url}/mcp/${R}  ${D}(give this to your AI)${R}`,
     ``,
     ` 💡  ${tip}`,
     ``,
