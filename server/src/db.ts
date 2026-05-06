@@ -50,9 +50,23 @@ export function initDb(userlandDir: string): Database.Database {
     "ALTER TABLE spaces ADD COLUMN parent_id TEXT REFERENCES spaces(id)",
     "ALTER TABLE spaces ADD COLUMN summary_title TEXT",
     "ALTER TABLE spaces ADD COLUMN summary_content TEXT",
+    "ALTER TABLE spaces ADD COLUMN sync_dirty_at INTEGER",
+    "ALTER TABLE spaces ADD COLUMN cloud_synced_at INTEGER",
+    "ALTER TABLE spaces ADD COLUMN deleted_at INTEGER",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }
   }
+
+  // Promotion backfill: any pre-existing rows (created before sync existed)
+  // need to be pushed up on first Pro sign-in. Mark them dirty exactly once
+  // by setting sync_dirty_at where it's still NULL — a no-op on subsequent
+  // boots since the column will already be populated.
+  // Excludes tombstones: deleted_at IS NULL is the live-row guard.
+  db.exec(`
+    UPDATE spaces
+       SET sync_dirty_at = CAST(strftime('%s','now') AS INTEGER) * 1000
+     WHERE sync_dirty_at IS NULL AND deleted_at IS NULL
+  `);
 
   // space_paths — legacy join table. Replaced by `sources` below (#208).
   // Kept for now so the existing migration block (lines below) can read
