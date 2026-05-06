@@ -176,7 +176,7 @@ export async function seedSyncedSpace(opts: {
   deletedAt?: number | null;
 }): Promise<void> {
   const now = opts.updatedAt ?? Date.now();
-  const createdAt = opts.createdAt ?? Date.now();
+  const createdAt = opts.createdAt ?? now;
   await env.DB.prepare(
     `INSERT INTO synced_spaces
      (owner_id, space_id, display_name, color, parent_id,

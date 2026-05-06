@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import worker from "../src/worker";
-import { applySchema, seedUser, authHeader, seedSyncedSpace, readSyncedSpace } from "./fixtures/seed";
+import { applySchema, seedUser, authHeader, seedSyncedSpace } from "./fixtures/seed";
 
 beforeEach(async () => { await applySchema(); });
 
@@ -64,6 +64,3 @@ describe("GET /api/spaces/mine", () => {
     expect(res.headers.get("cache-control")).toBe("private, no-store");
   });
 });
-
-// Suppress unused-import warning until tasks 3 + 4 land.
-void readSyncedSpace;
