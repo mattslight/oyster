@@ -5,14 +5,17 @@
 
 // ANSI colour codes — no extra dep. `\x1b[95m` bright magenta (indigo-ish,
 // Oyster's accent). `\x1b[1;96m` bold bright cyan, reserved for real,
-// clickable URLs and copy-paste commands on the top line. `\x1b[35m`
-// regular magenta — the dimmer companion used for the logo's drop-shadow
-// strokes. `\x1b[90m` bright black (grey) for auxiliary text that
-// shouldn't compete. `\x1b[3;90m` adds italic; tips use it so they read
-// as quiet asides rather than equal-status alongside the actionable URLs
-// — terminals without italic support still get the grey.
+// clickable URLs and copy-paste commands on the top line. `\x1b[38;5;238m`
+// near-black grey via 256-colour palette — the logo's drop-shadow strokes,
+// chosen for high contrast with the bright magenta fill so the letter
+// outlines recede instead of competing with the body. (Plain `\x1b[35m`
+// regular magenta wasn't dim enough on most palettes — the shadow read
+// as loud as the fill.) `\x1b[90m` bright black (grey) for auxiliary
+// text that shouldn't compete. `\x1b[3;90m` adds italic; tips use it so
+// they read as quiet asides rather than equal-status alongside the
+// actionable URLs — terminals without italic support still get the grey.
 const M = "\x1b[95m";
-const MD = "\x1b[35m";
+const MD = "\x1b[38;5;238m";
 const C = "\x1b[1;96m";
 const D = "\x1b[90m";
 const T = "\x1b[3;90m";
