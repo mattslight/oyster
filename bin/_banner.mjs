@@ -109,7 +109,7 @@ export function printHeroBox(url, tipIndex, options = {}) {
   // padding maths.
   const contentLines = [
     ``,
-    ` 👉  Open: ${C}${url}${R}    |    MCP server: ${C}${url}/mcp/${R}  ${D}(give this to your AI)${R}`,
+    ` 👉  Open: ${C}${url}${R}    ·    MCP server: ${C}${url}/mcp/${R}  ${D}(give this to your AI)${R}`,
     ``,
     ` 💡  ${tip}`,
     ``,
