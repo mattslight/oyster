@@ -120,14 +120,19 @@ export function createSpaceSyncService(deps: SpaceSyncDeps): SpaceSyncService {
           updated_at      = datetime('now')
       `);
 
+      const tombstoneCheckStmt = deps.db.prepare(
+        "SELECT id, deleted_at FROM spaces WHERE id = ?",
+      );
+      const liveCheckStmt = deps.db.prepare(
+        "SELECT sync_dirty_at, cloud_synced_at FROM spaces WHERE id = ? AND deleted_at IS NULL",
+      );
+
       for (const cloud of cloudRows) {
         if (cloud.deleted_at !== null) {
           // Tombstone application — preserve cloud's deleted_at as local's
           // deleted_at (cross-device tombstone provenance), and mark synced
           // so the pending-delete sweep doesn't re-push.
-          const existing = deps.db.prepare(
-            "SELECT id, deleted_at FROM spaces WHERE id = ?",
-          ).get(cloud.space_id) as { id: string; deleted_at: number | null } | undefined;
+          const existing = tombstoneCheckStmt.get(cloud.space_id) as { id: string; deleted_at: number | null } | undefined;
           if (existing && existing.deleted_at === null) {
             deps.store.softDelete(cloud.space_id, cloud.deleted_at);
             tombstoned++;
@@ -138,9 +143,7 @@ export function createSpaceSyncService(deps: SpaceSyncDeps): SpaceSyncService {
           continue;
         }
 
-        const existing = deps.db.prepare(
-          "SELECT sync_dirty_at, cloud_synced_at FROM spaces WHERE id = ? AND deleted_at IS NULL",
-        ).get(cloud.space_id) as { sync_dirty_at: number | null; cloud_synced_at: number | null } | undefined;
+        const existing = liveCheckStmt.get(cloud.space_id) as { sync_dirty_at: number | null; cloud_synced_at: number | null } | undefined;
 
         if (!existing) {
           upsertStmt.run(
@@ -187,8 +190,8 @@ export function createSpaceSyncService(deps: SpaceSyncDeps): SpaceSyncService {
         "SELECT * FROM spaces WHERE id = ? AND deleted_at IS NULL",
       ).get(spaceId) as SpaceRow | undefined;
       if (!row) return;
-      const dirtyAt = (row as { sync_dirty_at: number | null }).sync_dirty_at;
-      const synced  = (row as { cloud_synced_at: number | null }).cloud_synced_at;
+      const dirtyAt = row.sync_dirty_at;
+      const synced  = row.cloud_synced_at;
       // Clean if no dirty mark, or already synced past it.
       if (dirtyAt === null) return;
       if (synced !== null && synced >= dirtyAt) return;
@@ -204,13 +207,13 @@ export function createSpaceSyncService(deps: SpaceSyncDeps): SpaceSyncService {
         "SELECT id, deleted_at, cloud_synced_at FROM spaces WHERE id = ?",
       ).get(spaceId) as { id: string; deleted_at: number | null; cloud_synced_at: number | null } | undefined;
       if (!row || row.deleted_at === null) return;
-      await pushRowDelete(deps, session.token, row as unknown as SpaceRow);
+      await pushRowDelete(deps, session.token, row);
     },
   };
 }
 
 async function pushRow(deps: SpaceSyncDeps, token: string, row: SpaceRow): Promise<boolean> {
-  const dirtyAt = (row as { sync_dirty_at: number | null }).sync_dirty_at;
+  const dirtyAt = row.sync_dirty_at;
   if (dirtyAt === null) return false;  // shouldn't happen — caller filters
 
   let res: Response;
@@ -253,8 +256,12 @@ async function pushRow(deps: SpaceSyncDeps, token: string, row: SpaceRow): Promi
   return true;
 }
 
-async function pushRowDelete(deps: SpaceSyncDeps, token: string, row: SpaceRow): Promise<void> {
-  const localDeletedAt = (row as { deleted_at: number | null }).deleted_at ?? Date.now();
+async function pushRowDelete(
+  deps: SpaceSyncDeps,
+  token: string,
+  row: { id: string; deleted_at: number | null },
+): Promise<void> {
+  const localDeletedAt = row.deleted_at ?? Date.now();
   let res: Response;
   try {
     res = await deps.fetch(
