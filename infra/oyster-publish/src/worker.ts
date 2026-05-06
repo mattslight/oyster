@@ -38,6 +38,16 @@ export default {
       return handleSpacesMine(req, env);
     }
 
+    if (url.pathname.startsWith("/api/spaces/") && req.method === "PUT") {
+      const raw = url.pathname.slice("/api/spaces/".length);
+      // Reject any path with extra segments before decoding (defence in depth).
+      if (raw.includes("/")) return new Response("Not Found", { status: 404 });
+      let spaceId: string;
+      try { spaceId = decodeURIComponent(raw); }
+      catch { return jsonError(400, "invalid_space_id"); }
+      return handleSpacesPut(req, env, spaceId);
+    }
+
     if (url.pathname.startsWith("/p/")) {
       // Issue #397: viewer canonical origin is share.oyster.to. Anything that
       // still hits oyster.to/p/* (or www.) gets a 308 to the new origin so
@@ -340,6 +350,105 @@ async function handleSpacesMine(req: Request, env: Env): Promise<Response> {
 
   // Per-user data — never cache at the browser, proxy, or edge layer.
   return jsonOk({ spaces: rows.results ?? [] }, 200, { "cache-control": "private, no-store" });
+}
+
+async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (!spaceId || spaceId.includes("/")) return jsonError(400, "invalid_space_id");
+
+  let body: {
+    display_name?: unknown;
+    color?: unknown;
+    parent_id?: unknown;
+    summary_title?: unknown;
+    summary_content?: unknown;
+    updated_at?: unknown;
+  };
+  try { body = await req.json() as typeof body; }
+  catch { return jsonError(400, "invalid_metadata"); }
+
+  if (typeof body.display_name !== "string" || body.display_name.trim().length === 0) {
+    return jsonError(400, "invalid_metadata");
+  }
+  if (body.display_name.length > 200) {
+    // Cheap upper bound; protects D1 from pathological inputs.
+    return jsonError(400, "invalid_metadata");
+  }
+  if (typeof body.updated_at !== "number" || !Number.isFinite(body.updated_at) || body.updated_at < 0) {
+    return jsonError(400, "invalid_metadata");
+  }
+
+  // Strict optional-field validation — accept undefined (preserve), null (clear),
+  // or string (set). Anything else is a 400.
+  function validateOptional(name: string, v: unknown): { ok: true; value: string | null } | { ok: false } {
+    if (v === undefined || v === null) return { ok: true, value: null };
+    if (typeof v === "string") return { ok: true, value: v };
+    return { ok: false };
+  }
+  const color          = validateOptional("color",          body.color);
+  const parentId       = validateOptional("parent_id",      body.parent_id);
+  const summaryTitle   = validateOptional("summary_title",  body.summary_title);
+  const summaryContent = validateOptional("summary_content", body.summary_content);
+  if (!color.ok || !parentId.ok || !summaryTitle.ok || !summaryContent.ok) {
+    return jsonError(400, "invalid_metadata");
+  }
+  const incomingUpdated = body.updated_at;
+
+  type Row = {
+    owner_id: string; space_id: string; display_name: string;
+    color: string | null; parent_id: string | null;
+    summary_title: string | null; summary_content: string | null;
+    updated_at: number; deleted_at: number | null; created_at: number;
+  };
+  const existing = await env.DB.prepare(
+    `SELECT owner_id, space_id, display_name, color, parent_id,
+            summary_title, summary_content, updated_at, deleted_at, created_at
+       FROM synced_spaces WHERE owner_id = ? AND space_id = ?`,
+  ).bind(user.id, spaceId).first<Row>();
+
+  // Resurrection rule — peer pushed an update after this device tombstoned.
+  // 410 tells the peer to apply the tombstone locally and stop dirty-retrying.
+  if (existing && existing.deleted_at !== null) {
+    return jsonError(410, "space_tombstoned");
+  }
+
+  // Last-write-wins: stale writes become no-ops returning the existing row.
+  if (existing && incomingUpdated <= existing.updated_at) {
+    return jsonOk({ space: existing });
+  }
+
+  const now = Date.now();
+  if (existing) {
+    await env.DB.prepare(
+      `UPDATE synced_spaces
+          SET display_name = ?, color = ?, parent_id = ?,
+              summary_title = ?, summary_content = ?, updated_at = ?
+        WHERE owner_id = ? AND space_id = ?`,
+    ).bind(
+      body.display_name.trim(), color.value, parentId.value,
+      summaryTitle.value, summaryContent.value, incomingUpdated,
+      user.id, spaceId,
+    ).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO synced_spaces
+       (owner_id, space_id, display_name, color, parent_id,
+        summary_title, summary_content, updated_at, deleted_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+    ).bind(
+      user.id, spaceId, body.display_name.trim(), color.value, parentId.value,
+      summaryTitle.value, summaryContent.value, incomingUpdated, now,
+    ).run();
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT owner_id, space_id, display_name, color, parent_id,
+            summary_title, summary_content, updated_at, deleted_at, created_at
+       FROM synced_spaces WHERE owner_id = ? AND space_id = ?`,
+  ).bind(user.id, spaceId).first<Row>();
+
+  return jsonOk({ space: row });
 }
 
 async function handlePublishPatch(req: Request, env: Env, shareToken: string): Promise<Response> {

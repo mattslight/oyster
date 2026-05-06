@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import worker from "../src/worker";
-import { applySchema, seedUser, authHeader, seedSyncedSpace } from "./fixtures/seed";
+import { applySchema, seedUser, authHeader, seedSyncedSpace, readSyncedSpace } from "./fixtures/seed";
 
 beforeEach(async () => { await applySchema(); });
 
@@ -62,5 +62,95 @@ describe("GET /api/spaces/mine", () => {
     const u = await seedUser();
     const res = await call(mineRequest(authHeader(u.sessionToken).Cookie));
     expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+});
+
+function putRequest(spaceId: string, body: object, cookie?: string): Request {
+  const headers = new Headers({ "content-type": "application/json" });
+  if (cookie) headers.set("Cookie", cookie);
+  return new Request(`https://oyster.to/api/spaces/${spaceId}`, {
+    method: "PUT", headers, body: JSON.stringify(body),
+  });
+}
+
+describe("PUT /api/spaces/:id", () => {
+  it("returns 401 when cookie missing", async () => {
+    const res = await call(putRequest("work", { display_name: "Work", updated_at: 1000 }));
+    expect(res.status).toBe(401);
+  });
+
+  it("creates a new row when none exists, returns 200 with the row", async () => {
+    const u = await seedUser();
+    const res = await call(putRequest("work", {
+      display_name: "Work", color: "#6057c4", parent_id: null,
+      summary_title: null, summary_content: null, updated_at: 5000,
+    }, authHeader(u.sessionToken).Cookie));
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { space: Record<string, unknown> };
+    expect(json.space).toMatchObject({
+      space_id: "work", display_name: "Work", color: "#6057c4",
+      updated_at: 5000, deleted_at: null,
+    });
+
+    const row = await readSyncedSpace(u.id, "work");
+    expect(row).toMatchObject({ display_name: "Work", updated_at: 5000 });
+  });
+
+  it("updates an existing row when incoming updated_at is greater", async () => {
+    const u = await seedUser();
+    await seedSyncedSpace({ ownerId: u.id, spaceId: "work", displayName: "Old", updatedAt: 1000 });
+
+    const res = await call(putRequest("work", {
+      display_name: "New", color: null, parent_id: null,
+      summary_title: null, summary_content: null, updated_at: 2000,
+    }, authHeader(u.sessionToken).Cookie));
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { space: Record<string, unknown> };
+    expect(json.space).toMatchObject({ display_name: "New", updated_at: 2000 });
+  });
+
+  it("rejects stale writes (updated_at <= existing) with 200 returning the existing row (no-op)", async () => {
+    const u = await seedUser();
+    await seedSyncedSpace({ ownerId: u.id, spaceId: "work", displayName: "Current", updatedAt: 5000 });
+
+    const res = await call(putRequest("work", {
+      display_name: "Stale", color: null, parent_id: null,
+      summary_title: null, summary_content: null, updated_at: 3000,
+    }, authHeader(u.sessionToken).Cookie));
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { space: Record<string, unknown> };
+    expect(json.space).toMatchObject({ display_name: "Current", updated_at: 5000 });
+  });
+
+  it("returns 410 gone when PUTting to a tombstoned row", async () => {
+    const u = await seedUser();
+    await seedSyncedSpace({ ownerId: u.id, spaceId: "work", updatedAt: 1000, deletedAt: 1500 });
+
+    const res = await call(putRequest("work", {
+      display_name: "Reborn", color: null, parent_id: null,
+      summary_title: null, summary_content: null, updated_at: 2000,
+    }, authHeader(u.sessionToken).Cookie));
+
+    expect(res.status).toBe(410);
+    expect(await res.json()).toMatchObject({ error: "space_tombstoned" });
+  });
+
+  it("returns 400 invalid_metadata when display_name missing", async () => {
+    const u = await seedUser();
+    const res = await call(putRequest("work", { updated_at: 1000 },
+      authHeader(u.sessionToken).Cookie));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_metadata" });
+  });
+
+  it("returns 400 invalid_metadata when updated_at missing or non-numeric", async () => {
+    const u = await seedUser();
+    const res = await call(putRequest("work", { display_name: "Work" },
+      authHeader(u.sessionToken).Cookie));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_metadata" });
   });
 });
