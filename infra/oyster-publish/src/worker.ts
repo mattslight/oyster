@@ -34,6 +34,10 @@ export default {
       return handlePublishPatch(req, env, token);
     }
 
+    if (url.pathname === "/api/spaces/mine" && req.method === "GET") {
+      return handleSpacesMine(req, env);
+    }
+
     if (url.pathname.startsWith("/p/")) {
       // Issue #397: viewer canonical origin is share.oyster.to. Anything that
       // still hits oyster.to/p/* (or www.) gets a 308 to the new origin so
@@ -306,6 +310,36 @@ async function handlePublishMine(req: Request, env: Env): Promise<Response> {
 
   // Per-user data — never cache at the browser, proxy, or edge layer.
   return jsonOk({ publications: rows.results ?? [] }, 200, { "cache-control": "private, no-store" });
+}
+
+async function handleSpacesMine(req: Request, env: Env): Promise<Response> {
+  // Returns this signed-in user's synced spaces — both live rows AND tombstones,
+  // so a peer device that's been offline can apply deletions on next reconcile.
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+
+  type Row = {
+    owner_id: string;
+    space_id: string;
+    display_name: string;
+    color: string | null;
+    parent_id: string | null;
+    summary_title: string | null;
+    summary_content: string | null;
+    updated_at: number;
+    deleted_at: number | null;
+    created_at: number;
+  };
+  const rows = await env.DB.prepare(
+    `SELECT owner_id, space_id, display_name, color, parent_id,
+            summary_title, summary_content, updated_at, deleted_at, created_at
+       FROM synced_spaces
+      WHERE owner_id = ?
+      ORDER BY updated_at DESC`,
+  ).bind(user.id).all<Row>();
+
+  // Per-user data — never cache at the browser, proxy, or edge layer.
+  return jsonOk({ spaces: rows.results ?? [] }, 200, { "cache-control": "private, no-store" });
 }
 
 async function handlePublishPatch(req: Request, env: Env, shareToken: string): Promise<Response> {
