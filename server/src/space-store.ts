@@ -34,7 +34,7 @@ export interface SpaceStore {
   getAll(): SpaceRow[];
   getById(id: string): SpaceRow | undefined;
   getByDisplayName(name: string): SpaceRow | undefined;
-  insert(row: Omit<SpaceRow, "created_at" | "updated_at" | "sync_dirty_at" | "cloud_synced_at" | "deleted_at"> & { sync_dirty_at?: number | null; cloud_synced_at?: number | null; deleted_at?: number | null }): void;
+  insert(row: Omit<SpaceRow, "created_at" | "updated_at" | "sync_dirty_at" | "cloud_synced_at" | "deleted_at">): void;
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void;
   delete(id: string): void;
   // sources
@@ -105,13 +105,11 @@ export class SqliteSpaceStore implements SpaceStore {
         INSERT INTO spaces (
           id, display_name, color, parent_id, scan_status,
           scan_error, last_scanned_at, last_scan_summary,
-          ai_job_status, ai_job_error, summary_title, summary_content,
-          sync_dirty_at, cloud_synced_at, deleted_at
+          ai_job_status, ai_job_error, summary_title, summary_content
         ) VALUES (
           @id, @display_name, @color, @parent_id, @scan_status,
           @scan_error, @last_scanned_at, @last_scan_summary,
-          @ai_job_status, @ai_job_error, @summary_title, @summary_content,
-          @sync_dirty_at, @cloud_synced_at, @deleted_at
+          @ai_job_status, @ai_job_error, @summary_title, @summary_content
         )
       `),
       addSource: db.prepare(`
@@ -133,11 +131,8 @@ export class SqliteSpaceStore implements SpaceStore {
   getAll(): SpaceRow[] { return this.stmts.getAll.all() as SpaceRow[]; }
   getById(id: string): SpaceRow | undefined { return this.stmts.getById.get(id) as SpaceRow | undefined; }
   getByDisplayName(name: string): SpaceRow | undefined { return this.stmts.getByDisplayName.get(name) as SpaceRow | undefined; }
-  insert(row: Omit<SpaceRow, "created_at" | "updated_at">): void {
-    this.stmts.insert.run({
-      sync_dirty_at: null, cloud_synced_at: null, deleted_at: null,
-      ...row,
-    });
+  insert(row: Omit<SpaceRow, "created_at" | "updated_at" | "sync_dirty_at" | "cloud_synced_at" | "deleted_at">): void {
+    this.stmts.insert.run(row);
   }
   delete(id: string): void {
     // Cascade: sources.space_id ON DELETE CASCADE → sources rows hard-deleted,
