@@ -154,3 +154,51 @@ describe("PUT /api/spaces/:id", () => {
     expect(await res.json()).toMatchObject({ error: "invalid_metadata" });
   });
 });
+
+function deleteRequest(spaceId: string, cookie?: string): Request {
+  const headers = new Headers();
+  if (cookie) headers.set("Cookie", cookie);
+  return new Request(`https://oyster.to/api/spaces/${spaceId}`, { method: "DELETE", headers });
+}
+
+describe("DELETE /api/spaces/:id", () => {
+  it("returns 401 when cookie missing", async () => {
+    const res = await call(deleteRequest("work"));
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 when the row does not exist", async () => {
+    const u = await seedUser();
+    const res = await call(deleteRequest("ghost", authHeader(u.sessionToken).Cookie));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ error: "space_not_found" });
+  });
+
+  it("sets deleted_at and bumps updated_at on a live row", async () => {
+    const u = await seedUser();
+    await seedSyncedSpace({ ownerId: u.id, spaceId: "work", updatedAt: 1000 });
+
+    const res = await call(deleteRequest("work", authHeader(u.sessionToken).Cookie));
+    expect(res.status).toBe(200);
+    const json = await res.json() as { space_id: string; deleted_at: number; updated_at: number };
+    expect(json.space_id).toBe("work");
+    expect(json.deleted_at).toBeGreaterThan(0);
+    expect(json.updated_at).toBeGreaterThan(1000);
+
+    const row = await readSyncedSpace(u.id, "work");
+    expect(row?.deleted_at).toBe(json.deleted_at);
+    expect(row?.updated_at).toBe(json.updated_at);
+  });
+
+  it("is idempotent — re-DELETE returns the existing tombstone", async () => {
+    const u = await seedUser();
+    await seedSyncedSpace({
+      ownerId: u.id, spaceId: "work", updatedAt: 1000, deletedAt: 1500,
+    });
+
+    const res = await call(deleteRequest("work", authHeader(u.sessionToken).Cookie));
+    expect(res.status).toBe(200);
+    const json = await res.json() as { space_id: string; deleted_at: number };
+    expect(json.deleted_at).toBe(1500);
+  });
+});

@@ -48,6 +48,15 @@ export default {
       return handleSpacesPut(req, env, spaceId);
     }
 
+    if (url.pathname.startsWith("/api/spaces/") && req.method === "DELETE") {
+      const raw = url.pathname.slice("/api/spaces/".length);
+      if (raw.includes("/")) return new Response("Not Found", { status: 404 });
+      let spaceId: string;
+      try { spaceId = decodeURIComponent(raw); }
+      catch { return jsonError(400, "invalid_space_id"); }
+      return handleSpacesDelete(req, env, spaceId);
+    }
+
     if (url.pathname.startsWith("/p/")) {
       // Issue #397: viewer canonical origin is share.oyster.to. Anything that
       // still hits oyster.to/p/* (or www.) gets a 308 to the new origin so
@@ -445,6 +454,40 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
   ).bind(user.id, spaceId).first<Row>();
 
   return jsonOk({ space: row });
+}
+
+async function handleSpacesDelete(req: Request, env: Env, spaceId: string): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (!spaceId || spaceId.includes("/")) return jsonError(400, "invalid_space_id");
+
+  type Row = { deleted_at: number | null; updated_at: number };
+  const existing = await env.DB.prepare(
+    "SELECT deleted_at, updated_at FROM synced_spaces WHERE owner_id = ? AND space_id = ?",
+  ).bind(user.id, spaceId).first<Row>();
+
+  // 404 means: there's no cloud row to tombstone — the local delete is the
+  // only state that ever existed for this id. Caller treats 404 as "already
+  // gone elsewhere; mark the local tombstone synced and stop retrying."
+  if (!existing) return jsonError(404, "space_not_found");
+
+  // Idempotent: existing tombstone returns as-is.
+  if (existing.deleted_at !== null) {
+    return jsonOk({
+      space_id: spaceId,
+      deleted_at: existing.deleted_at,
+      updated_at: existing.updated_at,
+    });
+  }
+
+  const now = Date.now();
+  await env.DB.prepare(
+    `UPDATE synced_spaces
+        SET deleted_at = ?, updated_at = ?
+      WHERE owner_id = ? AND space_id = ?`,
+  ).bind(now, now, user.id, spaceId).run();
+
+  return jsonOk({ space_id: spaceId, deleted_at: now, updated_at: now });
 }
 
 async function handlePublishPatch(req: Request, env: Env, shareToken: string): Promise<Response> {
