@@ -45,7 +45,6 @@ function insertRow(store: SqliteSpaceStore, id: string, opts: Partial<{ displayN
     scan_status: "none", scan_error: null, last_scanned_at: null,
     last_scan_summary: null, ai_job_status: null, ai_job_error: null,
     summary_title: null, summary_content: null,
-    sync_dirty_at: null, cloud_synced_at: null, deleted_at: null,
   });
 }
 

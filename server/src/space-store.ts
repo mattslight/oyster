@@ -93,6 +93,12 @@ export class SqliteSpaceStore implements SpaceStore {
     getSourceById: Database.Statement;
     getActiveSourceByPath: Database.Statement;
     getSoftDeletedSourceByPathForSpace: Database.Statement;
+    softDelete: Database.Statement;
+    markSyncDirty: Database.Statement;
+    getDirtyRows: Database.Statement;
+    getPendingDeletes: Database.Statement;
+    markSynced: Database.Statement;
+    getAllIncludingDeleted: Database.Statement;
   };
 
   constructor(private db: Database.Database) {
@@ -125,6 +131,21 @@ export class SqliteSpaceStore implements SpaceStore {
       getSoftDeletedSourceByPathForSpace: db.prepare(
         "SELECT * FROM sources WHERE space_id = ? AND path = ? AND removed_at IS NOT NULL ORDER BY added_at DESC LIMIT 1"
       ),
+      softDelete: db.prepare("UPDATE spaces SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL"),
+      markSyncDirty: db.prepare("UPDATE spaces SET sync_dirty_at = ? WHERE id = ?"),
+      getDirtyRows: db.prepare(`
+        SELECT * FROM spaces
+         WHERE deleted_at IS NULL
+           AND sync_dirty_at IS NOT NULL
+           AND (cloud_synced_at IS NULL OR sync_dirty_at > cloud_synced_at)
+      `),
+      getPendingDeletes: db.prepare(`
+        SELECT * FROM spaces
+         WHERE deleted_at IS NOT NULL
+           AND (cloud_synced_at IS NULL OR deleted_at > cloud_synced_at)
+      `),
+      markSynced: db.prepare("UPDATE spaces SET cloud_synced_at = ? WHERE id = ?"),
+      getAllIncludingDeleted: db.prepare("SELECT * FROM spaces ORDER BY display_name"),
     };
   }
 
@@ -178,45 +199,30 @@ export class SqliteSpaceStore implements SpaceStore {
     // Unix ms throughout so the dirty/pending-delete predicates and the
     // cloud column are uniformly comparable. The IS NULL guard makes this
     // idempotent (re-call preserves the original tombstone timestamp).
-    this.db.prepare(
-      "UPDATE spaces SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
-    ).run(deletedAt, id);
+    this.stmts.softDelete.run(deletedAt, id);
   }
 
   markSyncDirty(id: string, dirtyAt: number = Date.now()): void {
     // Unconditional set — the caller's timestamp is the right one. (We don't
     // guard MAX(existing, dirtyAt) because mutations always represent the
     // user's most recent intent; a stale write would be a bug.)
-    this.db.prepare(
-      "UPDATE spaces SET sync_dirty_at = ? WHERE id = ?",
-    ).run(dirtyAt, id);
+    this.stmts.markSyncDirty.run(dirtyAt, id);
   }
 
   getDirtyRows(): SpaceRow[] {
-    return this.db.prepare(`
-      SELECT * FROM spaces
-       WHERE deleted_at IS NULL
-         AND sync_dirty_at IS NOT NULL
-         AND (cloud_synced_at IS NULL OR sync_dirty_at > cloud_synced_at)
-    `).all() as SpaceRow[];
+    return this.stmts.getDirtyRows.all() as SpaceRow[];
   }
 
   getPendingDeletes(): SpaceRow[] {
-    return this.db.prepare(`
-      SELECT * FROM spaces
-       WHERE deleted_at IS NOT NULL
-         AND (cloud_synced_at IS NULL OR deleted_at > cloud_synced_at)
-    `).all() as SpaceRow[];
+    return this.stmts.getPendingDeletes.all() as SpaceRow[];
   }
 
   markSynced(id: string, cloudUpdatedAt: number): void {
-    this.db.prepare(
-      "UPDATE spaces SET cloud_synced_at = ? WHERE id = ?",
-    ).run(cloudUpdatedAt, id);
+    this.stmts.markSynced.run(cloudUpdatedAt, id);
   }
 
   getAllIncludingDeleted(): SpaceRow[] {
-    return this.db.prepare("SELECT * FROM spaces ORDER BY display_name").all() as SpaceRow[];
+    return this.stmts.getAllIncludingDeleted.all() as SpaceRow[];
   }
 
   private static readonly UPDATABLE_COLUMNS = new Set([
