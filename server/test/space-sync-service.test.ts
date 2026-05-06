@@ -350,3 +350,151 @@ describe("createSpaceSyncService — reconcile()", () => {
     expect(second).toEqual({ pulled: 0, pushed: 0, tombstoned: 0 });
   });
 });
+
+describe("createSpaceSyncService — pushOne()", () => {
+  let db: Database.Database;
+  let store: SqliteSpaceStore;
+
+  beforeEach(() => {
+    db = makeDb();
+    store = new SqliteSpaceStore(db);
+    vi.restoreAllMocks();
+  });
+
+  it("does nothing when user is signed out", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => null,
+      sessionToken: () => null,
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for free-tier users (Pro-only feature)", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => FREE_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when row is missing", async () => {
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("ghost");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when row has no sync_dirty_at (no sync-relevant change)", async () => {
+    insertRow(store, "work");
+    // No markSyncDirty — row was inserted but not flagged for sync.
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when row is already clean (cloud_synced_at >= sync_dirty_at)", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    store.markSynced("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("PUTs a dirty row with sync_dirty_at as wire updated_at, updates cloud_synced_at on 200", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 6000);
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      const body = JSON.parse(init!.body as string) as { updated_at: number };
+      expect(body.updated_at).toBe(6000);
+      return new Response(JSON.stringify({
+        space: {
+          owner_id: "u1", space_id: "work", display_name: "work",
+          color: null, parent_id: null,
+          summary_title: null, summary_content: null,
+          updated_at: 6000, deleted_at: null, created_at: 6000,
+        },
+      }), { status: 200 });
+    });
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const row = store.getById("work")!;
+    expect((row as { cloud_synced_at: number | null }).cloud_synced_at).toBe(6000);
+  });
+
+  it("on 410, soft-deletes the local row (deletion wins over stale rename)", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ error: "space_tombstoned" }), { status: 410 },
+    ));
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(store.getById("work")).toBeUndefined();
+  });
+
+  it("swallows network errors (console.warn, no throw)", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    const fetchMock = vi.fn(async () => { throw new Error("offline"); });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await expect(svc.pushOne("work")).resolves.toBeUndefined();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+});
