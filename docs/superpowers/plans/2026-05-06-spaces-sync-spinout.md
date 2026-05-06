@@ -37,6 +37,8 @@
 - Create: `infra/auth-worker/migrations/0006_synced_spaces.sql`
 - Modify: `infra/oyster-publish/test/fixtures/seed.ts` (add schema + seed helpers)
 
+> **Migration ownership note:** the `oyster-publish` Worker reads/writes the *same* D1 database as `oyster-auth` (binding `DB`, db name `oyster-auth`, ID `44086805-...` per `infra/oyster-publish/wrangler.toml`). All D1 migrations for that shared DB live under `infra/auth-worker/migrations/` — adding spaces there matches the precedent set by `0003_publish.sql` (which created `published_artifacts`) and `0005_publish_context.sql`. Endpoints stay in `oyster-publish`.
+
 - [ ] **Step 1: Write the migration file**
 
 Create `infra/auth-worker/migrations/0006_synced_spaces.sql`:
@@ -46,6 +48,7 @@ Create `infra/auth-worker/migrations/0006_synced_spaces.sql`:
 -- Spec: docs/superpowers/specs/2026-05-06-spaces-sync-spinout-design.md
 -- Wedge of #319 (R1). Used by the local server's space-sync-service to
 -- reconcile per-user spaces across devices. Tombstones propagate deletes.
+-- Lives in the shared oyster-auth D1 (oyster-publish Worker reads/writes it).
 
 CREATE TABLE IF NOT EXISTS synced_spaces (
   owner_id        TEXT    NOT NULL,
@@ -420,7 +423,12 @@ In `worker.ts`, add this route after the GET route from Task 2:
 
 ```ts
     if (url.pathname.startsWith("/api/spaces/") && req.method === "PUT") {
-      const spaceId = url.pathname.slice("/api/spaces/".length);
+      const raw = url.pathname.slice("/api/spaces/".length);
+      // Reject any path with extra segments before decoding (defence in depth).
+      if (raw.includes("/")) return new Response("Not Found", { status: 404 });
+      let spaceId: string;
+      try { spaceId = decodeURIComponent(raw); }
+      catch { return jsonError(400, "invalid_space_id"); }
       return handleSpacesPut(req, env, spaceId);
     }
 ```
@@ -444,17 +452,31 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
   try { body = await req.json() as typeof body; }
   catch { return jsonError(400, "invalid_metadata"); }
 
-  if (typeof body.display_name !== "string" || body.display_name.length === 0) {
+  if (typeof body.display_name !== "string" || body.display_name.trim().length === 0) {
     return jsonError(400, "invalid_metadata");
   }
-  if (typeof body.updated_at !== "number" || !Number.isFinite(body.updated_at)) {
+  if (body.display_name.length > 200) {
+    // Cheap upper bound; protects D1 from pathological inputs.
     return jsonError(400, "invalid_metadata");
   }
-  // Optional fields — null is allowed; unset becomes null.
-  const color           = body.color           === undefined ? null : (body.color           as string | null);
-  const parentId        = body.parent_id       === undefined ? null : (body.parent_id       as string | null);
-  const summaryTitle    = body.summary_title   === undefined ? null : (body.summary_title   as string | null);
-  const summaryContent  = body.summary_content === undefined ? null : (body.summary_content as string | null);
+  if (typeof body.updated_at !== "number" || !Number.isFinite(body.updated_at) || body.updated_at < 0) {
+    return jsonError(400, "invalid_metadata");
+  }
+
+  // Strict optional-field validation — accept undefined (preserve), null (clear),
+  // or string (set). Anything else is a 400.
+  function validateOptional(name: string, v: unknown): { ok: true; value: string | null } | { ok: false } {
+    if (v === undefined || v === null) return { ok: true, value: null };
+    if (typeof v === "string") return { ok: true, value: v };
+    return { ok: false };
+  }
+  const color          = validateOptional("color",          body.color);
+  const parentId       = validateOptional("parent_id",      body.parent_id);
+  const summaryTitle   = validateOptional("summary_title",  body.summary_title);
+  const summaryContent = validateOptional("summary_content", body.summary_content);
+  if (!color.ok || !parentId.ok || !summaryTitle.ok || !summaryContent.ok) {
+    return jsonError(400, "invalid_metadata");
+  }
   const incomingUpdated = body.updated_at;
 
   type Row = {
@@ -488,8 +510,8 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
               summary_title = ?, summary_content = ?, updated_at = ?
         WHERE owner_id = ? AND space_id = ?`,
     ).bind(
-      body.display_name, color, parentId,
-      summaryTitle, summaryContent, incomingUpdated,
+      body.display_name.trim(), color.value, parentId.value,
+      summaryTitle.value, summaryContent.value, incomingUpdated,
       user.id, spaceId,
     ).run();
   } else {
@@ -499,8 +521,8 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
         summary_title, summary_content, updated_at, deleted_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
     ).bind(
-      user.id, spaceId, body.display_name, color, parentId,
-      summaryTitle, summaryContent, incomingUpdated, now,
+      user.id, spaceId, body.display_name.trim(), color.value, parentId.value,
+      summaryTitle.value, summaryContent.value, incomingUpdated, now,
     ).run();
   }
 
@@ -605,7 +627,11 @@ In `worker.ts`, add this route after the PUT route from Task 3:
 
 ```ts
     if (url.pathname.startsWith("/api/spaces/") && req.method === "DELETE") {
-      const spaceId = url.pathname.slice("/api/spaces/".length);
+      const raw = url.pathname.slice("/api/spaces/".length);
+      if (raw.includes("/")) return new Response("Not Found", { status: 404 });
+      let spaceId: string;
+      try { spaceId = decodeURIComponent(raw); }
+      catch { return jsonError(400, "invalid_space_id"); }
       return handleSpacesDelete(req, env, spaceId);
     }
 ```
@@ -623,6 +649,9 @@ async function handleSpacesDelete(req: Request, env: Env, spaceId: string): Prom
     "SELECT deleted_at, updated_at FROM synced_spaces WHERE owner_id = ? AND space_id = ?",
   ).bind(user.id, spaceId).first<Row>();
 
+  // 404 means: there's no cloud row to tombstone — the local delete is the
+  // only state that ever existed for this id. Caller treats 404 as "already
+  // gone elsewhere; mark the local tombstone synced and stop retrying."
   if (!existing) return jsonError(404, "space_not_found");
 
   // Idempotent: existing tombstone returns as-is.
@@ -662,16 +691,17 @@ git commit -m "feat(spaces-sync): DELETE /api/spaces/:id sets tombstone, idempot
 
 ---
 
-## Task 5: Local — db.ts adds cloud_synced_at + deleted_at to spaces
+## Task 5: Local — db.ts adds sync_dirty_at + cloud_synced_at + deleted_at + first-time backfill
 
 **Files:**
 - Modify: `server/src/db.ts`
 
 - [ ] **Step 1: Add ALTER TABLE statements**
 
-In `server/src/db.ts`, find the existing spaces ALTER block (lines 50-52: `ALTER TABLE spaces ADD COLUMN parent_id ...`) and append two new statements to the same array:
+In `server/src/db.ts`, find the existing spaces ALTER block (lines 50-52: `ALTER TABLE spaces ADD COLUMN parent_id ...`) and append three new statements to the same array. Order matters only insofar as `sync_dirty_at` must exist before the backfill (Step 2) reads it:
 
 ```ts
+    "ALTER TABLE spaces ADD COLUMN sync_dirty_at INTEGER",
     "ALTER TABLE spaces ADD COLUMN cloud_synced_at INTEGER",
     "ALTER TABLE spaces ADD COLUMN deleted_at INTEGER",
 ```
@@ -687,6 +717,7 @@ The full updated block:
     "ALTER TABLE spaces ADD COLUMN parent_id TEXT REFERENCES spaces(id)",
     "ALTER TABLE spaces ADD COLUMN summary_title TEXT",
     "ALTER TABLE spaces ADD COLUMN summary_content TEXT",
+    "ALTER TABLE spaces ADD COLUMN sync_dirty_at INTEGER",
     "ALTER TABLE spaces ADD COLUMN cloud_synced_at INTEGER",
     "ALTER TABLE spaces ADD COLUMN deleted_at INTEGER",
   ]) {
@@ -694,21 +725,38 @@ The full updated block:
   }
 ```
 
-- [ ] **Step 2: Verify migration is idempotent**
+- [ ] **Step 2: One-time promotion backfill — mark every existing live row dirty exactly once**
 
-Run the existing server test suite — many tests construct fresh DBs via `initDb`:
+After the ALTER block, before the `space_paths` table creation, add the backfill:
+
+```ts
+  // Promotion backfill: any pre-existing rows (created before sync existed)
+  // need to be pushed up on first Pro sign-in. Mark them dirty exactly once
+  // by setting sync_dirty_at where it's still NULL — a no-op on subsequent
+  // boots since the column will already be populated.
+  // Excludes tombstones: deleted_at IS NULL is the live-row guard.
+  db.exec(`
+    UPDATE spaces
+       SET sync_dirty_at = CAST(strftime('%s','now') AS INTEGER) * 1000
+     WHERE sync_dirty_at IS NULL AND deleted_at IS NULL
+  `);
+```
+
+- [ ] **Step 3: Verify migration is idempotent**
+
+Run the existing server test suite:
 
 ```bash
 cd server && npm test
 ```
 
-Expected: PASS (no test broken; the new columns just default NULL on existing rows).
+Expected: PASS. The new columns default NULL; the backfill UPDATE on a fresh DB matches zero rows (table is empty); on existing DBs it runs once then no-ops.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add server/src/db.ts
-git commit -m "feat(spaces-sync): add cloud_synced_at + deleted_at to local spaces table"
+git commit -m "feat(spaces-sync): sync_dirty_at + cloud_synced_at + deleted_at + promotion backfill"
 ```
 
 ---
@@ -744,6 +792,7 @@ function makeDb(): Database.Database {
       ai_job_error      TEXT,
       summary_title     TEXT,
       summary_content   TEXT,
+      sync_dirty_at     INTEGER,
       cloud_synced_at   INTEGER,
       deleted_at        INTEGER,
       created_at        TEXT NOT NULL DEFAULT (datetime('now')),
@@ -782,33 +831,90 @@ describe("SqliteSpaceStore — sync methods + soft-delete", () => {
     store = new SqliteSpaceStore(db);
   });
 
+  describe("markSyncDirty", () => {
+    it("sets sync_dirty_at to the given timestamp", () => {
+      insertRow(store, "a");
+      store.markSyncDirty("a", 1234);
+      const row = db.prepare("SELECT sync_dirty_at FROM spaces WHERE id='a'")
+        .get() as { sync_dirty_at: number };
+      expect(row.sync_dirty_at).toBe(1234);
+    });
+
+    it("defaults to Date.now() when no timestamp is given", () => {
+      insertRow(store, "a");
+      const before = Date.now();
+      store.markSyncDirty("a");
+      const after = Date.now();
+      const row = db.prepare("SELECT sync_dirty_at FROM spaces WHERE id='a'")
+        .get() as { sync_dirty_at: number };
+      expect(row.sync_dirty_at).toBeGreaterThanOrEqual(before);
+      expect(row.sync_dirty_at).toBeLessThanOrEqual(after);
+    });
+  });
+
   describe("getDirtyRows", () => {
-    it("returns rows where cloud_synced_at IS NULL", () => {
+    it("excludes rows where sync_dirty_at IS NULL (no sync-relevant change yet)", () => {
       insertRow(store, "a");
-      insertRow(store, "b");
-      expect(store.getDirtyRows().map(r => r.id).sort()).toEqual(["a", "b"]);
-    });
-
-    it("returns rows where updated_at > cloud_synced_at", () => {
-      insertRow(store, "a");
-      // Mark as synced 1s ago, then bump updated_at to now.
-      db.prepare("UPDATE spaces SET cloud_synced_at = ? WHERE id = 'a'").run(Date.now() - 60_000);
-      db.prepare("UPDATE spaces SET updated_at = datetime('now') WHERE id = 'a'").run();
-      const dirty = store.getDirtyRows();
-      expect(dirty.map(r => r.id)).toEqual(["a"]);
-    });
-
-    it("excludes rows where cloud_synced_at >= updated_at", () => {
-      insertRow(store, "a");
-      // Mark synced AT or AFTER current updated_at — the row is clean.
-      db.prepare("UPDATE spaces SET cloud_synced_at = ? WHERE id = 'a'").run(Date.now() + 60_000);
+      // No markSyncDirty call → row is not dirty per the new predicate.
       expect(store.getDirtyRows()).toEqual([]);
     });
 
-    it("excludes tombstoned rows (those go via the delete-push path)", () => {
+    it("returns rows where sync_dirty_at IS NOT NULL AND cloud_synced_at IS NULL", () => {
       insertRow(store, "a");
+      insertRow(store, "b");
+      store.markSyncDirty("a", 1000);
+      store.markSyncDirty("b", 2000);
+      expect(store.getDirtyRows().map(r => r.id).sort()).toEqual(["a", "b"]);
+    });
+
+    it("returns rows where sync_dirty_at > cloud_synced_at", () => {
+      insertRow(store, "a");
+      store.markSyncDirty("a", 5000);
+      store.markSynced("a", 3000);  // synced state from before this dirty mark
+      expect(store.getDirtyRows().map(r => r.id)).toEqual(["a"]);
+    });
+
+    it("excludes rows where cloud_synced_at >= sync_dirty_at", () => {
+      insertRow(store, "a");
+      store.markSyncDirty("a", 1000);
+      store.markSynced("a", 1000);
+      expect(store.getDirtyRows()).toEqual([]);
+    });
+
+    it("excludes tombstoned rows (those go via getPendingDeletes)", () => {
+      insertRow(store, "a");
+      store.markSyncDirty("a", 1000);
       store.softDelete("a");
       expect(store.getDirtyRows().map(r => r.id)).toEqual([]);
+    });
+  });
+
+  describe("getPendingDeletes", () => {
+    it("returns soft-deleted rows whose deleted_at is unsynced", () => {
+      insertRow(store, "a");
+      store.softDelete("a", 5000);
+      const pending = store.getPendingDeletes();
+      expect(pending.map(r => r.id)).toEqual(["a"]);
+    });
+
+    it("excludes soft-deleted rows already synced past their deleted_at", () => {
+      insertRow(store, "a");
+      store.softDelete("a", 5000);
+      store.markSynced("a", 5000);
+      expect(store.getPendingDeletes()).toEqual([]);
+    });
+
+    it("includes soft-deleted rows where cloud_synced_at < deleted_at (peer state stale)", () => {
+      insertRow(store, "a");
+      store.markSynced("a", 1000);
+      store.softDelete("a", 5000);
+      expect(store.getPendingDeletes().map(r => r.id)).toEqual(["a"]);
+    });
+
+    it("excludes live rows", () => {
+      insertRow(store, "a");
+      store.markSyncDirty("a", 1000);
+      expect(store.getPendingDeletes()).toEqual([]);
     });
   });
 
@@ -822,13 +928,21 @@ describe("SqliteSpaceStore — sync methods + soft-delete", () => {
   });
 
   describe("softDelete", () => {
-    it("sets deleted_at to now", () => {
+    it("sets deleted_at to now() by default", () => {
       insertRow(store, "a");
       const before = Date.now();
       store.softDelete("a");
       const row = db.prepare("SELECT deleted_at FROM spaces WHERE id = 'a'")
         .get() as { deleted_at: number };
       expect(row.deleted_at).toBeGreaterThanOrEqual(before);
+    });
+
+    it("uses the provided deletedAt timestamp when given (preserves cross-device tombstone provenance)", () => {
+      insertRow(store, "a");
+      store.softDelete("a", 12345);
+      const row = db.prepare("SELECT deleted_at FROM spaces WHERE id = 'a'")
+        .get() as { deleted_at: number };
+      expect(row.deleted_at).toBe(12345);
     });
 
     it("excludes the soft-deleted row from getAll() and getById()", () => {
@@ -840,13 +954,11 @@ describe("SqliteSpaceStore — sync methods + soft-delete", () => {
 
     it("is idempotent — re-softDelete leaves deleted_at unchanged", () => {
       insertRow(store, "a");
-      store.softDelete("a");
-      const first = (db.prepare("SELECT deleted_at FROM spaces WHERE id='a'")
-        .get() as { deleted_at: number }).deleted_at;
-      store.softDelete("a");
-      const second = (db.prepare("SELECT deleted_at FROM spaces WHERE id='a'")
-        .get() as { deleted_at: number }).deleted_at;
-      expect(second).toBe(first);
+      store.softDelete("a", 5000);
+      store.softDelete("a", 9999);  // attempts to overwrite
+      const row = db.prepare("SELECT deleted_at FROM spaces WHERE id='a'")
+        .get() as { deleted_at: number };
+      expect(row.deleted_at).toBe(5000);
     });
   });
 
@@ -858,7 +970,7 @@ describe("SqliteSpaceStore — sync methods + soft-delete", () => {
     });
   });
 
-  describe("delete (hard delete)", () => {
+  describe("delete (hard delete — kept for failed-promotion cleanup)", () => {
     it("getAll still excludes hard-deleted rows", () => {
       insertRow(store, "a");
       store.delete("a");
@@ -880,37 +992,46 @@ Expected: FAIL — methods `getDirtyRows`, `markSynced`, `softDelete`, `getAllIn
 
 In `server/src/space-store.ts`:
 
-a) Update the `SpaceRow` interface to include the two new columns. Find:
+a) Update the `SpaceRow` interface to include the three new columns. Find the `SpaceRow` interface and add three fields (after `summary_content`, before `created_at`):
 
 ```ts
-export interface SpaceRow {
-  id: string;
-  display_name: string;
-  ...
-  updated_at: string;
-}
-```
-
-Add two fields:
-
-```ts
+  sync_dirty_at: number | null;
   cloud_synced_at: number | null;
   deleted_at: number | null;
 ```
 
-b) Update the `SpaceStore` interface (around line 30) — add four new methods after `getSourcesByIds`:
+b) Update the `SpaceStore` interface (around line 30) — add five new methods after `getSourcesByIds`:
 
 ```ts
-  /** Soft-delete a space. Sets deleted_at. Future getAll/getById excludes it.
-   *  Idempotent — re-calling on an already-deleted row is a no-op. */
-  softDelete(id: string): void;
-  /** All rows the local server is dirty against the cloud, by the predicate
-   *  cloud_synced_at IS NULL OR updated_at > cloud_synced_at. Excludes
-   *  tombstoned rows (those push via the DELETE endpoint, not PUT). */
+  /** Soft-delete a space. Sets deleted_at to the provided timestamp (or
+   *  Date.now()). Idempotent — re-call on an already-deleted row is a no-op
+   *  (preserves the original deleted_at). When applying a cross-device
+   *  tombstone, pass the cloud's deleted_at to preserve provenance. */
+  softDelete(id: string, deletedAt?: number): void;
+
+  /** Mark a row as having a sync-relevant change pending push. Bumped only
+   *  by mutations that change synced fields (display_name, color, parent_id,
+   *  summary_title, summary_content). NOT bumped by scanner/local-only
+   *  mutations — so a scanner pass can't stomp a peer's rename via LWW. */
+  markSyncDirty(id: string, dirtyAt?: number): void;
+
+  /** Live rows with pending pushes. Predicate:
+   *    deleted_at IS NULL
+   *    AND sync_dirty_at IS NOT NULL
+   *    AND (cloud_synced_at IS NULL OR sync_dirty_at > cloud_synced_at) */
   getDirtyRows(): SpaceRow[];
-  /** Mark a row as synced through to the cloud at `cloudUpdatedAt` (the
-   *  timestamp the cloud row carries — the LWW comparison key). */
+
+  /** Tombstoned rows whose deletion hasn't been confirmed by the cloud.
+   *  Predicate:
+   *    deleted_at IS NOT NULL
+   *    AND (cloud_synced_at IS NULL OR deleted_at > cloud_synced_at) */
+  getPendingDeletes(): SpaceRow[];
+
+  /** Mark a row as synced through to the cloud at `cloudUpdatedAt`. For live
+   *  rows this is the cloud's updated_at; for confirmed deletes, the cloud's
+   *  deleted_at (or 404-acknowledged local deleted_at). */
   markSynced(id: string, cloudUpdatedAt: number): void;
+
   /** All rows including tombstones. Sync only — surface always uses getAll. */
   getAllIncludingDeleted(): SpaceRow[];
 ```
@@ -923,28 +1044,41 @@ c) Replace the `getAll`, `getById`, and `getByDisplayName` prepared statements t
       getByDisplayName: db.prepare("SELECT * FROM spaces WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?)) AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1"),
 ```
 
-d) Add the four new method implementations at the end of the class (before the closing `}`):
+d) Add the five new method implementations at the end of the class (before the closing `}`):
 
 ```ts
-  softDelete(id: string): void {
-    // datetime('now') returns text; the cloud column is unix ms. We use unix
-    // ms here too so dirty/sync timestamps are uniformly comparable across
-    // the cloud row, the local soft-delete, and cloud_synced_at.
+  softDelete(id: string, deletedAt: number = Date.now()): void {
+    // Unix ms throughout so the dirty/pending-delete predicates and the
+    // cloud column are uniformly comparable. The IS NULL guard makes this
+    // idempotent (re-call preserves the original tombstone timestamp).
     this.db.prepare(
       "UPDATE spaces SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
-    ).run(Date.now(), id);
+    ).run(deletedAt, id);
+  }
+
+  markSyncDirty(id: string, dirtyAt: number = Date.now()): void {
+    // Unconditional set — the caller's timestamp is the right one. (We don't
+    // guard MAX(existing, dirtyAt) because mutations always represent the
+    // user's most recent intent; a stale write would be a bug.)
+    this.db.prepare(
+      "UPDATE spaces SET sync_dirty_at = ? WHERE id = ?",
+    ).run(dirtyAt, id);
   }
 
   getDirtyRows(): SpaceRow[] {
-    // updated_at on spaces is the legacy `datetime('now')` text format —
-    // compare via strftime to unix-ms so the predicate works against the
-    // unix-ms cloud_synced_at column. SQLite returns NULL for invalid dates,
-    // which trips the IS NULL branch correctly.
     return this.db.prepare(`
       SELECT * FROM spaces
        WHERE deleted_at IS NULL
-         AND (cloud_synced_at IS NULL
-              OR (CAST(strftime('%s', updated_at) AS INTEGER) * 1000) > cloud_synced_at)
+         AND sync_dirty_at IS NOT NULL
+         AND (cloud_synced_at IS NULL OR sync_dirty_at > cloud_synced_at)
+    `).all() as SpaceRow[];
+  }
+
+  getPendingDeletes(): SpaceRow[] {
+    return this.db.prepare(`
+      SELECT * FROM spaces
+       WHERE deleted_at IS NOT NULL
+         AND (cloud_synced_at IS NULL OR deleted_at > cloud_synced_at)
     `).all() as SpaceRow[];
   }
 
@@ -959,9 +1093,7 @@ d) Add the four new method implementations at the end of the class (before the c
   }
 ```
 
-e) Replace the existing `delete` method to keep hard-delete behaviour (unchanged from current — used only by failed-promotion cleanup in space-service):
-
-The existing `delete` already does cascading hard-delete via space_paths + spaces. Leave it as-is. Soft-delete is a separate path used by `space-service.deleteSpace`.
+e) The existing `delete` method (cascading hard-delete) stays unchanged — it's still used by failed-promotion cleanup in `createSpaceFromPath`. Soft-delete is a separate path used by `space-service.deleteSpace`.
 
 - [ ] **Step 4: Run tests, verify they pass**
 
@@ -969,7 +1101,7 @@ The existing `delete` already does cascading hard-delete via space_paths + space
 cd server && npm test -- space-store-sync.test.ts
 ```
 
-Expected: PASS, all 11 tests.
+Expected: PASS — all sync-store tests (markSyncDirty, getDirtyRows × 5, getPendingDeletes × 4, markSynced, softDelete × 4, getAllIncludingDeleted, delete).
 
 - [ ] **Step 5: Run full server test suite to confirm no regressions**
 
@@ -977,13 +1109,13 @@ Expected: PASS, all 11 tests.
 cd server && npm test
 ```
 
-Expected: PASS. (Existing tests don't touch `deleted_at`, so the filter clauses are a no-op for them.)
+Expected: PASS. Existing tests don't set `deleted_at` or `sync_dirty_at`, so the new filter clauses are no-ops for them.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add server/src/space-store.ts server/test/space-store-sync.test.ts
-git commit -m "feat(spaces-sync): SpaceStore soft-delete + dirty-row + markSynced helpers"
+git commit -m "feat(spaces-sync): SpaceStore soft-delete + dirty/pending-delete + sync helpers"
 ```
 
 ---
@@ -1020,6 +1152,7 @@ function makeDb(): Database.Database {
       ai_job_error      TEXT,
       summary_title     TEXT,
       summary_content   TEXT,
+      sync_dirty_at     INTEGER,
       cloud_synced_at   INTEGER,
       deleted_at        INTEGER,
       created_at        TEXT NOT NULL DEFAULT (datetime('now')),
@@ -1046,6 +1179,9 @@ function insertRow(
   });
 }
 
+const FREE_USER  = { id: "u1", email: "a@a", tier: "free" };
+const PRO_USER   = { id: "u1", email: "a@a", tier: "pro" };
+
 describe("createSpaceSyncService — reconcile()", () => {
   let db: Database.Database;
   let store: SqliteSpaceStore;
@@ -1056,7 +1192,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns zeros when no signed-in user", async () => {
+  it("returns zeros when no signed-in user (no network call)", async () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
@@ -1065,14 +1201,29 @@ describe("createSpaceSyncService — reconcile()", () => {
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
+    const result = await svc.reconcile();
+    expect(result).toEqual({ pulled: 0, pushed: 0, tombstoned: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
+  it("returns zeros for free-tier users (sync is Pro-only — no network call)", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => FREE_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
     const result = await svc.reconcile();
     expect(result).toEqual({ pulled: 0, pushed: 0, tombstoned: 0 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("pulls cloud rows that don't exist locally and inserts them", async () => {
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("/api/spaces/mine")) {
         return new Response(JSON.stringify({
           spaces: [{
@@ -1083,18 +1234,15 @@ describe("createSpaceSyncService — reconcile()", () => {
           }],
         }), { status: 200 });
       }
-      // No PUTs expected (no local dirty rows).
       throw new Error("unexpected fetch: " + url);
     });
-
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
-
     const result = await svc.reconcile();
     expect(result.pulled).toBe(1);
     const row = store.getById("from-cloud")!;
@@ -1102,12 +1250,10 @@ describe("createSpaceSyncService — reconcile()", () => {
     expect((row as { cloud_synced_at: number | null }).cloud_synced_at).toBe(5000);
   });
 
-  it("updates a local row when cloud.updated_at > local.updated_at", async () => {
+  it("updates a local row when cloud.updated_at > local.sync_dirty_at (cloud wins)", async () => {
     insertRow(store, "work", { displayName: "Old Name" });
-    // Mark synced at an old timestamp; we'll pretend cloud has a newer one.
+    store.markSyncDirty("work", 1000);
     store.markSynced("work", 1000);
-    // Bump local updated_at to be older than cloud's.
-    db.prepare("UPDATE spaces SET updated_at = '1970-01-01 00:00:01' WHERE id = 'work'").run();
 
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("/api/spaces/mine")) {
@@ -1122,22 +1268,64 @@ describe("createSpaceSyncService — reconcile()", () => {
       }
       throw new Error("unexpected fetch: " + url);
     });
-
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
-
     await svc.reconcile();
     const row = store.getById("work")!;
     expect(row.display_name).toBe("New Name");
     expect((row as { cloud_synced_at: number | null }).cloud_synced_at).toBe(9999);
   });
 
-  it("soft-deletes a local row when cloud row carries deleted_at", async () => {
+  it("does NOT pull when local.sync_dirty_at > cloud.updated_at (local wins, will push)", async () => {
+    insertRow(store, "work", { displayName: "Local Edit" });
+    store.markSyncDirty("work", 9999);
+    store.markSynced("work", 1000);
+
+    const puts: Array<{ url: string; body: any }> = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/spaces/mine")) {
+        return new Response(JSON.stringify({
+          spaces: [{
+            owner_id: "u1", space_id: "work", display_name: "Stale Cloud",
+            color: null, parent_id: null,
+            summary_title: null, summary_content: null,
+            updated_at: 5000, deleted_at: null, created_at: 1000,
+          }],
+        }), { status: 200 });
+      }
+      if (url.includes("/api/spaces/work") && init?.method === "PUT") {
+        puts.push({ url, body: JSON.parse(init.body as string) });
+        return new Response(JSON.stringify({
+          space: {
+            owner_id: "u1", space_id: "work", display_name: "Local Edit",
+            color: null, parent_id: null,
+            summary_title: null, summary_content: null,
+            updated_at: 9999, deleted_at: null, created_at: 1000,
+          },
+        }), { status: 200 });
+      }
+      throw new Error("unexpected fetch: " + url);
+    });
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    const result = await svc.reconcile();
+    expect(result.pulled).toBe(0);
+    expect(result.pushed).toBe(1);
+    expect(puts[0]!.body.updated_at).toBe(9999);   // wire ts = sync_dirty_at
+    expect(store.getById("work")!.display_name).toBe("Local Edit");  // local preserved
+  });
+
+  it("soft-deletes a local row when cloud row carries deleted_at, preserving cloud's deleted_at timestamp", async () => {
     insertRow(store, "work");
 
     const fetchMock = vi.fn(async (url: string) => {
@@ -1153,27 +1341,27 @@ describe("createSpaceSyncService — reconcile()", () => {
       }
       throw new Error("unexpected fetch: " + url);
     });
-
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
-
     const result = await svc.reconcile();
     expect(result.tombstoned).toBe(1);
-    expect(store.getById("work")).toBeUndefined(); // filter excludes deleted
-    const raw = db.prepare("SELECT deleted_at FROM spaces WHERE id = 'work'")
-      .get() as { deleted_at: number };
-    expect(raw.deleted_at).toBe(9000);
+    expect(store.getById("work")).toBeUndefined();
+    const raw = db.prepare("SELECT deleted_at, cloud_synced_at FROM spaces WHERE id = 'work'")
+      .get() as { deleted_at: number; cloud_synced_at: number };
+    expect(raw.deleted_at).toBe(9000);              // cloud's tombstone preserved
+    expect(raw.cloud_synced_at).toBe(9000);         // marked synced
   });
 
-  it("pushes dirty rows to PUT /api/spaces/:id and updates cloud_synced_at", async () => {
-    insertRow(store, "work", { displayName: "Work" }); // dirty: cloud_synced_at is NULL
+  it("pushes dirty rows to PUT /api/spaces/:id with sync_dirty_at as wire updated_at", async () => {
+    insertRow(store, "work", { displayName: "Work" });
+    store.markSyncDirty("work", 7000);
 
-    const puts: Array<{ url: string; body: unknown }> = [];
+    const puts: Array<{ url: string; body: any }> = [];
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/api/spaces/mine")) {
         return new Response(JSON.stringify({ spaces: [] }), { status: 200 });
@@ -1185,45 +1373,99 @@ describe("createSpaceSyncService — reconcile()", () => {
             owner_id: "u1", space_id: "work", display_name: "Work",
             color: null, parent_id: null,
             summary_title: null, summary_content: null,
-            updated_at: 7777, deleted_at: null, created_at: 7777,
+            updated_at: 7000, deleted_at: null, created_at: 7000,
           },
         }), { status: 200 });
       }
       throw new Error("unexpected fetch: " + url);
     });
-
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
-
     const result = await svc.reconcile();
     expect(result.pushed).toBe(1);
-    expect(puts).toHaveLength(1);
-    expect(puts[0]!.body).toMatchObject({ display_name: "Work" });
-
+    expect(puts[0]!.body.updated_at).toBe(7000);
     const row = store.getById("work")!;
-    expect((row as { cloud_synced_at: number | null }).cloud_synced_at).toBe(7777);
+    expect((row as { cloud_synced_at: number | null }).cloud_synced_at).toBe(7000);
+  });
+
+  it("pushes pending deletes via DELETE /api/spaces/:id and marks them synced", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 8000);
+
+    const deletes: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/spaces/mine")) {
+        return new Response(JSON.stringify({ spaces: [] }), { status: 200 });
+      }
+      if (url.includes("/api/spaces/work") && init?.method === "DELETE") {
+        deletes.push(url);
+        return new Response(JSON.stringify({
+          space_id: "work", deleted_at: 8000, updated_at: 8000,
+        }), { status: 200 });
+      }
+      throw new Error("unexpected fetch: " + url);
+    });
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.reconcile();
+    expect(deletes).toHaveLength(1);
+    const raw = db.prepare("SELECT cloud_synced_at FROM spaces WHERE id = 'work'")
+      .get() as { cloud_synced_at: number };
+    expect(raw.cloud_synced_at).toBe(8000);
+    // Pending-delete predicate is now false → next reconcile won't re-push.
+    expect(store.getPendingDeletes()).toEqual([]);
+  });
+
+  it("treats DELETE 404 as 'already gone elsewhere' and marks the local tombstone synced", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 8000);
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/spaces/mine")) {
+        return new Response(JSON.stringify({ spaces: [] }), { status: 200 });
+      }
+      if (url.includes("/api/spaces/work") && init?.method === "DELETE") {
+        return new Response(JSON.stringify({ error: "space_not_found" }), { status: 404 });
+      }
+      throw new Error("unexpected fetch: " + url);
+    });
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.reconcile();
+    const raw = db.prepare("SELECT cloud_synced_at FROM spaces WHERE id = 'work'")
+      .get() as { cloud_synced_at: number };
+    expect(raw.cloud_synced_at).toBe(8000);  // local deleted_at acknowledged
+    expect(store.getPendingDeletes()).toEqual([]);
   });
 
   it("is idempotent — back-to-back reconciles with no mutations report 0/0/0", async () => {
     insertRow(store, "work");
+    store.markSyncDirty("work", 5000);
     store.markSynced("work", 5000);
-    db.prepare("UPDATE spaces SET updated_at = '1970-01-01 00:00:01' WHERE id = 'work'").run();
 
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ spaces: [] }), { status: 200 }));
-
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
-
     const first = await svc.reconcile();
     const second = await svc.reconcile();
     expect(first).toEqual({ pulled: 0, pushed: 0, tombstoned: 0 });
@@ -1240,7 +1482,7 @@ cd server && npm test -- space-sync-service.test.ts
 
 Expected: FAIL — module `space-sync-service.js` does not exist.
 
-- [ ] **Step 3: Implement createSpaceSyncService — reconcile() only**
+- [ ] **Step 3: Implement createSpaceSyncService**
 
 Create `server/src/space-sync-service.ts`:
 
@@ -1248,8 +1490,9 @@ Create `server/src/space-sync-service.ts`:
 // space-sync-service.ts — cross-device sync of the local spaces table.
 // Spec: docs/superpowers/specs/2026-05-06-spaces-sync-spinout-design.md
 //
-// Wedge of #319 (R1). Pattern: dirty-row push + full pull on reconcile,
-// fire-and-forget pushOne after each mutation.
+// Wedge of #319 (R1). Pattern: dirty-row push + pending-delete sweep + full
+// pull on reconcile, fire-and-forget pushOne/pushDelete after each mutation.
+// Pro-only — sync is gated on user.tier === "pro".
 //
 // IMPORTANT: this is the FIRST instance of cross-device row-sync. Before
 // replicating this shape for memory (#318), session metadata, or artefact
@@ -1275,17 +1518,19 @@ export interface SpaceSyncDeps {
 }
 
 export interface SpaceSyncService {
-  /** Pull cloud → local, then push local → cloud. Idempotent. Called on
-   *  sign-in (BEFORE backfillPublications, so the headline _cloud-fallback
-   *  fix is immediate) and on app start when signed in. */
+  /** Pull cloud → local, then push live dirty rows, then push pending
+   *  deletes. Idempotent. Called on sign-in (BEFORE backfillPublications,
+   *  so the headline _cloud-fallback fix is immediate) and on app start
+   *  when signed in. Pro-only — returns zeros for free / signed-out. */
   reconcile(): Promise<{ pulled: number; pushed: number; tombstoned: number }>;
 
   /** Fire-and-forget push for one row after a local mutation. Swallows
-   *  network errors with a console.warn; the next reconcile() will retry. */
+   *  network errors with a console.warn; the next reconcile() retries.
+   *  Pro-only — no-op for free / signed-out. */
   pushOne(spaceId: string): Promise<void>;
 
   /** Fire-and-forget DELETE for a space the local server just soft-deleted.
-   *  Symmetrical to pushOne. Swallows 404 (already gone) and network errors. */
+   *  Marks the local tombstone synced on 200/404. Pro-only. */
   pushDelete(spaceId: string): Promise<void>;
 }
 
@@ -1302,28 +1547,32 @@ interface CloudSpace {
   created_at: number;
 }
 
-// Compare local SpaceRow.updated_at (text, sqlite datetime('now') format)
-// against cloud updated_at (unix ms). Returns local as unix ms.
-function localUpdatedAtMs(row: SpaceRow): number {
-  // SpaceRow.updated_at is a sqlite datetime string like "2026-05-06 12:34:56"
-  // (UTC). new Date(...) on that string is UTC-parsed by Node — verified by
-  // the surrounding store. Returns 0 (-> always-stale) if unparseable.
-  const t = Date.parse(row.updated_at + "Z");
-  return Number.isFinite(t) ? t : 0;
+interface CloudDeleteResponse {
+  space_id: string;
+  deleted_at: number;
+  updated_at: number;
+}
+
+/** Pro tier check. Spec: R1 (this wedge) is Pro-only per the requirements doc
+ *  tier mapping. Keep in one place so it's easy to change if the gate moves. */
+function isProSession(deps: SpaceSyncDeps): { user: SyncUser; token: string } | null {
+  const user = deps.currentUser();
+  const token = deps.sessionToken();
+  if (!user || !token || user.tier !== "pro") return null;
+  return { user, token };
 }
 
 export function createSpaceSyncService(deps: SpaceSyncDeps): SpaceSyncService {
   return {
     async reconcile() {
-      const user = deps.currentUser();
-      const token = deps.sessionToken();
-      if (!user || !token) return { pulled: 0, pushed: 0, tombstoned: 0 };
+      const session = isProSession(deps);
+      if (!session) return { pulled: 0, pushed: 0, tombstoned: 0 };
 
       // ── Pull ──
       let res: Response;
       try {
         res = await deps.fetch(`${deps.workerBase}/api/spaces/mine`, {
-          headers: { Cookie: `oyster_session=${token}` },
+          headers: { Cookie: `oyster_session=${session.token}` },
         });
       } catch (err) {
         console.warn("[spaces] reconcile pull failed:", err);
@@ -1339,40 +1588,48 @@ export function createSpaceSyncService(deps: SpaceSyncDeps): SpaceSyncService {
 
       let pulled = 0;
       let tombstoned = 0;
-      // Use raw SQL for the upsert path because store.update() filters by
-      // UPDATABLE_COLUMNS and would refuse to set cloud_synced_at via the
-      // public method (we set it directly via markSynced afterwards).
+
+      // Raw SQL for the upsert path because store.update() filters by
+      // UPDATABLE_COLUMNS and we need to set cloud_synced_at directly.
+      // Note: NOT touching sync_dirty_at — leave it whatever it was. The
+      // dirty predicate naturally goes clean because cloud_synced_at >=
+      // sync_dirty_at after this write.
       const upsertStmt = deps.db.prepare(`
         INSERT INTO spaces
           (id, display_name, color, parent_id, summary_title, summary_content,
            scan_status, cloud_synced_at, updated_at, created_at)
         VALUES (?, ?, ?, ?, ?, ?, 'none', ?, datetime('now'), datetime('now'))
         ON CONFLICT(id) DO UPDATE SET
-          display_name = excluded.display_name,
-          color = excluded.color,
-          parent_id = excluded.parent_id,
-          summary_title = excluded.summary_title,
+          display_name    = excluded.display_name,
+          color           = excluded.color,
+          parent_id       = excluded.parent_id,
+          summary_title   = excluded.summary_title,
           summary_content = excluded.summary_content,
           cloud_synced_at = excluded.cloud_synced_at,
-          updated_at = datetime('now')
+          updated_at      = datetime('now')
       `);
 
       for (const cloud of cloudRows) {
         if (cloud.deleted_at !== null) {
-          // Tombstone: soft-delete locally if not already.
+          // Tombstone application — preserve cloud's deleted_at as local's
+          // deleted_at (cross-device tombstone provenance), and mark synced
+          // so the pending-delete sweep doesn't re-push.
           const existing = deps.db.prepare(
             "SELECT id, deleted_at FROM spaces WHERE id = ?",
           ).get(cloud.space_id) as { id: string; deleted_at: number | null } | undefined;
           if (existing && existing.deleted_at === null) {
-            deps.store.softDelete(cloud.space_id);
+            deps.store.softDelete(cloud.space_id, cloud.deleted_at);
             tombstoned++;
           }
+          // Mark synced unconditionally (also covers the case where local
+          // had its own tombstone and they happen to match).
+          if (existing) deps.store.markSynced(cloud.space_id, cloud.deleted_at);
           continue;
         }
 
         const existing = deps.db.prepare(
-          "SELECT updated_at, cloud_synced_at FROM spaces WHERE id = ? AND deleted_at IS NULL",
-        ).get(cloud.space_id) as { updated_at: string; cloud_synced_at: number | null } | undefined;
+          "SELECT sync_dirty_at, cloud_synced_at FROM spaces WHERE id = ? AND deleted_at IS NULL",
+        ).get(cloud.space_id) as { sync_dirty_at: number | null; cloud_synced_at: number | null } | undefined;
 
         if (!existing) {
           upsertStmt.run(
@@ -1381,71 +1638,70 @@ export function createSpaceSyncService(deps: SpaceSyncDeps): SpaceSyncService {
           );
           pulled++;
         } else {
-          const localMs = Date.parse(existing.updated_at + "Z");
-          const localComparable = Number.isFinite(localMs) ? localMs : 0;
-          if (cloud.updated_at > localComparable) {
+          // LWW pull rule: cloud wins iff local has no dirty mark, OR cloud
+          // is newer than local's dirty mark. Otherwise push step takes over.
+          const localDirty = existing.sync_dirty_at;
+          if (localDirty === null || cloud.updated_at > localDirty) {
             upsertStmt.run(
               cloud.space_id, cloud.display_name, cloud.color, cloud.parent_id,
               cloud.summary_title, cloud.summary_content, cloud.updated_at,
             );
             pulled++;
           }
-          // else: local is newer or equal; will be pushed below if dirty.
+          // else: local has unsynced changes newer than cloud; push handles it.
         }
       }
 
-      // ── Push ──
+      // ── Push live dirty rows ──
       const dirty = deps.store.getDirtyRows();
       let pushed = 0;
       for (const row of dirty) {
-        const ok = await pushRow(deps, row);
+        const ok = await pushRow(deps, session.token, row);
         if (ok) pushed++;
+      }
+
+      // ── Push pending deletes ──
+      const pending = deps.store.getPendingDeletes();
+      for (const row of pending) {
+        await pushRowDelete(deps, session.token, row);
       }
 
       return { pulled, pushed, tombstoned };
     },
 
     async pushOne(spaceId) {
-      const user = deps.currentUser();
-      const token = deps.sessionToken();
-      if (!user || !token) return;
-      // Read by id including deleted? No — pushOne handles live mutations only.
-      // Soft-deletes are pushed via the DELETE endpoint, separate path.
+      const session = isProSession(deps);
+      if (!session) return;
       const row = deps.db.prepare(
         "SELECT * FROM spaces WHERE id = ? AND deleted_at IS NULL",
       ).get(spaceId) as SpaceRow | undefined;
       if (!row) return;
-      // Skip if the row is already clean — saves a redundant PUT.
-      const localMs = localUpdatedAtMs(row);
-      const synced = (row as { cloud_synced_at: number | null }).cloud_synced_at;
-      if (synced !== null && synced >= localMs) return;
-      await pushRow(deps, row);
+      const dirtyAt = (row as { sync_dirty_at: number | null }).sync_dirty_at;
+      const synced  = (row as { cloud_synced_at: number | null }).cloud_synced_at;
+      // Clean if no dirty mark, or already synced past it.
+      if (dirtyAt === null) return;
+      if (synced !== null && synced >= dirtyAt) return;
+      await pushRow(deps, session.token, row);
     },
 
     async pushDelete(spaceId) {
-      const user = deps.currentUser();
-      const token = deps.sessionToken();
-      if (!user || !token) return;
-      try {
-        const res = await deps.fetch(
-          `${deps.workerBase}/api/spaces/${encodeURIComponent(spaceId)}`,
-          { method: "DELETE", headers: { Cookie: `oyster_session=${token}` } },
-        );
-        // 404 = already gone elsewhere; swallow quietly. Other non-OK gets a warn.
-        if (!res.ok && res.status !== 404) {
-          console.warn(`[spaces] delete ${spaceId} non-ok ${res.status}`);
-        }
-      } catch (err) {
-        console.warn(`[spaces] delete ${spaceId} failed:`, err);
-      }
+      const session = isProSession(deps);
+      if (!session) return;
+      // Read the local tombstone row (including deleted) so we know what
+      // deleted_at to use if the worker says 404.
+      const row = deps.db.prepare(
+        "SELECT id, deleted_at, cloud_synced_at FROM spaces WHERE id = ?",
+      ).get(spaceId) as { id: string; deleted_at: number | null; cloud_synced_at: number | null } | undefined;
+      if (!row || row.deleted_at === null) return;
+      await pushRowDelete(deps, session.token, row as unknown as SpaceRow);
     },
   };
 }
 
-async function pushRow(deps: SpaceSyncDeps, row: SpaceRow): Promise<boolean> {
-  const token = deps.sessionToken();
-  if (!token) return false;
-  const localMs = localUpdatedAtMs(row);
+async function pushRow(deps: SpaceSyncDeps, token: string, row: SpaceRow): Promise<boolean> {
+  const dirtyAt = (row as { sync_dirty_at: number | null }).sync_dirty_at;
+  if (dirtyAt === null) return false;  // shouldn't happen — caller filters
+
   let res: Response;
   try {
     res = await deps.fetch(`${deps.workerBase}/api/spaces/${encodeURIComponent(row.id)}`, {
@@ -1455,14 +1711,14 @@ async function pushRow(deps: SpaceSyncDeps, row: SpaceRow): Promise<boolean> {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        display_name: row.display_name,
-        color: row.color,
-        parent_id: row.parent_id,
-        summary_title: row.summary_title,
+        display_name:    row.display_name,
+        color:           row.color,
+        parent_id:       row.parent_id,
+        summary_title:   row.summary_title,
         summary_content: row.summary_content,
-        // Use the local row's updated_at translated to unix ms — the worker
-        // uses this as the LWW comparison key.
-        updated_at: localMs,
+        // Wire LWW key = sync_dirty_at (timestamp of the last sync-relevant
+        // mutation), NOT the row's general-purpose updated_at.
+        updated_at: dirtyAt,
       }),
     });
   } catch (err) {
@@ -1481,9 +1737,37 @@ async function pushRow(deps: SpaceSyncDeps, row: SpaceRow): Promise<boolean> {
   }
 
   const body = await res.json().catch(() => null) as { space?: { updated_at?: number } } | null;
-  const cloudUpdated = body?.space?.updated_at ?? localMs;
+  const cloudUpdated = body?.space?.updated_at ?? dirtyAt;
   deps.store.markSynced(row.id, cloudUpdated);
   return true;
+}
+
+async function pushRowDelete(deps: SpaceSyncDeps, token: string, row: SpaceRow): Promise<void> {
+  const localDeletedAt = (row as { deleted_at: number | null }).deleted_at ?? Date.now();
+  let res: Response;
+  try {
+    res = await deps.fetch(
+      `${deps.workerBase}/api/spaces/${encodeURIComponent(row.id)}`,
+      { method: "DELETE", headers: { Cookie: `oyster_session=${token}` } },
+    );
+  } catch (err) {
+    console.warn(`[spaces] delete ${row.id} failed:`, err);
+    return;
+  }
+
+  if (res.status === 404) {
+    // Cloud has no record — local tombstone is the only state; consider it
+    // acknowledged so the pending-delete sweep stops re-trying.
+    deps.store.markSynced(row.id, localDeletedAt);
+    return;
+  }
+  if (!res.ok) {
+    console.warn(`[spaces] delete ${row.id} non-ok ${res.status}`);
+    return;
+  }
+  const body = await res.json().catch(() => null) as CloudDeleteResponse | null;
+  const cloudDeletedAt = body?.deleted_at ?? localDeletedAt;
+  deps.store.markSynced(row.id, cloudDeletedAt);
 }
 ```
 
@@ -1493,13 +1777,13 @@ async function pushRow(deps: SpaceSyncDeps, row: SpaceRow): Promise<boolean> {
 cd server && npm test -- space-sync-service.test.ts
 ```
 
-Expected: PASS, all 6 reconcile tests.
+Expected: PASS — all 10 reconcile tests (signed-out no-op, free-tier no-op, pull insert, pull update, local-wins-no-pull, tombstone preserves cloud.deleted_at, push dirty with sync_dirty_at, push pending delete, DELETE 404 acknowledged, idempotent).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add server/src/space-sync-service.ts server/test/space-sync-service.test.ts
-git commit -m "feat(spaces-sync): SpaceSyncService.reconcile() + pushOne() — pull/push/LWW"
+git commit -m "feat(spaces-sync): SpaceSyncService — Pro-gated pull/push/delete with LWW"
 ```
 
 ---
@@ -1526,6 +1810,7 @@ describe("createSpaceSyncService — pushOne()", () => {
 
   it("does nothing when user is signed out", async () => {
     insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
@@ -1538,11 +1823,26 @@ describe("createSpaceSyncService — pushOne()", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("does nothing for free-tier users (Pro-only feature)", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => FREE_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("does nothing when row is missing", async () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
@@ -1551,15 +1851,13 @@ describe("createSpaceSyncService — pushOne()", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("does nothing when row is already clean (cloud_synced_at >= updated_at)", async () => {
+  it("does nothing when row has no sync_dirty_at (no sync-relevant change)", async () => {
     insertRow(store, "work");
-    // Mark synced way in the future — dirtiness check returns false.
-    store.markSynced("work", Date.now() + 60_000);
-
+    // No markSyncDirty — row was inserted but not flagged for sync.
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
@@ -1568,22 +1866,42 @@ describe("createSpaceSyncService — pushOne()", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("PUTs a dirty row and updates cloud_synced_at on 200", async () => {
+  it("does nothing when row is already clean (cloud_synced_at >= sync_dirty_at)", async () => {
     insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
+    store.markSynced("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushOne("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("PUTs a dirty row with sync_dirty_at as wire updated_at, updates cloud_synced_at on 200", async () => {
+    insertRow(store, "work");
+    store.markSyncDirty("work", 6000);
+
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       expect(init?.method).toBe("PUT");
+      const body = JSON.parse(init!.body as string) as { updated_at: number };
+      expect(body.updated_at).toBe(6000);
       return new Response(JSON.stringify({
         space: {
           owner_id: "u1", space_id: "work", display_name: "work",
           color: null, parent_id: null,
           summary_title: null, summary_content: null,
-          updated_at: 8888, deleted_at: null, created_at: 8888,
+          updated_at: 6000, deleted_at: null, created_at: 6000,
         },
       }), { status: 200 });
     });
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
@@ -1591,17 +1909,18 @@ describe("createSpaceSyncService — pushOne()", () => {
     await svc.pushOne("work");
     expect(fetchMock).toHaveBeenCalledOnce();
     const row = store.getById("work")!;
-    expect((row as { cloud_synced_at: number | null }).cloud_synced_at).toBe(8888);
+    expect((row as { cloud_synced_at: number | null }).cloud_synced_at).toBe(6000);
   });
 
   it("on 410, soft-deletes the local row (deletion wins over stale rename)", async () => {
     insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
     const fetchMock = vi.fn(async () => new Response(
       JSON.stringify({ error: "space_tombstoned" }), { status: 410 },
     ));
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
@@ -1612,11 +1931,12 @@ describe("createSpaceSyncService — pushOne()", () => {
 
   it("swallows network errors (console.warn, no throw)", async () => {
     insertRow(store, "work");
+    store.markSyncDirty("work", 1000);
     const fetchMock = vi.fn(async () => { throw new Error("offline"); });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
@@ -1633,7 +1953,7 @@ describe("createSpaceSyncService — pushOne()", () => {
 cd server && npm test -- space-sync-service.test.ts
 ```
 
-Expected: PASS, all 12 tests (6 reconcile + 6 pushOne).
+Expected: PASS — all 18 tests (10 reconcile + 8 pushOne).
 
 If any test fails, fix in `space-sync-service.ts` and re-run.
 
@@ -1641,7 +1961,7 @@ If any test fails, fix in `space-sync-service.ts` and re-run.
 
 ```bash
 git add server/test/space-sync-service.test.ts
-git commit -m "test(spaces-sync): pushOne() — auth, dirty check, 410 tombstone, network error"
+git commit -m "test(spaces-sync): pushOne() — Pro gate, dirty marker, 410 tombstone, network error"
 ```
 
 ---
@@ -1674,23 +1994,26 @@ b) Update the constructor signature to accept the new dependency (optional so ex
   ) {}
 ```
 
-c) Add fire-and-forget push at the end of every mutation method. After each `this.spaceStore.update(...)` / `insert(...)` / soft-delete, append:
+c) After every mutation that changes a *synced* field (display_name, color, parent_id, summary_title, summary_content), call `markSyncDirty()` THEN fire-and-forget `pushOne()`. The two calls are paired — `markSyncDirty()` is what makes the row visible to `getDirtyRows()`, and `pushOne()` is the immediate push attempt.
 
-In `createSpace` (after `this.spaceStore.insert(...)`, before the `return`):
+In `createSpace`, after `this.spaceStore.insert(...)`, before the `return`:
 
 ```ts
+    this.spaceStore.markSyncDirty(id);
     void this.spaceSync?.pushOne(id);
 ```
 
-In `setSummary`, after `this.spaceStore.update(id, ...)`:
+In `setSummary`, after `this.spaceStore.update(id, { summary_title: title, summary_content: content })`:
 
 ```ts
+    this.spaceStore.markSyncDirty(id);
     void this.spaceSync?.pushOne(id);
 ```
 
 In `updateSpace`, after `this.spaceStore.update(id, dbFields)`:
 
 ```ts
+    this.spaceStore.markSyncDirty(id);
     void this.spaceSync?.pushOne(id);
 ```
 
@@ -1698,18 +2021,21 @@ In `deleteSpace`, replace the existing `this.spaceStore.delete(id)` (the very la
 
 ```ts
     // Soft-delete locally; cloud propagates the tombstone via pushDelete.
-    // (pushDelete is fire-and-forget; the next reconcile catches retries.)
+    // (pushDelete is fire-and-forget; the pending-delete sweep in the next
+    // reconcile() retries on failure.)
     this.spaceStore.softDelete(id);
     void this.spaceSync?.pushDelete(id);
 ```
 
-> **WHY soft-delete instead of hard-delete here?** Hard-delete loses the row entirely, which means the cloud DELETE isn't retried on offline → online. Soft-delete keeps the local row marked tombstoned (filtered out of getAll/getById, same effect on the surface) and lets pushDelete (or a later reconcile) propagate without re-discovering the deletion.
+> **WHY soft-delete instead of hard-delete here?** Hard-delete loses the row entirely, which means the cloud DELETE isn't retried on offline → online. Soft-delete keeps the local row marked tombstoned (filtered out of getAll/getById, same effect on the surface) and lets `pushDelete()` or the pending-delete sweep in `reconcile()` propagate without re-discovering the deletion.
 
-> **Known limit (acceptable for the wedge):** `scanSpace` updates `scan_status` etc. via `spaceStore.update()`, which bumps `updated_at`. The dirty-row predicate then fires for that row even though no synced field changed, so the next `reconcile()` pushes a no-op PUT. The worker accepts the write (LWW), bumps cloud `updated_at`, and peer devices re-pull — wasteful but not wrong. Acceptable for v1. Follow-up: split scan-status writes into a method that doesn't touch `updated_at`, or filter the dirty predicate by a `synced_dirty_at` column distinct from `updated_at`.
+> **CRITICAL — do NOT call `markSyncDirty()` in `scanSpace`.** scanSpace mutates `scan_status` / `scan_error` / `last_scanned_at` / `last_scan_summary` / `ai_job_*` — all device-local fields. Marking the row dirty would push a PUT with stale synced fields to the cloud, potentially overwriting a peer's legitimate rename. The `sync_dirty_at` column exists precisely to prevent this. Leave `scanSpace` untouched; it does not interact with sync at all.
+
+> **Known limit — soft-delete and orphaned sources/space_paths:** soft-deleting a space (vs. hard-delete) leaves its `sources` and `space_paths` rows behind. Direct readers (e.g. `spaceStore.getSources(spaceId)`) won't filter on `spaces.deleted_at IS NULL` — they take the spaceId as given. In practice, callers reach `getSources` only via paths that first checked the space exists via `getById` (which now filters), so the leak is contained. If a backend code path is added that reads `sources` without going through `getById` first, it should join on `spaces.deleted_at IS NULL`. Follow-up: cascade soft-delete to sources/space_paths (or hard-delete them at soft-delete time, since they're device-local anyway).
 
 - [ ] **Step 2: Add pushDelete tests to space-sync-service.test.ts**
 
-Append to the `pushOne()` describe block, then a sibling `describe("pushDelete()")`:
+Append a sibling `describe("pushDelete()")` block:
 
 ```ts
 describe("createSpaceSyncService — pushDelete()", () => {
@@ -1723,6 +2049,8 @@ describe("createSpaceSyncService — pushDelete()", () => {
   });
 
   it("does nothing when user is signed out", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 1000);
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
@@ -1735,46 +2063,95 @@ describe("createSpaceSyncService — pushDelete()", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("DELETEs the cloud row when signed in", async () => {
+  it("does nothing for free-tier users (Pro-only)", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => FREE_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushDelete("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when row is not soft-deleted (live row)", async () => {
+    insertRow(store, "work");
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushDelete("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("DELETEs the cloud row and marks the local tombstone synced on 200", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 5000);
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       expect(init?.method).toBe("DELETE");
       expect(url).toMatch(/\/api\/spaces\/work$/);
-      return new Response(JSON.stringify({ space_id: "work", deleted_at: 1, updated_at: 1 }), { status: 200 });
+      return new Response(JSON.stringify({
+        space_id: "work", deleted_at: 5000, updated_at: 5000,
+      }), { status: 200 });
     });
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
     await svc.pushDelete("work");
     expect(fetchMock).toHaveBeenCalledOnce();
+    const raw = db.prepare("SELECT cloud_synced_at FROM spaces WHERE id = 'work'")
+      .get() as { cloud_synced_at: number };
+    expect(raw.cloud_synced_at).toBe(5000);
+    expect(store.getPendingDeletes()).toEqual([]);
   });
 
-  it("swallows 404 (row gone elsewhere) without warning loudly", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: "space_not_found" }), { status: 404 }));
+  it("on 404 (row never made it to cloud), marks the local tombstone synced anyway", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 5000);
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ error: "space_not_found" }), { status: 404 },
+    ));
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
     await expect(svc.pushDelete("work")).resolves.toBeUndefined();
+    const raw = db.prepare("SELECT cloud_synced_at FROM spaces WHERE id = 'work'")
+      .get() as { cloud_synced_at: number };
+    expect(raw.cloud_synced_at).toBe(5000);
+    expect(store.getPendingDeletes()).toEqual([]);
   });
 
-  it("swallows network errors (no throw)", async () => {
+  it("swallows network errors and leaves the tombstone pending (will retry next reconcile)", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 5000);
     const fetchMock = vi.fn(async () => { throw new Error("offline"); });
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const svc = createSpaceSyncService({
       db, store,
-      currentUser: () => ({ id: "u1", email: "a@a", tier: "pro" }),
+      currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
       fetch: fetchMock as unknown as typeof fetch,
     });
     await expect(svc.pushDelete("work")).resolves.toBeUndefined();
+    // Tombstone remains pending — no cloud_synced_at update on network error.
+    expect(store.getPendingDeletes().map(r => r.id)).toEqual(["work"]);
   });
 });
 ```
@@ -1785,7 +2162,7 @@ describe("createSpaceSyncService — pushDelete()", () => {
 cd server && npm test
 ```
 
-Expected: PASS — sync service has 16 tests now; space-store-sync stays green; existing tests untouched.
+Expected: PASS — sync service has 24 tests (10 reconcile + 8 pushOne + 6 pushDelete); space-store-sync 18 tests stays green; existing tests untouched.
 
 - [ ] **Step 4: Commit**
 

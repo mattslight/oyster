@@ -43,25 +43,38 @@ The "cloud truth principle" memory has been refined accordingly — see `project
 
 ### Local SQLite — additive migration
 
-Two new columns on `spaces` (additive `ALTER TABLE ... ADD COLUMN`, idempotent per project convention):
+Three new columns on `spaces` (additive `ALTER TABLE ... ADD COLUMN`, idempotent per project convention):
 
 | Column | Type | Default | Purpose |
 |---|---|---|---|
+| `sync_dirty_at` | INTEGER (unix ms) | NULL | Timestamp of the last mutation to a *synced* field (display_name, color, parent_id, summary_title, summary_content). NULL = no sync-relevant changes since last push (or never). The dirty-row marker. |
 | `cloud_synced_at` | INTEGER (unix ms) | NULL | Timestamp of the cloud row's `updated_at` from the last successful push. NULL = never synced. |
-| `deleted_at` | INTEGER (unix ms) | NULL | Soft-delete tombstone; needed so deletions can propagate to cloud and out to peers. Replaces hard-delete in `space-store.delete()`. |
+| `deleted_at` | INTEGER (unix ms) | NULL | Soft-delete tombstone; needed so deletions can propagate to cloud and out to peers. Replaces hard-delete in `space-service.deleteSpace()`. |
 
-**Dirty-row predicate:**
+**Why a separate `sync_dirty_at` instead of using `updated_at`?** `spaces.updated_at` is bumped by every `space-store.update()` — including local-only fields like `scan_status` / `last_scanned_at` / `ai_job_status`. Using `updated_at` as the sync marker would push unchanged synced data after every scanner pass, and worse: a local scan could *win* an LWW race against a peer's legitimate rename (newer `updated_at` from a scan → cloud accepts the no-op write → peer's rename is overwritten). `sync_dirty_at` is bumped only by mutations that actually change synced fields.
+
+**Dirty-row predicate (live rows):**
 ```sql
-WHERE cloud_synced_at IS NULL OR updated_at > cloud_synced_at
+WHERE deleted_at IS NULL
+  AND sync_dirty_at IS NOT NULL
+  AND (cloud_synced_at IS NULL OR sync_dirty_at > cloud_synced_at)
 ```
 
-`updated_at` is already maintained by `space-store.update()` (set to `datetime('now')`). For comparison, both sides should be in unix ms; the migration converts the existing TEXT `updated_at` representation or the comparison is done at the application layer. (Project already mixes both formats — pick one consistently in the service.)
+**Pending-delete predicate (rows to push as DELETE):**
+```sql
+WHERE deleted_at IS NOT NULL
+  AND (cloud_synced_at IS NULL OR deleted_at > cloud_synced_at)
+```
 
-When the user is signed out / on free tier, `reconcile()` and `pushOne()` early-return without making network calls — `cloud_synced_at` simply stays NULL on those rows, harmlessly, until first Pro sign-in.
+Both predicates and timestamps are unix ms throughout (no `datetime('now')` text comparisons). When the user is signed out / on free tier, `reconcile()`, `pushOne()`, and `pushDelete()` all early-return without making network calls — sync columns stay NULL, harmlessly, until first Pro sign-in.
 
-### Cloud D1 — new table in `oyster-publish` worker
+**Pro entitlement.** Per the requirements doc tier mapping, R1 (empty-machine continuity, which this wedge serves) is a Pro feature. The sync service explicitly checks `user.tier === "pro"` in addition to having a session token. Free / signed-out users do not push or pull.
 
-The `oyster-publish` worker already owns user-scoped D1 tables, has session auth, and ships with #400's worker shape. Adding spaces here avoids a new worker. New migration: `infra/oyster-publish/migrations/0006_spaces.sql`.
+### Cloud D1 — new table on the shared `oyster-auth` D1 database
+
+The `oyster-publish` worker reads/writes the *same* D1 database as `oyster-auth` (binding name `DB`, database name `oyster-auth`, ID `44086805-...`) — that's how publish reads the `users` and `sessions` tables produced by the auth worker, and where `published_artifacts` already lives. Adding spaces to that same DB avoids a second database and lets the existing session-auth flow gate every endpoint identically.
+
+**Migration files for that shared D1 live under `infra/auth-worker/migrations/`.** New migration: `infra/auth-worker/migrations/0006_synced_spaces.sql`. The endpoints are still served by the `oyster-publish` worker (`infra/oyster-publish/src/worker.ts`).
 
 ```sql
 CREATE TABLE synced_spaces (
@@ -100,7 +113,7 @@ These stay device-local. Pushing them up would corrupt cross-device state.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/spaces/mine` | Returns this user's live + tombstoned `synced_spaces` rows. Optional `?since=<unix_ms>` for incremental pulls (omitting returns all rows). Response: `{spaces: SyncedSpace[]}` where `SyncedSpace` includes `deleted_at` (null or unix ms). |
+| `GET` | `/api/spaces/mine` | Returns this user's live + tombstoned `synced_spaces` rows (full pull). Response: `{spaces: SyncedSpace[]}` where `SyncedSpace` includes `deleted_at` (null or unix ms). Volumes are tens-to-hundreds of rows per user, so full pull is the right shape for the wedge. Incremental `?since` is a future optimisation if the row count materially grows. |
 | `PUT`  | `/api/spaces/:id` | Upsert one row. Body: `{display_name, color, parent_id, summary_title, summary_content, updated_at}`. Worker COALESCEs missing fields (mirrors PATCH-style of #400). Last-write-wins by `updated_at` — server rejects writes with `updated_at <= existing.updated_at` and returns the existing row (200 with the existing data), so a stale write becomes a no-op rather than an error. **Resurrection rule:** PUT against a tombstoned row (`deleted_at IS NOT NULL`) returns `410 gone` so the client knows to apply the tombstone locally instead. Response: `{space: SyncedSpace}`. |
 | `DELETE` | `/api/spaces/:id` | Sets `deleted_at = now()` and bumps `updated_at = now()` on the cloud row (so peers' next pull picks up the tombstone via the same updated_at gradient). Idempotent — re-DELETE returns the existing tombstone. Response: `{space_id, deleted_at, updated_at}`. |
 
@@ -127,17 +140,20 @@ export interface SpaceSyncService {
 
 **`reconcile()` algorithm:**
 
-1. If no signed-in user: clear no state, return zeros. (Free / signed-out path is a true no-op — no cloud writes have ever happened, so there's nothing to clear.)
+1. Pro gate: if no signed-in user, no session token, OR `user.tier !== "pro"`: return zeros (no network calls).
 2. `GET /api/spaces/mine` → list of `{space_id, ...fields, updated_at, deleted_at}`.
 3. For each cloud row:
-   - If `deleted_at` is set: soft-delete locally (set `deleted_at` on local row). Skip down-sync of fields.
-   - Else if no local row: insert. Set `cloud_synced_at = updated_at`.
-   - Else if `cloud.updated_at > local.updated_at`: update local. Set `cloud_synced_at = updated_at`.
-   - Else if `cloud.updated_at < local.updated_at`: local is newer; will be pushed in step 4.
-4. Find dirty local rows (predicate above) and `PUT /api/spaces/:id` for each. On 200, set `cloud_synced_at = response.updated_at`.
-5. Returns counts for logging.
+   - If `deleted_at` is set: soft-delete locally **using `cloud.deleted_at` as the local `deleted_at` timestamp** (not `Date.now()` — preserves cross-device tombstone provenance). Set `cloud_synced_at = cloud.updated_at`. Skip down-sync of fields.
+   - Else if no local row: insert. Set `cloud_synced_at = cloud.updated_at`.
+   - Else if `local.sync_dirty_at IS NULL OR cloud.updated_at > local.sync_dirty_at`: cloud is the winner; update local synced fields, set `cloud_synced_at = cloud.updated_at`. (Don't touch `sync_dirty_at` — leave it where it was; the predicate naturally goes clean because `cloud_synced_at >= sync_dirty_at`.)
+   - Else: local has newer unsynced changes; defer to step 4.
+4. Find dirty local rows (live, dirty predicate above) and `PUT /api/spaces/:id` for each. Wire `updated_at = local.sync_dirty_at`. On 200, set `cloud_synced_at = response.space.updated_at`.
+5. Find pending deletes (deleted-row predicate above) and `DELETE /api/spaces/:id` for each. On 200, set `cloud_synced_at = response.deleted_at`. On 404 (already gone elsewhere), set `cloud_synced_at = local.deleted_at` so the row stops being treated as pending.
+6. Return counts for logging.
 
-**`pushOne(spaceId)`** — checks the row is dirty + eligible, PUTs it, updates `cloud_synced_at`. Swallows network errors with a `console.warn`; the next `reconcile()` will retry.
+**`pushOne(spaceId)`** — Pro gate, checks the row is dirty + live, PUTs it (wire `updated_at = sync_dirty_at`), updates `cloud_synced_at`. Swallows network errors with a `console.warn`; the next `reconcile()` will retry.
+
+**`pushDelete(spaceId)`** — Pro gate, DELETEs the cloud row. On 200, mark synced. On 404, treat the local tombstone as already acknowledged. Network errors swallow; pending-delete sweep in `reconcile()` retries.
 
 **Wiring:**
 
@@ -152,7 +168,12 @@ export interface SpaceSyncService {
 
 ## Promotion act (first Pro sign-in)
 
-By construction: the new `cloud_synced_at` column defaults to NULL on existing rows after migration, so every existing local row matches the dirty predicate on the first `reconcile()` and gets pushed up. No special "promote" code path. The migration *is* the promotion mechanism.
+The migration adds `sync_dirty_at` defaulting to NULL — i.e. existing rows are *not* automatically dirty. We need a one-time backfill so the first `reconcile()` actually pushes existing data up. Two acceptable shapes:
+
+- **Migration-time backfill:** the same `db.ts` block that adds `sync_dirty_at` immediately runs `UPDATE spaces SET sync_dirty_at = strftime('%s','now') * 1000 WHERE sync_dirty_at IS NULL` so every existing row is marked dirty exactly once.
+- **First-Pro-sign-in backfill:** in the sync service, on first invocation when the user is Pro, run the same UPDATE if `cloud_synced_at IS NULL` rows exist that haven't been seen by sync before.
+
+Migration-time is simpler and cheaper — pick that. After the backfill, the dirty predicate fires for every existing row on the next `reconcile()`. The migration *is* the promotion mechanism, plus one line of UPDATE.
 
 ## Resolves `_cloud` fallback
 
