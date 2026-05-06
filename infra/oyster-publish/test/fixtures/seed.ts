@@ -172,9 +172,11 @@ export async function seedSyncedSpace(opts: {
   summaryTitle?: string | null;
   summaryContent?: string | null;
   updatedAt?: number;
+  createdAt?: number;
   deletedAt?: number | null;
 }): Promise<void> {
   const now = opts.updatedAt ?? Date.now();
+  const createdAt = opts.createdAt ?? Date.now();
   await env.DB.prepare(
     `INSERT INTO synced_spaces
      (owner_id, space_id, display_name, color, parent_id,
@@ -189,7 +191,7 @@ export async function seedSyncedSpace(opts: {
     opts.summaryContent ?? null,
     now,
     opts.deletedAt ?? null,
-    now,
+    createdAt,
   ).run();
 }
 
