@@ -498,3 +498,120 @@ describe("createSpaceSyncService — pushOne()", () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 });
+
+describe("createSpaceSyncService — pushDelete()", () => {
+  let db: Database.Database;
+  let store: SqliteSpaceStore;
+
+  beforeEach(() => {
+    db = makeDb();
+    store = new SqliteSpaceStore(db);
+    vi.restoreAllMocks();
+  });
+
+  it("does nothing when user is signed out", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => null,
+      sessionToken: () => null,
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushDelete("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for free-tier users (Pro-only)", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 1000);
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => FREE_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushDelete("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when row is not soft-deleted (live row)", async () => {
+    insertRow(store, "work");
+    const fetchMock = vi.fn();
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushDelete("work");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("DELETEs the cloud row and marks the local tombstone synced on 200", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 5000);
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(init?.method).toBe("DELETE");
+      expect(url).toMatch(/\/api\/spaces\/work$/);
+      return new Response(JSON.stringify({
+        space_id: "work", deleted_at: 5000, updated_at: 5000,
+      }), { status: 200 });
+    });
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await svc.pushDelete("work");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const raw = db.prepare("SELECT cloud_synced_at FROM spaces WHERE id = 'work'")
+      .get() as { cloud_synced_at: number };
+    expect(raw.cloud_synced_at).toBe(5000);
+    expect(store.getPendingDeletes()).toEqual([]);
+  });
+
+  it("on 404 (row never made it to cloud), marks the local tombstone synced anyway", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 5000);
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ error: "space_not_found" }), { status: 404 },
+    ));
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await expect(svc.pushDelete("work")).resolves.toBeUndefined();
+    const raw = db.prepare("SELECT cloud_synced_at FROM spaces WHERE id = 'work'")
+      .get() as { cloud_synced_at: number };
+    expect(raw.cloud_synced_at).toBe(5000);
+    expect(store.getPendingDeletes()).toEqual([]);
+  });
+
+  it("swallows network errors and leaves the tombstone pending (will retry next reconcile)", async () => {
+    insertRow(store, "work");
+    store.softDelete("work", 5000);
+    const fetchMock = vi.fn(async () => { throw new Error("offline"); });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const svc = createSpaceSyncService({
+      db, store,
+      currentUser: () => PRO_USER,
+      sessionToken: () => "tok",
+      workerBase: "https://oyster.to",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    await expect(svc.pushDelete("work")).resolves.toBeUndefined();
+    // Tombstone remains pending — no cloud_synced_at update on network error.
+    expect(store.getPendingDeletes().map(r => r.id)).toEqual(["work"]);
+  });
+});
