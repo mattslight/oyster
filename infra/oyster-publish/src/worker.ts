@@ -368,11 +368,12 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
   try { body = await req.json() as typeof body; }
   catch { return jsonError(400, "invalid_metadata"); }
 
-  if (typeof body.display_name !== "string" || body.display_name.trim().length === 0) {
+  if (typeof body.display_name !== "string") {
     return jsonError(400, "invalid_metadata");
   }
-  if (body.display_name.length > 200) {
-    // Cheap upper bound; protects D1 from pathological inputs.
+  const trimmedName = body.display_name.trim();
+  if (trimmedName.length === 0 || trimmedName.length > 200) {
+    // Empty after trim, or pathologically long. Length check is on visible chars.
     return jsonError(400, "invalid_metadata");
   }
   if (typeof body.updated_at !== "number" || !Number.isFinite(body.updated_at) || body.updated_at < 0) {
@@ -381,15 +382,10 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
 
   // Strict optional-field validation — accept undefined (preserve), null (clear),
   // or string (set). Anything else is a 400.
-  function validateOptional(name: string, v: unknown): { ok: true; value: string | null } | { ok: false } {
-    if (v === undefined || v === null) return { ok: true, value: null };
-    if (typeof v === "string") return { ok: true, value: v };
-    return { ok: false };
-  }
-  const color          = validateOptional("color",          body.color);
-  const parentId       = validateOptional("parent_id",      body.parent_id);
-  const summaryTitle   = validateOptional("summary_title",  body.summary_title);
-  const summaryContent = validateOptional("summary_content", body.summary_content);
+  const color          = validateOptional(body.color);
+  const parentId       = validateOptional(body.parent_id);
+  const summaryTitle   = validateOptional(body.summary_title);
+  const summaryContent = validateOptional(body.summary_content);
   if (!color.ok || !parentId.ok || !summaryTitle.ok || !summaryContent.ok) {
     return jsonError(400, "invalid_metadata");
   }
@@ -426,7 +422,7 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
               summary_title = ?, summary_content = ?, updated_at = ?
         WHERE owner_id = ? AND space_id = ?`,
     ).bind(
-      body.display_name.trim(), color.value, parentId.value,
+      trimmedName, color.value, parentId.value,
       summaryTitle.value, summaryContent.value, incomingUpdated,
       user.id, spaceId,
     ).run();
@@ -437,7 +433,7 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
         summary_title, summary_content, updated_at, deleted_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
     ).bind(
-      user.id, spaceId, body.display_name.trim(), color.value, parentId.value,
+      user.id, spaceId, trimmedName, color.value, parentId.value,
       summaryTitle.value, summaryContent.value, incomingUpdated, now,
     ).run();
   }
@@ -559,6 +555,16 @@ async function handlePublishDelete(req: Request, env: Env, shareToken: string): 
 }
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
+
+/** Validates a synced-space optional field. Maps both undefined (field absent
+ *  from JSON) and null (explicit clear) to null — appropriate for PUT semantics
+ *  (full replacement). Do NOT reuse for PATCH-style preserve-on-undefined paths
+ *  without rethinking; you'd silently clear fields the caller meant to leave alone. */
+function validateOptional(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (v === undefined || v === null) return { ok: true, value: null };
+  if (typeof v === "string") return { ok: true, value: v };
+  return { ok: false };
+}
 
 interface SessionUser {
   id: string;
