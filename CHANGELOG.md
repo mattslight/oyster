@@ -6,6 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **Spaces now sync across signed-in devices.** Pro users see the same set of spaces — name, hierarchy, summary — on every device they sign into. Published artefacts on a fresh device resolve to their real space instead of a generic "Cloud" bucket.
 - **Boot banner refreshed.** New Oyster logo on launch, plus a single rotating tip per boot — recall, publish, scan, pin, slash commands, MCP setup, and the changelog link cycle through.
 
 ## [0.7.0] - 2026-05-05

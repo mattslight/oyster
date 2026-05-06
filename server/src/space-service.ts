@@ -7,6 +7,7 @@ import type { SpaceStore, SpaceRow, Source } from "./space-store.js";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { SessionStore } from "./session-store.js";
+import type { SpaceSyncService } from "./space-sync-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
 
@@ -87,6 +88,7 @@ export class SpaceService {
     private artifactStore: ArtifactStore,
     private artifactService: ArtifactService,
     private sessionStore: SessionStore,
+    private spaceSync?: SpaceSyncService,
   ) {}
 
   createSpace(params: { name: string }): Space {
@@ -103,6 +105,8 @@ export class SpaceService {
       last_scan_summary: null, ai_job_status: null, ai_job_error: null,
       summary_title: null, summary_content: null,
     });
+    this.spaceStore.markSyncDirty(id);
+    void this.spaceSync?.pushOne(id);
 
     return rowToSpace(this.spaceStore.getById(id)!);
   }
@@ -235,6 +239,8 @@ export class SpaceService {
     const row = this.spaceStore.getById(id);
     if (!row) throw new Error(`Space "${id}" not found`);
     this.spaceStore.update(id, { summary_title: title, summary_content: content });
+    this.spaceStore.markSyncDirty(id);
+    void this.spaceSync?.pushOne(id);
     return rowToSpace(this.spaceStore.getById(id)!);
   }
 
@@ -251,7 +257,15 @@ export class SpaceService {
       if (!/^#[0-9a-fA-F]{6}$/.test(fields.color)) throw new Error("color must be a 6-digit hex string");
       dbFields.color = fields.color;
     }
+    if (Object.keys(dbFields).length === 0) {
+      // No fields to update — caller's intent was a no-op (e.g. updateSpace(id, {})
+      // or all fields explicitly undefined). Don't mark dirty or push; doing so
+      // would overwrite a peer's legitimate edit via LWW with no local intent.
+      return rowToSpace(row);
+    }
     this.spaceStore.update(id, dbFields);
+    this.spaceStore.markSyncDirty(id);
+    void this.spaceSync?.pushOne(id);
     return rowToSpace(this.spaceStore.getById(id)!);
   }
 
@@ -319,7 +333,11 @@ export class SpaceService {
     for (const a of artifacts) {
       this.artifactStore.update(a.id, { space_id: "home", group_name: folderName });
     }
-    this.spaceStore.delete(id);
+    // Soft-delete locally; cloud propagates the tombstone via pushDelete.
+    // (pushDelete is fire-and-forget; the pending-delete sweep in the next
+    // reconcile() retries on failure.)
+    this.spaceStore.softDelete(id);
+    void this.spaceSync?.pushDelete(id);
   }
 
   async scanSpace(spaceId: string): Promise<ScanResult> {

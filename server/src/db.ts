@@ -50,9 +50,29 @@ export function initDb(userlandDir: string): Database.Database {
     "ALTER TABLE spaces ADD COLUMN parent_id TEXT REFERENCES spaces(id)",
     "ALTER TABLE spaces ADD COLUMN summary_title TEXT",
     "ALTER TABLE spaces ADD COLUMN summary_content TEXT",
+    "ALTER TABLE spaces ADD COLUMN sync_dirty_at INTEGER",
+    "ALTER TABLE spaces ADD COLUMN cloud_synced_at INTEGER",
+    "ALTER TABLE spaces ADD COLUMN deleted_at INTEGER",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }
   }
+
+  // Promotion backfill: pre-existing local rows (created before sync existed,
+  // or while the user was on the free tier) need to be pushed up on first Pro
+  // sign-in. Mark them dirty exactly once by setting sync_dirty_at where it's
+  // still NULL AND there's no cloud_synced_at yet — i.e. truly never-synced
+  // local rows. This explicitly excludes rows freshly pulled from the cloud
+  // (which have cloud_synced_at set but sync_dirty_at=NULL by design); marking
+  // those dirty would cause a spurious push on next reconcile that could
+  // overwrite a peer's legitimate edit via LWW.
+  // Excludes tombstones via deleted_at IS NULL.
+  db.exec(`
+    UPDATE spaces
+       SET sync_dirty_at = CAST(strftime('%s','now') AS INTEGER) * 1000
+     WHERE sync_dirty_at IS NULL
+       AND cloud_synced_at IS NULL
+       AND deleted_at IS NULL
+  `);
 
   // space_paths — legacy join table. Replaced by `sources` below (#208).
   // Kept for now so the existing migration block (lines below) can read

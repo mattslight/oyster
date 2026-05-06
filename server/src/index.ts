@@ -32,6 +32,7 @@ import { tryHandleAuthRoute } from "./routes/auth.js";
 import { tryHandlePublishRoute } from "./routes/publish.js";
 import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
+import { createSpaceSyncService } from "./space-sync-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
 import { tryHandleImportRoute } from "./routes/import.js";
@@ -264,7 +265,6 @@ const VIEWER_BASE = process.env.OYSTER_VIEWER_BASE
 // linked-source path for tiles whose `source_id` is non-null.
 const artifactService = new ArtifactService(store, WORKER_BASE, VIEWER_BASE, OYSTER_HOME, spaceStore);
 
-const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore);
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
 await bootTimeAsync("memoryProvider.init", () => memoryProvider.init());
 
@@ -282,6 +282,23 @@ authService.onAuthChanged((state) => {
   });
 });
 void authService.validatePersistedSession();
+
+// spaceSync provides cross-device mirror of the spaces table to D1.
+// Constructed before spaceService so the latter can fire pushOne/pushDelete
+// after each mutation. Same auth bridge as publishService.
+const spaceSync = createSpaceSyncService({
+  db,
+  store: spaceStore,
+  currentUser: () => {
+    const u = authService.getState().user;
+    return u ? { id: u.id, email: u.email, tier: u.tier } : null;
+  },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: WORKER_BASE,
+  fetch,
+});
+
+const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const publishService = createPublishService({
   db,
   readArtifactBytes: async (artifactId) => {
@@ -326,15 +343,30 @@ function logBackfill(label: string, result: { mirrored: number; skipped: number 
 // itself is just a getter on publish-service.
 artifactService.setCloudOnlyPublicationsSource(() => publishService.getCloudOnlyPublications());
 
-authService.onAuthChanged(() => {
-  // Run on every auth transition — including sign-out. backfillPublications
-  // handles the signed-out case by clearing the cloudOnly cache and returning
-  // {0,0}, and logBackfill broadcasts artifact_changed unconditionally so the
-  // surface drops any ghost rows on the spot.
-  void publishService.backfillPublications().then((r) => logBackfill("auth-backfill", r));
-});
+async function syncOnAuth(label: string): Promise<void> {
+  // Spaces FIRST — the headline fix of #406 is that published-artefact
+  // ghosts resolve to real spaces, not _cloud. Doing publications first
+  // defeats that — the ghost render would still fall through to _cloud
+  // until the *next* sign-in. spaces first → publications second → render.
+  try {
+    const sr = await spaceSync.reconcile();
+    console.log(`[spaces] ${label}: pulled=${sr.pulled} pushed=${sr.pushed} tombstoned=${sr.tombstoned}`);
+    if (sr.pulled > 0 || sr.tombstoned > 0) {
+      // Notify the surface so any space pills update immediately.
+      broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+    }
+  } catch (err) {
+    console.warn(`[spaces] ${label} failed:`, err);
+  }
+  // Then publications (preserves existing behaviour: clears ghost cache on
+  // sign-out, broadcasts artifact_changed unconditionally via logBackfill).
+  const pr = await publishService.backfillPublications();
+  logBackfill(label, pr);
+}
+
+authService.onAuthChanged(() => { void syncOnAuth("auth"); });
 if (authService.getState().user) {
-  void publishService.backfillPublications().then((r) => logBackfill("startup-backfill", r));
+  void syncOnAuth("startup");
 }
 
 // ── Initialize subsystems ──
