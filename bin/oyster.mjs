@@ -10,6 +10,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { printHeroBox } from "./_banner.mjs";
 
 const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB cap on plugin bundles
 const DOWNLOAD_TIMEOUT_MS = 60_000;
@@ -23,46 +24,6 @@ const REGISTRY_URL = "https://raw.githubusercontent.com/mattslight/oyster-commun
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, "..");
 
-// ── Hero banner ──
-// The block printed once the server is listening is the primary thing a
-// user needs to act on. Boxed + coloured so it doesn't get lost in the
-// scrolling server logs above and deprecation warnings below.
-function printHeroBox(url) {
-  // ANSI colour codes — no extra dep. `\x1b[95m` bright magenta (indigo-ish,
-  // Oyster's accent). `\x1b[1;96m` bold bright cyan (link-obvious).
-  const M = "\x1b[95m";
-  const C = "\x1b[1;96m";
-  const R = "\x1b[0m";
-  const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
-  // `.length` on strings with surrogate-pair emojis (👉, 🔗) returns 2, and
-  // those emojis render as 2 terminal cells — so length ≈ display width in
-  // the modern terminals we target.
-  const lines = [
-    ``,
-    ` 👉  Open: ${C}${url}${R}`,
-    ``,
-    ` 🔗  Bring your own AI:`,
-    `    ${C}claude mcp add --scope user --transport http oyster ${url}/mcp/${R}`,
-    ``,
-    ` What you can do:`,
-    ` • "Create a deck about our roadmap" → appears on your surface`,
-    ` • "Scan ~/Dev/my-project" → new space with everything discovered`,
-    ` • "Open the competitor analysis" → opens in viewer`,
-    ``,
-  ];
-  const maxVis = Math.max(...lines.map((l) => stripAnsi(l).length));
-  const innerWidth = maxVis + 4; // 2 cells breathing room on each side
-  const hr = "─".repeat(innerWidth);
-  const out = [];
-  out.push(`\n  ${M}╭${hr}╮${R}`);
-  for (const line of lines) {
-    const plain = stripAnsi(line);
-    const rightPad = innerWidth - 2 - plain.length;
-    out.push(`  ${M}│${R}  ${line}${" ".repeat(rightPad)}${M}│${R}`);
-  }
-  out.push(`  ${M}╰${hr}╯${R}\n`);
-  console.log(out.join("\n"));
-}
 // Detect installed vs dev-from-source by checking if we're under node_modules.
 // Matches the server's own `isInstalledPackage` signal so paths stay in sync.
 const isInstalledPackage = PACKAGE_ROOT.includes(`${sep}node_modules${sep}`);

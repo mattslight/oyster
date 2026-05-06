@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Boot banner refreshed.** New Oyster logo on launch, plus a single rotating tip per boot — recall, publish, scan, pin, slash commands, MCP setup, and the changelog link cycle through.
+
 ## [0.7.0] - 2026-05-05
 
 Identity and the open web — sign in, publish artefacts, share them anywhere.
