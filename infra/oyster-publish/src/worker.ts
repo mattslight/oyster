@@ -389,8 +389,9 @@ async function handleSpacesPut(req: Request, env: Env, spaceId: string): Promise
     return jsonError(400, "invalid_metadata");
   }
 
-  // Strict optional-field validation — accept undefined (preserve), null (clear),
-  // or string (set). Anything else is a 400.
+  // Strict optional-field validation — null (clear) or string (set). undefined
+  // is rejected as a strict-required PUT field (full replacement contract);
+  // omitting an optional field returns 400 rather than silently clearing.
   const color          = validateOptional(body.color);
   const parentId       = validateOptional(body.parent_id);
   const summaryTitle   = validateOptional(body.summary_title);
