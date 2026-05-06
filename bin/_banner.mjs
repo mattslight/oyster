@@ -24,16 +24,15 @@ const OYSTER_ASCII = [
 
 // One tip per boot, drawn at random — keeps the banner light and surfaces
 // a different feature each time. New shipped features earn a slot here.
-// Tips that need the live URL (MCP setup) are interpolated, so this is a
-// factory rather than a static array.
-export function getTips(url) {
+// MCP setup is intentionally NOT in this pool: the MCP endpoint is pinned
+// to the top line so a new user always sees what to give their AI.
+export function getTips() {
   return [
     `Ask "what did we decide about pricing?" — Oyster finds it across every session.`,
     `Right-click any artefact → publish a public oyster.to/p/ link.`,
     `Tell your AI to "scan ~/Dev/my-project" — Oyster proposes spaces from what it finds.`,
     `Pin an artefact to keep it at the top of Home — right-click → Pin.`,
     `Type / in the chat for slash commands — /p, /u, /s, and more.`,
-    `Connect any MCP client to ${C}${url}/mcp/${R} — Claude Code, Cursor, Codex…`,
     `Latest changes: ${C}https://oyster.to/changelog${R}`,
   ];
 }
@@ -41,7 +40,7 @@ export function getTips(url) {
 // `tipIndex` lets the preview script iterate every variant deterministically;
 // production calls omit it and get a random tip.
 export function printHeroBox(url, tipIndex) {
-  const tips = getTips(url);
+  const tips = getTips();
   const tip = tipIndex != null
     ? tips[tipIndex]
     : tips[Math.floor(Math.random() * tips.length)];
@@ -53,7 +52,7 @@ export function printHeroBox(url, tipIndex) {
   // padding maths.
   const contentLines = [
     ``,
-    ` 👉  Open: ${C}${url}${R}`,
+    ` 👉  Open: ${C}${url}${R}    |    MCP server: ${C}${url}/mcp/${R}  (give this to your AI)`,
     ``,
     ` 💡  ${tip}`,
     ``,
