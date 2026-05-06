@@ -7,6 +7,7 @@ const SCHEMA_SQL = `
 -- Mirror of oyster-auth's relevant schema for tests. Keep in sync with:
 --   infra/auth-worker/migrations/0001_init.sql  (users, sessions)
 --   infra/auth-worker/migrations/0003_publish.sql (users.tier, published_artifacts)
+--   infra/auth-worker/migrations/0006_synced_spaces.sql (synced_spaces)
 CREATE TABLE users (
   id            TEXT PRIMARY KEY,
   email         TEXT NOT NULL UNIQUE,
@@ -45,6 +46,21 @@ CREATE INDEX idx_pubart_owner ON published_artifacts(owner_user_id);
 CREATE UNIQUE INDEX idx_pubart_active_per_owner_artifact
   ON published_artifacts(owner_user_id, artifact_id)
   WHERE unpublished_at IS NULL;
+CREATE TABLE synced_spaces (
+  owner_id        TEXT    NOT NULL,
+  space_id        TEXT    NOT NULL,
+  display_name    TEXT    NOT NULL,
+  color           TEXT,
+  parent_id       TEXT,
+  summary_title   TEXT,
+  summary_content TEXT,
+  updated_at      INTEGER NOT NULL,
+  deleted_at      INTEGER,
+  created_at      INTEGER NOT NULL,
+  PRIMARY KEY (owner_id, space_id)
+);
+CREATE INDEX idx_synced_spaces_owner_updated
+  ON synced_spaces (owner_id, updated_at DESC);
 `;
 
 export async function applySchema(): Promise<void> {
@@ -145,4 +161,46 @@ export async function seedActiveOpenWithBody(opts: {
   ).bind(token, opts.ownerUserId, opts.artifactId, kind, r2Key, contentType, sizeBytes, now, now).run();
   await putR2Object(r2Key, opts.body, contentType);
   return { shareToken: token, r2Key };
+}
+
+export async function seedSyncedSpace(opts: {
+  ownerId: string;
+  spaceId: string;
+  displayName?: string;
+  color?: string | null;
+  parentId?: string | null;
+  summaryTitle?: string | null;
+  summaryContent?: string | null;
+  updatedAt?: number;
+  deletedAt?: number | null;
+}): Promise<void> {
+  const now = opts.updatedAt ?? Date.now();
+  await env.DB.prepare(
+    `INSERT INTO synced_spaces
+     (owner_id, space_id, display_name, color, parent_id,
+      summary_title, summary_content, updated_at, deleted_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    opts.ownerId, opts.spaceId,
+    opts.displayName ?? opts.spaceId,
+    opts.color ?? null,
+    opts.parentId ?? null,
+    opts.summaryTitle ?? null,
+    opts.summaryContent ?? null,
+    now,
+    opts.deletedAt ?? null,
+    now,
+  ).run();
+}
+
+export async function readSyncedSpace(
+  ownerId: string, spaceId: string,
+): Promise<Record<string, unknown> | null> {
+  const row = await env.DB.prepare(
+    `SELECT owner_id, space_id, display_name, color, parent_id,
+            summary_title, summary_content, updated_at, deleted_at, created_at
+       FROM synced_spaces
+      WHERE owner_id = ? AND space_id = ?`,
+  ).bind(ownerId, spaceId).first<Record<string, unknown>>();
+  return row ?? null;
 }
