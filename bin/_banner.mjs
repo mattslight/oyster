@@ -5,13 +5,17 @@
 
 // ANSI colour codes — no extra dep. `\x1b[95m` bright magenta (indigo-ish,
 // Oyster's accent). `\x1b[1;96m` bold bright cyan, reserved for real,
-// clickable URLs and copy-paste commands. `\x1b[35m` regular magenta — the
-// dimmer companion used for the logo's drop-shadow strokes. `\x1b[90m`
-// bright black (grey) for auxiliary text that shouldn't compete.
+// clickable URLs and copy-paste commands on the top line. `\x1b[35m`
+// regular magenta — the dimmer companion used for the logo's drop-shadow
+// strokes. `\x1b[90m` bright black (grey) for auxiliary text that
+// shouldn't compete. `\x1b[3;90m` adds italic; tips use it so they read
+// as quiet asides rather than equal-status alongside the actionable URLs
+// — terminals without italic support still get the grey.
 const M = "\x1b[95m";
 const MD = "\x1b[35m";
 const C = "\x1b[1;96m";
 const D = "\x1b[90m";
+const T = "\x1b[3;90m";
 const R = "\x1b[0m";
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -88,7 +92,7 @@ export function getTips() {
     `Tell your AI to "scan ~/Dev/my-project" — Oyster proposes spaces from what it finds.`,
     `Pin an artefact to keep it at the top of Home — right-click → Pin.`,
     `Type / in the chat for slash commands — /p, /u, /s, and more.`,
-    `Latest changes: ${C}https://oyster.to/changelog${R}`,
+    `Latest changes: https://oyster.to/changelog`,
   ];
 }
 
@@ -111,7 +115,7 @@ export function printHeroBox(url, tipIndex, options = {}) {
     ``,
     ` 👉  Open: ${C}${url}${R}    🤖  MCP server: ${C}${url}/mcp/${R}  ${D}(give this to your AI)${R}`,
     ``,
-    ` 💡  ${tip}`,
+    ` 💡  ${T}${tip}${R}`,
     ``,
   ];
 
