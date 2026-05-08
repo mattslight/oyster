@@ -33,6 +33,7 @@ import { tryHandlePublishRoute } from "./routes/publish.js";
 import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
 import { createSpaceSyncService } from "./space-sync-service.js";
+import { createProfileBindingService } from "./profile-binding-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
 import { tryHandleImportRoute } from "./routes/import.js";
@@ -283,12 +284,35 @@ authService.onAuthChanged((state) => {
 });
 void authService.validatePersistedSession();
 
+// Profile binding — locks this local profile to the first Pro account that
+// signs in. Prevents a second Pro user from pulling their cloud data into
+// the wrong local SQLite. canRunCloudSync() is the ONLY caller of bindToOwner.
+const profileBinding = createProfileBindingService({ db });
+
+/** Returns true when the signed-in user is Pro AND this local profile is
+ *  either unbound or already bound to that user. Side-effect on first call
+ *  for a new Pro user: binds the profile. */
+function canRunCloudSync(): boolean {
+  const u = authService.getState().user;
+  if (!u || u.tier !== "pro") return false;
+
+  const result = profileBinding.bindToOwner(u.id);
+  if (result.reason === "conflict") {
+    console.warn(
+      `[profile] cloud sync blocked: profile bound to ${profileBinding.getBoundOwner()}, signed-in user is ${u.id}`,
+    );
+    return false;
+  }
+  return true;
+}
+
 // spaceSync provides cross-device mirror of the spaces table to D1.
 // Constructed before spaceService so the latter can fire pushOne/pushDelete
 // after each mutation. Same auth bridge as publishService.
 const spaceSync = createSpaceSyncService({
   db,
   store: spaceStore,
+  profileBinding,
   currentUser: () => {
     const u = authService.getState().user;
     return u ? { id: u.id, email: u.email, tier: u.tier } : null;
