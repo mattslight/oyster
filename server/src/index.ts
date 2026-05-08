@@ -33,6 +33,7 @@ import { tryHandlePublishRoute } from "./routes/publish.js";
 import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
 import { createSpaceSyncService } from "./space-sync-service.js";
+import { createMemorySyncService, type MemorySyncService } from "./memory-sync-service.js";
 import { createProfileBindingService } from "./profile-binding-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
@@ -324,6 +325,20 @@ const spaceSync = createSpaceSyncService({
   fetch,
 });
 
+const memorySync: MemorySyncService = createMemorySyncService({
+  db: memoryProvider.getInternalDbForSync(),
+  provider: memoryProvider,
+  profileBinding,                           // constructed in Task 4.4
+  currentUser: () => {
+    const u = authService.getState().user;
+    return u ? { id: u.id, email: u.email, tier: u.tier } : null;
+  },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: CLOUD_WORKER_BASE,
+  fetch: globalThis.fetch,
+});
+memoryProvider.setOnWrite(() => { void memorySync.pushPending(); });
+
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const publishService = createPublishService({
   db,
@@ -389,6 +404,14 @@ async function syncOnAuth(label: string): Promise<void> {
       }
     } catch (err) {
       console.warn(`[spaces] ${label} failed:`, err);
+    }
+    try {
+      const memResult = await memorySync.reconcile();
+      if (memResult.pulled || memResult.pushed) {
+        console.log(`[memory] reconcile (${label}): pulled=${memResult.pulled} pushed=${memResult.pushed}`);
+      }
+    } catch (err) {
+      console.warn(`[memory] ${label} reconcile failed:`, err);
     }
   }
   // Then publications (preserves existing behaviour: clears ghost cache on

@@ -127,6 +127,11 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     this.onWrite = cb;
   }
 
+  /** Internal DB handle for the sync service ONLY. Do not use elsewhere —
+   *  sync needs it for batched outbox queries; everything else should go
+   *  through the provider's typed methods. */
+  getInternalDbForSync(): Database.Database { return this.db; }
+
   async init(): Promise<void> {
     mkdirSync(this.storagePath, { recursive: true });
     const dbPath = join(this.storagePath, "memory.db");
