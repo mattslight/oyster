@@ -98,9 +98,7 @@ function rowToMemory(row: MemoryRow): Memory {
 export class SqliteFtsMemoryProvider implements MemoryProvider {
   private db!: Database.Database;
   private stmts!: {
-    insert: Database.Statement;
     findExact: Database.Statement;
-    supersede: Database.Statement;
     listActive: Database.Statement;
     listActiveBySpace: Database.Statement;
     getById: Database.Statement;
@@ -253,17 +251,10 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
     // Prepared statements
     this.stmts = {
-      insert: this.db.prepare(
-        `INSERT INTO memories (id, space_id, content, tags, source_session_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      ),
       findExact: this.db.prepare(
         `SELECT * FROM memories
          WHERE content = ? AND (space_id = ? OR (space_id IS NULL AND ? IS NULL))
            AND superseded_by IS NULL`,
-      ),
-      supersede: this.db.prepare(
-        `UPDATE memories SET superseded_by = ?, updated_at = datetime('now') WHERE id = ?`,
       ),
       listActive: this.db.prepare(
         `SELECT * FROM memories WHERE superseded_by IS NULL ORDER BY updated_at DESC`,
@@ -463,6 +454,9 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
          (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
        VALUES (?, ?, ?, NULL, NULL, ?, NULL)`,
     );
+    const nullPurgedPayload = this.db.prepare(
+      `UPDATE memory_payloads SET content = NULL, tags = '[]', purged_at = ? WHERE memory_id = ?`,
+    );
 
     const txn = this.db.transaction(() => {
       for (const r of rows) {
@@ -488,6 +482,12 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
           // Map legacy 'forgotten' / 'purged' marker to the appropriate event.
           const evType = r.superseded_by === "purged" ? "memory_purged" : "memory_forgotten";
           insertSecondaryEvent.run(crypto.randomUUID(), r.id, evType, created_ms + 1);
+          if (evType === "memory_purged") {
+            // Spec Q7: purged content must be nulled in all storage. Backfill
+            // for legacy 'purged' rows must not retain content even though
+            // no real production path writes 'purged' today.
+            nullPurgedPayload.run(Date.now(), r.id);
+          }
         }
       }
     });

@@ -265,6 +265,21 @@ describe("event write API — writeCreated", () => {
     db.close();
     provider.close();
   });
+
+  it("writeForgotten records cloud_owner_id on the event row", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "ev-forget-owner-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const { memory_id } = provider.writeCreated({ content: "owned" });
+    provider.writeForgotten(memory_id, "user-pro-456");
+    const db = new Database(join(tmp, "memory.db"));
+    const row = db.prepare(
+      `SELECT cloud_owner_id FROM memory_events WHERE memory_id = ? AND event_type = 'memory_forgotten'`,
+    ).get(memory_id) as { cloud_owner_id: string | null };
+    expect(row.cloud_owner_id).toBe("user-pro-456");
+    db.close();
+    provider.close();
+  });
 });
 
 describe("event write API — writeForgotten / writePurged / precedence", () => {
@@ -449,6 +464,34 @@ describe("backfill from legacy memories rows", () => {
     // Should match 2026-01-15 10:30:00 UTC ≈ 1768516200000, NOT Date.now()
     const expected = Date.parse("2026-01-15T10:30:00Z");
     expect(ev.created_at).toBe(expected);
+    db2.close();
+    provider2.close();
+  });
+
+  it("nulls payload content for legacy rows with superseded_by = 'purged'", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "bf-purged-"));
+    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    await provider1.init();
+    const db1 = new Database(join(tmp, "memory.db"));
+    db1.prepare(
+      `INSERT INTO memories (id, content, tags, superseded_by, created_at, updated_at)
+       VALUES ('legacy-purged', 'AKIA-leak', '["sensitive"]', 'purged', '2026-01-01', '2026-01-01')`,
+    ).run();
+    db1.close();
+    provider1.close();
+
+    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    await provider2.init();
+    const db2 = new Database(join(tmp, "memory.db"));
+    const types = db2.prepare(
+      `SELECT event_type FROM memory_events WHERE memory_id = ? ORDER BY created_at`,
+    ).all("legacy-purged") as Array<{ event_type: string }>;
+    expect(types.map((r) => r.event_type)).toEqual(["memory_created", "memory_purged"]);
+    const pay = db2.prepare(
+      `SELECT content, purged_at FROM memory_payloads WHERE memory_id = ?`,
+    ).get("legacy-purged") as { content: string | null; purged_at: number | null };
+    expect(pay.content).toBeNull();
+    expect(pay.purged_at).not.toBeNull();
     db2.close();
     provider2.close();
   });
