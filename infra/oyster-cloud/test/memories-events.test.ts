@@ -169,7 +169,7 @@ describe("POST /api/memories/events", () => {
     }, token);
     const body = await res.json() as { accepted: string[]; rejected: string[] };
     expect(body.accepted).toEqual(["ev-good"]);
-    expect(body.rejected).toEqual(expect.arrayContaining(["ev-bad-type", "ev-bad-empty-id"]));
+    expect(body.rejected).toEqual(expect.arrayContaining(["ev-bad-type", "ev-bad-empty-id", "<malformed>"]));
   });
 
   it("rejects memory_created without payload when no purge exists", async () => {

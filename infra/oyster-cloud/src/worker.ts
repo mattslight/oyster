@@ -69,7 +69,7 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
   for (const raw of incoming) {
     if (!isValidEvent(raw)) {
       const id = (raw as { event_id?: unknown })?.event_id;
-      rejected.push(typeof id === "string" ? id : "<malformed>");
+      rejected.push(typeof id === "string" && id.length > 0 ? id : "<malformed>");
       continue;
     }
     valid.push(raw);
@@ -91,90 +91,95 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
   for (const ev of valid) if (ev.event_type === "memory_purged") purgedInBatch.add(ev.memory_id);
 
   const now = Date.now();
-  for (const ev of valid) {
-    // Reject memory_created without payload UNLESS a purge already exists
-    // for this memory_id (in cloud OR earlier in this batch). Otherwise an
-    // empty-payload create would land an unrecoverable empty memory.
-    if (ev.event_type === "memory_created" && !ev.payload) {
-      const existingPurge = await env.DB.prepare(
-        `SELECT 1 FROM synced_memory_events
-          WHERE owner_id = ? AND memory_id = ? AND event_type = 'memory_purged' LIMIT 1`,
-      ).bind(user.id, ev.memory_id).first();
-      if (!existingPurge && !purgedInBatch.has(ev.memory_id)) {
-        rejected.push(ev.event_id);
+  try {
+    for (const ev of valid) {
+      // Reject memory_created without payload UNLESS a purge already exists
+      // for this memory_id (in cloud OR earlier in this batch). Otherwise an
+      // empty-payload create would land an unrecoverable empty memory.
+      if (ev.event_type === "memory_created" && !ev.payload) {
+        const existingPurge = await env.DB.prepare(
+          `SELECT 1 FROM synced_memory_events
+            WHERE owner_id = ? AND memory_id = ? AND event_type = 'memory_purged' LIMIT 1`,
+        ).bind(user.id, ev.memory_id).first();
+        if (!existingPurge && !purgedInBatch.has(ev.memory_id)) {
+          rejected.push(ev.event_id);
+          continue;
+        }
+      }
+
+      // Build the event-insert + payload statement atomically via env.DB.batch.
+      // Each event's pair runs as one D1 transaction — no half-applied state.
+      const eventStmt = env.DB.prepare(
+        `INSERT OR IGNORE INTO synced_memory_events
+           (owner_id, event_id, memory_id, event_type, space_id, created_at, ingested_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(user.id, ev.event_id, ev.memory_id, ev.event_type, ev.space_id, ev.created_at, now);
+
+      let payloadStmt: ReturnType<typeof env.DB.prepare> | null = null;
+      if (ev.event_type === "memory_purged") {
+        payloadStmt = env.DB.prepare(
+          `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
+           VALUES (?, ?, NULL, '[]', ?)
+           ON CONFLICT(owner_id, memory_id) DO UPDATE SET
+             content   = NULL,
+             tags      = '[]',
+             purged_at = excluded.purged_at`,
+        ).bind(user.id, ev.memory_id, ev.created_at);
+      } else if (ev.event_type === "memory_created" && ev.payload) {
+        // Idempotent payload upsert that respects an earlier purge.
+        // If a purge exists for this memory_id (in cloud), content stays NULL.
+        payloadStmt = env.DB.prepare(
+          `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
+             SELECT ?, ?, ?, ?, NULL
+              WHERE NOT EXISTS (
+                SELECT 1 FROM synced_memory_events
+                 WHERE owner_id = ? AND memory_id = ? AND event_type = 'memory_purged'
+              )
+           ON CONFLICT(owner_id, memory_id) DO UPDATE SET
+             content = CASE
+               WHEN EXISTS (SELECT 1 FROM synced_memory_events
+                              WHERE owner_id = synced_memory_payloads.owner_id
+                                AND memory_id = synced_memory_payloads.memory_id
+                                AND event_type = 'memory_purged')
+                 THEN NULL
+               ELSE excluded.content
+             END,
+             tags = CASE
+               WHEN EXISTS (SELECT 1 FROM synced_memory_events
+                              WHERE owner_id = synced_memory_payloads.owner_id
+                                AND memory_id = synced_memory_payloads.memory_id
+                                AND event_type = 'memory_purged')
+                 THEN '[]'
+               ELSE excluded.tags
+             END`,
+        ).bind(
+          user.id, ev.memory_id, ev.payload.content, JSON.stringify(ev.payload.tags),
+          user.id, ev.memory_id,
+        );
+      }
+
+      const stmts = payloadStmt ? [eventStmt, payloadStmt] : [eventStmt];
+      const results = await env.DB.batch(stmts);
+      const eventChanges = results[0].meta.changes;
+
+      if (eventChanges > 0) {
+        accepted.push(ev.event_id);
         continue;
       }
+
+      // Event INSERT was a no-op. Distinguish duplicate event_id from per-type
+      // uniqueness conflict. The PK is (owner_id, event_id); per-type partial
+      // unique indexes cover (owner_id, memory_id, event_type) WHERE the type
+      // matches. Both are safely idempotent — caller marks them synced.
+      const dup = await env.DB.prepare(
+        `SELECT 1 FROM synced_memory_events WHERE owner_id = ? AND event_id = ? LIMIT 1`,
+      ).bind(user.id, ev.event_id).first();
+      if (dup) duplicates.push(ev.event_id);
+      else conflicts.push(ev.event_id);
     }
-
-    // Build the event-insert + payload statement atomically via env.DB.batch.
-    // Each event's pair runs as one D1 transaction — no half-applied state.
-    const eventStmt = env.DB.prepare(
-      `INSERT OR IGNORE INTO synced_memory_events
-         (owner_id, event_id, memory_id, event_type, space_id, created_at, ingested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(user.id, ev.event_id, ev.memory_id, ev.event_type, ev.space_id, ev.created_at, now);
-
-    let payloadStmt: ReturnType<typeof env.DB.prepare> | null = null;
-    if (ev.event_type === "memory_purged") {
-      payloadStmt = env.DB.prepare(
-        `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
-         VALUES (?, ?, NULL, '[]', ?)
-         ON CONFLICT(owner_id, memory_id) DO UPDATE SET
-           content   = NULL,
-           tags      = '[]',
-           purged_at = excluded.purged_at`,
-      ).bind(user.id, ev.memory_id, ev.created_at);
-    } else if (ev.event_type === "memory_created" && ev.payload) {
-      // Idempotent payload upsert that respects an earlier purge.
-      // If a purge exists for this memory_id (in cloud), content stays NULL.
-      payloadStmt = env.DB.prepare(
-        `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
-           SELECT ?, ?, ?, ?, NULL
-            WHERE NOT EXISTS (
-              SELECT 1 FROM synced_memory_events
-               WHERE owner_id = ? AND memory_id = ? AND event_type = 'memory_purged'
-            )
-         ON CONFLICT(owner_id, memory_id) DO UPDATE SET
-           content = CASE
-             WHEN EXISTS (SELECT 1 FROM synced_memory_events
-                            WHERE owner_id = synced_memory_payloads.owner_id
-                              AND memory_id = synced_memory_payloads.memory_id
-                              AND event_type = 'memory_purged')
-               THEN NULL
-             ELSE excluded.content
-           END,
-           tags = CASE
-             WHEN EXISTS (SELECT 1 FROM synced_memory_events
-                            WHERE owner_id = synced_memory_payloads.owner_id
-                              AND memory_id = synced_memory_payloads.memory_id
-                              AND event_type = 'memory_purged')
-               THEN '[]'
-             ELSE excluded.tags
-           END`,
-      ).bind(
-        user.id, ev.memory_id, ev.payload.content, JSON.stringify(ev.payload.tags),
-        user.id, ev.memory_id,
-      );
-    }
-
-    const stmts = payloadStmt ? [eventStmt, payloadStmt] : [eventStmt];
-    const results = await env.DB.batch(stmts);
-    const eventChanges = results[0].meta.changes;
-
-    if (eventChanges > 0) {
-      accepted.push(ev.event_id);
-      continue;
-    }
-
-    // Event INSERT was a no-op. Distinguish duplicate event_id from per-type
-    // uniqueness conflict. The PK is (owner_id, event_id); per-type partial
-    // unique indexes cover (owner_id, memory_id, event_type) WHERE the type
-    // matches. Both are safely idempotent — caller marks them synced.
-    const dup = await env.DB.prepare(
-      `SELECT 1 FROM synced_memory_events WHERE owner_id = ? AND event_id = ? LIMIT 1`,
-    ).bind(user.id, ev.event_id).first();
-    if (dup) duplicates.push(ev.event_id);
-    else conflicts.push(ev.event_id);
+  } catch (err) {
+    console.warn("[memory] events ingest db error:", err);
+    return jsonError(500, "db_error");
   }
 
   return jsonOk({ accepted, duplicates, conflicts, rejected });
