@@ -153,3 +153,68 @@ describe("SqliteFtsMemoryProvider", () => {
     });
   });
 });
+
+import Database from "better-sqlite3";
+
+describe("schema migration — memory_events + memory_payloads", () => {
+  it("creates memory_events with the expected columns", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "mem-events-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const db = new Database(join(tmp, "memory.db"));
+    const cols = db.prepare("PRAGMA table_info(memory_events)").all() as Array<{ name: string }>;
+    const names = cols.map((c) => c.name).sort();
+    expect(names).toEqual([
+      "cloud_owner_id", "cloud_synced_at", "created_at",
+      "event_id", "event_type", "memory_id", "space_id",
+    ]);
+    db.close();
+    provider.close();
+  });
+
+  it("enforces event_type CHECK constraint", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "mem-check-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const db = new Database(join(tmp, "memory.db"));
+    expect(() => db.prepare(
+      `INSERT INTO memory_events (event_id, memory_id, event_type, created_at)
+       VALUES ('ev-bad', 'm', 'bogus', 0)`,
+    ).run()).toThrow(/CHECK constraint failed/);
+    db.close();
+    provider.close();
+  });
+
+  it("creates memory_payloads with the expected columns", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "mem-payloads-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const db = new Database(join(tmp, "memory.db"));
+    const cols = db.prepare("PRAGMA table_info(memory_payloads)").all() as Array<{ name: string }>;
+    const names = cols.map((c) => c.name).sort();
+    expect(names).toEqual(["content", "memory_id", "purged_at", "tags"]);
+    db.close();
+    provider.close();
+  });
+
+  it("adds purged_at to memories", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "mem-purgedat-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const db = new Database(join(tmp, "memory.db"));
+    const cols = db.prepare("PRAGMA table_info(memories)").all() as Array<{ name: string }>;
+    expect(cols.some((c) => c.name === "purged_at")).toBe(true);
+    db.close();
+    provider.close();
+  });
+
+  it("re-running init() is idempotent", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "mem-idem-"));
+    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    await provider1.init();
+    provider1.close();
+    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    await expect(provider2.init()).resolves.not.toThrow();
+    provider2.close();
+  });
+});

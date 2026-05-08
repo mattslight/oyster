@@ -164,6 +164,60 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       CREATE INDEX IF NOT EXISTS memory_recalls_memory ON memory_recalls(memory_id);
     `);
 
+    // ── #318 cloud sync substrate ─────────────────────────────────
+    // Append-only event log. Doubles as outbox via cloud_synced_at IS NULL.
+    // Per-type uniqueness mirrors the cloud constraints (spec Q6) so backfill
+    // and replay are safely idempotent locally too.
+    // cloud_owner_id is captured at write time from auth state; events are
+    // only pushed when cloud_owner_id matches the current Pro user. This is
+    // the single-Pro-account-per-device guard (see "Account-switching policy").
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_events (
+        event_id        TEXT    PRIMARY KEY,
+        memory_id       TEXT    NOT NULL,
+        event_type      TEXT    NOT NULL CHECK (event_type IN ('memory_created','memory_forgotten','memory_purged')),
+        space_id        TEXT,
+        cloud_owner_id  TEXT,
+        created_at      INTEGER NOT NULL,
+        cloud_synced_at INTEGER
+      )
+    `);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_events_memory ON memory_events(memory_id)`);
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_memory_events_pending
+         ON memory_events(cloud_synced_at) WHERE cloud_synced_at IS NULL`,
+    );
+    this.db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_memory_events_created
+         ON memory_events(memory_id) WHERE event_type = 'memory_created'`,
+    );
+    this.db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_memory_events_forgotten
+         ON memory_events(memory_id) WHERE event_type = 'memory_forgotten'`,
+    );
+    this.db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_memory_events_purged
+         ON memory_events(memory_id) WHERE event_type = 'memory_purged'`,
+    );
+
+    // Redactable content store. Purge nulls content + tags and sets purged_at.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_payloads (
+        memory_id  TEXT PRIMARY KEY,
+        content    TEXT,
+        tags       TEXT NOT NULL DEFAULT '[]',
+        purged_at  INTEGER
+      )
+    `);
+
+    // Add purged_at to memories. Recall code filters this column out so
+    // forgotten and purged rows behave identically for FTS5 readers.
+    try {
+      this.db.exec(`ALTER TABLE memories ADD COLUMN purged_at INTEGER`);
+    } catch (err) {
+      if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+    }
+
     // FTS5 virtual table
     this.db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
