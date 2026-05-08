@@ -376,6 +376,31 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
     expect(provider.writeForgotten(memory_id)).toBe(false); // idempotent: returns false on no-op
     provider.close();
   });
+
+  it("re-materialise after purge does not bump purged_at (idempotent)", async () => {
+    const t = tmp("idem-purgedat-");
+    const provider = new SqliteFtsMemoryProvider(t);
+    await provider.init();
+    const { memory_id } = provider.writeCreated({ content: "secret" });
+    expect(provider.writePurged(memory_id)).toBe(true);
+
+    // Capture the initial purged_at (set during writePurged → materialiseMemory).
+    const db = new Database(join(t, "memory.db"));
+    const before = db.prepare(
+      `SELECT purged_at FROM memory_payloads WHERE memory_id = ?`,
+    ).get(memory_id) as { purged_at: number };
+    expect(before.purged_at).not.toBeNull();
+
+    // Force a re-materialise. With Date.now() this would bump purged_at.
+    // With the event's created_at as the source, it stays the same.
+    provider.materialiseMemory(memory_id);
+    const after = db.prepare(
+      `SELECT purged_at FROM memory_payloads WHERE memory_id = ?`,
+    ).get(memory_id) as { purged_at: number };
+    expect(after.purged_at).toBe(before.purged_at);
+    db.close();
+    provider.close();
+  });
 });
 
 describe("provider.purge", () => {

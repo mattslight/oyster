@@ -377,10 +377,15 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     const created = events.find((e) => e.event_type === "memory_created");
 
     if (has("memory_purged")) {
-      // Purge: nullify payload + remove from recall surface.
+      // Purge: nullify payload + remove from recall surface. Use the purge
+      // event's created_at as the canonical purged_at so re-materialisation
+      // (e.g. cloud-replay in Task 8) is idempotent and the value matches
+      // across devices.
+      const purgeEvent = events.find((e) => e.event_type === "memory_purged");
+      const purgedAt = purgeEvent?.created_at ?? Date.now();
       this.db.prepare(
         `UPDATE memory_payloads SET content = NULL, tags = '[]', purged_at = ? WHERE memory_id = ?`,
-      ).run(Date.now(), memory_id);
+      ).run(purgedAt, memory_id);
       this.db.prepare(`DELETE FROM memories WHERE id = ?`).run(memory_id);
       return;
     }
