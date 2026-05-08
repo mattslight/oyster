@@ -10,7 +10,7 @@
 
 PR #407 (squash `03e765b`) shipped the first cross-device metadata-sync wedge — `spaces` table replicated to D1 for Pro users — and went out as 0.7.1-beta.0. **Implementation shipped to beta; cross-device verification still pending Task 11 on the second machine.** The wedge is not yet "the R1 cross-device promise works"; it is "the first row-sync substrate exists and one-way push verifies cleanly."
 
-#318 is the next sync resource. Picking it up surfaces the question recorded in `project_sync_build_vs_lease.md`: with a second resource type asking for cross-device plumbing, do we DIY again or lease (PowerSync, ElectricSQL, Replicache, etc.)?
+#318 is the next sync resource. Picking it up surfaces the question: with a second resource type asking for cross-device plumbing, do we DIY again or lease a sync engine (PowerSync, ElectricSQL, Replicache, etc.)?
 
 This spec answers that — but reframes the question first.
 
@@ -119,8 +119,8 @@ Semantic search has its own decisions (embedding model location, index storage, 
 memory_events (
   event_id        TEXT PRIMARY KEY,
   memory_id       TEXT NOT NULL,
-  event_type      TEXT NOT NULL,        -- created | forgotten | purged
-  space_id        TEXT,                 -- only meaningful when event_type = 'created'
+  event_type      TEXT NOT NULL,        -- memory_created | memory_forgotten | memory_purged
+  space_id        TEXT,                 -- only meaningful when event_type = 'memory_created'
   created_at      INTEGER NOT NULL,
   cloud_synced_at INTEGER                -- NULL = pending push
 )
@@ -196,5 +196,5 @@ PowerSync/Electric/Replicache become relevant only if Oyster decides it needs br
 - `docs/superpowers/specs/2026-05-06-spaces-sync-spinout-design.md` — the wedge that established small-mutable-metadata row sync.
 - `docs/superpowers/plans/2026-05-06-spaces-sync-spinout.md` — the implementation pattern that does **not** generalise to memories.
 - `docs/requirements/oyster-cloud.md` — R1, R2, R3, R4, R7 outcomes that ground every architectural choice.
-- `docs/plans/sync-direction.md` — the "memory-first, not transcript sync" pivot.
+- `docs/plans/archived/sync-direction.md` — the "memory-first, not transcript sync" pivot.
 - GitHub: #318 (memory store), #319 (R1 broader), #322 (Pick up here), #294 (Pro multi-release tracker).
