@@ -17,6 +17,10 @@ export default {
       return handleMemoryEventsPost(req, env);
     }
 
+    if (url.pathname === "/api/memories/events" && req.method === "GET") {
+      return handleMemoryEventsGet(req, env);
+    }
+
     return jsonError(404, "not_found");
   },
 };
@@ -183,4 +187,50 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
   }
 
   return jsonOk({ accepted, duplicates, conflicts, rejected });
+}
+
+async function handleMemoryEventsGet(req: Request, env: Env): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (user.tier !== "pro") return jsonError(403, "pro_required");
+
+  type EventRow = {
+    event_id: string; memory_id: string; event_type: string;
+    space_id: string | null; created_at: number;
+    p_content: string | null; p_tags: string | null; p_purged_at: number | null;
+  };
+  const { results } = await env.DB.prepare(
+    `SELECT e.event_id, e.memory_id, e.event_type, e.space_id, e.created_at,
+            p.content   AS p_content,
+            p.tags      AS p_tags,
+            p.purged_at AS p_purged_at
+       FROM synced_memory_events e
+       LEFT JOIN synced_memory_payloads p
+         ON p.owner_id = e.owner_id AND p.memory_id = e.memory_id
+      WHERE e.owner_id = ?
+      ORDER BY e.created_at ASC`,
+  ).bind(user.id).all<EventRow>();
+
+  const events = (results ?? []).map((r) => {
+    const base = {
+      event_id: r.event_id,
+      memory_id: r.memory_id,
+      event_type: r.event_type,
+      space_id: r.space_id,
+      created_at: r.created_at,
+    };
+    if (r.event_type === "memory_created") {
+      return {
+        ...base,
+        payload: {
+          content: r.p_content,
+          tags: r.p_tags ? JSON.parse(r.p_tags) : [],
+          purged_at: r.p_purged_at,
+        },
+      };
+    }
+    return base;
+  });
+
+  return jsonOk({ events }, 200, { "cache-control": "private, no-store" });
 }

@@ -239,3 +239,49 @@ describe("POST /api/memories/events", () => {
     expect(pay?.purged_at).not.toBeNull();
   });
 });
+
+describe("GET /api/memories/events", () => {
+  beforeAll(async () => {
+    await applySchema();
+  });
+
+  it("rejects unsigned with 401", async () => {
+    const res = await SELF.fetch("https://example.com/api/memories/events");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns all events for the signed-in user, ordered by created_at", async () => {
+    const { token, userId } = await makeProSession();
+    await env.DB.prepare(
+      `INSERT INTO synced_memory_events (owner_id, event_id, memory_id, event_type, space_id, created_at, ingested_at)
+       VALUES (?, 'ev-A', 'mem-1', 'memory_created', NULL, 1000, 1000),
+              (?, 'ev-B', 'mem-1', 'memory_forgotten', NULL, 2000, 2000)`,
+    ).bind(userId, userId).run();
+    await env.DB.prepare(
+      `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
+       VALUES (?, 'mem-1', 'hello', '["a"]', NULL)`,
+    ).bind(userId).run();
+
+    const res = await signedInRequest("/api/memories/events", { method: "GET" }, token);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { events: Array<{ event_id: string; event_type: string; payload?: { content: string | null } }> };
+    expect(body.events.map((e) => e.event_id)).toEqual(["ev-A", "ev-B"]);
+    expect(body.events[0].payload?.content).toBe("hello");
+    expect(body.events[1].payload).toBeUndefined();
+  });
+
+  it("excludes other users' events", async () => {
+    const { token: tokenA } = await makeProSession();
+    const idB = `u-pro-other-${crypto.randomUUID()}`;
+    await env.DB.prepare(`INSERT INTO users (id, email, tier, created_at) VALUES (?, ?, 'pro', ?)`)
+      .bind(idB, `b-${idB}@x.com`, Date.now()).run();
+    await env.DB.prepare(
+      `INSERT INTO synced_memory_events (owner_id, event_id, memory_id, event_type, space_id, created_at, ingested_at)
+       VALUES (?, 'ev-other', 'mem-other', 'memory_created', NULL, 100, 100)`,
+    ).bind(idB).run();
+
+    const res = await signedInRequest("/api/memories/events", { method: "GET" }, tokenA);
+    const body = await res.json() as { events: Array<{ event_id: string }> };
+    expect(body.events.find((e) => e.event_id === "ev-other")).toBeUndefined();
+  });
+});
