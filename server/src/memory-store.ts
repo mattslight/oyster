@@ -215,8 +215,10 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       )
     `);
 
-    // Add purged_at to memories. Recall code filters this column out so
-    // forgotten and purged rows behave identically for FTS5 readers.
+    // `memories.purged_at` is reserved for future use. Today, purge deletes
+    // the memories row outright (see materialiseMemory), so this column is
+    // never set or read by the live code paths. Kept additively to avoid
+    // future migration churn if recall ever wants a soft-purge filter.
     try {
       this.db.exec(`ALTER TABLE memories ADD COLUMN purged_at INTEGER`);
     } catch (err) {
@@ -454,18 +456,19 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
          (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
        VALUES (?, ?, ?, NULL, NULL, ?, NULL)`,
     );
-    const nullPurgedPayload = this.db.prepare(
-      `UPDATE memory_payloads SET content = NULL, tags = '[]', purged_at = ? WHERE memory_id = ?`,
-    );
-
     const txn = this.db.transaction(() => {
       for (const r of rows) {
-        // SQLite text timestamps may be either "YYYY-MM-DD HH:MM:SS" (from
-        // datetime('now')) or "YYYY-MM-DD" (date-only). V8's Date.parse rejects
-        // the space-separated form, so normalise to the ISO `T` separator
-        // before appending the UTC marker. Fall back to now() if still unparseable.
-        const isoText = r.created_at.includes("T") ? r.created_at : r.created_at.replace(" ", "T");
-        const parsed = Date.parse(isoText.endsWith("Z") ? isoText : isoText + "Z");
+        // SQLite text timestamps come in two flavours:
+        //   - "YYYY-MM-DD HH:MM:SS" from datetime('now')
+        //   - "YYYY-MM-DD" if a row was inserted with just the date
+        // V8's Date.parse rejects the space-separated form and the "YYYY-MM-DDZ"
+        // form, so normalise: replace any space with the ISO `T` separator, then
+        // append a midnight time component if the string is date-only, then add
+        // the UTC marker.
+        let isoText = r.created_at.replace(" ", "T");
+        if (!isoText.includes("T")) isoText += "T00:00:00";
+        if (!isoText.endsWith("Z")) isoText += "Z";
+        const parsed = Date.parse(isoText);
         const created_ms = Number.isFinite(parsed) ? parsed : Date.now();
 
         // cloud_owner_id intentionally NULL — backfilled events do not push to
@@ -482,13 +485,13 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
           // Map legacy 'forgotten' / 'purged' marker to the appropriate event.
           const evType = r.superseded_by === "purged" ? "memory_purged" : "memory_forgotten";
           insertSecondaryEvent.run(crypto.randomUUID(), r.id, evType, created_ms + 1);
-          if (evType === "memory_purged") {
-            // Spec Q7: purged content must be nulled in all storage. Backfill
-            // for legacy 'purged' rows must not retain content even though
-            // no real production path writes 'purged' today.
-            nullPurgedPayload.run(Date.now(), r.id);
-          }
         }
+
+        // Apply precedence uniformly. For legacy 'purged' rows this nulls
+        // the payload AND deletes the memories row + its FTS5 entry,
+        // satisfying spec Q7. For legacy 'forgotten' rows it (re)sets
+        // superseded_by. For active rows it's an idempotent upsert.
+        this.materialiseMemory(r.id);
       }
     });
     txn();

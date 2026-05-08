@@ -468,6 +468,30 @@ describe("backfill from legacy memories rows", () => {
     provider2.close();
   });
 
+  it("preserves legacy created_at for date-only legacy timestamps", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "bf-ts-dateonly-"));
+    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    await provider1.init();
+    const db1 = new Database(join(tmp, "memory.db"));
+    db1.prepare(
+      `INSERT INTO memories (id, content, tags, created_at, updated_at)
+       VALUES ('legacy-date', 'date-only', '[]', '2026-01-15', '2026-01-15')`,
+    ).run();
+    db1.close();
+    provider1.close();
+
+    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    await provider2.init();
+    const db2 = new Database(join(tmp, "memory.db"));
+    const ev = db2.prepare(
+      `SELECT created_at FROM memory_events WHERE memory_id = ?`,
+    ).get("legacy-date") as { created_at: number };
+    // Should match midnight UTC for 2026-01-15, NOT Date.now()
+    expect(ev.created_at).toBe(Date.parse("2026-01-15T00:00:00Z"));
+    db2.close();
+    provider2.close();
+  });
+
   it("nulls payload content for legacy rows with superseded_by = 'purged'", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "bf-purged-"));
     const provider1 = new SqliteFtsMemoryProvider(tmp);
@@ -492,6 +516,17 @@ describe("backfill from legacy memories rows", () => {
     ).get("legacy-purged") as { content: string | null; purged_at: number | null };
     expect(pay.content).toBeNull();
     expect(pay.purged_at).not.toBeNull();
+
+    // Q7: the legacy memories row and its FTS entry must also be gone —
+    // purge is hard-redaction across all local storage, not just the
+    // payload store.
+    const memRow = db2.prepare(
+      `SELECT id FROM memories WHERE id = ?`,
+    ).get("legacy-purged") as { id: string } | undefined;
+    expect(memRow).toBeUndefined();
+
+    const recalled = await provider2.recall({ query: "AKIA-leak" });
+    expect(recalled).toHaveLength(0);
     db2.close();
     provider2.close();
   });
