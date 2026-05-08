@@ -917,7 +917,7 @@ git commit -m "feat(memory): backfill legacy memories into events at boot (#318)
 
 **Why this is load-bearing:** the per-event `cloud_owner_id` filter in Task 1 protects pushes — User B's events tagged with B's id won't push into a context where currentUser is A. But it does **not** protect pulls. Without a profile-level owner check, User B signing into User A's local Oyster profile would trigger a pull of B's cloud memories into A's local SQLite, garbling the local DB. The profile owner binding closes that hole.
 
-**Scope:** This task is the prerequisite for **all** cloud sync — memory now and spaces (already shipped in PR #407). It updates `space-sync-service.ts` in the same task so the binding is enforced everywhere from day one. There is no "spaces follow-up" — the binding-gate-for-spaces lands here, in PR 2, alongside the memory work.
+**Scope:** This task implements the profile-owner guard for **all currently existing cloud sync entry points** — memory now and spaces (already shipped in PR #407). It updates `space-sync-service.ts` in the same task so the binding is enforced everywhere from day one. There is no "spaces follow-up" — the binding-gate-for-spaces lands here, in PR 2, alongside the memory work.
 
 **Files:**
 - Modify: `server/src/db.ts` (or wherever the main `oyster.db` schema is initialised) — add `profile_binding` migration
