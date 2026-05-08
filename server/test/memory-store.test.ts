@@ -427,4 +427,29 @@ describe("backfill from legacy memories rows", () => {
     db2.close();
     provider2.close();
   });
+
+  it("preserves legacy created_at when parseable", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "bf-ts-"));
+    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    await provider1.init();
+    const db1 = new Database(join(tmp, "memory.db"));
+    db1.prepare(
+      `INSERT INTO memories (id, content, tags, created_at, updated_at)
+       VALUES ('legacy-ts', 'has timestamp', '[]', '2026-01-15 10:30:00', '2026-01-15 10:30:00')`,
+    ).run();
+    db1.close();
+    provider1.close();
+
+    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    await provider2.init();
+    const db2 = new Database(join(tmp, "memory.db"));
+    const ev = db2.prepare(
+      `SELECT created_at FROM memory_events WHERE memory_id = ?`,
+    ).get("legacy-ts") as { created_at: number };
+    // Should match 2026-01-15 10:30:00 UTC ≈ 1768516200000, NOT Date.now()
+    const expected = Date.parse("2026-01-15T10:30:00Z");
+    expect(ev.created_at).toBe(expected);
+    db2.close();
+    provider2.close();
+  });
 });

@@ -445,33 +445,53 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
         WHERE e.memory_id IS NULL`,
     ).all() as LegacyRow[];
 
-    for (const r of rows) {
-      // SQLite text timestamps → unix ms
-      const created_ms = Date.parse(r.created_at + "Z") || Date.now();
-      // cloud_owner_id intentionally NULL — backfilled events do not push to
-      // any current Pro account. Pre-existing memories stay local until an
-      // explicit claim flow is shipped (see "Account-switching policy").
-      this.db.prepare(
-        `INSERT OR IGNORE INTO memory_events
-           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
-         VALUES (?, ?, 'memory_created', ?, NULL, ?, NULL)`,
-      ).run(crypto.randomUUID(), r.id, r.space_id, created_ms);
+    if (rows.length === 0) return;
 
-      this.db.prepare(
-        `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags)
-         VALUES (?, ?, ?)`,
-      ).run(r.id, r.content, r.tags);
+    // Hoist statements once; the loop reuses them inside a single transaction
+    // so N legacy rows produce one fsync, not 3*N.
+    const insertCreatedEvent = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_events
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, 'memory_created', ?, NULL, ?, NULL)`,
+    );
+    const insertPayload = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags)
+       VALUES (?, ?, ?)`,
+    );
+    const insertSecondaryEvent = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_events
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, ?, NULL, NULL, ?, NULL)`,
+    );
 
-      if (r.superseded_by !== null) {
-        // Map legacy 'forgotten' / 'purged' marker to the appropriate event.
-        const evType = r.superseded_by === "purged" ? "memory_purged" : "memory_forgotten";
-        this.db.prepare(
-          `INSERT OR IGNORE INTO memory_events
-             (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
-           VALUES (?, ?, ?, NULL, NULL, ?, NULL)`,
-        ).run(crypto.randomUUID(), r.id, evType, created_ms + 1);
+    const txn = this.db.transaction(() => {
+      for (const r of rows) {
+        // SQLite text timestamps may be either "YYYY-MM-DD HH:MM:SS" (from
+        // datetime('now')) or "YYYY-MM-DD" (date-only). V8's Date.parse rejects
+        // the space-separated form, so normalise to the ISO `T` separator
+        // before appending the UTC marker. Fall back to now() if still unparseable.
+        const isoText = r.created_at.includes("T") ? r.created_at : r.created_at.replace(" ", "T");
+        const parsed = Date.parse(isoText.endsWith("Z") ? isoText : isoText + "Z");
+        const created_ms = Number.isFinite(parsed) ? parsed : Date.now();
+
+        // cloud_owner_id intentionally NULL — backfilled events do not push to
+        // any current Pro account. Pre-existing memories stay local until an
+        // explicit claim flow is shipped (see "Account-switching policy").
+        // source_session_id is fetched into LegacyRow for completeness but
+        // intentionally not forwarded — the existing `memories` row retains
+        // its original value, and the cloud event log doesn't carry session
+        // attribution.
+        insertCreatedEvent.run(crypto.randomUUID(), r.id, r.space_id, created_ms);
+        insertPayload.run(r.id, r.content, r.tags);
+
+        if (r.superseded_by !== null) {
+          // Map legacy 'forgotten' / 'purged' marker to the appropriate event.
+          const evType = r.superseded_by === "purged" ? "memory_purged" : "memory_forgotten";
+          insertSecondaryEvent.run(crypto.randomUUID(), r.id, evType, created_ms + 1);
+        }
       }
-    }
+    });
+    txn();
   }
 
   writeForgotten(memory_id: string, cloud_owner_id: string | null = null): boolean {
