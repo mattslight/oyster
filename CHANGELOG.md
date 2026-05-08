@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Memories follow you across Pro devices.** Anything you remember on one Pro device shows up on every other Pro device signed into the same account. Forgetting and deletion propagate too. Only memories created while signed into your bound Pro profile sync — pre-existing local memories and anything created on a free account stay local.
+
 ## [0.7.1-beta.0] - 2026-05-08
 
 ### Changed
