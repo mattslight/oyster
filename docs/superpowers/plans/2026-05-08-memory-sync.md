@@ -19,10 +19,12 @@
 This plan ships in **two PRs** for blast-radius reasons. Do not bundle.
 
 - **PR 1 — local event model (Tasks 1–4).** Lands `memory_events` + `memory_payloads`, the event write API, the legacy backfill. **No cloud writes.** The MCP surface (`remember`/`forget`) is unchanged from the user's perspective; everything still works offline. Mergeable on its own.
-- **PR 2 — cloud sync (Tasks 4.5, 5–10).** Bootstraps the new `oyster-cloud` Worker (Task 4.5), adds the D1 schema and Worker routes, the `MemorySyncService`, and the auth/startup wiring. Depends on PR 1 being merged.
+- **PR 2 — cloud sync (Tasks 4.4, 4.5, 5–10).** Begins with the **profile owner binding prerequisite** (Task 4.4) — without it, cross-device pull would garble the local SQLite when a second Pro account signs in. Then bootstraps the new `oyster-cloud` Worker (Task 4.5), adds the D1 schema and Worker routes, the `MemorySyncService`, and the auth/startup wiring. Depends on PR 1 being merged.
 - **Verification + ship (Tasks 11–12)** lands in PR 2.
 
 If anything in PR 1 is rolled back, the user-visible behaviour is unchanged. If PR 2 is rolled back, memory sync stops syncing but local memories remain intact.
+
+**Hard rule:** Task 4.4 must land before any other PR-2 task is merged. The profile owner guard is load-bearing for the safety of every other cloud sync service (memory now, sessions later, spaces retroactively).
 
 ## Worker boundary: `oyster-cloud`
 
@@ -38,9 +40,14 @@ The new Worker shares the `oyster-auth` D1 binding (same database, same migratio
 
 A local Oyster instance is treated as **single-Pro-account** for memory sync. Memories created while signed out, signed into a free account, or signed into a different Pro account stay local-only — they will not sync to your current Pro account.
 
-Implementation: every event row carries a `cloud_owner_id` set at write time from the current auth state. `pushPending` filters strictly on `cloud_owner_id = currentUser.id`. Pre-existing legacy memories backfilled at boot are tagged with the user signed in at backfill time, or left NULL (never pushed) if no user is signed in.
+The policy has two enforcement layers:
 
-A future plan can add explicit account-switch handling (e.g. "claim local memories for this Pro account on first sign-in"). v1 errs on the side of privacy — better to silently keep memories local than to leak them across accounts.
+1. **Profile owner binding (Task 4.4).** First Pro sign-in claims the local Oyster profile (`profile_binding.cloud_owner_id`). All cloud sync services check `currentUser.id === profile_owner_id` before pulling or pushing. A different Pro user signing into the same local profile is **blocked** from sync entirely — no pull, no push — and surfaces an error to the UI: *"This Oyster profile belongs to another account. Use a different local profile or reset this one."* This prevents the local SQLite from being garbled with a second user's cloud events on pull.
+2. **Per-event ownership tagging (Task 1).** Every event row carries `cloud_owner_id` set at write time from the current auth state. `pushPending` filters strictly on `cloud_owner_id = currentUser.id`. Pre-existing legacy memories backfilled at boot are tagged NULL and never push.
+
+The two layers are complementary: layer 1 stops User B's data flowing into User A's profile via pull; layer 2 stops User A's local-only data flowing into User B's cloud account via push. Both are necessary.
+
+**Scope statement:** Only memories created while signed into the bound Pro profile sync. Memories created while signed out, on a free account, before binding, or under a different Pro account stay local-only. This is a deliberate v1 simplification; a future plan can add an explicit "claim local memories for this Pro account" flow.
 
 ---
 
@@ -665,18 +672,27 @@ Inside `forget`'s tool handler, pass owner:
     },
 ```
 
-Then in `server/src/index.ts`, where `registerMemoryTools` is invoked (find via the existing `resolveActiveSessionId` argument), add the new callback:
+Then in `server/src/index.ts`, where `registerMemoryTools` is invoked (find via the existing `resolveActiveSessionId` argument), add the new callback. **Returns the user id only for Pro accounts** — free users tag events as `null` so they never push and aren't candidates for sync claiming later:
 
 ```typescript
 registerMemoryTools(
   tool,
   memoryProvider,
   resolveActiveSessionId,
-  () => authService.getState().user?.id ?? null,
+  () => {
+    const u = authService.getState().user;
+    return u?.tier === "pro" ? u.id : null;
+  },
 );
 ```
 
-Also update `server/src/routes/memories.ts`'s DELETE handler to pass `authService.getState().user?.id` to `provider.forget(id, …)`.
+Also update `server/src/routes/memories.ts`'s DELETE handler to pass the same Pro-gated id to `provider.forget(id, …)`:
+
+```typescript
+const u = authService.getState().user;
+const ownerId = u?.tier === "pro" ? u.id : null;
+await provider.forget(id, ownerId);
+```
 
 - [ ] **Step 7: Write a test for `purge`**
 
@@ -891,6 +907,224 @@ Expected: all passing.
 ```bash
 git add server/src/memory-store.ts server/test/memory-store.test.ts
 git commit -m "feat(memory): backfill legacy memories into events at boot (#318)"
+```
+
+---
+
+## Task 4.4: Profile owner binding (prerequisite for all cloud sync)
+
+**Goal:** Bind the local Oyster profile to a single Pro account on first Pro sign-in. Block cloud sync for any other Pro user signing into the same local profile, so a second user's cloud events cannot pollute the first user's local SQLite via pull.
+
+**Why this is load-bearing:** the per-event `cloud_owner_id` filter in Task 1 protects pushes — User B's events tagged with B's id won't push into a context where currentUser is A. But it does **not** protect pulls. Without a profile-level owner check, User B signing into User A's local Oyster profile would trigger a pull of B's cloud memories into A's local SQLite, garbling the local DB. The profile owner binding closes that hole.
+
+**Scope:** This task only covers memory sync. Spaces sync (already shipped in PR #407) does not yet use the binding — adding that protection is an explicit follow-up noted at the bottom of this plan.
+
+**Files:**
+- Modify: `server/src/db.ts` (or wherever the main `oyster.db` schema is initialised) — add `profile_binding` migration
+- Create: `server/src/profile-binding-service.ts`
+- Create: `server/test/profile-binding-service.test.ts`
+- Modify: `server/src/index.ts` — bind on Pro sign-in via auth-changed handler
+
+**Forward dependency:** Task 8 (`MemorySyncService`) consumes the `ProfileBindingService` exported here as a constructor dependency. Task 8's content already reflects this — it accepts `profileBinding` in `MemorySyncDeps` and gates `isProSession` on `isOwnedBy`. This task only creates the service and the auth wiring; it does not modify `memory-sync-service.ts` (which doesn't exist yet — Task 8 creates it).
+
+**Storage location:** `oyster.db` (the main spine DB), not `memory.db`. The binding governs every cloud sync service, not just memory.
+
+- [ ] **Step 1: Schema migration**
+
+In `server/src/db.ts` (or wherever `oyster.db` migrations are applied), add (idempotent, additive):
+
+```typescript
+db.exec(`
+  CREATE TABLE IF NOT EXISTS profile_binding (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    cloud_owner_id  TEXT    NOT NULL,
+    bound_at        INTEGER NOT NULL
+  )
+`);
+```
+
+The `CHECK (id = 1)` ensures at most one row — the binding is global to the profile.
+
+- [ ] **Step 2: Write failing tests for `ProfileBindingService`**
+
+Create `server/test/profile-binding-service.test.ts`:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import Database from "better-sqlite3";
+import { createProfileBindingService } from "../src/profile-binding-service.js";
+
+function freshDb(): Database.Database {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE profile_binding (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      cloud_owner_id TEXT NOT NULL,
+      bound_at INTEGER NOT NULL
+    )
+  `);
+  return db;
+}
+
+describe("ProfileBindingService", () => {
+  it("getBoundOwner returns null on a fresh profile", () => {
+    const svc = createProfileBindingService({ db: freshDb() });
+    expect(svc.getBoundOwner()).toBeNull();
+  });
+
+  it("bindToOwner binds a fresh profile and reports `bound`", () => {
+    const svc = createProfileBindingService({ db: freshDb() });
+    expect(svc.bindToOwner("user-A")).toEqual({ bound: true, reason: "bound" });
+    expect(svc.getBoundOwner()).toBe("user-A");
+  });
+
+  it("bindToOwner is idempotent for the same owner", () => {
+    const svc = createProfileBindingService({ db: freshDb() });
+    svc.bindToOwner("user-A");
+    expect(svc.bindToOwner("user-A")).toEqual({ bound: true, reason: "already_matches" });
+  });
+
+  it("bindToOwner refuses a different owner — reports `conflict`", () => {
+    const svc = createProfileBindingService({ db: freshDb() });
+    svc.bindToOwner("user-A");
+    expect(svc.bindToOwner("user-B")).toEqual({ bound: false, reason: "conflict" });
+    expect(svc.getBoundOwner()).toBe("user-A"); // binding unchanged
+  });
+
+  it("isOwnedBy returns true when binding is null OR matches", () => {
+    const svc = createProfileBindingService({ db: freshDb() });
+    expect(svc.isOwnedBy("user-A")).toBe(true); // unbound — no conflict yet
+    svc.bindToOwner("user-A");
+    expect(svc.isOwnedBy("user-A")).toBe(true);
+    expect(svc.isOwnedBy("user-B")).toBe(false);
+  });
+
+  it("isOwnedBy returns false for null user when bound", () => {
+    const svc = createProfileBindingService({ db: freshDb() });
+    svc.bindToOwner("user-A");
+    expect(svc.isOwnedBy(null)).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 3: Run failing tests**
+
+Run: `cd server && npx vitest run test/profile-binding-service.test.ts`
+Expected: file does not exist; module-not-found errors.
+
+- [ ] **Step 4: Implement `ProfileBindingService`**
+
+Create `server/src/profile-binding-service.ts`:
+
+```typescript
+// profile-binding-service.ts — one-time binding of the local Oyster profile
+// to a single cloud account. Prevents two different Pro users from sharing
+// the same local SQLite via cross-device sync. Used by every cloud sync
+// service (memory now, spaces and sessions later) before pull or push.
+
+import type Database from "better-sqlite3";
+
+export interface ProfileBindingDeps {
+  db: Database.Database;
+}
+
+export type BindResult =
+  | { bound: true;  reason: "bound" | "already_matches" }
+  | { bound: false; reason: "conflict" };
+
+export interface ProfileBindingService {
+  /** The currently-bound cloud owner id, or null if the profile is unbound. */
+  getBoundOwner(): string | null;
+  /** Bind the profile to ownerId. Returns `bound` on first bind,
+   *  `already_matches` if the profile is already bound to this same id,
+   *  and `conflict` (no change) if a different owner is already bound. */
+  bindToOwner(ownerId: string): BindResult;
+  /** True if the profile is unbound OR bound to userId. False if bound
+   *  to a different user, or if userId is null. Use this as the gate
+   *  in cloud sync services. */
+  isOwnedBy(userId: string | null): boolean;
+}
+
+export function createProfileBindingService(deps: ProfileBindingDeps): ProfileBindingService {
+  const getStmt = deps.db.prepare(
+    `SELECT cloud_owner_id FROM profile_binding WHERE id = 1`,
+  );
+  const insertStmt = deps.db.prepare(
+    `INSERT INTO profile_binding (id, cloud_owner_id, bound_at) VALUES (1, ?, ?)`,
+  );
+
+  function getBoundOwner(): string | null {
+    const row = getStmt.get() as { cloud_owner_id: string } | undefined;
+    return row?.cloud_owner_id ?? null;
+  }
+
+  function bindToOwner(ownerId: string): BindResult {
+    const existing = getBoundOwner();
+    if (existing === ownerId) return { bound: true, reason: "already_matches" };
+    if (existing !== null)    return { bound: false, reason: "conflict" };
+    insertStmt.run(ownerId, Date.now());
+    return { bound: true, reason: "bound" };
+  }
+
+  function isOwnedBy(userId: string | null): boolean {
+    if (userId === null) return false;
+    const owner = getBoundOwner();
+    return owner === null || owner === userId;
+  }
+
+  return { getBoundOwner, bindToOwner, isOwnedBy };
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd server && npx vitest run test/profile-binding-service.test.ts`
+Expected: 6 passing.
+
+- [ ] **Step 6: Wire `bindToOwner` into auth-changed handler**
+
+In `server/src/index.ts`, where `authService.onAuthChanged(...)` is registered (search for that registration), add a binding step **before** any cloud sync runs:
+
+```typescript
+authService.onAuthChanged(() => {
+  const u = authService.getState().user;
+  if (u && u.tier === "pro") {
+    const result = profileBinding.bindToOwner(u.id);
+    if (result.reason === "conflict") {
+      // Different Pro user signed in to a profile already bound to someone
+      // else. Sync services will refuse to push or pull. Surface to the UI.
+      console.warn(
+        `[profile] sign-in ${u.id} blocked from cloud sync — this Oyster profile is bound to ${profileBinding.getBoundOwner()}.`,
+      );
+      // Emit an SSE event for the UI; existing broadcast pattern.
+      // (Implementation detail — match how spaces-sync surfaces user-facing
+      // errors today; if no precedent, just log for now and add UI in a
+      // follow-up task.)
+    }
+  }
+  void syncOnAuth("auth");
+});
+```
+
+The `profileBinding` instance must be constructed near the top of `index.ts` startup (before `MemorySyncService`):
+
+```typescript
+const profileBinding = createProfileBindingService({ db: appDb /* the oyster.db handle */ });
+```
+
+- [ ] **Step 7: Smoke-build and run profile-binding tests**
+
+Run: `cd server && npm run build && npx vitest run test/profile-binding-service.test.ts`
+Expected: TypeScript compiles; all profile-binding tests pass.
+
+(Task 8 will plumb `profileBinding` into `MemorySyncService` when that service is created.)
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add server/src/db.ts server/src/profile-binding-service.ts server/src/index.ts \
+        server/test/profile-binding-service.test.ts
+git commit -m "feat(profile): owner binding gate before cloud sync services (#318)"
 ```
 
 ---
@@ -1807,21 +2041,30 @@ import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import { SqliteFtsMemoryProvider } from "../src/memory-store.js";
 import { createMemorySyncService } from "../src/memory-sync-service.js";
+import { createProfileBindingService } from "../src/profile-binding-service.js";
 
 function harness() {
   const tmp = mkdtempSync(join(tmpdir(), "memsync-"));
   const provider = new SqliteFtsMemoryProvider(tmp);
-  return { tmp, provider };
+  // Each test gets its own profile_binding table in a separate in-memory DB
+  // so binding state doesn't bleed between tests.
+  const bindingDb = new Database(":memory:");
+  bindingDb.exec(
+    `CREATE TABLE profile_binding (id INTEGER PRIMARY KEY CHECK (id=1), cloud_owner_id TEXT NOT NULL, bound_at INTEGER NOT NULL)`,
+  );
+  const profileBinding = createProfileBindingService({ db: bindingDb });
+  return { tmp, provider, profileBinding };
 }
 
 describe("MemorySyncService", () => {
   it("reconcile is a no-op for free users", async () => {
-    const { provider } = harness();
+    const { provider, profileBinding } = harness();
     await provider.init();
     const fetchSpy = vi.fn();
     const svc = createMemorySyncService({
       db: (provider as any).db,
       provider,
+      profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "free" }),
       sessionToken: () => "tok",
       workerBase: "https://example.com",
@@ -1832,20 +2075,40 @@ describe("MemorySyncService", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("pushPending sends pending events and marks them synced", async () => {
-    const { provider } = harness();
+  it("reconcile is a no-op when profile is bound to a different account", async () => {
+    const { provider, profileBinding } = harness();
     await provider.init();
-    const m = await provider.remember({ content: "hello" });
+    profileBinding.bindToOwner("user-A");
 
-    const fetchSpy = vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ accepted: [], skipped: [] }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    ));
+    const fetchSpy = vi.fn();
+    const svc = createMemorySyncService({
+      db: (provider as any).db,
+      provider,
+      profileBinding,
+      currentUser: () => ({ id: "user-B", email: "b@x", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy,
+    });
+    const r = await svc.reconcile();
+    expect(r).toEqual({ pulled: 0, pushed: 0 });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("pushPending sends pending events and marks them synced", async () => {
+    const { provider, profileBinding } = harness();
+    await provider.init();
+    profileBinding.bindToOwner("u1");
+    const m = await provider.remember({ content: "hello", cloud_owner_id: "u1" });
+
     // Mock: server accepts whatever event_ids we send.
-    fetchSpy.mockImplementation(async (url: string, init: RequestInit) => {
+    const fetchSpy = vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
       const body = JSON.parse(init.body as string) as { events: Array<{ event_id: string }> };
       return new Response(
-        JSON.stringify({ accepted: body.events.map((e) => e.event_id), skipped: [] }),
+        JSON.stringify({
+          accepted: body.events.map((e) => e.event_id),
+          duplicates: [], conflicts: [], rejected: [],
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     });
@@ -1853,6 +2116,7 @@ describe("MemorySyncService", () => {
     const svc = createMemorySyncService({
       db: (provider as any).db,
       provider,
+      profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
       sessionToken: () => "tok",
       workerBase: "https://example.com",
@@ -1870,8 +2134,9 @@ describe("MemorySyncService", () => {
   });
 
   it("pull applies remote events and materialises memories locally", async () => {
-    const { provider } = harness();
+    const { provider, profileBinding } = harness();
     await provider.init();
+    profileBinding.bindToOwner("u1");
 
     const fetchSpy = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({
@@ -1892,6 +2157,7 @@ describe("MemorySyncService", () => {
     const svc = createMemorySyncService({
       db: (provider as any).db,
       provider,
+      profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
       sessionToken: () => "tok",
       workerBase: "https://example.com",
@@ -1905,8 +2171,9 @@ describe("MemorySyncService", () => {
   });
 
   it("pull marks a local pending event as synced when it appears in cloud", async () => {
-    const { provider } = harness();
+    const { provider, profileBinding } = harness();
     await provider.init();
+    profileBinding.bindToOwner("u1");
     // Local creates a memory; the event is pending (cloud_synced_at IS NULL).
     const m = await provider.remember({ content: "round-trip", cloud_owner_id: "u1" });
     const db = (provider as any).db as Database.Database;
@@ -1933,6 +2200,7 @@ describe("MemorySyncService", () => {
 
     const svc = createMemorySyncService({
       db, provider,
+      profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
       sessionToken: () => "tok",
       workerBase: "https://example.com",
@@ -1948,8 +2216,9 @@ describe("MemorySyncService", () => {
   });
 
   it("pull respects purge precedence — late create does not restore content", async () => {
-    const { provider } = harness();
+    const { provider, profileBinding } = harness();
     await provider.init();
+    profileBinding.bindToOwner("u1");
 
     const fetchSpy = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({
@@ -1964,6 +2233,7 @@ describe("MemorySyncService", () => {
     const svc = createMemorySyncService({
       db: (provider as any).db,
       provider,
+      profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
       sessionToken: () => "tok",
       workerBase: "https://example.com",
@@ -1978,14 +2248,16 @@ describe("MemorySyncService", () => {
   });
 
   it("network errors during push are swallowed; events stay pending", async () => {
-    const { provider } = harness();
+    const { provider, profileBinding } = harness();
     await provider.init();
-    await provider.remember({ content: "stays-dirty" });
+    profileBinding.bindToOwner("u1");
+    await provider.remember({ content: "stays-dirty", cloud_owner_id: "u1" });
 
     const fetchSpy = vi.fn().mockRejectedValue(new TypeError("network"));
     const svc = createMemorySyncService({
       db: (provider as any).db,
       provider,
+      profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
       sessionToken: () => "tok",
       workerBase: "https://example.com",
@@ -2022,12 +2294,17 @@ Create `server/src/memory-sync-service.ts`:
 
 import type Database from "better-sqlite3";
 import type { SqliteFtsMemoryProvider } from "./memory-store.js";
+import type { ProfileBindingService } from "./profile-binding-service.js";
 
 interface SyncUser { id: string; email: string; tier: string }
 
 export interface MemorySyncDeps {
   db: Database.Database;
   provider: SqliteFtsMemoryProvider;
+  /** Required: gates pull AND push on profile ownership so a second Pro
+   *  account signing into the same local profile cannot pollute the local
+   *  SQLite with their cloud events. See Task 4.4. */
+  profileBinding: ProfileBindingService;
   currentUser: () => SyncUser | null;
   sessionToken: () => string | null;
   workerBase: string;
@@ -2062,6 +2339,15 @@ function isProSession(deps: MemorySyncDeps): { user: SyncUser; token: string } |
   const user = deps.currentUser();
   const token = deps.sessionToken();
   if (!user || !token || user.tier !== "pro") return null;
+  // Profile-owner gate: refuses sync when this local profile is bound to
+  // a different account. Prevents User B's cloud events from being pulled
+  // into User A's local SQLite (Task 4.4).
+  if (!deps.profileBinding.isOwnedBy(user.id)) {
+    console.warn(
+      `[memory] sync blocked — profile is bound to a different account; current=${user.id}, bound=${deps.profileBinding.getBoundOwner()}`,
+    );
+    return null;
+  }
   return { user, token };
 }
 
@@ -2091,6 +2377,7 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
       // pending events would only push the first batch, then stall until
       // the next reconcile trigger.
       let totalAccepted = 0;
+      let conflictPullScheduled = false;
       // Defensive safety cap so a misbehaving server can't loop forever.
       const MAX_BATCHES = 1000;
 
@@ -2158,9 +2445,23 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
           console.warn(`[memory] pushPending rejected events: ${rejected.join(", ")}`);
         }
 
-        // Safe to mark synced: accepted (newly inserted), duplicates (cloud
-        // already had this event_id), conflicts (per-type uniqueness in
-        // cloud — cloud has an authoritative event of that type already).
+        if (conflicts.length > 0) {
+          // Conflicts mean cloud already has an authoritative event of that
+          // type for the memory_id (different event_id). Do NOT blindly mark
+          // synced — that risks dropping a legitimate local event with
+          // different content (e.g. retry races, deterministic-id bugs).
+          // Warn and trigger a pull so cloud's authoritative state lands
+          // locally; the next reconcile cycle decides whether the local
+          // pending event still has business existing.
+          console.warn(
+            `[memory] pushPending conflicts (cloud has another event of this type for the memory_id): ${conflicts.join(", ")} — pulling to reconcile`,
+          );
+          conflictPullScheduled = true;
+        }
+
+        // Safe to mark synced: accepted (newly inserted) and duplicates
+        // (cloud already had this exact event_id — the round-trip race that
+        // Issue 3 covers). Conflicts and rejects stay pending.
         const now = Date.now();
         const markStmt = deps.db.prepare(
           `UPDATE memory_events SET cloud_synced_at = ? WHERE event_id = ?`,
@@ -2168,16 +2469,23 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
         const markTxn = deps.db.transaction(() => {
           for (const id of accepted)   markStmt.run(now, id);
           for (const id of duplicates) markStmt.run(now, id);
-          for (const id of conflicts)  markStmt.run(now, id);
         });
         markTxn();
         totalAccepted += accepted.length;
 
-        // Termination condition: nothing was accepted/duplicates/conflicts AND
-        // nothing was rejected (so we're not making progress) — break to avoid
-        // a hot loop. Otherwise loop and pick up the next batch.
-        const progress = accepted.length + duplicates.length + conflicts.length;
+        // Termination condition: count only "things that cleared from the
+        // outbox" as progress. A batch with only conflicts/rejected events
+        // breaks out of the drain loop so we don't hot-loop.
+        const progress = accepted.length + duplicates.length;
         if (progress === 0) break;
+      }
+
+      // If any conflicts surfaced, run a pull so the authoritative cloud
+      // state lands locally. The conflicting local events stay pending; the
+      // next reconcile cycle will see the now-richer local state and may or
+      // may not still have something to push.
+      if (conflictPullScheduled) {
+        try { await this.pull(); } catch { /* swallowed; logged elsewhere */ }
       }
 
       return totalAccepted;
@@ -2402,6 +2710,7 @@ Then, where `spaceSync` is constructed (search for `createSpaceSyncService(`), a
 const memorySync: MemorySyncService = createMemorySyncService({
   db: memoryProvider.getInternalDbForSync(),
   provider: memoryProvider,
+  profileBinding,                           // constructed in Task 4.4
   currentUser: () => {
     const u = authService.getState().user;
     return u ? { id: u.id, email: u.email, tier: u.tier } : null;
@@ -2531,7 +2840,7 @@ In the appropriate section (`Unreleased` if it exists, else create one):
 
 ```markdown
 ### Added
-- **Memories follow you across devices.** Anything you remember on one Pro device shows up on every other Pro device signed into the same account. Forgetting and deletion propagate too. Free accounts are unaffected — memories stay local.
+- **Memories follow you across Pro devices.** Anything you remember on one Pro device shows up on every other Pro device signed into the same account. Forgetting and deletion propagate too. Only memories created while signed into your bound Pro profile sync — pre-existing local memories and anything created on a free account stay local.
 ```
 
 - [ ] **Step 2: Regenerate `docs/changelog.html`**
@@ -2550,7 +2859,7 @@ git commit -m "docs(changelog): cross-device memory sync (#318)"
 
 ## Self-Review Checklist (run before opening PR)
 
-- [ ] All 13 tasks completed (1–4, 4.5, 5–12); each commit message references #318
+- [ ] All 14 tasks completed (1–4, 4.4, 4.5, 5–12); each commit message references #318
 - [ ] No `TODO` / `TBD` / placeholder strings in committed code
 - [ ] `npm run build` succeeds at repo root
 - [ ] `cd server && npx vitest run` — all pass
@@ -2563,7 +2872,11 @@ git commit -m "docs(changelog): cross-device memory sync (#318)"
 - [ ] `event_type` CHECK constraint present in both local + cloud schemas
 - [ ] Purge precedence verified with a test (late-create-after-purge in both local and worker)
 - [ ] `cloud_owner_id` set at write time on every event; `pushPending` filters strictly
+- [ ] **`profile_binding` table exists; `bindToOwner` runs on first Pro sign-in; `isProSession` checks `isOwnedBy`**
+- [ ] **Test: a different Pro user signing in to a bound profile is blocked from sync (no fetch calls)**
+- [ ] **`resolveCurrentOwnerId` returns null for free / signed-out users — only Pro accounts tag events**
 - [ ] Worker POST response shape is `{ accepted, duplicates, conflicts, rejected }` — `rejected` not marked synced by client
+- [ ] **`conflicts` are warned-and-pulled, NOT marked synced — only `accepted` and `duplicates` clear from outbox**
 - [ ] `pushPending` drains all batches (not just one) before returning
 - [ ] Pull marks local pending events as synced when matched in cloud (round-trip race test)
 - [ ] Worker POST sorts events by precedence (purges first) before per-event processing
@@ -2580,5 +2893,8 @@ The following are intentionally NOT in this plan and remain follow-ups:
 - Worker-side rate limiting on `/api/memories/events` (basic Pro gate is in place).
 - Account-deletion flow (purges all events + payloads for an `owner_id`) — needs a separate spec for the cross-system deletion path.
 - Backfill performance for users with very large memory stores (>10k rows) — backfill is synchronous at boot today; if it becomes slow, defer to a background pass with a "syncing memories…" indicator.
+- **Profile-owner binding for spaces sync.** PR #407 (already shipped to beta) does not yet check `profileBinding.isOwnedBy(currentUser.id)` before pull/push. This is a privacy hotfix: a different Pro user signing into the same local profile would currently pull their own cloud spaces into the bound user's local DB. File a hotfix issue for 0.7.1-beta.x: "spaces-sync respects profile_binding gate." Mechanically simple — add `profileBinding` dep to `space-sync-service.ts` and gate `reconcile`/`pushOne`/`pushDelete` the same way memory sync does.
+- **UI surface for profile-binding conflicts.** Today the conflict path only logs. A user signing into a different Pro account on the same machine sees no error explaining why sync silently isn't working. A follow-up should add a clear UI message + a "reset profile" affordance.
+- **"Claim local memories for this Pro account" flow.** Pre-Pro / pre-binding memories stay local in v1. A future plan can add an opt-in claim that promotes them into the bound Pro account.
 
 These should land as separate plans or PRs once #318 is merged and the cross-device promise is proven.
