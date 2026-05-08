@@ -1,0 +1,18 @@
+name = "oyster-cloud"
+main = "src/worker.ts"
+compatibility_date = "2025-09-01"
+# nodejs_compat is required by @cloudflare/vitest-pool-workers (the test
+# infrastructure needs Node-style APIs inside the Worker runtime). Production
+# handlers don't depend on it — they use Web Crypto + standard Web APIs only.
+compatibility_flags = ["nodejs_compat"]
+
+# Shared D1 binding — same database_id as oyster-auth so we can read sessions/users
+# and own the synced_memory tables inside the same DB. Single source of truth.
+[[d1_databases]]
+binding = "DB"
+database_name = "oyster-auth"
+database_id = "44086805-fbfa-4446-8626-126af7e2ec19"
+
+[[routes]]
+pattern = "cloud.oyster.to/api/*"
+zone_name = "oyster.to"

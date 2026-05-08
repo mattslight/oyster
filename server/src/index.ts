@@ -252,6 +252,8 @@ const WORKER_BASE = process.env.OYSTER_AUTH_BASE
   ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
   : "https://oyster.to";
 
+const CLOUD_WORKER_BASE = process.env.OYSTER_CLOUD_BASE ?? "https://cloud.oyster.to";
+
 // VIEWER_BASE is the public origin where /p/{token} renders (issue #397).
 // In production it's a separate subdomain so untrusted published content
 // can't read main-app cookies/storage. In local wrangler dev, the API and
