@@ -354,3 +354,77 @@ describe("provider.purge", () => {
     provider.close();
   });
 });
+
+describe("backfill from legacy memories rows", () => {
+  it("creates memory_created events for pre-existing rows on init()", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "bf-"));
+    // First boot: write memories the old way (skip writeCreated path) by
+    // simulating a legacy row directly in the DB.
+    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    await provider1.init();
+    const db1 = new Database(join(tmp, "memory.db"));
+    db1.prepare(`DELETE FROM memory_events`).run();
+    db1.prepare(`DELETE FROM memory_payloads`).run();
+    db1.prepare(
+      `INSERT INTO memories (id, content, tags, created_at, updated_at)
+       VALUES ('legacy-1', 'old memory', '["legacy"]', '2026-01-01', '2026-01-01')`,
+    ).run();
+    db1.close();
+    provider1.close();
+
+    // Second boot: backfill should kick in.
+    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    await provider2.init();
+    const db2 = new Database(join(tmp, "memory.db"));
+    const ev = db2.prepare(
+      `SELECT event_type, cloud_synced_at FROM memory_events WHERE memory_id = ?`,
+    ).get("legacy-1") as { event_type: string; cloud_synced_at: number | null } | undefined;
+    expect(ev?.event_type).toBe("memory_created");
+    expect(ev?.cloud_synced_at).toBeNull();
+    const pay = db2.prepare(
+      `SELECT content FROM memory_payloads WHERE memory_id = ?`,
+    ).get("legacy-1") as { content: string } | undefined;
+    expect(pay?.content).toBe("old memory");
+    db2.close();
+    provider2.close();
+  });
+
+  it("re-running init() is idempotent (no duplicate events)", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "bf-idem-"));
+    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    await provider1.init();
+    await provider1.remember({ content: "hello" });
+    provider1.close();
+
+    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    await provider2.init();
+    const db = new Database(join(tmp, "memory.db"));
+    const count = db.prepare(`SELECT COUNT(*) as c FROM memory_events`).get() as { c: number };
+    expect(count.c).toBe(1); // one create event from the original remember(), not duplicated
+    db.close();
+    provider2.close();
+  });
+
+  it("emits memory_forgotten for legacy soft-deleted rows", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "bf-forgotten-"));
+    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    await provider1.init();
+    const db1 = new Database(join(tmp, "memory.db"));
+    db1.prepare(
+      `INSERT INTO memories (id, content, tags, superseded_by, created_at, updated_at)
+       VALUES ('legacy-2', 'gone', '[]', 'forgotten', '2026-01-01', '2026-01-01')`,
+    ).run();
+    db1.close();
+    provider1.close();
+
+    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    await provider2.init();
+    const db2 = new Database(join(tmp, "memory.db"));
+    const types = db2.prepare(
+      `SELECT event_type FROM memory_events WHERE memory_id = ? ORDER BY created_at`,
+    ).all("legacy-2") as Array<{ event_type: string }>;
+    expect(types.map((r) => r.event_type)).toEqual(["memory_created", "memory_forgotten"]);
+    db2.close();
+    provider2.close();
+  });
+});

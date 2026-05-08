@@ -313,6 +313,8 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
         if (recallerId) logRecall.run(row.id, recallerId);
       }
     });
+
+    this.backfillFromLegacy();
   }
 
   findExact(content: string, spaceId?: string): boolean {
@@ -426,6 +428,50 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       supersededBy,
       Math.floor(created.created_at / 1000),
     );
+  }
+
+  /** One-time backfill: for each row in `memories` without a matching
+   *  memory_created event, write events + payload from the legacy state.
+   *  Idempotent because the per-type uniqueness indexes reject duplicates. */
+  private backfillFromLegacy(): void {
+    type LegacyRow = {
+      id: string; space_id: string | null; content: string; tags: string;
+      superseded_by: string | null; created_at: string; source_session_id: string | null;
+    };
+    const rows = this.db.prepare(
+      `SELECT m.id, m.space_id, m.content, m.tags, m.superseded_by, m.created_at, m.source_session_id
+         FROM memories m
+         LEFT JOIN memory_events e ON e.memory_id = m.id AND e.event_type = 'memory_created'
+        WHERE e.memory_id IS NULL`,
+    ).all() as LegacyRow[];
+
+    for (const r of rows) {
+      // SQLite text timestamps → unix ms
+      const created_ms = Date.parse(r.created_at + "Z") || Date.now();
+      // cloud_owner_id intentionally NULL — backfilled events do not push to
+      // any current Pro account. Pre-existing memories stay local until an
+      // explicit claim flow is shipped (see "Account-switching policy").
+      this.db.prepare(
+        `INSERT OR IGNORE INTO memory_events
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_created', ?, NULL, ?, NULL)`,
+      ).run(crypto.randomUUID(), r.id, r.space_id, created_ms);
+
+      this.db.prepare(
+        `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags)
+         VALUES (?, ?, ?)`,
+      ).run(r.id, r.content, r.tags);
+
+      if (r.superseded_by !== null) {
+        // Map legacy 'forgotten' / 'purged' marker to the appropriate event.
+        const evType = r.superseded_by === "purged" ? "memory_purged" : "memory_forgotten";
+        this.db.prepare(
+          `INSERT OR IGNORE INTO memory_events
+             (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+           VALUES (?, ?, ?, NULL, NULL, ?, NULL)`,
+        ).run(crypto.randomUUID(), r.id, evType, created_ms + 1);
+      }
+    }
   }
 
   writeForgotten(memory_id: string, cloud_owner_id: string | null = null): boolean {
