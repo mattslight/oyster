@@ -271,18 +271,28 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
   });
 
   it("purge nulls payload content and removes from recall", async () => {
-    const provider = await fresh();
+    const tmp = mkdtempSync(join(tmpdir(), "ev-prec-purge-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
     const { memory_id } = provider.writeCreated({ content: "AKIA-secret-key" });
     expect(provider.writePurged(memory_id)).toBe(true);
     const found = await provider.recall({ query: "AKIA" });
     expect(found).toHaveLength(0);
     const list = await provider.list();
     expect(list).toHaveLength(0);
+    // Payload content must be physically nulled (spec Q7 footgun).
+    const db = new Database(join(tmp, "memory.db"));
+    const row = db.prepare(`SELECT content, purged_at FROM memory_payloads WHERE memory_id = ?`).get(memory_id) as { content: string | null; purged_at: number | null };
+    expect(row.content).toBeNull();
+    expect(row.purged_at).not.toBeNull();
+    db.close();
     provider.close();
   });
 
   it("late create after purge does not restore content", async () => {
-    const provider = await fresh();
+    const tmp = mkdtempSync(join(tmpdir(), "ev-prec-late-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
     const memory_id = "11111111-1111-1111-1111-111111111111";
     // Simulate purge-arrives-before-create by writing the purge event first.
     provider.writePurged(memory_id);
@@ -292,6 +302,11 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
     expect(list).toHaveLength(0);
     const found = await provider.recall({ query: "should-not-appear" });
     expect(found).toHaveLength(0);
+    // The late create's content must NOT have landed in the payload — purge dominates.
+    const db = new Database(join(tmp, "memory.db"));
+    const row = db.prepare(`SELECT content FROM memory_payloads WHERE memory_id = ?`).get(memory_id) as { content: string | null };
+    expect(row.content).toBeNull();
+    db.close();
     provider.close();
   });
 

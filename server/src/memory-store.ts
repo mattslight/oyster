@@ -425,14 +425,19 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
   writeForgotten(memory_id: string, cloud_owner_id: string | null = null): boolean {
     // Idempotent: per-type uniqueness means a second forget event is rejected.
-    const info = this.db.prepare(
-      `INSERT OR IGNORE INTO memory_events
-         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
-       VALUES (?, ?, 'memory_forgotten', NULL, ?, ?, NULL)`,
-    ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
-    if (info.changes === 0) return false;
-    this.materialiseMemory(memory_id);
-    return true;
+    let inserted = false;
+    const txn = this.db.transaction(() => {
+      const info = this.db.prepare(
+        `INSERT OR IGNORE INTO memory_events
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_forgotten', NULL, ?, ?, NULL)`,
+      ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
+      if (info.changes === 0) return;
+      inserted = true;
+      this.materialiseMemory(memory_id);
+    });
+    txn();
+    return inserted;
   }
 
   writePurged(memory_id: string, cloud_owner_id: string | null = null): boolean {
@@ -440,18 +445,23 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     // is a valid sequence — purge dominates regardless of arrival order).
     // Returns false only when a memory_purged event already exists for this
     // memory_id (idempotent).
-    const info = this.db.prepare(
-      `INSERT OR IGNORE INTO memory_events
-         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
-       VALUES (?, ?, 'memory_purged', NULL, ?, ?, NULL)`,
-    ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
-    if (info.changes === 0) return false;
-    // Ensure a payload row exists so the materialisation pass can null its content.
-    this.db.prepare(
-      `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags) VALUES (?, NULL, '[]')`,
-    ).run(memory_id);
-    this.materialiseMemory(memory_id);
-    return true;
+    let inserted = false;
+    const txn = this.db.transaction(() => {
+      const info = this.db.prepare(
+        `INSERT OR IGNORE INTO memory_events
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_purged', NULL, ?, ?, NULL)`,
+      ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
+      if (info.changes === 0) return;
+      inserted = true;
+      // Ensure a payload row exists so the materialisation pass can null its content.
+      this.db.prepare(
+        `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags) VALUES (?, NULL, '[]')`,
+      ).run(memory_id);
+      this.materialiseMemory(memory_id);
+    });
+    txn();
+    return inserted;
   }
 
   async remember(input: RememberInput): Promise<Memory> {
