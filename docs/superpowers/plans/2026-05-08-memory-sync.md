@@ -917,13 +917,15 @@ git commit -m "feat(memory): backfill legacy memories into events at boot (#318)
 
 **Why this is load-bearing:** the per-event `cloud_owner_id` filter in Task 1 protects pushes — User B's events tagged with B's id won't push into a context where currentUser is A. But it does **not** protect pulls. Without a profile-level owner check, User B signing into User A's local Oyster profile would trigger a pull of B's cloud memories into A's local SQLite, garbling the local DB. The profile owner binding closes that hole.
 
-**Scope:** This task only covers memory sync. Spaces sync (already shipped in PR #407) does not yet use the binding — adding that protection is an explicit follow-up noted at the bottom of this plan.
+**Scope:** This task is the prerequisite for **all** cloud sync — memory now and spaces (already shipped in PR #407). It updates `space-sync-service.ts` in the same task so the binding is enforced everywhere from day one. There is no "spaces follow-up" — the binding-gate-for-spaces lands here, in PR 2, alongside the memory work.
 
 **Files:**
 - Modify: `server/src/db.ts` (or wherever the main `oyster.db` schema is initialised) — add `profile_binding` migration
 - Create: `server/src/profile-binding-service.ts`
 - Create: `server/test/profile-binding-service.test.ts`
-- Modify: `server/src/index.ts` — bind on Pro sign-in via auth-changed handler
+- Modify: `server/src/index.ts` — construct `profileBinding`; add `canRunCloudSync()` gate; pass `profileBinding` into both `createSpaceSyncService` and (later in Task 10) `createMemorySyncService`
+- Modify: `server/src/space-sync-service.ts` — accept `profileBinding` dep; gate `reconcile`/`pushOne`/`pushDelete` on `profileBinding.isOwnedBy(currentUser.id)`
+- Modify: `server/test/space-sync-service.test.ts` — construct a real `ProfileBindingService` in tests; add regression test for the conflict path
 
 **Forward dependency:** Task 8 (`MemorySyncService`) consumes the `ProfileBindingService` exported here as a constructor dependency. Task 8's content already reflects this — it accepts `profileBinding` in `MemorySyncDeps` and gates `isProSession` on `isOwnedBy`. This task only creates the service and the auth wiring; it does not modify `memory-sync-service.ts` (which doesn't exist yet — Task 8 creates it).
 
@@ -1132,18 +1134,116 @@ Verify the existing startup invocation also routes through `syncOnAuth` (it does
 
 **Important:** `canRunCloudSync` is the only place that calls `bindToOwner`. Do NOT call `bindToOwner` elsewhere — the side-effect-and-gate combination is intentional, so every entry point that wants to start sync goes through the same chokepoint.
 
-- [ ] **Step 7: Smoke-build and run profile-binding tests**
+- [ ] **Step 7: Plumb `profileBinding` into existing spaces sync**
 
-Run: `cd server && npm run build && npx vitest run test/profile-binding-service.test.ts`
-Expected: TypeScript compiles; all profile-binding tests pass.
+Spaces sync was first to ship and currently doesn't gate on profile binding. The orchestration-layer `canRunCloudSync()` covers `spaceSync.reconcile()` (called via `syncOnAuth`), but `spaceService` calls `spaceSync.pushOne(...)` and `spaceSync.pushDelete(...)` after each mutation as fire-and-forget — those bypass `syncOnAuth`. This step closes that gap so the binding gate is enforced on every spaces sync entry point.
+
+Update `server/src/space-sync-service.ts`. Add `profileBinding` to `SpaceSyncDeps`:
+
+```typescript
+import type { ProfileBindingService } from "./profile-binding-service.js";
+
+export interface SpaceSyncDeps {
+  db: Database.Database;
+  store: SpaceStore;
+  /** Required: gates pull AND push on profile ownership so a second Pro
+   *  account signing into the same local profile cannot push spaces into
+   *  the wrong cloud bucket or pull spaces into the wrong local DB.
+   *  See Task 4.4 of docs/superpowers/plans/2026-05-08-memory-sync.md. */
+  profileBinding: ProfileBindingService;
+  currentUser: () => SyncUser | null;
+  sessionToken: () => string | null;
+  workerBase: string;
+  fetch: typeof fetch;
+}
+```
+
+Update the existing `isProSession` helper inside the file to also check ownership:
+
+```typescript
+function isProSession(deps: SpaceSyncDeps): { user: SyncUser; token: string } | null {
+  const user = deps.currentUser();
+  const token = deps.sessionToken();
+  if (!user || !token || user.tier !== "pro") return null;
+  if (!deps.profileBinding.isOwnedBy(user.id)) {
+    console.warn(
+      `[spaces] sync blocked — profile is bound to a different account; current=${user.id}, bound=${deps.profileBinding.getBoundOwner()}`,
+    );
+    return null;
+  }
+  return { user, token };
+}
+```
+
+This single-place change covers all three exposed methods — `reconcile`, `pushOne`, `pushDelete` — because each already calls `isProSession` first and returns zero/no-op when it returns null. No change is needed inside `reconcile`/`pushOne`/`pushDelete` bodies; the gate lives in the helper.
+
+In `server/src/index.ts`, where `createSpaceSyncService(...)` is constructed, pass `profileBinding`:
+
+```typescript
+const spaceSync = createSpaceSyncService({
+  db: appDb,
+  store: spaceStore,
+  profileBinding,                         // ← new
+  currentUser: () => { /* … existing */ },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: WORKER_BASE,                // spaces stays on oyster-publish for now
+  fetch: globalThis.fetch,
+});
+```
+
+- [ ] **Step 8: Add regression test for the spaces-sync conflict path**
+
+Update `server/test/space-sync-service.test.ts`. Wherever the existing tests construct `createSpaceSyncService`, thread `profileBinding` through the deps (mirror the pattern from `memory-sync-service.test.ts` in Task 8). Existing happy-path tests should bind to the test user before they run.
+
+Add a new test:
+
+```typescript
+it("blocks spaces sync when profile is bound to a different owner", async () => {
+  const store = makeSpaceStore();                      // existing test helper
+  const bindingDb = new Database(":memory:");
+  bindingDb.exec(
+    `CREATE TABLE profile_binding (id INTEGER PRIMARY KEY CHECK (id=1), cloud_owner_id TEXT NOT NULL, bound_at INTEGER NOT NULL)`,
+  );
+  const profileBinding = createProfileBindingService({ db: bindingDb });
+  profileBinding.bindToOwner("user-A");
+
+  // Pre-seed a dirty space so pushOne has something to send.
+  store.create({ id: "space-1", display_name: "S1" });
+  store.markSyncDirty("space-1");
+
+  const fetchSpy = vi.fn();
+  const svc = createSpaceSyncService({
+    db: store["db" as keyof typeof store] as Database.Database,
+    store,
+    profileBinding,
+    currentUser: () => ({ id: "user-B", email: "b@x", tier: "pro" }),
+    sessionToken: () => "tok",
+    workerBase: "https://example.com",
+    fetch: fetchSpy as unknown as typeof fetch,
+  });
+
+  // None of the three exposed methods should make a Worker call.
+  expect(await svc.reconcile()).toEqual({ pulled: 0, pushed: 0, tombstoned: 0 });
+  await svc.pushOne("space-1");
+  await svc.pushDelete("space-1");
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+```
+
+- [ ] **Step 9: Smoke-build and run all sync-related tests**
+
+Run: `cd server && npm run build && npx vitest run test/profile-binding-service.test.ts test/space-sync-service.test.ts`
+Expected: TypeScript compiles; all profile-binding tests pass; all spaces-sync tests pass (existing + the new regression test).
 
 (Task 8 will plumb `profileBinding` into `MemorySyncService` when that service is created.)
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add server/src/db.ts server/src/profile-binding-service.ts server/src/index.ts \
-        server/test/profile-binding-service.test.ts
+        server/src/space-sync-service.ts \
+        server/test/profile-binding-service.test.ts \
+        server/test/space-sync-service.test.ts
 git commit -m "feat(profile): owner binding gate before cloud sync services (#318)"
 ```
 
@@ -2746,7 +2846,7 @@ memoryProvider.setOnWrite(() => { void memorySync.pushPending(); });
 
 Find `syncOnAuth(reason: "auth" | "startup")` (around line 346 in spaces-sync wiring). Make two changes:
 
-1. **Early-return on profile-binding conflict**, gating EVERY cloud sync service. This protects users from existing spaces sync polluting the local DB on a conflicted profile, even before the spaces follow-up hotfix lands inside `space-sync-service.ts`.
+1. **Early-return on profile-binding conflict**, gating EVERY cloud sync service. Belt-and-braces alongside the per-service `isProSession` check that Task 4.4 step 7 added inside `space-sync-service.ts` — the orchestration-layer guard means we don't accidentally call into reconcile/pull paths at all when the profile is conflicted.
 2. Add the memory reconcile call alongside the spaces one.
 
 ```typescript
@@ -2773,7 +2873,7 @@ async function syncOnAuth(reason: "auth" | "startup"): Promise<void> {
 }
 ```
 
-Note on residual exposure: `spaceService` calls `spaceSync.pushOne(...)` after each mutation (fire-and-forget), bypassing `syncOnAuth`. The `space-sync-service.ts` follow-up hotfix (listed in "Out of scope" at the bottom of this plan) closes that mutation-path by adding `profileBinding.isOwnedBy()` to its own `isProSession()`. Memory sync is already protected on its mutation path because Task 8's `MemorySyncService.isProSession` checks `isOwnedBy` directly.
+Both reconcile paths AND the mutation-triggered `spaceSync.pushOne(...)` / `spaceSync.pushDelete(...)` calls are protected: Task 4.4 step 7 adds `profileBinding.isOwnedBy()` to `space-sync-service.ts`'s own `isProSession` helper, so every entry point on both sync services returns no-op on a conflicted profile. There is no residual exposure to call out here.
 
 - [ ] **Step 4: Smoke-build the server**
 
@@ -2905,8 +3005,10 @@ git commit -m "docs(changelog): cross-device memory sync (#318)"
 - [ ] `cloud_owner_id` set at write time on every event; `pushPending` filters strictly
 - [ ] **`profile_binding` table exists; `bindToOwner` runs on first Pro sign-in; `isProSession` checks `isOwnedBy`**
 - [ ] **`canRunCloudSync()` is the single chokepoint — `syncOnAuth` early-returns on conflict, blocking spaces sync AND memory sync (and any future cloud sync) at the orchestration layer**
-- [ ] **Test: a different Pro user signing in to a bound profile is blocked from sync (no fetch calls)**
-- [ ] **Manual: confirm that on a profile-conflicted sign-in, neither `[memory]` nor `[spaces]` sync log lines appear during reconcile**
+- [ ] **Both `MemorySyncService.isProSession` AND `SpaceSyncService.isProSession` check `profileBinding.isOwnedBy()` — so mutation-triggered `pushOne`/`pushDelete`/`pushPending` are also blocked on a conflicted profile, not just reconcile**
+- [ ] **Test: a different Pro user signing into a bound profile is blocked from memory sync (no fetch calls)**
+- [ ] **Test: a different Pro user signing into a bound profile is blocked from spaces sync — `reconcile`, `pushOne`, AND `pushDelete` all no-op without fetch calls**
+- [ ] **Manual: confirm that on a profile-conflicted sign-in, neither `[memory]` nor `[spaces]` sync log lines appear during reconcile, AND that creating/renaming a space on the conflicted profile produces no Worker calls**
 - [ ] **`resolveCurrentOwnerId` returns null for free / signed-out users — only Pro accounts tag events**
 - [ ] Worker POST response shape is `{ accepted, duplicates, conflicts, rejected }` — `rejected` not marked synced by client
 - [ ] **`conflicts` are warned-and-pulled, NOT marked synced — only `accepted` and `duplicates` clear from outbox**
@@ -2926,7 +3028,6 @@ The following are intentionally NOT in this plan and remain follow-ups:
 - Worker-side rate limiting on `/api/memories/events` (basic Pro gate is in place).
 - Account-deletion flow (purges all events + payloads for an `owner_id`) — needs a separate spec for the cross-system deletion path.
 - Backfill performance for users with very large memory stores (>10k rows) — backfill is synchronous at boot today; if it becomes slow, defer to a background pass with a "syncing memories…" indicator.
-- **Profile-owner binding for spaces sync.** PR #407 (already shipped to beta) does not yet check `profileBinding.isOwnedBy(currentUser.id)` before pull/push. This is a privacy hotfix: a different Pro user signing into the same local profile would currently pull their own cloud spaces into the bound user's local DB. File a hotfix issue for 0.7.1-beta.x: "spaces-sync respects profile_binding gate." Mechanically simple — add `profileBinding` dep to `space-sync-service.ts` and gate `reconcile`/`pushOne`/`pushDelete` the same way memory sync does.
 - **UI surface for profile-binding conflicts.** Today the conflict path only logs. A user signing into a different Pro account on the same machine sees no error explaining why sync silently isn't working. A follow-up should add a clear UI message + a "reset profile" affordance.
 - **"Claim local memories for this Pro account" flow.** Pre-Pro / pre-binding memories stay local in v1. A future plan can add an opt-in claim that promotes them into the bound Pro account.
 
