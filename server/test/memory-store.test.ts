@@ -249,6 +249,22 @@ describe("event write API — writeCreated", () => {
     db.close();
     provider.close();
   });
+
+  it("writeCreated records cloud_owner_id on the event row", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "ev-owner-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const { event_id } = provider.writeCreated({
+      content: "owner test",
+      cloud_owner_id: "user-pro-123",
+    });
+    const db = new Database(join(tmp, "memory.db"));
+    const row = db.prepare("SELECT cloud_owner_id FROM memory_events WHERE event_id = ?")
+      .get(event_id) as { cloud_owner_id: string | null };
+    expect(row.cloud_owner_id).toBe("user-pro-123");
+    db.close();
+    provider.close();
+  });
 });
 
 describe("event write API — writeForgotten / writePurged / precedence", () => {
