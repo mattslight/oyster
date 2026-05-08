@@ -44,6 +44,7 @@ export interface OAuthMcpRouteDeps {
   userlandDir: string;
   getNativeSourcePath: (spaceId: string) => string;
   publishService: import("../publish-service.js").PublishService;
+  resolveCurrentOwnerId: () => string | null;
 }
 
 export async function tryHandleOAuthMcpRoute(
@@ -179,6 +180,7 @@ export async function tryHandleOAuthMcpRoute(
       broadcastUiEvent,
       clientContext: isInternal ? { isInternal: true } : { isInternal: false, userAgent: externalUa ?? "unknown" },
       resolveActiveSessionId,
+      resolveCurrentOwnerId: deps.resolveCurrentOwnerId,
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close(); mcpServer.close(); });

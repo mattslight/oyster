@@ -24,6 +24,7 @@ export interface RememberInput {
   space_id?: string;
   tags?: string[];
   source_session_id?: string | null;
+  cloud_owner_id?: string | null;
 }
 
 export interface RecallInput {
@@ -49,7 +50,11 @@ export interface MemoryProvider {
   recall(input: RecallInput): Promise<Memory[]>;
   /** Marks a memory as forgotten. Returns true if a row was updated, false if
    *  the id doesn't exist — callers can map false → 404. */
-  forget(id: string): Promise<boolean>;
+  forget(id: string, cloud_owner_id?: string | null): Promise<boolean>;
+  /** Server-internal hard-redaction. Writes a purge event and nulls payload
+   *  content. Not exposed via MCP in v1; reserved for "delete forever" UI,
+   *  account deletion, and secret-exposure flows. */
+  purge(id: string, cloud_owner_id?: string | null): Promise<boolean>;
   list(space_id?: string): Promise<Memory[]>;
   /** Synchronous existence check used by the import flow's dedupe — true
    *  when an active memory with this exact (content, space_id) already
@@ -93,9 +98,7 @@ function rowToMemory(row: MemoryRow): Memory {
 export class SqliteFtsMemoryProvider implements MemoryProvider {
   private db!: Database.Database;
   private stmts!: {
-    insert: Database.Statement;
     findExact: Database.Statement;
-    supersede: Database.Statement;
     listActive: Database.Statement;
     listActiveBySpace: Database.Statement;
     getById: Database.Statement;
@@ -164,6 +167,64 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       CREATE INDEX IF NOT EXISTS memory_recalls_memory ON memory_recalls(memory_id);
     `);
 
+    // ── #318 cloud sync substrate ─────────────────────────────────
+    // Append-only event log. Doubles as outbox via cloud_synced_at IS NULL.
+    // Per-type uniqueness mirrors the cloud constraints (spec Q6) so backfill
+    // and replay are safely idempotent locally too.
+    // cloud_owner_id is captured at write time from auth state; events are
+    // only pushed when cloud_owner_id matches the current Pro user. This is
+    // the single-Pro-account-per-device guard (see "Account-switching policy").
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_events (
+        event_id        TEXT    PRIMARY KEY,
+        memory_id       TEXT    NOT NULL,
+        event_type      TEXT    NOT NULL CHECK (event_type IN ('memory_created','memory_forgotten','memory_purged')),
+        space_id        TEXT,
+        cloud_owner_id  TEXT,
+        created_at      INTEGER NOT NULL,    -- Unix epoch ms (not ISO string; matches D1 cloud schema for cross-device events)
+        cloud_synced_at INTEGER
+      )
+    `);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_events_memory ON memory_events(memory_id)`);
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_memory_events_pending
+         ON memory_events(cloud_synced_at) WHERE cloud_synced_at IS NULL`,
+    );
+    this.db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_memory_events_created
+         ON memory_events(memory_id) WHERE event_type = 'memory_created'`,
+    );
+    this.db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_memory_events_forgotten
+         ON memory_events(memory_id) WHERE event_type = 'memory_forgotten'`,
+    );
+    this.db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_memory_events_purged
+         ON memory_events(memory_id) WHERE event_type = 'memory_purged'`,
+    );
+
+    // Redactable content store. Purge nulls content + tags (tags are
+    // redacted alongside content so no PII can leak via tag text) and
+    // sets purged_at.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_payloads (
+        memory_id  TEXT PRIMARY KEY,
+        content    TEXT,
+        tags       TEXT NOT NULL DEFAULT '[]',
+        purged_at  INTEGER
+      )
+    `);
+
+    // `memories.purged_at` is reserved for future use. Today, purge deletes
+    // the memories row outright (see materialiseMemory), so this column is
+    // never set or read by the live code paths. Kept additively to avoid
+    // future migration churn if recall ever wants a soft-purge filter.
+    try {
+      this.db.exec(`ALTER TABLE memories ADD COLUMN purged_at INTEGER`);
+    } catch (err) {
+      if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+    }
+
     // FTS5 virtual table
     this.db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
@@ -192,17 +253,10 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
     // Prepared statements
     this.stmts = {
-      insert: this.db.prepare(
-        `INSERT INTO memories (id, space_id, content, tags, source_session_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      ),
       findExact: this.db.prepare(
         `SELECT * FROM memories
          WHERE content = ? AND (space_id = ? OR (space_id IS NULL AND ? IS NULL))
            AND superseded_by IS NULL`,
-      ),
-      supersede: this.db.prepare(
-        `UPDATE memories SET superseded_by = ?, updated_at = datetime('now') WHERE id = ?`,
       ),
       listActive: this.db.prepare(
         `SELECT * FROM memories WHERE superseded_by IS NULL ORDER BY updated_at DESC`,
@@ -252,6 +306,8 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
         if (recallerId) logRecall.run(row.id, recallerId);
       }
     });
+
+    this.backfillFromLegacy();
   }
 
   findExact(content: string, spaceId?: string): boolean {
@@ -259,20 +315,254 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     return !!(this.stmts.findExact.get(content, sid, sid) as MemoryRow | undefined);
   }
 
-  async remember(input: RememberInput): Promise<Memory> {
-    const spaceId = input.space_id ?? null;
-    const tags = JSON.stringify(input.tags ?? []);
-    const sourceSessionId = input.source_session_id ?? null;
+  writeCreated(input: {
+    memory_id?: string;
+    content: string;
+    space_id?: string | null;
+    tags?: string[];
+    source_session_id?: string | null;
+    created_at?: number;
+    cloud_owner_id?: string | null;
+  }): { memory_id: string; event_id: string; inserted: boolean } {
+    const memory_id = input.memory_id ?? crypto.randomUUID();
+    const event_id  = crypto.randomUUID();
+    const space_id  = input.space_id ?? null;
+    const tags      = JSON.stringify(input.tags ?? []);
+    const ssid      = input.source_session_id ?? null;
+    const created_at = input.created_at ?? Date.now();
+    const owner_id  = input.cloud_owner_id ?? null;
 
-    // Conservative dedupe: exact content match in same scope
-    const existing = this.stmts.findExact.get(input.content, spaceId, spaceId) as MemoryRow | undefined;
-    if (existing) {
-      return rowToMemory(existing);
+    let inserted = false;
+    let returned_event_id: string = event_id;
+
+    const txn = this.db.transaction(() => {
+      const info = this.db.prepare(
+        `INSERT OR IGNORE INTO memory_events
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_created', ?, ?, ?, NULL)`,
+      ).run(event_id, memory_id, space_id, owner_id, created_at);
+      inserted = info.changes > 0;
+
+      if (!inserted) {
+        // A memory_created event already exists for this memory_id. Look up
+        // its event_id so the caller can reference the canonical event.
+        const existing = this.db.prepare(
+          `SELECT event_id FROM memory_events WHERE memory_id = ? AND event_type = 'memory_created'`,
+        ).get(memory_id) as { event_id: string } | undefined;
+        if (existing) returned_event_id = existing.event_id;
+      }
+
+      this.db.prepare(
+        `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags)
+         VALUES (?, ?, ?)`,
+      ).run(memory_id, input.content, tags);
+
+      this.materialiseMemory(memory_id, { ssid });
+    });
+    txn();
+    return { memory_id, event_id: returned_event_id, inserted };
+  }
+
+  materialiseMemory(memory_id: string, opts?: { ssid?: string | null }): void {
+    // Pick highest-precedence event for this memory_id.
+    type EvRow = { event_type: string; space_id: string | null; created_at: number };
+    const events = this.db.prepare(
+      `SELECT event_type, space_id, created_at FROM memory_events WHERE memory_id = ?`,
+    ).all(memory_id) as EvRow[];
+    if (events.length === 0) {
+      this.db.prepare(`DELETE FROM memories WHERE id = ?`).run(memory_id);
+      return;
+    }
+    const has = (t: string) => events.some((e) => e.event_type === t);
+    const created = events.find((e) => e.event_type === "memory_created");
+
+    if (has("memory_purged")) {
+      // Purge: nullify payload + remove from recall surface. Use the purge
+      // event's created_at as the canonical purged_at so re-materialisation
+      // (e.g. cloud-replay in Task 8) is idempotent and the value matches
+      // across devices.
+      const purgeEvent = events.find((e) => e.event_type === "memory_purged");
+      const purgedAt = purgeEvent?.created_at ?? Date.now();
+      this.db.prepare(
+        `UPDATE memory_payloads SET content = NULL, tags = '[]', purged_at = ? WHERE memory_id = ?`,
+      ).run(purgedAt, memory_id);
+      this.db.prepare(`DELETE FROM memories WHERE id = ?`).run(memory_id);
+      return;
     }
 
-    const id = crypto.randomUUID();
-    this.stmts.insert.run(id, spaceId, input.content, tags, sourceSessionId);
-    const row = this.stmts.getById.get(id) as MemoryRow;
+    if (!created) {
+      // Forget arrived before create. Nothing to materialise yet.
+      return;
+    }
+
+    const payload = this.db.prepare(
+      `SELECT content, tags FROM memory_payloads WHERE memory_id = ?`,
+    ).get(memory_id) as { content: string | null; tags: string } | undefined;
+    if (!payload || payload.content === null) {
+      // Created event with no payload yet, or payload purged. Nothing to show.
+      this.db.prepare(`DELETE FROM memories WHERE id = ?`).run(memory_id);
+      return;
+    }
+
+    const ssid = opts?.ssid ?? null;
+    const supersededBy = has("memory_forgotten") ? "forgotten" : null;
+
+    // Upsert the recall surface. FTS5 triggers on memories keep the index in sync.
+    this.db.prepare(
+      `INSERT INTO memories (id, space_id, content, tags, source_session_id, superseded_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'), datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         space_id = excluded.space_id,
+         content = excluded.content,
+         tags = excluded.tags,
+         superseded_by = excluded.superseded_by,
+         updated_at = datetime('now')`,
+    ).run(
+      memory_id,
+      created.space_id,
+      payload.content,
+      payload.tags,
+      ssid,
+      supersededBy,
+      Math.floor(created.created_at / 1000),
+    );
+  }
+
+  /** One-time backfill: for each row in `memories` without a matching
+   *  memory_created event, write events + payload from the legacy state.
+   *  Idempotent because the per-type uniqueness indexes reject duplicates. */
+  private backfillFromLegacy(): void {
+    type LegacyRow = {
+      id: string; space_id: string | null; content: string; tags: string;
+      superseded_by: string | null; created_at: string; source_session_id: string | null;
+    };
+    const rows = this.db.prepare(
+      `SELECT m.id, m.space_id, m.content, m.tags, m.superseded_by, m.created_at, m.source_session_id
+         FROM memories m
+         LEFT JOIN memory_events e ON e.memory_id = m.id AND e.event_type = 'memory_created'
+        WHERE e.memory_id IS NULL`,
+    ).all() as LegacyRow[];
+
+    if (rows.length === 0) return;
+
+    // Hoist statements once; the loop reuses them inside a single transaction
+    // so N legacy rows produce one fsync, not 3*N.
+    const insertCreatedEvent = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_events
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, 'memory_created', ?, NULL, ?, NULL)`,
+    );
+    const insertPayload = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags)
+       VALUES (?, ?, ?)`,
+    );
+    const insertSecondaryEvent = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_events
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, ?, NULL, NULL, ?, NULL)`,
+    );
+    const txn = this.db.transaction(() => {
+      for (const r of rows) {
+        // SQLite text timestamps come in two flavours:
+        //   - "YYYY-MM-DD HH:MM:SS" from datetime('now')
+        //   - "YYYY-MM-DD" if a row was inserted with just the date
+        // V8's Date.parse rejects the space-separated form and the "YYYY-MM-DDZ"
+        // form, so normalise: replace any space with the ISO `T` separator, then
+        // append a midnight time component if the string is date-only, then add
+        // the UTC marker.
+        let isoText = r.created_at.replace(" ", "T");
+        if (!isoText.includes("T")) isoText += "T00:00:00";
+        if (!isoText.endsWith("Z")) isoText += "Z";
+        const parsed = Date.parse(isoText);
+        const created_ms = Number.isFinite(parsed) ? parsed : Date.now();
+
+        // cloud_owner_id intentionally NULL — backfilled events do not push to
+        // any current Pro account. Pre-existing memories stay local until an
+        // explicit claim flow is shipped (see "Account-switching policy").
+        // source_session_id is fetched into LegacyRow for completeness but
+        // intentionally not forwarded — the existing `memories` row retains
+        // its original value, and the cloud event log doesn't carry session
+        // attribution.
+        insertCreatedEvent.run(crypto.randomUUID(), r.id, r.space_id, created_ms);
+        insertPayload.run(r.id, r.content, r.tags);
+
+        if (r.superseded_by !== null) {
+          // Map legacy 'forgotten' / 'purged' marker to the appropriate event.
+          const evType = r.superseded_by === "purged" ? "memory_purged" : "memory_forgotten";
+          insertSecondaryEvent.run(crypto.randomUUID(), r.id, evType, created_ms + 1);
+        }
+
+        // Apply precedence uniformly. For legacy 'purged' rows this nulls
+        // the payload AND deletes the memories row + its FTS5 entry,
+        // satisfying spec Q7. For legacy 'forgotten' rows it (re)sets
+        // superseded_by. For active rows it's an idempotent upsert.
+        this.materialiseMemory(r.id);
+      }
+    });
+    txn();
+  }
+
+  writeForgotten(memory_id: string, cloud_owner_id: string | null = null): boolean {
+    // Idempotent: per-type uniqueness means a second forget event is rejected.
+    let inserted = false;
+    const txn = this.db.transaction(() => {
+      const info = this.db.prepare(
+        `INSERT OR IGNORE INTO memory_events
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_forgotten', NULL, ?, ?, NULL)`,
+      ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
+      if (info.changes === 0) return;
+      inserted = true;
+      this.materialiseMemory(memory_id);
+    });
+    txn();
+    return inserted;
+  }
+
+  writePurged(memory_id: string, cloud_owner_id: string | null = null): boolean {
+    // Succeeds even when no memory_created event exists yet (purge-before-create
+    // is a valid sequence — purge dominates regardless of arrival order).
+    // Returns false only when a memory_purged event already exists for this
+    // memory_id (idempotent).
+    let inserted = false;
+    const txn = this.db.transaction(() => {
+      const info = this.db.prepare(
+        `INSERT OR IGNORE INTO memory_events
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_purged', NULL, ?, ?, NULL)`,
+      ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
+      if (info.changes === 0) return;
+      inserted = true;
+      // Ensure a payload row exists so the materialisation pass can null its content.
+      this.db.prepare(
+        `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags) VALUES (?, NULL, '[]')`,
+      ).run(memory_id);
+      this.materialiseMemory(memory_id);
+    });
+    txn();
+    return inserted;
+  }
+
+  async remember(input: RememberInput): Promise<Memory> {
+    const spaceId = input.space_id ?? null;
+
+    // Conservative dedupe: exact content match in same scope. Preserves the
+    // existing surface contract — `remember` returns the existing row instead
+    // of duplicating. Applies to empty content too: callers that accidentally
+    // pass "" don't spam empty rows. The HTTP POST route rejects empty
+    // content at its boundary; the MCP tool currently allows it but dedupe
+    // is sufficient defence at this layer.
+    const existing = this.stmts.findExact.get(input.content, spaceId, spaceId) as MemoryRow | undefined;
+    if (existing) return rowToMemory(existing);
+
+    const { memory_id } = this.writeCreated({
+      content: input.content,
+      space_id: spaceId,
+      tags: input.tags,
+      source_session_id: input.source_session_id,
+      cloud_owner_id: input.cloud_owner_id ?? null,
+    });
+    const row = this.stmts.getById.get(memory_id) as MemoryRow;
     return rowToMemory(row);
   }
 
@@ -329,10 +619,20 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     return rows.map((row) => ({ ...rowToMemory(row), recalled_at: row.recalled_at }));
   }
 
-  async forget(id: string): Promise<boolean> {
+  async forget(id: string, cloud_owner_id: string | null = null): Promise<boolean> {
     const row = this.stmts.getById.get(id) as MemoryRow | undefined;
     if (!row) return false;
-    this.stmts.supersede.run("forgotten", id);
+    this.writeForgotten(id, cloud_owner_id);
+    return true;
+  }
+
+  async purge(id: string, cloud_owner_id: string | null = null): Promise<boolean> {
+    const row = this.stmts.getById.get(id) as MemoryRow | undefined;
+    const hasEvent = this.db.prepare(
+      `SELECT 1 FROM memory_events WHERE memory_id = ? LIMIT 1`,
+    ).get(id);
+    if (!row && !hasEvent) return false;
+    this.writePurged(id, cloud_owner_id);
     return true;
   }
 
@@ -382,6 +682,7 @@ export function registerMemoryTools(
   // when we can't attribute (no matching active session, internal-only call,
   // unknown user-agent). Stamps memories at write time and logs recalls.
   resolveActiveSessionId: () => string | null = () => null,
+  resolveCurrentOwnerId: () => string | null = () => null,
 ): void {
   tool(
     "remember",
@@ -396,6 +697,7 @@ export function registerMemoryTools(
       space_id,
       tags,
       source_session_id: resolveActiveSessionId(),
+      cloud_owner_id: resolveCurrentOwnerId(),
     }),
   );
 
@@ -426,7 +728,7 @@ export function registerMemoryTools(
       id: z.string().describe("Memory ID to forget"),
     },
     async ({ id }) => {
-      await provider.forget(id);
+      await provider.forget(id, resolveCurrentOwnerId());
       return `Memory "${id}" forgotten.`;
     },
   );

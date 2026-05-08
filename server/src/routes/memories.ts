@@ -10,6 +10,7 @@ import type { UiCommand } from "../../../shared/types.js";
 export interface MemoryRouteDeps {
   memoryProvider: MemoryProvider;
   broadcastUiEvent: (event: UiCommand) => void;
+  resolveCurrentOwnerId: () => string | null;
 }
 
 export async function tryHandleMemoryRoute(
@@ -39,7 +40,7 @@ export async function tryHandleMemoryRoute(
       return true;
     }
     try {
-      const removed = await memoryProvider.forget(id);
+      const removed = await memoryProvider.forget(id, deps.resolveCurrentOwnerId());
       if (!removed) {
         sendJson({ error: "memory not found" }, 404);
         return true;
@@ -86,7 +87,10 @@ export async function tryHandleMemoryRoute(
       const tags = Array.isArray(body.tags)
         ? body.tags.filter((t): t is string => typeof t === "string" && t.length > 0)
         : undefined;
-      const memory = await memoryProvider.remember({ content, space_id, tags });
+      const memory = await memoryProvider.remember({
+        content, space_id, tags,
+        cloud_owner_id: deps.resolveCurrentOwnerId(),
+      });
       sendJson(memory, 201);
     } catch (err) {
       sendError(err);

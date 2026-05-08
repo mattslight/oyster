@@ -140,6 +140,12 @@ interface McpDeps {
    * lived MCP connection still reflects the current active session.
    */
   resolveActiveSessionId: () => string | null;
+  /**
+   * Returns the cloud owner id to tag memory events with, or null for
+   * Free / signed-out users (events without an owner stay local-only and
+   * are not pushed to the cloud sync endpoint).
+   */
+  resolveCurrentOwnerId: () => string | null;
 }
 
 function buildContext(userlandDir: string): string {
@@ -803,7 +809,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
   );
 
   // ── Memory tools ──
-  registerMemoryTools(tool, deps.memoryProvider, deps.resolveActiveSessionId);
+  registerMemoryTools(tool, deps.memoryProvider, deps.resolveActiveSessionId, deps.resolveCurrentOwnerId);
 
   // ── Transcript search (R2 verbatim, #311) ──
   // Distinct from `recall` (which searches the memory layer). Returns
