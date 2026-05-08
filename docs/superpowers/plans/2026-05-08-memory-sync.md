@@ -14,6 +14,34 @@
 
 **Pattern reference:** `server/src/space-sync-service.ts` and `infra/oyster-publish/src/worker.ts` lines 334–492 are the closest cousin. Memory sync mirrors the auth wiring and Pro-gate machinery but replaces LWW row sync with idempotent event ingestion and precedence-based materialisation.
 
+## Shipping discipline: two PRs
+
+This plan ships in **two PRs** for blast-radius reasons. Do not bundle.
+
+- **PR 1 — local event model (Tasks 1–4).** Lands `memory_events` + `memory_payloads`, the event write API, the legacy backfill. **No cloud writes.** The MCP surface (`remember`/`forget`) is unchanged from the user's perspective; everything still works offline. Mergeable on its own.
+- **PR 2 — cloud sync (Tasks 4.5, 5–10).** Bootstraps the new `oyster-cloud` Worker (Task 4.5), adds the D1 schema and Worker routes, the `MemorySyncService`, and the auth/startup wiring. Depends on PR 1 being merged.
+- **Verification + ship (Tasks 11–12)** lands in PR 2.
+
+If anything in PR 1 is rolled back, the user-visible behaviour is unchanged. If PR 2 is rolled back, memory sync stops syncing but local memories remain intact.
+
+## Worker boundary: `oyster-cloud`
+
+Memory sync routes go in a **new** `infra/oyster-cloud/` Worker, not in `infra/oyster-publish/`. The boundary:
+
+- `auth-worker` — identity, sessions, OAuth, account lifecycle.
+- `oyster-publish` — public viewer, share tokens, published artefact access.
+- `oyster-cloud` — signed-in private user APIs: `/api/memories/*`, future `/api/sessions/*`, future `/api/spaces/*` (migration tracked as a follow-up).
+
+The new Worker shares the `oyster-auth` D1 binding (same database, same migrations directory) so it can resolve sessions via the same mechanism `oyster-publish` uses. Spaces sync stays in `oyster-publish` for now — migrating those routes is explicitly a **follow-up**, not part of this plan, to keep blast radius bounded. The follow-up issue: "Migrate /api/spaces/* from oyster-publish to oyster-cloud."
+
+## Account-switching policy (v1)
+
+A local Oyster instance is treated as **single-Pro-account** for memory sync. Memories created while signed out, signed into a free account, or signed into a different Pro account stay local-only — they will not sync to your current Pro account.
+
+Implementation: every event row carries a `cloud_owner_id` set at write time from the current auth state. `pushPending` filters strictly on `cloud_owner_id = currentUser.id`. Pre-existing legacy memories backfilled at boot are tagged with the user signed in at backfill time, or left NULL (never pushed) if no user is signed in.
+
+A future plan can add explicit account-switch handling (e.g. "claim local memories for this Pro account on first sign-in"). v1 errs on the side of privacy — better to silently keep memories local than to leak them across accounts.
+
 ---
 
 ## Task 1: Local schema migration — events + payloads + recall surface
@@ -37,7 +65,23 @@ describe("schema migration — memory_events + memory_payloads", () => {
     const db = new Database(join(tmp, "memory.db"));
     const cols = db.prepare("PRAGMA table_info(memory_events)").all() as Array<{ name: string }>;
     const names = cols.map((c) => c.name).sort();
-    expect(names).toEqual(["cloud_synced_at", "created_at", "event_id", "event_type", "memory_id", "space_id"]);
+    expect(names).toEqual([
+      "cloud_owner_id", "cloud_synced_at", "created_at",
+      "event_id", "event_type", "memory_id", "space_id",
+    ]);
+    db.close();
+    provider.close();
+  });
+
+  it("enforces event_type CHECK constraint", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "mem-check-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const db = new Database(join(tmp, "memory.db"));
+    expect(() => db.prepare(
+      `INSERT INTO memory_events (event_id, memory_id, event_type, created_at)
+       VALUES ('ev-bad', 'm', 'bogus', 0)`,
+    ).run()).toThrow(/CHECK constraint failed/);
     db.close();
     provider.close();
   });
@@ -91,12 +135,16 @@ In `server/src/memory-store.ts`, after the existing `memory_recalls` block (arou
     // Append-only event log. Doubles as outbox via cloud_synced_at IS NULL.
     // Per-type uniqueness mirrors the cloud constraints (spec Q6) so backfill
     // and replay are safely idempotent locally too.
+    // cloud_owner_id is captured at write time from auth state; events are
+    // only pushed when cloud_owner_id matches the current Pro user. This is
+    // the single-Pro-account-per-device guard (see "Account-switching policy").
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS memory_events (
         event_id        TEXT    PRIMARY KEY,
         memory_id       TEXT    NOT NULL,
-        event_type      TEXT    NOT NULL,
+        event_type      TEXT    NOT NULL CHECK (event_type IN ('memory_created','memory_forgotten','memory_purged')),
         space_id        TEXT,
+        cloud_owner_id  TEXT,
         created_at      INTEGER NOT NULL,
         cloud_synced_at INTEGER
       )
@@ -169,10 +217,31 @@ The contract:
 
 ```typescript
 // New on the provider:
-writeCreated(input: { memory_id?: string; content: string; space_id?: string|null; tags?: string[]; source_session_id?: string|null; created_at?: number }): { memory_id: string; event_id: string };
-writeForgotten(memory_id: string): boolean;  // false if no row
-writePurged(memory_id: string): boolean;     // false if no row in events
-materialiseMemory(memory_id: string): void;  // (re)derive memories row from events+payloads using precedence
+writeCreated(input: {
+  memory_id?: string;
+  content: string;
+  space_id?: string | null;
+  tags?: string[];
+  source_session_id?: string | null;
+  created_at?: number;
+  cloud_owner_id?: string | null;
+}): { memory_id: string; event_id: string; inserted: boolean };
+// inserted=false means a memory_created event already existed for this
+// memory_id (per-type uniqueness rejected the new write); event_id is the
+// EXISTING event's id. Caller can treat this as a no-op.
+
+writeForgotten(memory_id: string): boolean;
+// true if a new forget event was written; false if one already existed
+// (idempotent — per-type uniqueness rejects duplicates).
+
+writePurged(memory_id: string): boolean;
+// true if a new purge event was written, even when no create event exists
+// yet (purge-before-create is a valid sequence). false only if a purge
+// already exists for this memory_id (idempotent).
+
+materialiseMemory(memory_id: string): void;
+// (re)derive the memories recall surface for this memory_id from events +
+// payloads using precedence purged > forgotten > created.
 ```
 
 - [ ] **Step 1: Write failing tests for `writeCreated`**
@@ -231,20 +300,35 @@ In `server/src/memory-store.ts`, add to the `SqliteFtsMemoryProvider` class. Pla
     tags?: string[];
     source_session_id?: string | null;
     created_at?: number;
-  }): { memory_id: string; event_id: string } {
+    cloud_owner_id?: string | null;
+  }): { memory_id: string; event_id: string; inserted: boolean } {
     const memory_id = input.memory_id ?? crypto.randomUUID();
     const event_id  = crypto.randomUUID();
     const space_id  = input.space_id ?? null;
     const tags      = JSON.stringify(input.tags ?? []);
     const ssid      = input.source_session_id ?? null;
     const created_at = input.created_at ?? Date.now();
+    const owner_id  = input.cloud_owner_id ?? null;
+
+    let inserted = false;
+    let returned_event_id = event_id;
 
     const txn = this.db.transaction(() => {
-      this.db.prepare(
+      const info = this.db.prepare(
         `INSERT OR IGNORE INTO memory_events
-           (event_id, memory_id, event_type, space_id, created_at, cloud_synced_at)
-         VALUES (?, ?, 'memory_created', ?, ?, NULL)`,
-      ).run(event_id, memory_id, space_id, created_at);
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_created', ?, ?, ?, NULL)`,
+      ).run(event_id, memory_id, space_id, owner_id, created_at);
+      inserted = info.changes > 0;
+
+      if (!inserted) {
+        // A memory_created event already exists for this memory_id. Look up
+        // its event_id so the caller can reference the canonical event.
+        const existing = this.db.prepare(
+          `SELECT event_id FROM memory_events WHERE memory_id = ? AND event_type = 'memory_created'`,
+        ).get(memory_id) as { event_id: string } | undefined;
+        if (existing) returned_event_id = existing.event_id;
+      }
 
       this.db.prepare(
         `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags)
@@ -254,7 +338,7 @@ In `server/src/memory-store.ts`, add to the `SqliteFtsMemoryProvider` class. Pla
       this.materialiseMemory(memory_id, { ssid });
     });
     txn();
-    return { memory_id, event_id };
+    return { memory_id, event_id: returned_event_id, inserted };
   }
 ```
 
@@ -398,24 +482,28 @@ Expected: failures — methods don't exist.
 In the same class, after `writeCreated`:
 
 ```typescript
-  writeForgotten(memory_id: string): boolean {
+  writeForgotten(memory_id: string, cloud_owner_id: string | null = null): boolean {
     // Idempotent: per-type uniqueness means a second forget event is rejected.
     const info = this.db.prepare(
       `INSERT OR IGNORE INTO memory_events
-         (event_id, memory_id, event_type, space_id, created_at, cloud_synced_at)
-       VALUES (?, ?, 'memory_forgotten', NULL, ?, NULL)`,
-    ).run(crypto.randomUUID(), memory_id, Date.now());
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, 'memory_forgotten', NULL, ?, ?, NULL)`,
+    ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
     if (info.changes === 0) return false;
     this.materialiseMemory(memory_id);
     return true;
   }
 
-  writePurged(memory_id: string): boolean {
+  writePurged(memory_id: string, cloud_owner_id: string | null = null): boolean {
+    // Succeeds even when no memory_created event exists yet (purge-before-create
+    // is a valid sequence — purge dominates regardless of arrival order).
+    // Returns false only when a memory_purged event already exists for this
+    // memory_id (idempotent).
     const info = this.db.prepare(
       `INSERT OR IGNORE INTO memory_events
-         (event_id, memory_id, event_type, space_id, created_at, cloud_synced_at)
-       VALUES (?, ?, 'memory_purged', NULL, ?, NULL)`,
-    ).run(crypto.randomUUID(), memory_id, Date.now());
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, 'memory_purged', NULL, ?, ?, NULL)`,
+    ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
     if (info.changes === 0) return false;
     // Ensure a payload row exists so the materialisation pass can null its content.
     this.db.prepare(
@@ -447,13 +535,29 @@ git commit -m "feat(memory): event write API with precedence-based materialisati
 
 ## Task 3: Migrate `remember` / `forget` to write through events; add internal `purge`
 
-**Goal:** Existing MCP/HTTP entry points (`remember`, `forget`) now go through the event API. Add a server-internal `purge(id)` method on the provider — not exposed via MCP yet (per spec: "Possibly not exposed via MCP at all in the first cut").
+**Goal:** Existing MCP/HTTP entry points (`remember`, `forget`) now go through the event API. Add a server-internal `purge(id)` method on the provider — not exposed via MCP yet (per spec: "Possibly not exposed via MCP at all in the first cut"). Each entry point captures `cloud_owner_id` from auth state at write time, per the account-switching policy stated at the top of this plan.
 
 **Files:**
-- Modify: `server/src/memory-store.ts` (rewrite `remember` / `forget` bodies; add `purge` to interface + impl)
-- Modify: `server/test/memory-store.test.ts` (existing tests still pass; add one for `purge`)
+- Modify: `server/src/memory-store.ts` (extend `RememberInput`; add `resolveCurrentOwnerId` callback to `registerMemoryTools`; rewrite `remember`/`forget` bodies; add `purge` to interface + impl)
+- Modify: `server/src/index.ts` (pass `resolveCurrentOwnerId` from auth state when calling `registerMemoryTools`)
+- Modify: `server/src/routes/memories.ts` (HTTP DELETE forwards owner_id from auth state)
+- Modify: `server/test/memory-store.test.ts`
 
-- [ ] **Step 1: Migrate `remember()` body**
+- [ ] **Step 1: Extend `RememberInput`**
+
+In the `RememberInput` interface at the top of `memory-store.ts`:
+
+```typescript
+export interface RememberInput {
+  content: string;
+  space_id?: string;
+  tags?: string[];
+  source_session_id?: string | null;
+  cloud_owner_id?: string | null;
+}
+```
+
+- [ ] **Step 2: Migrate `remember()` body**
 
 Replace the `async remember(input)` method body in `SqliteFtsMemoryProvider`:
 
@@ -474,26 +578,33 @@ Replace the `async remember(input)` method body in `SqliteFtsMemoryProvider`:
       space_id: spaceId,
       tags: input.tags,
       source_session_id: input.source_session_id,
+      cloud_owner_id: input.cloud_owner_id ?? null,
     });
     const row = this.stmts.getById.get(memory_id) as MemoryRow;
     return rowToMemory(row);
   }
 ```
 
-- [ ] **Step 2: Migrate `forget()` body**
+- [ ] **Step 3: Migrate `forget()` body**
 
-Replace the `async forget(id)` method body:
+Add an optional second parameter to the interface:
 
 ```typescript
-  async forget(id: string): Promise<boolean> {
+forget(id: string, cloud_owner_id?: string | null): Promise<boolean>;
+```
+
+Replace the implementation:
+
+```typescript
+  async forget(id: string, cloud_owner_id: string | null = null): Promise<boolean> {
     const row = this.stmts.getById.get(id) as MemoryRow | undefined;
     if (!row) return false;
-    this.writeForgotten(id);
+    this.writeForgotten(id, cloud_owner_id);
     return true;
   }
 ```
 
-- [ ] **Step 3: Add `purge` to the `MemoryProvider` interface**
+- [ ] **Step 4: Add `purge` to the `MemoryProvider` interface**
 
 In the `MemoryProvider` interface (top of file), add:
 
@@ -501,26 +612,73 @@ In the `MemoryProvider` interface (top of file), add:
   /** Server-internal hard-redaction. Writes a purge event and nulls payload
    *  content. Not exposed via MCP in v1; reserved for "delete forever" UI,
    *  account deletion, and secret-exposure flows. */
-  purge(id: string): Promise<boolean>;
+  purge(id: string, cloud_owner_id?: string | null): Promise<boolean>;
 ```
 
-- [ ] **Step 4: Implement `purge` on the provider**
+- [ ] **Step 5: Implement `purge` on the provider**
 
 After `forget`:
 
 ```typescript
-  async purge(id: string): Promise<boolean> {
+  async purge(id: string, cloud_owner_id: string | null = null): Promise<boolean> {
     const row = this.stmts.getById.get(id) as MemoryRow | undefined;
     const hasEvent = this.db.prepare(
       `SELECT 1 FROM memory_events WHERE memory_id = ? LIMIT 1`,
     ).get(id);
     if (!row && !hasEvent) return false;
-    this.writePurged(id);
+    this.writePurged(id, cloud_owner_id);
     return true;
   }
 ```
 
-- [ ] **Step 5: Write a test for `purge`**
+- [ ] **Step 6: Wire `resolveCurrentOwnerId` callback into `registerMemoryTools`**
+
+Update the `registerMemoryTools` signature in `memory-store.ts` to accept a callback that returns the current Pro user's id (or null):
+
+```typescript
+export function registerMemoryTools(
+  tool: ToolDefiner,
+  provider: MemoryProvider,
+  resolveActiveSessionId: () => string | null = () => null,
+  resolveCurrentOwnerId: () => string | null = () => null,
+): void {
+```
+
+Inside `remember`'s tool handler, pass `cloud_owner_id`:
+
+```typescript
+    async ({ content, space_id, tags }) => provider.remember({
+      content,
+      space_id,
+      tags,
+      source_session_id: resolveActiveSessionId(),
+      cloud_owner_id: resolveCurrentOwnerId(),
+    }),
+```
+
+Inside `forget`'s tool handler, pass owner:
+
+```typescript
+    async ({ id }) => {
+      await provider.forget(id, resolveCurrentOwnerId());
+      return `Memory "${id}" forgotten.`;
+    },
+```
+
+Then in `server/src/index.ts`, where `registerMemoryTools` is invoked (find via the existing `resolveActiveSessionId` argument), add the new callback:
+
+```typescript
+registerMemoryTools(
+  tool,
+  memoryProvider,
+  resolveActiveSessionId,
+  () => authService.getState().user?.id ?? null,
+);
+```
+
+Also update `server/src/routes/memories.ts`'s DELETE handler to pass `authService.getState().user?.id` to `provider.forget(id, …)`.
+
+- [ ] **Step 7: Write a test for `purge`**
 
 Append to `server/test/memory-store.test.ts`:
 
@@ -546,20 +704,20 @@ describe("provider.purge", () => {
 });
 ```
 
-- [ ] **Step 6: Run the full memory-store suite**
+- [ ] **Step 8: Run the full memory-store suite**
 
 Run: `cd server && npx vitest run test/memory-store.test.ts`
 Expected: all passing — existing `remember`/`forget` tests still pass because the surface contract is unchanged.
 
-- [ ] **Step 7: Run the full server test suite to catch downstream breakage**
+- [ ] **Step 9: Run the full server test suite to catch downstream breakage**
 
 Run: `cd server && npx vitest run`
 Expected: all passing. If `routes/memories.ts` or `mcp-server.ts` tests fail, debug — the surface should be unchanged.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add server/src/memory-store.ts server/test/memory-store.test.ts
+git add server/src/memory-store.ts server/src/index.ts server/src/routes/memories.ts server/test/memory-store.test.ts
 git commit -m "feat(memory): route remember/forget through event API; add internal purge (#318)"
 ```
 
@@ -568,6 +726,8 @@ git commit -m "feat(memory): route remember/forget through event API; add intern
 ## Task 4: Backfill existing memories at boot
 
 **Goal:** On server start, any existing `memories` rows that have no corresponding `memory_created` event get one inserted (with the original `created_at`). If `superseded_by` is non-NULL, also insert a `memory_forgotten` event. Idempotent — re-running is a no-op due to the per-type unique indexes.
+
+Backfilled events are tagged with `cloud_owner_id = NULL`. They become syncable when the user signs in to a Pro account AND a follow-up plan ships an explicit "claim local memories for this Pro account" flow. v1 keeps pre-existing memories local-only by default (privacy-first); a Pro user creating new memories after sign-in gets full sync.
 
 **Files:**
 - Modify: `server/src/memory-store.ts` (new method `backfillFromLegacy()` + call in `init()`)
@@ -681,10 +841,13 @@ In `SqliteFtsMemoryProvider`, after `materialiseMemory`:
     for (const r of rows) {
       // SQLite text timestamps → unix ms
       const created_ms = Date.parse(r.created_at + "Z") || Date.now();
+      // cloud_owner_id intentionally NULL — backfilled events do not push to
+      // any current Pro account. Pre-existing memories stay local until an
+      // explicit claim flow is shipped (see "Account-switching policy").
       this.db.prepare(
         `INSERT OR IGNORE INTO memory_events
-           (event_id, memory_id, event_type, space_id, created_at, cloud_synced_at)
-         VALUES (?, ?, 'memory_created', ?, ?, NULL)`,
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_created', ?, NULL, ?, NULL)`,
       ).run(crypto.randomUUID(), r.id, r.space_id, created_ms);
 
       this.db.prepare(
@@ -697,8 +860,8 @@ In `SqliteFtsMemoryProvider`, after `materialiseMemory`:
         const evType = r.superseded_by === "purged" ? "memory_purged" : "memory_forgotten";
         this.db.prepare(
           `INSERT OR IGNORE INTO memory_events
-             (event_id, memory_id, event_type, space_id, created_at, cloud_synced_at)
-           VALUES (?, ?, ?, NULL, ?, NULL)`,
+             (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+           VALUES (?, ?, ?, NULL, NULL, ?, NULL)`,
         ).run(crypto.randomUUID(), r.id, evType, created_ms + 1);
       }
     }
@@ -732,13 +895,191 @@ git commit -m "feat(memory): backfill legacy memories into events at boot (#318)
 
 ---
 
+## Task 4.5: Bootstrap `infra/oyster-cloud` Worker
+
+**Goal:** Create the new Cloudflare Worker that will own private signed-in user APIs, starting with memory sync. Empty fetch dispatcher (returns 404 for any path) plus the shared session-resolution machinery copied from `oyster-publish`. No memory-specific routes yet — those land in Tasks 6 and 7.
+
+**Files:**
+- Create: `infra/oyster-cloud/package.json`
+- Create: `infra/oyster-cloud/tsconfig.json`
+- Create: `infra/oyster-cloud/wrangler.toml`
+- Create: `infra/oyster-cloud/src/worker.ts`
+- Create: `infra/oyster-cloud/src/session.ts` (copy of `resolveSession` + types from `oyster-publish/src/worker.ts`)
+- Create: `infra/oyster-cloud/src/json.ts` (copy of `jsonOk` / `jsonError` helpers)
+- Create: `infra/oyster-cloud/test/worker.test.ts`
+- Create: `infra/oyster-cloud/vitest.config.ts`
+- Modify: top-level `package.json` workspaces (if a workspaces array exists; check first)
+
+**Pattern source:** `infra/oyster-publish/` is the reference. Mirror its file layout and idioms; copy auth/json helpers verbatim — these will be deduplicated in a future shared package, but DRY-up is out of scope for this PR.
+
+**Deployment route:** the new Worker binds at `cloud.oyster.to/api/*`. The `wrangler.toml` declares the route; the actual DNS / production rollout is a manual step performed by the maintainer at deploy time (not in this plan).
+
+- [ ] **Step 1: Create `wrangler.toml`**
+
+```toml
+name = "oyster-cloud"
+main = "src/worker.ts"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "oyster-auth"
+database_id = "44086805-fbfa-4446-8626-126af7e2ec19"
+migrations_dir = "../auth-worker/migrations"
+
+[[routes]]
+pattern = "cloud.oyster.to/api/*"
+zone_name = "oyster.to"
+```
+
+- [ ] **Step 2: Create `package.json`**
+
+```json
+{
+  "name": "@oyster/cloud-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "*",
+    "@cloudflare/workers-types": "*",
+    "typescript": "*",
+    "vitest": "*",
+    "wrangler": "*"
+  }
+}
+```
+
+Use the same dependency versions as `infra/oyster-publish/package.json` — copy them across. Run `npm install` from the new directory after writing.
+
+- [ ] **Step 3: Create `tsconfig.json`**
+
+Copy `infra/oyster-publish/tsconfig.json` verbatim. No changes needed — same target, same compiler options.
+
+- [ ] **Step 4: Create `vitest.config.ts`**
+
+Mirror `infra/oyster-publish/vitest.config.ts`. The key bits: `@cloudflare/vitest-pool-workers` as pool, D1 migration loading from `../auth-worker/migrations/`. If the publish config imports a setup file, copy that too.
+
+- [ ] **Step 5: Create `src/json.ts`**
+
+Copy the `jsonOk` and `jsonError` helpers from `infra/oyster-publish/src/worker.ts` into a standalone module. Same signatures, same behaviour.
+
+```typescript
+export function jsonOk(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+  });
+}
+
+export function jsonError(status: number, code: string, message?: string): Response {
+  const body: Record<string, unknown> = { error: code };
+  if (message) body.message = message;
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+```
+
+- [ ] **Step 6: Create `src/session.ts`**
+
+Copy `resolveSession` and its types from `infra/oyster-publish/src/worker.ts`. This gives the new Worker the same auth surface — same cookie name (`oyster_session`), same SQL, same return shape (`{ id, email, tier }` or null).
+
+- [ ] **Step 7: Create `src/worker.ts` — empty dispatcher**
+
+```typescript
+import { jsonError } from "./json.js";
+import type { Env } from "./session.js";
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
+
+    // Routes for this worker land in Tasks 6 and 7. For now, anything
+    // that isn't matched returns 404. Health-check responds 200 for
+    // deployment smoke-tests.
+    if (url.pathname === "/health" && req.method === "GET") {
+      return new Response("ok", { status: 200 });
+    }
+
+    return jsonError(404, "not_found");
+  },
+};
+```
+
+(`Env` is the type defined in `session.ts` carrying the D1 binding; mirror what `oyster-publish` does.)
+
+- [ ] **Step 8: Write smoke tests**
+
+Create `infra/oyster-cloud/test/worker.test.ts`:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { SELF } from "cloudflare:test";
+
+describe("oyster-cloud worker bootstrap", () => {
+  it("returns 200 for /health", async () => {
+    const res = await SELF.fetch("https://example.com/health");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("ok");
+  });
+
+  it("returns 404 for unmatched paths", async () => {
+    const res = await SELF.fetch("https://example.com/api/anything");
+    expect(res.status).toBe(404);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("not_found");
+  });
+
+  it("D1 binding is wired (smoke check via users table existence)", async () => {
+    // The shared oyster-auth migrations should have run; the users table exists.
+    const { results } = await import("cloudflare:test").then(({ env }) =>
+      env.DB.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='users'`,
+      ).all<{ name: string }>(),
+    );
+    expect(results?.[0]?.name).toBe("users");
+  });
+});
+```
+
+- [ ] **Step 9: Run tests**
+
+Run: `cd infra/oyster-cloud && npm install && npx vitest run`
+Expected: 3 passing.
+
+- [ ] **Step 10: Local server config — define `CLOUD_WORKER_BASE`**
+
+In `server/src/index.ts`, where `WORKER_BASE` (used by spaces sync) is defined, add a sibling for the new Worker. Example:
+
+```typescript
+const CLOUD_WORKER_BASE = process.env.OYSTER_CLOUD_BASE ?? "https://cloud.oyster.to";
+```
+
+This will be passed into `MemorySyncService` in Task 10 instead of reusing `WORKER_BASE`. Local dev can override via env var to point at `http://localhost:8788` or wherever wrangler dev hosts the new Worker.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add infra/oyster-cloud/
+git add server/src/index.ts        # only if CLOUD_WORKER_BASE was added now
+git commit -m "feat(infra): bootstrap oyster-cloud Worker for private user APIs (#318)"
+```
+
+---
+
 ## Task 5: Cloud D1 migration — synced_memory_events + synced_memory_payloads
 
 **Goal:** Mirror the local schema in D1 with all four uniqueness constraints from the spec.
 
 **Files:**
 - Create: `infra/auth-worker/migrations/0007_synced_memories.sql`
-- Modify: `infra/oyster-publish/test/spaces.test.ts` (or new test file) — verify migration applies.
+- Create: `infra/oyster-cloud/test/memories-events.test.ts` — verify migration applies (this is the same test file used by Tasks 6 and 7).
 
 - [ ] **Step 1: Write the migration file**
 
@@ -756,7 +1097,7 @@ CREATE TABLE IF NOT EXISTS synced_memory_events (
   owner_id        TEXT    NOT NULL,
   event_id        TEXT    NOT NULL,
   memory_id       TEXT    NOT NULL,
-  event_type      TEXT    NOT NULL,    -- memory_created | memory_forgotten | memory_purged
+  event_type      TEXT    NOT NULL CHECK (event_type IN ('memory_created','memory_forgotten','memory_purged')),
   space_id        TEXT,                -- meaningful only when event_type = 'memory_created'
   created_at      INTEGER NOT NULL,    -- unix ms; not used for LWW, just ordering
   ingested_at     INTEGER NOT NULL,    -- when the cloud accepted the event
@@ -801,7 +1142,7 @@ Expected: migration applies cleanly. Re-running is a no-op.
 
 - [ ] **Step 3: Write a smoke test that the table exists in test D1**
 
-Worker tests run with `@cloudflare/vitest-pool-workers`. Migrations are applied via `wrangler d1 migrations apply --local` before the suite runs (or via the project's existing test setup — check `infra/oyster-publish/vitest.config.ts` and the corresponding `setup` file used by spaces tests; mirror its migration-loading mechanism). Create a new file `infra/oyster-publish/test/memories-events.test.ts`:
+Worker tests run with `@cloudflare/vitest-pool-workers`. Migrations are applied via `wrangler d1 migrations apply --local` before the suite runs (or via the project's existing test setup — check `infra/oyster-publish/vitest.config.ts` and the corresponding `setup` file used by spaces tests; mirror its migration-loading mechanism). Create a new file `infra/oyster-cloud/test/memories-events.test.ts`:
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -841,13 +1182,13 @@ describe("synced_memory_events / synced_memory_payloads schema", () => {
 
 - [ ] **Step 4: Run worker tests to verify schema**
 
-Run: `cd infra/oyster-publish && npx vitest run test/memories-events.test.ts`
+Run: `cd infra/oyster-cloud && npx vitest run test/memories-events.test.ts`
 Expected: 3 passing.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add infra/auth-worker/migrations/0007_synced_memories.sql infra/oyster-publish/test/memories-events.test.ts
+git add infra/auth-worker/migrations/0007_synced_memories.sql infra/oyster-cloud/test/memories-events.test.ts
 git commit -m "feat(d1): synced_memory_events + synced_memory_payloads schema (#318)"
 ```
 
@@ -879,18 +1220,25 @@ For `memory_forgotten` and `memory_purged`, `payload` is omitted. Server ignores
 **Wire format (response):**
 
 ```json
-{ "accepted": ["event_id1", "event_id2"], "skipped": ["event_id3"] }
+{
+  "accepted":   ["..."],   // newly inserted events; client marks synced
+  "duplicates": ["..."],   // event_id already in cloud (idempotent retry); client marks synced
+  "conflicts":  ["..."],   // per-type uniqueness rejected (e.g. second memory_created for same memory_id); client marks synced
+  "rejected":   ["..."]    // malformed / disallowed (e.g. memory_created without payload, no prior purge); client does NOT mark synced — surfaces a warning
+}
 ```
 
-`skipped` covers duplicates (event_id already exists) and idempotent-uniqueness conflicts (e.g. second create for same memory_id).
+The four-way split matters: only the first three are safe to mark `cloud_synced_at`. `rejected` events stay pending and produce a warning so a client bug doesn't silently drop user data.
+
+**Precedence ordering at ingest:** the worker sorts incoming events within each batch by precedence (purges first, then forgets, then creates), then by `created_at` ascending. This matters because the client may push a `memory_created` whose payload was already nulled locally (because a purge for the same `memory_id` was queued behind it). Processing the purge first means the create lands with the correct redaction even when the events arrive in write-order from the client.
 
 **Files:**
-- Modify: `infra/oyster-publish/src/worker.ts` (route handler + dispatch)
-- Modify: `infra/oyster-publish/test/memories-events.test.ts`
+- Modify: `infra/oyster-cloud/src/worker.ts` (route handler + dispatch)
+- Modify: `infra/oyster-cloud/test/memories-events.test.ts`
 
 - [ ] **Step 1: Wire the route in the dispatcher**
 
-In `infra/oyster-publish/src/worker.ts`, in the main `fetch` block (around line 89, before the final `return new Response("Not Found", ...)`):
+In `infra/oyster-cloud/src/worker.ts`, in the main `fetch` block, before the final `return jsonError(404, "not_found");`:
 
 ```typescript
     if (url.pathname === "/api/memories/events" && req.method === "POST") {
@@ -903,7 +1251,7 @@ In `infra/oyster-publish/src/worker.ts`, in the main `fetch` block (around line 
 
 - [ ] **Step 2: Write failing tests for POST**
 
-Append to `infra/oyster-publish/test/memories-events.test.ts`:
+Append to `infra/oyster-cloud/test/memories-events.test.ts`:
 
 ```typescript
 import { SELF } from "cloudflare:test";
@@ -970,9 +1318,11 @@ describe("POST /api/memories/events", () => {
       }),
     }, token);
     expect(res.status).toBe(200);
-    const body = await res.json() as { accepted: string[]; skipped: string[] };
+    const body = await res.json() as { accepted: string[]; duplicates: string[]; conflicts: string[]; rejected: string[] };
     expect(body.accepted).toEqual(["ev-1"]);
-    expect(body.skipped).toEqual([]);
+    expect(body.duplicates).toEqual([]);
+    expect(body.conflicts).toEqual([]);
+    expect(body.rejected).toEqual([]);
 
     const ev = await env.DB.prepare(
       `SELECT event_type FROM synced_memory_events WHERE owner_id = ? AND event_id = ?`,
@@ -985,7 +1335,7 @@ describe("POST /api/memories/events", () => {
     expect(pay?.content).toBe("hello");
   });
 
-  it("is idempotent on duplicate event_id (skipped)", async () => {
+  it("duplicate event_id is reported as `duplicates`, not `accepted`", async () => {
     const { token } = await makeProSession(env);
     const event = {
       event_id:  "ev-dup",
@@ -998,7 +1348,74 @@ describe("POST /api/memories/events", () => {
     const first  = await signedInRequest("/api/memories/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ events: [event] }) }, token);
     expect((await first.json() as any).accepted).toEqual(["ev-dup"]);
     const second = await signedInRequest("/api/memories/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ events: [event] }) }, token);
-    expect((await second.json() as any).skipped).toEqual(["ev-dup"]);
+    const body = await second.json() as { accepted: string[]; duplicates: string[]; conflicts: string[]; rejected: string[] };
+    expect(body.duplicates).toEqual(["ev-dup"]);
+    expect(body.accepted).toEqual([]);
+  });
+
+  it("second create for same memory_id with different event_id is `conflicts`", async () => {
+    const { token } = await makeProSession(env);
+    const first  = await signedInRequest("/api/memories/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ events: [{ event_id: "ev-A", memory_id: "mem-Z", event_type: "memory_created", space_id: null, created_at: 1000, payload: { content: "first", tags: [] } }] }) }, token);
+    expect((await first.json() as any).accepted).toEqual(["ev-A"]);
+    const second = await signedInRequest("/api/memories/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ events: [{ event_id: "ev-B", memory_id: "mem-Z", event_type: "memory_created", space_id: null, created_at: 2000, payload: { content: "second", tags: [] } }] }) }, token);
+    const body = await second.json() as { accepted: string[]; conflicts: string[] };
+    expect(body.conflicts).toEqual(["ev-B"]);
+  });
+
+  it("rejects malformed events; surfaces them in `rejected`", async () => {
+    const { token } = await makeProSession(env);
+    const res = await signedInRequest("/api/memories/events", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        events: [
+          { event_id: "ev-good", memory_id: "mem-G", event_type: "memory_created", space_id: null, created_at: 1, payload: { content: "ok", tags: [] } },
+          { event_id: "ev-bad-type", memory_id: "mem-B1", event_type: "lol", space_id: null, created_at: 1 },
+          { event_id: "ev-bad-empty-id", memory_id: "", event_type: "memory_created", space_id: null, created_at: 1, payload: { content: "x", tags: [] } },
+          { event_id: "", memory_id: "mem-B3", event_type: "memory_created", space_id: null, created_at: 1, payload: { content: "x", tags: [] } },
+        ],
+      }),
+    }, token);
+    const body = await res.json() as { accepted: string[]; rejected: string[] };
+    expect(body.accepted).toEqual(["ev-good"]);
+    expect(body.rejected).toEqual(expect.arrayContaining(["ev-bad-type", "ev-bad-empty-id"]));
+  });
+
+  it("rejects memory_created without payload when no purge exists", async () => {
+    const { token } = await makeProSession(env);
+    const res = await signedInRequest("/api/memories/events", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        events: [{ event_id: "ev-empty", memory_id: "mem-E", event_type: "memory_created", space_id: null, created_at: 1 }],
+      }),
+    }, token);
+    const body = await res.json() as { accepted: string[]; rejected: string[] };
+    expect(body.rejected).toEqual(["ev-empty"]);
+    expect(body.accepted).toEqual([]);
+  });
+
+  it("accepts memory_created without payload when a purge already exists in the same batch (sorted first)", async () => {
+    const { token, userId } = await makeProSession(env);
+    const res = await signedInRequest("/api/memories/events", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        events: [
+          // Client writes create then purge; sort puts purge first.
+          { event_id: "ev-c", memory_id: "mem-Y", event_type: "memory_created", space_id: null, created_at: 1000 },
+          { event_id: "ev-p", memory_id: "mem-Y", event_type: "memory_purged",  space_id: null, created_at: 2000 },
+        ],
+      }),
+    }, token);
+    const body = await res.json() as { accepted: string[]; rejected: string[] };
+    expect(body.accepted.sort()).toEqual(["ev-c", "ev-p"].sort());
+    expect(body.rejected).toEqual([]);
+    const pay = await env.DB.prepare(
+      `SELECT content, purged_at FROM synced_memory_payloads WHERE owner_id = ? AND memory_id = ?`,
+    ).bind(userId, "mem-Y").first<{ content: string | null; purged_at: number | null }>();
+    expect(pay?.content).toBeNull();
+    expect(pay?.purged_at).not.toBeNull();
   });
 
   it("memory_purged nulls payload content even if create arrives later", async () => {
@@ -1035,15 +1452,17 @@ describe("POST /api/memories/events", () => {
 
 - [ ] **Step 3: Run failing tests**
 
-Run: `cd infra/oyster-publish && npx vitest run test/memories-events.test.ts -t "POST"`
+Run: `cd infra/oyster-cloud && npx vitest run test/memories-events.test.ts -t "POST"`
 Expected: 5 failures — handlers don't exist.
 
 - [ ] **Step 4: Implement `handleMemoryEventsPost`**
 
-In `infra/oyster-publish/src/worker.ts`, after `handleSpacesDelete`:
+In `infra/oyster-cloud/src/worker.ts`, after the dispatcher (define handlers below the `export default` block, mirroring `oyster-publish`'s structure):
 
 ```typescript
 async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response> {
+  // resolveSession + jsonOk/jsonError come from `./session.js` and `./json.js`
+  // respectively (created in Task 4.5). Add explicit imports at top of file.
   const user = await resolveSession(req, env);
   if (!user) return jsonError(401, "sign_in_required");
   if (user.tier !== "pro") return jsonError(403, "pro_required");
@@ -1060,55 +1479,96 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
   try { body = await req.json() as typeof body; }
   catch { return jsonError(400, "invalid_metadata"); }
 
-  const events = body.events ?? [];
-  if (!Array.isArray(events)) return jsonError(400, "invalid_metadata");
+  const incoming = body.events ?? [];
+  if (!Array.isArray(incoming)) return jsonError(400, "invalid_metadata");
 
-  const accepted: string[] = [];
-  const skipped: string[] = [];
-  const now = Date.now();
+  const accepted:   string[] = [];
+  const duplicates: string[] = [];
+  const conflicts:  string[] = [];
+  const rejected:   string[] = [];
 
-  for (const ev of events) {
-    if (
-      typeof ev.event_id !== "string" ||
-      typeof ev.memory_id !== "string" ||
-      (ev.event_type !== "memory_created" && ev.event_type !== "memory_forgotten" && ev.event_type !== "memory_purged") ||
-      typeof ev.created_at !== "number"
-    ) {
-      skipped.push(ev.event_id ?? "<malformed>");
+  // Validate each event up-front. Rejected events are NOT marked synced by
+  // the client — they surface as warnings.
+  function isValidEvent(ev: unknown): ev is IncomingEvent {
+    if (!ev || typeof ev !== "object") return false;
+    const e = ev as Record<string, unknown>;
+    if (typeof e.event_id !== "string" || e.event_id.length === 0) return false;
+    if (typeof e.memory_id !== "string" || e.memory_id.length === 0) return false;
+    if (e.event_type !== "memory_created" && e.event_type !== "memory_forgotten" && e.event_type !== "memory_purged") return false;
+    if (typeof e.created_at !== "number" || !Number.isFinite(e.created_at) || e.created_at < 0) return false;
+    if (e.space_id !== null && typeof e.space_id !== "string") return false;
+    if (e.event_type === "memory_created" && e.payload !== undefined) {
+      const p = e.payload as Record<string, unknown>;
+      if (!p || typeof p !== "object") return false;
+      if (typeof p.content !== "string") return false;
+      if (!Array.isArray(p.tags) || !p.tags.every((t) => typeof t === "string")) return false;
+    }
+    return true;
+  }
+
+  const valid: IncomingEvent[] = [];
+  for (const raw of incoming) {
+    if (!isValidEvent(raw)) {
+      const id = (raw as { event_id?: unknown })?.event_id;
+      rejected.push(typeof id === "string" ? id : "<malformed>");
       continue;
     }
+    valid.push(raw);
+  }
 
-    // Insert event with INSERT OR IGNORE on (owner_id, event_id) PK and the
-    // per-type unique indexes. Either succeeds (accepted) or no-ops (skipped).
-    const evResult = await env.DB.prepare(
+  // Precedence-first ordering: purges, then forgets, then creates. Within each
+  // bucket, sort by created_at ascending. This ensures a `memory_created`
+  // event whose payload was nulled locally before sync (purge-arrives-second
+  // from the client) lands AFTER any same-batch purge has been recorded, so
+  // the payload-upsert query naturally suppresses the content.
+  const PRECEDENCE: Record<IncomingEvent["event_type"], number> = {
+    memory_purged: 0, memory_forgotten: 1, memory_created: 2,
+  };
+  valid.sort((a, b) => PRECEDENCE[a.event_type] - PRECEDENCE[b.event_type] || a.created_at - b.created_at);
+
+  // Track which memory_ids have a purge in this batch — combined with the
+  // existing-purge check in DB, used to validate empty-payload creates.
+  const purgedInBatch = new Set<string>();
+  for (const ev of valid) if (ev.event_type === "memory_purged") purgedInBatch.add(ev.memory_id);
+
+  const now = Date.now();
+  for (const ev of valid) {
+    // Reject memory_created without payload UNLESS a purge already exists
+    // for this memory_id (in cloud OR earlier in this batch). Otherwise an
+    // empty-payload create would land an unrecoverable empty memory.
+    if (ev.event_type === "memory_created" && !ev.payload) {
+      const existingPurge = await env.DB.prepare(
+        `SELECT 1 FROM synced_memory_events
+          WHERE owner_id = ? AND memory_id = ? AND event_type = 'memory_purged' LIMIT 1`,
+      ).bind(user.id, ev.memory_id).first();
+      if (!existingPurge && !purgedInBatch.has(ev.memory_id)) {
+        rejected.push(ev.event_id);
+        continue;
+      }
+    }
+
+    // Build the event-insert + payload statement atomically via env.DB.batch.
+    // Each event's pair runs as one D1 transaction — no half-applied state.
+    const eventStmt = env.DB.prepare(
       `INSERT OR IGNORE INTO synced_memory_events
          (owner_id, event_id, memory_id, event_type, space_id, created_at, ingested_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(user.id, ev.event_id, ev.memory_id, ev.event_type, ev.space_id, ev.created_at, now).run();
+    ).bind(user.id, ev.event_id, ev.memory_id, ev.event_type, ev.space_id, ev.created_at, now);
 
-    if (!evResult.meta.changes) {
-      skipped.push(ev.event_id);
-      continue;
-    }
-    accepted.push(ev.event_id);
-
-    // Apply payload-side effects with the precedence rule:
-    //   purge dominates → if any purge exists for this memory_id, content=NULL.
-    //   create with content → only set content/tags if no purge yet.
-    //   forgotten → no payload change.
+    let payloadStmt: ReturnType<typeof env.DB.prepare> | null = null;
     if (ev.event_type === "memory_purged") {
-      await env.DB.prepare(
+      payloadStmt = env.DB.prepare(
         `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
          VALUES (?, ?, NULL, '[]', ?)
          ON CONFLICT(owner_id, memory_id) DO UPDATE SET
            content   = NULL,
            tags      = '[]',
            purged_at = excluded.purged_at`,
-      ).bind(user.id, ev.memory_id, ev.created_at).run();
+      ).bind(user.id, ev.memory_id, ev.created_at);
     } else if (ev.event_type === "memory_created" && ev.payload) {
       // Idempotent payload upsert that respects an earlier purge.
-      // Insert content only if no purge exists; otherwise leave content NULL.
-      await env.DB.prepare(
+      // If a purge exists for this memory_id (in cloud), content stays NULL.
+      payloadStmt = env.DB.prepare(
         `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
            SELECT ?, ?, ?, ?, NULL
             WHERE NOT EXISTS (
@@ -1132,23 +1592,45 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
                THEN '[]'
              ELSE excluded.tags
            END`,
-      ).bind(user.id, ev.memory_id, ev.payload.content, JSON.stringify(ev.payload.tags), user.id, ev.memory_id).run();
+      ).bind(
+        user.id, ev.memory_id, ev.payload.content, JSON.stringify(ev.payload.tags),
+        user.id, ev.memory_id,
+      );
     }
+
+    const stmts = payloadStmt ? [eventStmt, payloadStmt] : [eventStmt];
+    const results = await env.DB.batch(stmts);
+    const eventChanges = results[0].meta.changes;
+
+    if (eventChanges > 0) {
+      accepted.push(ev.event_id);
+      continue;
+    }
+
+    // Event INSERT was a no-op. Distinguish duplicate event_id from per-type
+    // uniqueness conflict. The PK is (owner_id, event_id); per-type partial
+    // unique indexes cover (owner_id, memory_id, event_type) WHERE the type
+    // matches. Both are safely idempotent — caller marks them synced.
+    const dup = await env.DB.prepare(
+      `SELECT 1 FROM synced_memory_events WHERE owner_id = ? AND event_id = ? LIMIT 1`,
+    ).bind(user.id, ev.event_id).first();
+    if (dup) duplicates.push(ev.event_id);
+    else conflicts.push(ev.event_id);
   }
 
-  return jsonOk({ accepted, skipped });
+  return jsonOk({ accepted, duplicates, conflicts, rejected });
 }
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd infra/oyster-publish && npx vitest run test/memories-events.test.ts -t "POST"`
+Run: `cd infra/oyster-cloud && npx vitest run test/memories-events.test.ts -t "POST"`
 Expected: 5 passing.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add infra/oyster-publish/src/worker.ts infra/oyster-publish/test/memories-events.test.ts
+git add infra/oyster-cloud/src/worker.ts infra/oyster-cloud/test/memories-events.test.ts
 git commit -m "feat(worker): POST /api/memories/events with idempotent ingest + Pro gate (#318)"
 ```
 
@@ -1159,8 +1641,8 @@ git commit -m "feat(worker): POST /api/memories/events with idempotent ingest + 
 **Goal:** Pull all events for the signed-in Pro user, joined with payload state, ordered by `created_at`. No pagination in v1 — memories are tiny; full mirror per device is the design.
 
 **Files:**
-- Modify: `infra/oyster-publish/src/worker.ts`
-- Modify: `infra/oyster-publish/test/memories-events.test.ts`
+- Modify: `infra/oyster-cloud/src/worker.ts`
+- Modify: `infra/oyster-cloud/test/memories-events.test.ts`
 
 **Wire format (response):**
 
@@ -1184,7 +1666,7 @@ git commit -m "feat(worker): POST /api/memories/events with idempotent ingest + 
 
 - [ ] **Step 1: Write failing test**
 
-Append to `infra/oyster-publish/test/memories-events.test.ts`:
+Append to `infra/oyster-cloud/test/memories-events.test.ts`:
 
 ```typescript
 describe("GET /api/memories/events", () => {
@@ -1231,12 +1713,12 @@ describe("GET /api/memories/events", () => {
 
 - [ ] **Step 2: Run failing tests**
 
-Run: `cd infra/oyster-publish && npx vitest run test/memories-events.test.ts -t "GET"`
+Run: `cd infra/oyster-cloud && npx vitest run test/memories-events.test.ts -t "GET"`
 Expected: 3 failures.
 
 - [ ] **Step 3: Implement `handleMemoryEventsGet`**
 
-In `worker.ts`, after `handleMemoryEventsPost`:
+In `infra/oyster-cloud/src/worker.ts`, after `handleMemoryEventsPost`:
 
 ```typescript
 async function handleMemoryEventsGet(req: Request, env: Env, _url: URL): Promise<Response> {
@@ -1288,18 +1770,18 @@ async function handleMemoryEventsGet(req: Request, env: Env, _url: URL): Promise
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd infra/oyster-publish && npx vitest run test/memories-events.test.ts -t "GET"`
+Run: `cd infra/oyster-cloud && npx vitest run test/memories-events.test.ts -t "GET"`
 Expected: 3 passing.
 
 - [ ] **Step 5: Run full worker test suite to confirm no regressions**
 
-Run: `cd infra/oyster-publish && npx vitest run`
-Expected: all passing (existing space + publish tests still pass).
+Run: `cd infra/oyster-cloud && npx vitest run`
+Expected: all passing — bootstrap tests (Task 4.5), POST tests (Task 6), GET tests (Task 7).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add infra/oyster-publish/src/worker.ts infra/oyster-publish/test/memories-events.test.ts
+git add infra/oyster-cloud/src/worker.ts infra/oyster-cloud/test/memories-events.test.ts
 git commit -m "feat(worker): GET /api/memories/events with payload join + Pro gate (#318)"
 ```
 
@@ -1420,6 +1902,49 @@ describe("MemorySyncService", () => {
     expect(pulled).toBe(1);
     const list = await provider.list();
     expect(list.find((m) => m.id === "mem-r1")?.content).toBe("from-cloud");
+  });
+
+  it("pull marks a local pending event as synced when it appears in cloud", async () => {
+    const { provider } = harness();
+    await provider.init();
+    // Local creates a memory; the event is pending (cloud_synced_at IS NULL).
+    const m = await provider.remember({ content: "round-trip", cloud_owner_id: "u1" });
+    const db = (provider as any).db as Database.Database;
+    const localEvent = db.prepare(
+      `SELECT event_id, cloud_synced_at FROM memory_events WHERE memory_id = ?`,
+    ).get(m.id) as { event_id: string; cloud_synced_at: number | null };
+    expect(localEvent.cloud_synced_at).toBeNull();
+
+    // Cloud's GET returns the same event_id (e.g. push went through but the
+    // response was lost; the event is in cloud, local thinks it's pending).
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({
+        events: [{
+          event_id:  localEvent.event_id,
+          memory_id: m.id,
+          event_type: "memory_created",
+          space_id: null,
+          created_at: 1000,
+          payload: { content: "round-trip", tags: [], purged_at: null },
+        }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+
+    const svc = createMemorySyncService({
+      db, provider,
+      currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+
+    await svc.pull();
+
+    const after = db.prepare(
+      `SELECT cloud_synced_at FROM memory_events WHERE event_id = ?`,
+    ).get(localEvent.event_id) as { cloud_synced_at: number | null };
+    expect(after.cloud_synced_at).not.toBeNull();
   });
 
   it("pull respects purge precedence — late create does not restore content", async () => {
@@ -1560,66 +2085,102 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
         event_id: string; memory_id: string; event_type: OutgoingEvent["event_type"];
         space_id: string | null; created_at: number;
       };
-      const pending = deps.db.prepare(
-        `SELECT event_id, memory_id, event_type, space_id, created_at
-           FROM memory_events
-          WHERE cloud_synced_at IS NULL
-          ORDER BY created_at ASC
-          LIMIT ?`,
-      ).all(BATCH_SIZE) as Pending[];
 
-      if (pending.length === 0) return 0;
+      // Drain loop: keep flushing batches until no pending events remain
+      // for the current owner. Without this, a fresh sign-in with N>BATCH
+      // pending events would only push the first batch, then stall until
+      // the next reconcile trigger.
+      let totalAccepted = 0;
+      // Defensive safety cap so a misbehaving server can't loop forever.
+      const MAX_BATCHES = 1000;
 
-      // For created events, fetch content/tags from payloads to attach.
-      const payloadStmt = deps.db.prepare(
-        `SELECT content, tags FROM memory_payloads WHERE memory_id = ?`,
-      );
-      const events: OutgoingEvent[] = pending.map((p) => {
-        const out: OutgoingEvent = {
-          event_id: p.event_id, memory_id: p.memory_id, event_type: p.event_type,
-          space_id: p.space_id, created_at: p.created_at,
-        };
-        if (p.event_type === "memory_created") {
-          const pay = payloadStmt.get(p.memory_id) as { content: string | null; tags: string } | undefined;
-          if (pay && pay.content !== null) {
-            out.payload = { content: pay.content, tags: JSON.parse(pay.tags) };
+      for (let i = 0; i < MAX_BATCHES; i++) {
+        const pending = deps.db.prepare(
+          `SELECT event_id, memory_id, event_type, space_id, created_at
+             FROM memory_events
+            WHERE cloud_synced_at IS NULL
+              AND cloud_owner_id = ?
+            ORDER BY created_at ASC
+            LIMIT ?`,
+        ).all(session.user.id, BATCH_SIZE) as Pending[];
+
+        if (pending.length === 0) break;
+
+        // For created events, fetch content/tags from payloads to attach.
+        const payloadStmt = deps.db.prepare(
+          `SELECT content, tags FROM memory_payloads WHERE memory_id = ?`,
+        );
+        const events: OutgoingEvent[] = pending.map((p) => {
+          const out: OutgoingEvent = {
+            event_id: p.event_id, memory_id: p.memory_id, event_type: p.event_type,
+            space_id: p.space_id, created_at: p.created_at,
+          };
+          if (p.event_type === "memory_created") {
+            const pay = payloadStmt.get(p.memory_id) as { content: string | null; tags: string } | undefined;
+            if (pay && pay.content !== null) {
+              out.payload = { content: pay.content, tags: JSON.parse(pay.tags) };
+            }
+            // If content is locally NULL (purged before push), the worker
+            // accepts the create only if a same-batch or pre-existing purge
+            // exists for the memory_id; otherwise it lands in `rejected`.
           }
-        }
-        return out;
-      });
-
-      let res: Response;
-      try {
-        res = await deps.fetch(`${deps.workerBase}/api/memories/events`, {
-          method: "POST",
-          headers: { Cookie: `oyster_session=${session.token}`, "content-type": "application/json" },
-          body: JSON.stringify({ events }),
+          return out;
         });
-      } catch (err) {
-        console.warn("[memory] pushPending failed:", err);
-        return 0;
-      }
-      if (!res.ok) {
-        console.warn(`[memory] pushPending non-ok ${res.status}`);
-        return 0;
-      }
-      const body = await res.json().catch(() => null) as { accepted?: string[]; skipped?: string[] } | null;
-      const accepted = new Set(body?.accepted ?? []);
-      const skipped  = new Set(body?.skipped ?? []);
 
-      // Mark accepted AND skipped as synced — skipped means the cloud already
-      // has them (duplicate event_id or per-type uniqueness conflict). Either
-      // way, the local outbox can stop retrying.
-      const now = Date.now();
-      const markStmt = deps.db.prepare(
-        `UPDATE memory_events SET cloud_synced_at = ? WHERE event_id = ?`,
-      );
-      const markTxn = deps.db.transaction(() => {
-        for (const id of accepted) markStmt.run(now, id);
-        for (const id of skipped)  markStmt.run(now, id);
-      });
-      markTxn();
-      return accepted.size;
+        let res: Response;
+        try {
+          res = await deps.fetch(`${deps.workerBase}/api/memories/events`, {
+            method: "POST",
+            headers: { Cookie: `oyster_session=${session.token}`, "content-type": "application/json" },
+            body: JSON.stringify({ events }),
+          });
+        } catch (err) {
+          console.warn("[memory] pushPending failed:", err);
+          return totalAccepted;
+        }
+        if (!res.ok) {
+          console.warn(`[memory] pushPending non-ok ${res.status}`);
+          return totalAccepted;
+        }
+        const body = await res.json().catch(() => null) as {
+          accepted?: string[]; duplicates?: string[]; conflicts?: string[]; rejected?: string[];
+        } | null;
+        const accepted   = body?.accepted   ?? [];
+        const duplicates = body?.duplicates ?? [];
+        const conflicts  = body?.conflicts  ?? [];
+        const rejected   = body?.rejected   ?? [];
+
+        if (rejected.length > 0) {
+          // Surface to logs but do NOT mark synced — these stay pending so a
+          // human or follow-up code can investigate. Rejected typically means
+          // a malformed event or a memory_created without payload that cloud
+          // had no purge for. Should never happen with healthy clients.
+          console.warn(`[memory] pushPending rejected events: ${rejected.join(", ")}`);
+        }
+
+        // Safe to mark synced: accepted (newly inserted), duplicates (cloud
+        // already had this event_id), conflicts (per-type uniqueness in
+        // cloud — cloud has an authoritative event of that type already).
+        const now = Date.now();
+        const markStmt = deps.db.prepare(
+          `UPDATE memory_events SET cloud_synced_at = ? WHERE event_id = ?`,
+        );
+        const markTxn = deps.db.transaction(() => {
+          for (const id of accepted)   markStmt.run(now, id);
+          for (const id of duplicates) markStmt.run(now, id);
+          for (const id of conflicts)  markStmt.run(now, id);
+        });
+        markTxn();
+        totalAccepted += accepted.length;
+
+        // Termination condition: nothing was accepted/duplicates/conflicts AND
+        // nothing was rejected (so we're not making progress) — break to avoid
+        // a hot loop. Otherwise loop and pick up the next batch.
+        const progress = accepted.length + duplicates.length + conflicts.length;
+        if (progress === 0) break;
+      }
+
+      return totalAccepted;
     },
 
     async pull() {
@@ -1644,9 +2205,22 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
 
       let applied = 0;
       const insertEv = deps.db.prepare(
+        // Tag with cloud_owner_id from the current session so the dirty
+        // predicate can scope to "this user's events" cleanly. cloud_synced_at
+        // is set unconditionally (event came from cloud, definitionally synced).
         `INSERT OR IGNORE INTO memory_events
-           (event_id, memory_id, event_type, space_id, created_at, cloud_synced_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      // For events that already exist locally (race: client pushed first then
+      // pull saw them in cloud), mark them synced so the outbox stops retrying.
+      // Without this, a pending event whose round-trip went out before the
+      // push response arrived would stay dirty forever.
+      const markSyncedStmt = deps.db.prepare(
+        `UPDATE memory_events
+            SET cloud_synced_at = COALESCE(cloud_synced_at, ?),
+                cloud_owner_id  = COALESCE(cloud_owner_id,  ?)
+          WHERE event_id = ?`,
       );
       const upsertPayload = deps.db.prepare(
         `INSERT INTO memory_payloads (memory_id, content, tags, purged_at)
@@ -1661,8 +2235,18 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
       const txn = deps.db.transaction(() => {
         const touched = new Set<string>();
         for (const ev of cloud) {
-          const r = insertEv.run(ev.event_id, ev.memory_id, ev.event_type, ev.space_id, ev.created_at, now);
-          if (r.changes > 0) applied++;
+          const r = insertEv.run(
+            ev.event_id, ev.memory_id, ev.event_type, ev.space_id,
+            session.user.id, ev.created_at, now,
+          );
+          if (r.changes > 0) {
+            applied++;
+          } else {
+            // Event already existed locally — reconcile cloud_synced_at so
+            // pushPending stops retrying. COALESCE preserves any earlier
+            // sync timestamp.
+            markSyncedStmt.run(now, session.user.id, ev.event_id);
+          }
           if (ev.event_type === "memory_created" && ev.payload) {
             // Cloud's content reflects redaction. If purged, content is NULL +
             // purged_at set; we mirror that.
@@ -1803,24 +2387,27 @@ In `server/src/index.ts`, near the top with other service imports:
 import { createMemorySyncService, type MemorySyncService } from "./memory-sync-service.js";
 ```
 
-First, expose the DB handle on the provider. In `server/src/memory-store.ts`, on `SqliteFtsMemoryProvider`:
+First, expose the DB handle on the provider. In `server/src/memory-store.ts`, on `SqliteFtsMemoryProvider`. The name is deliberately ugly to signal "do not use casually outside the sync service":
 
 ```typescript
-  getDb(): Database.Database { return this.db; }
+  /** Internal DB handle for the sync service ONLY. Do not use elsewhere —
+   *  sync needs it for batched outbox queries; everything else should go
+   *  through the provider's typed methods. */
+  getInternalDbForSync(): Database.Database { return this.db; }
 ```
 
 Then, where `spaceSync` is constructed (search for `createSpaceSyncService(`), add immediately after:
 
 ```typescript
 const memorySync: MemorySyncService = createMemorySyncService({
-  db: memoryProvider.getDb(),
+  db: memoryProvider.getInternalDbForSync(),
   provider: memoryProvider,
   currentUser: () => {
     const u = authService.getState().user;
     return u ? { id: u.id, email: u.email, tier: u.tier } : null;
   },
   sessionToken: () => authService.getState().sessionToken,
-  workerBase: WORKER_BASE,
+  workerBase: CLOUD_WORKER_BASE,
   fetch: globalThis.fetch,
 });
 memoryProvider.setOnWrite(() => { void memorySync.pushPending(); });
@@ -1874,7 +2461,7 @@ git commit -m "feat(server): wire memory sync into auth + startup hooks (#318)"
 
 ## Task 11: Manual cross-device verification
 
-**Goal:** Confirm the architectural promise on real hardware. Five flows; any failure blocks merge.
+**Goal:** Confirm the architectural promise on real hardware. Six flows; any failure blocks merge.
 
 **Setup:**
 - Two machines, both signed in to the same Pro account.
@@ -1913,15 +2500,21 @@ git commit -m "feat(server): wire memory sync into auth + startup hooks (#318)"
   - On A: `remember(content="free-tier test")`
   - Expected: no Worker calls; events pile up locally with `cloud_synced_at IS NULL`. No errors. Local recall still works.
 
-- [ ] **Step 6: If all five flows pass — record the verification**
+- [ ] **Step 6: Flow 6 — fresh Pro sign-in on a clean device backfills cloud memories**
 
-In a comment on PR for #318: "Manual cross-device verified on 2026-MM-DD. Five flows green."
+  - On a third machine C with no prior Oyster install (or after deleting `~/Oyster/db/memory.db`): install, sign in to the same Pro account.
+  - Expected: reconcile pulls all of A and B's events; recall on C returns memories created on A or B, including those from earlier flows. Forgotten memories don't appear; purged content has no recall hit.
+  - Validate: `SELECT COUNT(*) FROM memory_events` on C matches the cloud event count for that user.
+
+- [ ] **Step 7: If all six flows pass — record the verification**
+
+In a comment on PR for #318: "Manual cross-device verified on 2026-MM-DD. Six flows green."
 
 If any flow fails: open a follow-up issue; do not merge until resolved or explicitly deferred to hotfix.
 
-- [ ] **Step 7: Commit (no code; this is a verification step)**
+- [ ] **Step 8: Commit (no code; this is a verification step)**
 
-No commit needed unless flows surfaced bugs. If they did, fix in a follow-up task within the same plan and re-run all five flows.
+No commit needed unless flows surfaced bugs. If they did, fix in a follow-up task within the same plan and re-run all six flows.
 
 ---
 
@@ -1957,16 +2550,24 @@ git commit -m "docs(changelog): cross-device memory sync (#318)"
 
 ## Self-Review Checklist (run before opening PR)
 
-- [ ] All 12 tasks completed; each commit message references #318
+- [ ] All 13 tasks completed (1–4, 4.5, 5–12); each commit message references #318
 - [ ] No `TODO` / `TBD` / placeholder strings in committed code
 - [ ] `npm run build` succeeds at repo root
 - [ ] `cd server && npx vitest run` — all pass
-- [ ] `cd infra/oyster-publish && npx vitest run` — all pass
-- [ ] Manual cross-device verification (Task 11) recorded in PR
+- [ ] `cd infra/oyster-cloud && npx vitest run` — all pass
+- [ ] `cd infra/oyster-publish && npx vitest run` — still passes (no regressions from oyster-cloud bootstrap)
+- [ ] Manual cross-device verification (Task 11, six flows) recorded in PR
 - [ ] CHANGELOG entry is user-facing (no internal file paths, route names, or tool names)
 - [ ] Worker-side Pro tier gate active (POST and GET both check `user.tier === "pro"`)
 - [ ] Per-type uniqueness indexes present in both local + cloud schemas
-- [ ] Purge precedence verified with a test (late-create-after-purge)
+- [ ] `event_type` CHECK constraint present in both local + cloud schemas
+- [ ] Purge precedence verified with a test (late-create-after-purge in both local and worker)
+- [ ] `cloud_owner_id` set at write time on every event; `pushPending` filters strictly
+- [ ] Worker POST response shape is `{ accepted, duplicates, conflicts, rejected }` — `rejected` not marked synced by client
+- [ ] `pushPending` drains all batches (not just one) before returning
+- [ ] Pull marks local pending events as synced when matched in cloud (round-trip race test)
+- [ ] Worker POST sorts events by precedence (purges first) before per-event processing
+- [ ] `memory_created` without payload is rejected unless a purge already exists for that memory_id
 
 ## Out of scope for this plan (per spec §"Deferred to the implementation plan")
 
