@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS synced_memory_payloads (
   tags       TEXT NOT NULL DEFAULT '[]',
   purged_at  INTEGER,
   PRIMARY KEY (owner_id, memory_id)
-)
+);
 `;
 
 export async function applySchema(): Promise<void> {
