@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { SqliteFtsMemoryProvider } from "../src/memory-store.js";
 
 // SqliteFtsMemoryProvider does its own schema/migrations on init().
@@ -153,8 +154,6 @@ describe("SqliteFtsMemoryProvider", () => {
     });
   });
 });
-
-import Database from "better-sqlite3";
 
 describe("schema migration — memory_events + memory_payloads", () => {
   it("creates memory_events with the expected columns", async () => {

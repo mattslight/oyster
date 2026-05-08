@@ -178,7 +178,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
         event_type      TEXT    NOT NULL CHECK (event_type IN ('memory_created','memory_forgotten','memory_purged')),
         space_id        TEXT,
         cloud_owner_id  TEXT,
-        created_at      INTEGER NOT NULL,
+        created_at      INTEGER NOT NULL,    -- Unix epoch ms (not ISO string; matches D1 cloud schema for cross-device events)
         cloud_synced_at INTEGER
       )
     `);
@@ -200,7 +200,9 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
          ON memory_events(memory_id) WHERE event_type = 'memory_purged'`,
     );
 
-    // Redactable content store. Purge nulls content + tags and sets purged_at.
+    // Redactable content store. Purge nulls content + tags (tags are
+    // redacted alongside content so no PII can leak via tag text) and
+    // sets purged_at.
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS memory_payloads (
         memory_id  TEXT PRIMARY KEY,
