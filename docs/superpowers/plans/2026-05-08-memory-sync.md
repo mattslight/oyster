@@ -1081,36 +1081,56 @@ export function createProfileBindingService(deps: ProfileBindingDeps): ProfileBi
 Run: `cd server && npx vitest run test/profile-binding-service.test.ts`
 Expected: 6 passing.
 
-- [ ] **Step 6: Wire `bindToOwner` into auth-changed handler**
+- [ ] **Step 6: Wire a global `canRunCloudSync()` guard into `index.ts`**
 
-In `server/src/index.ts`, where `authService.onAuthChanged(...)` is registered (search for that registration), add a binding step **before** any cloud sync runs:
+The binding gate must apply to **every** cloud sync service — memory now, spaces (already shipped), sessions later. Otherwise a conflicted profile would still leak via existing spaces sync. Implement the check at the orchestration layer.
 
-```typescript
-authService.onAuthChanged(() => {
-  const u = authService.getState().user;
-  if (u && u.tier === "pro") {
-    const result = profileBinding.bindToOwner(u.id);
-    if (result.reason === "conflict") {
-      // Different Pro user signed in to a profile already bound to someone
-      // else. Sync services will refuse to push or pull. Surface to the UI.
-      console.warn(
-        `[profile] sign-in ${u.id} blocked from cloud sync — this Oyster profile is bound to ${profileBinding.getBoundOwner()}.`,
-      );
-      // Emit an SSE event for the UI; existing broadcast pattern.
-      // (Implementation detail — match how spaces-sync surfaces user-facing
-      // errors today; if no precedent, just log for now and add UI in a
-      // follow-up task.)
-    }
-  }
-  void syncOnAuth("auth");
-});
-```
-
-The `profileBinding` instance must be constructed near the top of `index.ts` startup (before `MemorySyncService`):
+Construct `profileBinding` near the top of `index.ts` startup, before any sync service:
 
 ```typescript
 const profileBinding = createProfileBindingService({ db: appDb /* the oyster.db handle */ });
 ```
+
+Add a top-level helper that **does the bind on first Pro sign-in** and returns whether cloud sync may proceed:
+
+```typescript
+/** Gate for every cloud sync service. Returns false when:
+ *  - no user is signed in, or
+ *  - signed-in user is not Pro, or
+ *  - the local Oyster profile is bound to a different account.
+ *
+ *  Side effect: on first Pro sign-in to an unbound profile, claims the
+ *  profile for this user. Idempotent on re-bind for the same user.
+ *  This is the single chokepoint — call it from auth-changed AND from
+ *  startup, so a persisted Pro session at boot also goes through it. */
+function canRunCloudSync(): boolean {
+  const u = authService.getState().user;
+  if (!u || u.tier !== "pro") return false;
+
+  const result = profileBinding.bindToOwner(u.id);
+  if (result.reason === "conflict") {
+    console.warn(
+      `[profile] cloud sync blocked: profile bound to ${profileBinding.getBoundOwner()}, signed-in user is ${u.id}`,
+    );
+    // UI surface for this conflict is a follow-up. Emit an SSE notice if
+    // the existing broadcast pattern fits cleanly; otherwise just log.
+    return false;
+  }
+  return true;
+}
+```
+
+Update the auth-changed handler to call `syncOnAuth("auth")` unconditionally — `syncOnAuth` itself will use `canRunCloudSync()` to gate (Task 10 step 3 wires this):
+
+```typescript
+authService.onAuthChanged(() => {
+  void syncOnAuth("auth");
+});
+```
+
+Verify the existing startup invocation also routes through `syncOnAuth` (it does today). The `canRunCloudSync` check inside `syncOnAuth` covers both paths.
+
+**Important:** `canRunCloudSync` is the only place that calls `bindToOwner`. Do NOT call `bindToOwner` elsewhere — the side-effect-and-gate combination is intentional, so every entry point that wants to start sync goes through the same chokepoint.
 
 - [ ] **Step 7: Smoke-build and run profile-binding tests**
 
@@ -1457,12 +1477,12 @@ For `memory_forgotten` and `memory_purged`, `payload` is omitted. Server ignores
 {
   "accepted":   ["..."],   // newly inserted events; client marks synced
   "duplicates": ["..."],   // event_id already in cloud (idempotent retry); client marks synced
-  "conflicts":  ["..."],   // per-type uniqueness rejected (e.g. second memory_created for same memory_id); client marks synced
-  "rejected":   ["..."]    // malformed / disallowed (e.g. memory_created without payload, no prior purge); client does NOT mark synced — surfaces a warning
+  "conflicts":  ["..."],   // per-type uniqueness rejected (e.g. second memory_created for same memory_id); client does NOT mark synced — warns and triggers pull/reconcile so cloud's authoritative state lands locally
+  "rejected":   ["..."]    // malformed / disallowed (e.g. memory_created without payload, no prior purge); client does NOT mark synced — surfaces a warning, stays pending
 }
 ```
 
-The four-way split matters: only the first three are safe to mark `cloud_synced_at`. `rejected` events stay pending and produce a warning so a client bug doesn't silently drop user data.
+The four-way split matters: only `accepted` and `duplicates` are safe to mark `cloud_synced_at`. `conflicts` and `rejected` stay pending. Conflicts trigger a follow-up pull (cloud may have content the local replica needs); rejected events stay surfaced so a client bug doesn't silently drop user data.
 
 **Precedence ordering at ingest:** the worker sorts incoming events within each batch by precedence (purges first, then forgets, then creates), then by `created_at` ascending. This matters because the client may push a `memory_created` whose payload was already nulled locally (because a purge for the same `memory_id` was queued behind it). Processing the purge first means the create lands with the correct redaction even when the events arrive in write-order from the client.
 
@@ -2722,12 +2742,21 @@ const memorySync: MemorySyncService = createMemorySyncService({
 memoryProvider.setOnWrite(() => { void memorySync.pushPending(); });
 ```
 
-- [ ] **Step 3: Wire reconcile into the existing sync-on-auth function**
+- [ ] **Step 3: Wire reconcile into the existing sync-on-auth function — and gate every cloud sync service on `canRunCloudSync()`**
 
-Find `syncOnAuth(reason: "auth" | "startup")` (around line 346 in spaces-sync wiring). Add a memory reconcile call alongside the spaces one:
+Find `syncOnAuth(reason: "auth" | "startup")` (around line 346 in spaces-sync wiring). Make two changes:
+
+1. **Early-return on profile-binding conflict**, gating EVERY cloud sync service. This protects users from existing spaces sync polluting the local DB on a conflicted profile, even before the spaces follow-up hotfix lands inside `space-sync-service.ts`.
+2. Add the memory reconcile call alongside the spaces one.
 
 ```typescript
 async function syncOnAuth(reason: "auth" | "startup"): Promise<void> {
+  // Single chokepoint. If the profile is bound to a different Pro account
+  // (or the user is free / signed-out), skip ALL cloud sync — spaces,
+  // memory, anything else. Without this guard, existing spaces sync would
+  // continue to run and pollute the local DB with a second user's data.
+  if (!canRunCloudSync()) return;
+
   try {
     const result = await spaceSync.reconcile();
     if (result.pulled || result.pushed || result.tombstoned) {
@@ -2743,6 +2772,8 @@ async function syncOnAuth(reason: "auth" | "startup"): Promise<void> {
   // ... existing publishService.backfillPublications() ...
 }
 ```
+
+Note on residual exposure: `spaceService` calls `spaceSync.pushOne(...)` after each mutation (fire-and-forget), bypassing `syncOnAuth`. The `space-sync-service.ts` follow-up hotfix (listed in "Out of scope" at the bottom of this plan) closes that mutation-path by adding `profileBinding.isOwnedBy()` to its own `isProSession()`. Memory sync is already protected on its mutation path because Task 8's `MemorySyncService.isProSession` checks `isOwnedBy` directly.
 
 - [ ] **Step 4: Smoke-build the server**
 
@@ -2873,7 +2904,9 @@ git commit -m "docs(changelog): cross-device memory sync (#318)"
 - [ ] Purge precedence verified with a test (late-create-after-purge in both local and worker)
 - [ ] `cloud_owner_id` set at write time on every event; `pushPending` filters strictly
 - [ ] **`profile_binding` table exists; `bindToOwner` runs on first Pro sign-in; `isProSession` checks `isOwnedBy`**
+- [ ] **`canRunCloudSync()` is the single chokepoint — `syncOnAuth` early-returns on conflict, blocking spaces sync AND memory sync (and any future cloud sync) at the orchestration layer**
 - [ ] **Test: a different Pro user signing in to a bound profile is blocked from sync (no fetch calls)**
+- [ ] **Manual: confirm that on a profile-conflicted sign-in, neither `[memory]` nor `[spaces]` sync log lines appear during reconcile**
 - [ ] **`resolveCurrentOwnerId` returns null for free / signed-out users — only Pro accounts tag events**
 - [ ] Worker POST response shape is `{ accepted, duplicates, conflicts, rejected }` — `rejected` not marked synced by client
 - [ ] **`conflicts` are warned-and-pulled, NOT marked synced — only `accepted` and `duplicates` clear from outbox**
