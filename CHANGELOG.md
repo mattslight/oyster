@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.7.1-beta.0] - 2026-05-08
+
 ### Changed
 
 - **Spaces now sync across signed-in devices.** Pro users see the same set of spaces — name, hierarchy, summary — on every device they sign into. Published artefacts on a fresh device resolve to their real space instead of a generic "Cloud" bucket.
