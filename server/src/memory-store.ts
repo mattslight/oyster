@@ -315,6 +315,145 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     return !!(this.stmts.findExact.get(content, sid, sid) as MemoryRow | undefined);
   }
 
+  writeCreated(input: {
+    memory_id?: string;
+    content: string;
+    space_id?: string | null;
+    tags?: string[];
+    source_session_id?: string | null;
+    created_at?: number;
+    cloud_owner_id?: string | null;
+  }): { memory_id: string; event_id: string; inserted: boolean } {
+    const memory_id = input.memory_id ?? crypto.randomUUID();
+    const event_id  = crypto.randomUUID();
+    const space_id  = input.space_id ?? null;
+    const tags      = JSON.stringify(input.tags ?? []);
+    const ssid      = input.source_session_id ?? null;
+    const created_at = input.created_at ?? Date.now();
+    const owner_id  = input.cloud_owner_id ?? null;
+
+    let inserted = false;
+    let returned_event_id = event_id;
+
+    const txn = this.db.transaction(() => {
+      const info = this.db.prepare(
+        `INSERT OR IGNORE INTO memory_events
+           (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+         VALUES (?, ?, 'memory_created', ?, ?, ?, NULL)`,
+      ).run(event_id, memory_id, space_id, owner_id, created_at);
+      inserted = info.changes > 0;
+
+      if (!inserted) {
+        // A memory_created event already exists for this memory_id. Look up
+        // its event_id so the caller can reference the canonical event.
+        const existing = this.db.prepare(
+          `SELECT event_id FROM memory_events WHERE memory_id = ? AND event_type = 'memory_created'`,
+        ).get(memory_id) as { event_id: string } | undefined;
+        if (existing) returned_event_id = existing.event_id;
+      }
+
+      this.db.prepare(
+        `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags)
+         VALUES (?, ?, ?)`,
+      ).run(memory_id, input.content, tags);
+
+      this.materialiseMemory(memory_id, { ssid });
+    });
+    txn();
+    return { memory_id, event_id: returned_event_id, inserted };
+  }
+
+  materialiseMemory(memory_id: string, opts?: { ssid?: string | null }): void {
+    // Pick highest-precedence event for this memory_id.
+    type EvRow = { event_type: string; space_id: string | null; created_at: number };
+    const events = this.db.prepare(
+      `SELECT event_type, space_id, created_at FROM memory_events WHERE memory_id = ?`,
+    ).all(memory_id) as EvRow[];
+    if (events.length === 0) {
+      this.db.prepare(`DELETE FROM memories WHERE id = ?`).run(memory_id);
+      return;
+    }
+    const has = (t: string) => events.some((e) => e.event_type === t);
+    const created = events.find((e) => e.event_type === "memory_created");
+
+    if (has("memory_purged")) {
+      // Purge: nullify payload + remove from recall surface.
+      this.db.prepare(
+        `UPDATE memory_payloads SET content = NULL, tags = '[]', purged_at = ? WHERE memory_id = ?`,
+      ).run(Date.now(), memory_id);
+      this.db.prepare(`DELETE FROM memories WHERE id = ?`).run(memory_id);
+      return;
+    }
+
+    if (!created) {
+      // Forget arrived before create. Nothing to materialise yet.
+      return;
+    }
+
+    const payload = this.db.prepare(
+      `SELECT content, tags FROM memory_payloads WHERE memory_id = ?`,
+    ).get(memory_id) as { content: string | null; tags: string } | undefined;
+    if (!payload || payload.content === null) {
+      // Created event with no payload yet, or payload purged. Nothing to show.
+      this.db.prepare(`DELETE FROM memories WHERE id = ?`).run(memory_id);
+      return;
+    }
+
+    const ssid = opts?.ssid ?? null;
+    const supersededBy = has("memory_forgotten") ? "forgotten" : null;
+
+    // Upsert the recall surface. FTS5 triggers on memories keep the index in sync.
+    this.db.prepare(
+      `INSERT INTO memories (id, space_id, content, tags, source_session_id, superseded_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'), datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         space_id = excluded.space_id,
+         content = excluded.content,
+         tags = excluded.tags,
+         superseded_by = excluded.superseded_by,
+         updated_at = datetime('now')`,
+    ).run(
+      memory_id,
+      created.space_id,
+      payload.content,
+      payload.tags,
+      ssid,
+      supersededBy,
+      Math.floor(created.created_at / 1000),
+    );
+  }
+
+  writeForgotten(memory_id: string, cloud_owner_id: string | null = null): boolean {
+    // Idempotent: per-type uniqueness means a second forget event is rejected.
+    const info = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_events
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, 'memory_forgotten', NULL, ?, ?, NULL)`,
+    ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
+    if (info.changes === 0) return false;
+    this.materialiseMemory(memory_id);
+    return true;
+  }
+
+  writePurged(memory_id: string, cloud_owner_id: string | null = null): boolean {
+    // Succeeds even when no memory_created event exists yet (purge-before-create
+    // is a valid sequence — purge dominates regardless of arrival order).
+    // Returns false only when a memory_purged event already exists for this
+    // memory_id (idempotent).
+    const info = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_events
+         (event_id, memory_id, event_type, space_id, cloud_owner_id, created_at, cloud_synced_at)
+       VALUES (?, ?, 'memory_purged', NULL, ?, ?, NULL)`,
+    ).run(crypto.randomUUID(), memory_id, cloud_owner_id, Date.now());
+    if (info.changes === 0) return false;
+    // Ensure a payload row exists so the materialisation pass can null its content.
+    this.db.prepare(
+      `INSERT OR IGNORE INTO memory_payloads (memory_id, content, tags) VALUES (?, NULL, '[]')`,
+    ).run(memory_id);
+    this.materialiseMemory(memory_id);
+    return true;
+  }
+
   async remember(input: RememberInput): Promise<Memory> {
     const spaceId = input.space_id ?? null;
     const tags = JSON.stringify(input.tags ?? []);

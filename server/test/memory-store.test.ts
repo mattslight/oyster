@@ -217,3 +217,89 @@ describe("schema migration — memory_events + memory_payloads", () => {
     provider2.close();
   });
 });
+
+describe("event write API — writeCreated", () => {
+  it("inserts an event, payload, and materialised memories row", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "ev-created-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const result = provider.writeCreated({ content: "hello world", tags: ["greeting"] });
+    expect(result.memory_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(result.event_id).toMatch(/^[0-9a-f-]{36}$/);
+
+    const memories = await provider.list();
+    expect(memories).toHaveLength(1);
+    expect(memories[0].content).toBe("hello world");
+    expect(memories[0].tags).toEqual(["greeting"]);
+
+    const recalled = await provider.recall({ query: "hello" });
+    expect(recalled).toHaveLength(1);
+    expect(recalled[0].id).toBe(result.memory_id);
+    provider.close();
+  });
+
+  it("a fresh writeCreated event is pending sync (cloud_synced_at IS NULL)", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "ev-pending-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const { event_id } = provider.writeCreated({ content: "pending" });
+    const db = new Database(join(tmp, "memory.db"));
+    const row = db.prepare("SELECT cloud_synced_at FROM memory_events WHERE event_id = ?").get(event_id) as { cloud_synced_at: number | null };
+    expect(row.cloud_synced_at).toBeNull();
+    db.close();
+    provider.close();
+  });
+});
+
+describe("event write API — writeForgotten / writePurged / precedence", () => {
+  async function fresh() {
+    const tmp = mkdtempSync(join(tmpdir(), "ev-prec-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    return provider;
+  }
+
+  it("forget hides the memory from recall but content remains in payload", async () => {
+    const provider = await fresh();
+    const { memory_id } = provider.writeCreated({ content: "secret" });
+    expect(provider.writeForgotten(memory_id)).toBe(true);
+    const found = await provider.recall({ query: "secret" });
+    expect(found).toHaveLength(0);
+    const list = await provider.list();
+    expect(list).toHaveLength(0);
+    provider.close();
+  });
+
+  it("purge nulls payload content and removes from recall", async () => {
+    const provider = await fresh();
+    const { memory_id } = provider.writeCreated({ content: "AKIA-secret-key" });
+    expect(provider.writePurged(memory_id)).toBe(true);
+    const found = await provider.recall({ query: "AKIA" });
+    expect(found).toHaveLength(0);
+    const list = await provider.list();
+    expect(list).toHaveLength(0);
+    provider.close();
+  });
+
+  it("late create after purge does not restore content", async () => {
+    const provider = await fresh();
+    const memory_id = "11111111-1111-1111-1111-111111111111";
+    // Simulate purge-arrives-before-create by writing the purge event first.
+    provider.writePurged(memory_id);
+    // Now writeCreated for the same id.
+    provider.writeCreated({ memory_id, content: "should-not-appear" });
+    const list = await provider.list();
+    expect(list).toHaveLength(0);
+    const found = await provider.recall({ query: "should-not-appear" });
+    expect(found).toHaveLength(0);
+    provider.close();
+  });
+
+  it("forget after create then forget again is a no-op", async () => {
+    const provider = await fresh();
+    const { memory_id } = provider.writeCreated({ content: "hi" });
+    expect(provider.writeForgotten(memory_id)).toBe(true);
+    expect(provider.writeForgotten(memory_id)).toBe(false); // idempotent: returns false on no-op
+    provider.close();
+  });
+});
