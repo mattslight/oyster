@@ -12,6 +12,7 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "oyster-auth"
 database_id = "44086805-fbfa-4446-8626-126af7e2ec19"
+migrations_dir = "../auth-worker/migrations"
 
 [[routes]]
 pattern = "cloud.oyster.to/api/*"
