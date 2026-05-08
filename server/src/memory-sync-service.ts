@@ -86,6 +86,21 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
         space_id: string | null; created_at: number;
       };
 
+      // Hoist prepared statements out of the drain loop — recompiling the same
+      // SQL each iteration is wasteful for fresh-sign-in flushes that may run
+      // many batches.
+      const scanPending = deps.db.prepare(
+        `SELECT event_id, memory_id, event_type, space_id, created_at
+           FROM memory_events
+          WHERE cloud_synced_at IS NULL
+            AND cloud_owner_id = ?
+          ORDER BY created_at ASC
+          LIMIT ?`,
+      );
+      const fetchPayload = deps.db.prepare(
+        `SELECT content, tags FROM memory_payloads WHERE memory_id = ?`,
+      );
+
       // Drain loop: keep flushing batches until no pending events remain
       // for the current owner. Without this, a fresh sign-in with N>BATCH
       // pending events would only push the first batch, then stall until
@@ -96,28 +111,17 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
       const MAX_BATCHES = 1000;
 
       for (let i = 0; i < MAX_BATCHES; i++) {
-        const pending = deps.db.prepare(
-          `SELECT event_id, memory_id, event_type, space_id, created_at
-             FROM memory_events
-            WHERE cloud_synced_at IS NULL
-              AND cloud_owner_id = ?
-            ORDER BY created_at ASC
-            LIMIT ?`,
-        ).all(session.user.id, BATCH_SIZE) as Pending[];
+        const pending = scanPending.all(session.user.id, BATCH_SIZE) as Pending[];
 
         if (pending.length === 0) break;
 
-        // For created events, fetch content/tags from payloads to attach.
-        const payloadStmt = deps.db.prepare(
-          `SELECT content, tags FROM memory_payloads WHERE memory_id = ?`,
-        );
         const events: OutgoingEvent[] = pending.map((p) => {
           const out: OutgoingEvent = {
             event_id: p.event_id, memory_id: p.memory_id, event_type: p.event_type,
             space_id: p.space_id, created_at: p.created_at,
           };
           if (p.event_type === "memory_created") {
-            const pay = payloadStmt.get(p.memory_id) as { content: string | null; tags: string } | undefined;
+            const pay = fetchPayload.get(p.memory_id) as { content: string | null; tags: string } | undefined;
             if (pay && pay.content !== null) {
               out.payload = { content: pay.content, tags: JSON.parse(pay.tags) };
             }
@@ -245,11 +249,27 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
           WHERE event_id = ?`,
       );
       const upsertPayload = deps.db.prepare(
+        // Purge-guard: never overwrite content/tags when a memory_purged event
+        // exists locally for this memory_id. Belt-and-braces alongside
+        // materialiseMemory's authoritative pass — keeps the invariant explicit
+        // in SQL rather than relying on the post-pass call.
         `INSERT INTO memory_payloads (memory_id, content, tags, purged_at)
          VALUES (?, ?, ?, ?)
          ON CONFLICT(memory_id) DO UPDATE SET
-           content   = excluded.content,
-           tags      = excluded.tags,
+           content   = CASE
+             WHEN EXISTS (SELECT 1 FROM memory_events
+                            WHERE memory_id = memory_payloads.memory_id
+                              AND event_type = 'memory_purged')
+               THEN NULL
+             ELSE excluded.content
+           END,
+           tags      = CASE
+             WHEN EXISTS (SELECT 1 FROM memory_events
+                            WHERE memory_id = memory_payloads.memory_id
+                              AND event_type = 'memory_purged')
+               THEN '[]'
+             ELSE excluded.tags
+           END,
            purged_at = excluded.purged_at`,
       );
 

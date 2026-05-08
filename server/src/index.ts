@@ -300,9 +300,9 @@ function canRunCloudSync(): boolean {
   if (!u || u.tier !== "pro") return false;
 
   const result = profileBinding.bindToOwner(u.id);
-  if (result.reason === "conflict") {
+  if (!result.bound) {
     console.warn(
-      `[profile] cloud sync blocked: profile bound to ${profileBinding.getBoundOwner()}, signed-in user is ${u.id}`,
+      `[profile] cloud sync blocked: profile bound to ${profileBinding.getBoundOwner()}, signed-in user is ${u.id} (${result.reason})`,
     );
     return false;
   }
