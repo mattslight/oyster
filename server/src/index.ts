@@ -475,6 +475,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   const ctx = makeRouteCtx(req, res);
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
 
+  const resolveCurrentOwnerId = (): string | null => {
+    const u = authService.getState().user;
+    return u?.tier === "pro" ? u.id : null;
+  };
+
   // /api/sessions/* — first extracted route bucket. Returns true when
   // handled; falls through if no session route matched.
   if (await tryHandleSessionRoute(req, res, url, ctx, {
@@ -503,10 +508,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (await tryHandleMemoryRoute(req, res, url, ctx, {
     memoryProvider,
     broadcastUiEvent,
-    resolveCurrentOwnerId: () => {
-      const u = authService.getState().user;
-      return u?.tier === "pro" ? u.id : null;
-    },
+    resolveCurrentOwnerId,
   })) return;
 
   // /api/auth/* — local glue (whoami / startSignIn / signOut). Real auth
@@ -530,10 +532,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,
     publishService,
-    resolveCurrentOwnerId: () => {
-      const u = authService.getState().user;
-      return u?.tier === "pro" ? u.id : null;
-    },
+    resolveCurrentOwnerId,
   })) return;
 
   // /api/import/* — paste-from-another-AI flow

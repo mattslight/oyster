@@ -543,11 +543,12 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
     // Conservative dedupe: exact content match in same scope. Preserves the
     // existing surface contract — `remember` returns the existing row instead
-    // of duplicating. Skip for empty content (defensive).
-    if (input.content.length > 0) {
-      const existing = this.stmts.findExact.get(input.content, spaceId, spaceId) as MemoryRow | undefined;
-      if (existing) return rowToMemory(existing);
-    }
+    // of duplicating. Applies to empty content too: callers that accidentally
+    // pass "" don't spam empty rows. The HTTP POST route rejects empty
+    // content at its boundary; the MCP tool currently allows it but dedupe
+    // is sufficient defence at this layer.
+    const existing = this.stmts.findExact.get(input.content, spaceId, spaceId) as MemoryRow | undefined;
+    if (existing) return rowToMemory(existing);
 
     const { memory_id } = this.writeCreated({
       content: input.content,

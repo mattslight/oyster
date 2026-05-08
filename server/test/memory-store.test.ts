@@ -14,6 +14,22 @@ async function makeProvider() {
   return { provider, dir };
 }
 
+// Shared tmpdir tracker for new describe blocks. afterEach below cleans all
+// entries so new tests never leak temp dirs.
+const trackedTmps: string[] = [];
+function tmp(prefix: string): string {
+  const t = mkdtempSync(join(tmpdir(), prefix));
+  trackedTmps.push(t);
+  return t;
+}
+
+afterEach(() => {
+  while (trackedTmps.length > 0) {
+    const t = trackedTmps.pop()!;
+    try { rmSync(t, { recursive: true, force: true }); } catch { /* swallow */ }
+  }
+});
+
 describe("SqliteFtsMemoryProvider", () => {
   let provider: SqliteFtsMemoryProvider;
   let dir: string;
@@ -157,10 +173,10 @@ describe("SqliteFtsMemoryProvider", () => {
 
 describe("schema migration — memory_events + memory_payloads", () => {
   it("creates memory_events with the expected columns", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "mem-events-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("mem-events-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const cols = db.prepare("PRAGMA table_info(memory_events)").all() as Array<{ name: string }>;
     const names = cols.map((c) => c.name).sort();
     expect(names).toEqual([
@@ -172,10 +188,10 @@ describe("schema migration — memory_events + memory_payloads", () => {
   });
 
   it("enforces event_type CHECK constraint", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "mem-check-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("mem-check-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     expect(() => db.prepare(
       `INSERT INTO memory_events (event_id, memory_id, event_type, created_at)
        VALUES ('ev-bad', 'm', 'bogus', 0)`,
@@ -185,10 +201,10 @@ describe("schema migration — memory_events + memory_payloads", () => {
   });
 
   it("creates memory_payloads with the expected columns", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "mem-payloads-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("mem-payloads-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const cols = db.prepare("PRAGMA table_info(memory_payloads)").all() as Array<{ name: string }>;
     const names = cols.map((c) => c.name).sort();
     expect(names).toEqual(["content", "memory_id", "purged_at", "tags"]);
@@ -197,10 +213,10 @@ describe("schema migration — memory_events + memory_payloads", () => {
   });
 
   it("adds purged_at to memories", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "mem-purgedat-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("mem-purgedat-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const cols = db.prepare("PRAGMA table_info(memories)").all() as Array<{ name: string }>;
     expect(cols.some((c) => c.name === "purged_at")).toBe(true);
     db.close();
@@ -208,11 +224,11 @@ describe("schema migration — memory_events + memory_payloads", () => {
   });
 
   it("re-running init() is idempotent", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "mem-idem-"));
-    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("mem-idem-");
+    const provider1 = new SqliteFtsMemoryProvider(t);
     await provider1.init();
     provider1.close();
-    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    const provider2 = new SqliteFtsMemoryProvider(t);
     await expect(provider2.init()).resolves.not.toThrow();
     provider2.close();
   });
@@ -220,8 +236,8 @@ describe("schema migration — memory_events + memory_payloads", () => {
 
 describe("event write API — writeCreated", () => {
   it("inserts an event, payload, and materialised memories row", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ev-created-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("ev-created-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     const result = provider.writeCreated({ content: "hello world", tags: ["greeting"] });
     expect(result.memory_id).toMatch(/^[0-9a-f-]{36}$/);
@@ -239,11 +255,11 @@ describe("event write API — writeCreated", () => {
   });
 
   it("a fresh writeCreated event is pending sync (cloud_synced_at IS NULL)", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ev-pending-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("ev-pending-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     const { event_id } = provider.writeCreated({ content: "pending" });
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const row = db.prepare("SELECT cloud_synced_at FROM memory_events WHERE event_id = ?").get(event_id) as { cloud_synced_at: number | null };
     expect(row.cloud_synced_at).toBeNull();
     db.close();
@@ -251,14 +267,14 @@ describe("event write API — writeCreated", () => {
   });
 
   it("writeCreated records cloud_owner_id on the event row", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ev-owner-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("ev-owner-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     const { event_id } = provider.writeCreated({
       content: "owner test",
       cloud_owner_id: "user-pro-123",
     });
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const row = db.prepare("SELECT cloud_owner_id FROM memory_events WHERE event_id = ?")
       .get(event_id) as { cloud_owner_id: string | null };
     expect(row.cloud_owner_id).toBe("user-pro-123");
@@ -267,12 +283,12 @@ describe("event write API — writeCreated", () => {
   });
 
   it("writeForgotten records cloud_owner_id on the event row", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ev-forget-owner-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("ev-forget-owner-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     const { memory_id } = provider.writeCreated({ content: "owned" });
     provider.writeForgotten(memory_id, "user-pro-456");
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const row = db.prepare(
       `SELECT cloud_owner_id FROM memory_events WHERE memory_id = ? AND event_type = 'memory_forgotten'`,
     ).get(memory_id) as { cloud_owner_id: string | null };
@@ -280,12 +296,24 @@ describe("event write API — writeCreated", () => {
     db.close();
     provider.close();
   });
+
+  it("remember dedupes empty content within same scope", async () => {
+    const t = tmp("dedupe-empty-");
+    const provider = new SqliteFtsMemoryProvider(t);
+    await provider.init();
+    const m1 = await provider.remember({ content: "" });
+    const m2 = await provider.remember({ content: "" });
+    expect(m1.id).toBe(m2.id);
+    const list = await provider.list();
+    expect(list).toHaveLength(1);
+    provider.close();
+  });
 });
 
 describe("event write API — writeForgotten / writePurged / precedence", () => {
   async function fresh() {
-    const tmp = mkdtempSync(join(tmpdir(), "ev-prec-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("ev-prec-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     return provider;
   }
@@ -302,8 +330,8 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
   });
 
   it("purge nulls payload content and removes from recall", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ev-prec-purge-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("ev-prec-purge-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     const { memory_id } = provider.writeCreated({ content: "AKIA-secret-key" });
     expect(provider.writePurged(memory_id)).toBe(true);
@@ -312,7 +340,7 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
     const list = await provider.list();
     expect(list).toHaveLength(0);
     // Payload content must be physically nulled (spec Q7 footgun).
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const row = db.prepare(`SELECT content, purged_at FROM memory_payloads WHERE memory_id = ?`).get(memory_id) as { content: string | null; purged_at: number | null };
     expect(row.content).toBeNull();
     expect(row.purged_at).not.toBeNull();
@@ -321,8 +349,8 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
   });
 
   it("late create after purge does not restore content", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ev-prec-late-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("ev-prec-late-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     const memory_id = "11111111-1111-1111-1111-111111111111";
     // Simulate purge-arrives-before-create by writing the purge event first.
@@ -334,7 +362,7 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
     const found = await provider.recall({ query: "should-not-appear" });
     expect(found).toHaveLength(0);
     // The late create's content must NOT have landed in the payload — purge dominates.
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const row = db.prepare(`SELECT content FROM memory_payloads WHERE memory_id = ?`).get(memory_id) as { content: string | null };
     expect(row.content).toBeNull();
     db.close();
@@ -352,8 +380,8 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
 
 describe("provider.purge", () => {
   it("purges existing memory and returns true", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "purge-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("purge-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     const m = await provider.remember({ content: "secret-content" });
     expect(await provider.purge(m.id)).toBe(true);
@@ -362,8 +390,8 @@ describe("provider.purge", () => {
   });
 
   it("returns false when memory does not exist", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "purge-missing-"));
-    const provider = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("purge-missing-");
+    const provider = new SqliteFtsMemoryProvider(t);
     await provider.init();
     expect(await provider.purge("nonexistent")).toBe(false);
     provider.close();
@@ -372,12 +400,12 @@ describe("provider.purge", () => {
 
 describe("backfill from legacy memories rows", () => {
   it("creates memory_created events for pre-existing rows on init()", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "bf-"));
+    const t = tmp("bf-");
     // First boot: write memories the old way (skip writeCreated path) by
     // simulating a legacy row directly in the DB.
-    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    const provider1 = new SqliteFtsMemoryProvider(t);
     await provider1.init();
-    const db1 = new Database(join(tmp, "memory.db"));
+    const db1 = new Database(join(t, "memory.db"));
     db1.prepare(`DELETE FROM memory_events`).run();
     db1.prepare(`DELETE FROM memory_payloads`).run();
     db1.prepare(
@@ -388,9 +416,9 @@ describe("backfill from legacy memories rows", () => {
     provider1.close();
 
     // Second boot: backfill should kick in.
-    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    const provider2 = new SqliteFtsMemoryProvider(t);
     await provider2.init();
-    const db2 = new Database(join(tmp, "memory.db"));
+    const db2 = new Database(join(t, "memory.db"));
     const ev = db2.prepare(
       `SELECT event_type, cloud_synced_at FROM memory_events WHERE memory_id = ?`,
     ).get("legacy-1") as { event_type: string; cloud_synced_at: number | null } | undefined;
@@ -405,15 +433,15 @@ describe("backfill from legacy memories rows", () => {
   });
 
   it("re-running init() is idempotent (no duplicate events)", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "bf-idem-"));
-    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("bf-idem-");
+    const provider1 = new SqliteFtsMemoryProvider(t);
     await provider1.init();
     await provider1.remember({ content: "hello" });
     provider1.close();
 
-    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    const provider2 = new SqliteFtsMemoryProvider(t);
     await provider2.init();
-    const db = new Database(join(tmp, "memory.db"));
+    const db = new Database(join(t, "memory.db"));
     const count = db.prepare(`SELECT COUNT(*) as c FROM memory_events`).get() as { c: number };
     expect(count.c).toBe(1); // one create event from the original remember(), not duplicated
     db.close();
@@ -421,10 +449,10 @@ describe("backfill from legacy memories rows", () => {
   });
 
   it("emits memory_forgotten for legacy soft-deleted rows", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "bf-forgotten-"));
-    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("bf-forgotten-");
+    const provider1 = new SqliteFtsMemoryProvider(t);
     await provider1.init();
-    const db1 = new Database(join(tmp, "memory.db"));
+    const db1 = new Database(join(t, "memory.db"));
     db1.prepare(
       `INSERT INTO memories (id, content, tags, superseded_by, created_at, updated_at)
        VALUES ('legacy-2', 'gone', '[]', 'forgotten', '2026-01-01', '2026-01-01')`,
@@ -432,9 +460,9 @@ describe("backfill from legacy memories rows", () => {
     db1.close();
     provider1.close();
 
-    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    const provider2 = new SqliteFtsMemoryProvider(t);
     await provider2.init();
-    const db2 = new Database(join(tmp, "memory.db"));
+    const db2 = new Database(join(t, "memory.db"));
     const types = db2.prepare(
       `SELECT event_type FROM memory_events WHERE memory_id = ? ORDER BY created_at`,
     ).all("legacy-2") as Array<{ event_type: string }>;
@@ -444,10 +472,10 @@ describe("backfill from legacy memories rows", () => {
   });
 
   it("preserves legacy created_at when parseable", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "bf-ts-"));
-    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("bf-ts-");
+    const provider1 = new SqliteFtsMemoryProvider(t);
     await provider1.init();
-    const db1 = new Database(join(tmp, "memory.db"));
+    const db1 = new Database(join(t, "memory.db"));
     db1.prepare(
       `INSERT INTO memories (id, content, tags, created_at, updated_at)
        VALUES ('legacy-ts', 'has timestamp', '[]', '2026-01-15 10:30:00', '2026-01-15 10:30:00')`,
@@ -455,9 +483,9 @@ describe("backfill from legacy memories rows", () => {
     db1.close();
     provider1.close();
 
-    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    const provider2 = new SqliteFtsMemoryProvider(t);
     await provider2.init();
-    const db2 = new Database(join(tmp, "memory.db"));
+    const db2 = new Database(join(t, "memory.db"));
     const ev = db2.prepare(
       `SELECT created_at FROM memory_events WHERE memory_id = ?`,
     ).get("legacy-ts") as { created_at: number };
@@ -469,10 +497,10 @@ describe("backfill from legacy memories rows", () => {
   });
 
   it("preserves legacy created_at for date-only legacy timestamps", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "bf-ts-dateonly-"));
-    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("bf-ts-dateonly-");
+    const provider1 = new SqliteFtsMemoryProvider(t);
     await provider1.init();
-    const db1 = new Database(join(tmp, "memory.db"));
+    const db1 = new Database(join(t, "memory.db"));
     db1.prepare(
       `INSERT INTO memories (id, content, tags, created_at, updated_at)
        VALUES ('legacy-date', 'date-only', '[]', '2026-01-15', '2026-01-15')`,
@@ -480,9 +508,9 @@ describe("backfill from legacy memories rows", () => {
     db1.close();
     provider1.close();
 
-    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    const provider2 = new SqliteFtsMemoryProvider(t);
     await provider2.init();
-    const db2 = new Database(join(tmp, "memory.db"));
+    const db2 = new Database(join(t, "memory.db"));
     const ev = db2.prepare(
       `SELECT created_at FROM memory_events WHERE memory_id = ?`,
     ).get("legacy-date") as { created_at: number };
@@ -493,10 +521,10 @@ describe("backfill from legacy memories rows", () => {
   });
 
   it("nulls payload content for legacy rows with superseded_by = 'purged'", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "bf-purged-"));
-    const provider1 = new SqliteFtsMemoryProvider(tmp);
+    const t = tmp("bf-purged-");
+    const provider1 = new SqliteFtsMemoryProvider(t);
     await provider1.init();
-    const db1 = new Database(join(tmp, "memory.db"));
+    const db1 = new Database(join(t, "memory.db"));
     db1.prepare(
       `INSERT INTO memories (id, content, tags, superseded_by, created_at, updated_at)
        VALUES ('legacy-purged', 'AKIA-leak', '["sensitive"]', 'purged', '2026-01-01', '2026-01-01')`,
@@ -504,9 +532,9 @@ describe("backfill from legacy memories rows", () => {
     db1.close();
     provider1.close();
 
-    const provider2 = new SqliteFtsMemoryProvider(tmp);
+    const provider2 = new SqliteFtsMemoryProvider(t);
     await provider2.init();
-    const db2 = new Database(join(tmp, "memory.db"));
+    const db2 = new Database(join(t, "memory.db"));
     const types = db2.prepare(
       `SELECT event_type FROM memory_events WHERE memory_id = ? ORDER BY created_at`,
     ).all("legacy-purged") as Array<{ event_type: string }>;
