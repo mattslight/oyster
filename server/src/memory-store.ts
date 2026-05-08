@@ -24,6 +24,7 @@ export interface RememberInput {
   space_id?: string;
   tags?: string[];
   source_session_id?: string | null;
+  cloud_owner_id?: string | null;
 }
 
 export interface RecallInput {
@@ -49,7 +50,11 @@ export interface MemoryProvider {
   recall(input: RecallInput): Promise<Memory[]>;
   /** Marks a memory as forgotten. Returns true if a row was updated, false if
    *  the id doesn't exist — callers can map false → 404. */
-  forget(id: string): Promise<boolean>;
+  forget(id: string, cloud_owner_id?: string | null): Promise<boolean>;
+  /** Server-internal hard-redaction. Writes a purge event and nulls payload
+   *  content. Not exposed via MCP in v1; reserved for "delete forever" UI,
+   *  account deletion, and secret-exposure flows. */
+  purge(id: string, cloud_owner_id?: string | null): Promise<boolean>;
   list(space_id?: string): Promise<Memory[]>;
   /** Synchronous existence check used by the import flow's dedupe — true
    *  when an active memory with this exact (content, space_id) already
@@ -333,7 +338,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     const owner_id  = input.cloud_owner_id ?? null;
 
     let inserted = false;
-    let returned_event_id = event_id;
+    let returned_event_id: string = event_id;
 
     const txn = this.db.transaction(() => {
       const info = this.db.prepare(
@@ -466,18 +471,23 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
 
   async remember(input: RememberInput): Promise<Memory> {
     const spaceId = input.space_id ?? null;
-    const tags = JSON.stringify(input.tags ?? []);
-    const sourceSessionId = input.source_session_id ?? null;
 
-    // Conservative dedupe: exact content match in same scope
-    const existing = this.stmts.findExact.get(input.content, spaceId, spaceId) as MemoryRow | undefined;
-    if (existing) {
-      return rowToMemory(existing);
+    // Conservative dedupe: exact content match in same scope. Preserves the
+    // existing surface contract — `remember` returns the existing row instead
+    // of duplicating. Skip for empty content (defensive).
+    if (input.content.length > 0) {
+      const existing = this.stmts.findExact.get(input.content, spaceId, spaceId) as MemoryRow | undefined;
+      if (existing) return rowToMemory(existing);
     }
 
-    const id = crypto.randomUUID();
-    this.stmts.insert.run(id, spaceId, input.content, tags, sourceSessionId);
-    const row = this.stmts.getById.get(id) as MemoryRow;
+    const { memory_id } = this.writeCreated({
+      content: input.content,
+      space_id: spaceId,
+      tags: input.tags,
+      source_session_id: input.source_session_id,
+      cloud_owner_id: input.cloud_owner_id ?? null,
+    });
+    const row = this.stmts.getById.get(memory_id) as MemoryRow;
     return rowToMemory(row);
   }
 
@@ -534,10 +544,20 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     return rows.map((row) => ({ ...rowToMemory(row), recalled_at: row.recalled_at }));
   }
 
-  async forget(id: string): Promise<boolean> {
+  async forget(id: string, cloud_owner_id: string | null = null): Promise<boolean> {
     const row = this.stmts.getById.get(id) as MemoryRow | undefined;
     if (!row) return false;
-    this.stmts.supersede.run("forgotten", id);
+    this.writeForgotten(id, cloud_owner_id);
+    return true;
+  }
+
+  async purge(id: string, cloud_owner_id: string | null = null): Promise<boolean> {
+    const row = this.stmts.getById.get(id) as MemoryRow | undefined;
+    const hasEvent = this.db.prepare(
+      `SELECT 1 FROM memory_events WHERE memory_id = ? LIMIT 1`,
+    ).get(id);
+    if (!row && !hasEvent) return false;
+    this.writePurged(id, cloud_owner_id);
     return true;
   }
 
@@ -587,6 +607,7 @@ export function registerMemoryTools(
   // when we can't attribute (no matching active session, internal-only call,
   // unknown user-agent). Stamps memories at write time and logs recalls.
   resolveActiveSessionId: () => string | null = () => null,
+  resolveCurrentOwnerId: () => string | null = () => null,
 ): void {
   tool(
     "remember",
@@ -601,6 +622,7 @@ export function registerMemoryTools(
       space_id,
       tags,
       source_session_id: resolveActiveSessionId(),
+      cloud_owner_id: resolveCurrentOwnerId(),
     }),
   );
 
@@ -631,7 +653,7 @@ export function registerMemoryTools(
       id: z.string().describe("Memory ID to forget"),
     },
     async ({ id }) => {
-      await provider.forget(id);
+      await provider.forget(id, resolveCurrentOwnerId());
       return `Memory "${id}" forgotten.`;
     },
   );

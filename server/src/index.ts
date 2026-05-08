@@ -500,7 +500,14 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   })) return;
 
   // /api/memories
-  if (await tryHandleMemoryRoute(req, res, url, ctx, { memoryProvider, broadcastUiEvent })) return;
+  if (await tryHandleMemoryRoute(req, res, url, ctx, {
+    memoryProvider,
+    broadcastUiEvent,
+    resolveCurrentOwnerId: () => {
+      const u = authService.getState().user;
+      return u?.tier === "pro" ? u.id : null;
+    },
+  })) return;
 
   // /api/auth/* — local glue (whoami / startSignIn / signOut). Real auth
   // (magic-link, OAuth) lives in the Cloudflare Worker.
@@ -523,6 +530,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,
     publishService,
+    resolveCurrentOwnerId: () => {
+      const u = authService.getState().user;
+      return u?.tier === "pro" ? u.id : null;
+    },
   })) return;
 
   // /api/import/* — paste-from-another-AI flow

@@ -318,3 +318,23 @@ describe("event write API — writeForgotten / writePurged / precedence", () => 
     provider.close();
   });
 });
+
+describe("provider.purge", () => {
+  it("purges existing memory and returns true", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "purge-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    const m = await provider.remember({ content: "secret-content" });
+    expect(await provider.purge(m.id)).toBe(true);
+    expect(await provider.recall({ query: "secret-content" })).toHaveLength(0);
+    provider.close();
+  });
+
+  it("returns false when memory does not exist", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "purge-missing-"));
+    const provider = new SqliteFtsMemoryProvider(tmp);
+    await provider.init();
+    expect(await provider.purge("nonexistent")).toBe(false);
+    provider.close();
+  });
+});
