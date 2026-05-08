@@ -368,19 +368,26 @@ function logBackfill(label: string, result: { mirrored: number; skipped: number 
 artifactService.setCloudOnlyPublicationsSource(() => publishService.getCloudOnlyPublications());
 
 async function syncOnAuth(label: string): Promise<void> {
-  // Spaces FIRST — the headline fix of #406 is that published-artefact
-  // ghosts resolve to real spaces, not _cloud. Doing publications first
-  // defeats that — the ghost render would still fall through to _cloud
-  // until the *next* sign-in. spaces first → publications second → render.
-  try {
-    const sr = await spaceSync.reconcile();
-    console.log(`[spaces] ${label}: pulled=${sr.pulled} pushed=${sr.pushed} tombstoned=${sr.tombstoned}`);
-    if (sr.pulled > 0 || sr.tombstoned > 0) {
-      // Notify the surface so any space pills update immediately.
-      broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+  // Spaces sync is gated: Pro-only, and the profile must be unbound or already
+  // bound to this user. canRunCloudSync() is also the sole production caller of
+  // bindToOwner — first Pro sign-in binds the profile here as a side effect.
+  // publishService.backfillPublications() is NOT gated: it runs for any
+  // signed-in user (free or Pro) and handles sign-out cleanup internally.
+  if (canRunCloudSync()) {
+    // Spaces FIRST — the headline fix of #406 is that published-artefact
+    // ghosts resolve to real spaces, not _cloud. Doing publications first
+    // defeats that — the ghost render would still fall through to _cloud
+    // until the *next* sign-in. spaces first → publications second → render.
+    try {
+      const sr = await spaceSync.reconcile();
+      console.log(`[spaces] ${label}: pulled=${sr.pulled} pushed=${sr.pushed} tombstoned=${sr.tombstoned}`);
+      if (sr.pulled > 0 || sr.tombstoned > 0) {
+        // Notify the surface so any space pills update immediately.
+        broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+      }
+    } catch (err) {
+      console.warn(`[spaces] ${label} failed:`, err);
     }
-  } catch (err) {
-    console.warn(`[spaces] ${label} failed:`, err);
   }
   // Then publications (preserves existing behaviour: clears ghost cache on
   // sign-out, broadcasts artifact_changed unconditionally via logBackfill).
