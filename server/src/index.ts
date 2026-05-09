@@ -596,7 +596,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/memories
   if (await tryHandleMemoryRoute(req, res, url, ctx, {
     memoryProvider,
-    broadcastUiEvent,
     resolveCurrentOwnerId,
     memorySync,
   })) return;
