@@ -1,4 +1,4 @@
-# Oyster roadmap (2026-05 onwards)
+# Oyster roadmap (2026-05 onwards; last edit 2026-05-09)
 
 > **Status:** canonical. Each milestone is an epic that delivers one or more requirements from [`docs/requirements/oyster-cloud.md`](../requirements/oyster-cloud.md). If a ticket isn't on the path to making a requirement true, it doesn't belong on a milestone — it gets deferred or shipped opportunistically.
 >
@@ -25,51 +25,65 @@ Each milestone from here delivers one or more requirements. Polish, refactors, a
 
 **Didn't ship:** anything else. Deferred items remain deferred.
 
-## 0.7.0 — Free account + Publish/Share
+## 0.7.0 — Free account + Publish/Share ✅ shipped
 
-**Delivers:** R5 (publish & share artefacts) + the identity substrate that R1 / R5 / R7 ride on.
+**Delivered:** R5 (publish & share artefacts) + the identity substrate that R1 / R5 / R7 ride on.
 
-**Purpose:** first visible Cloud wedge. Convert the waitlist into a free-account funnel. The pricing page promise of *"Sync · Memory · Publish"* starts being true with **Publish**.
+**Purpose:** first visible Cloud wedge — convert the waitlist into a free-account funnel and start making the pricing-page promise of *"Sync · Memory · Publish"* true.
 
-**Status:** auth + R5 backend + viewer all shipped. Only the Publish UI affordance (#317) remains.
+**Shipped:**
 
-**Ships:**
-
-- ✅ **Auth** — magic-link (#295) shipped first; **OAuth Google + GitHub (#340) replaced it as the primary path**, magic-link demoted to fallback. Account state surfaced in-app. Pattern adapted from `~/Dev/oyster-crm`.
+- ✅ **Auth** — magic-link (#295) shipped first; **OAuth GitHub (#340) replaced it as the primary path**, magic-link demoted to fallback. Account state surfaced in-app.
 - ✅ **R5 schema** (#314) — `share_token`, `share_mode`, `share_password_hash`, `published_at`, `share_updated_at`, `unpublished_at` columns on artefacts.
-- ✅ **R5 backend** (#315) — `publish_artifact` / `unpublish_artifact` MCP tools, `POST /api/artifacts/:id/publish` + unpublish, cloud upload to R2 via `infra/oyster-publish` Worker. Single source of truth in `server/src/publish-service.ts`.
-- ✅ **R5 viewer** (#316) — public viewer at `oyster.to/p/<token>` with three access modes (open, password, sign-in-required). Implemented as a Cloudflare Worker route with markdown rendering.
-- ⏳ **R5 UI** (#317) — Publish action in the artefact UI (modal, mode picker, URL display, copy-to-clipboard). **In flight.**
-- **Entitlement / caps model** — free-tier caps for published-artefact size enforced in the Worker (10 MB ceiling); Pro tier unlocks higher. Folded into the work above.
+- ✅ **R5 backend** (#315) — `publish_artifact` / `unpublish_artifact` MCP tools, `POST /api/artifacts/:id/publish` + unpublish, cloud upload to R2 via `infra/oyster-publish` Worker.
+- ✅ **R5 viewer** (#316) — public viewer at `share.oyster.to/p/<token>` with three access modes (open, password, sign-in-required). Origin-isolated from the main app (#397).
+- ✅ **R5 UI** (#317) — Publish action in the artefact UI (modal, mode picker, URL display, copy-to-clipboard).
+- ✅ **R5 hardening** (#400) — local-mirror backfill, cloud-only ghost rows, password=Pro gating, list-view context menu, cloud-only edit/rename/unpublish.
+- ✅ **Entitlement / caps model** — free-tier caps for published-artefact size enforced in the Worker (10 MB ceiling); Pro tier unlocks higher.
 
-**Won't ship:** sync, durability, cloud memory store, semantic recall, cross-device anything, artefact-byte sync, version history. Those are 0.8.0+. Multi-file bundles also out of scope — single-file artefacts are sufficient for R5; richer Publish lives in 0.9.0+ if it earns its keep.
+## 0.7.1 — Spaces sync wedge ✅ shipped
 
-## 0.8.0 — Pro continuity
+**Delivered:** the first cross-device sync wedge — spaces metadata propagating across signed-in devices. Validated the DIY events-table + outbox + worker shape before extending to memory in 0.8.0.
 
-**Delivers:** R1 (empty-machine continuity) + R3 (durability) + R4 cross-device + R2 cross-device extension.
+**Shipped:**
 
-**Purpose:** solve the empty-machine deadness. *Sign in on a new laptop and your work is there.*
+- ✅ **Spaces sync** (#406, PR #407) — Pro users see the same set of spaces (name, hierarchy, summary) on every device. Published artefacts on a fresh device resolve to their real space instead of a generic "Cloud" bucket.
+- ✅ **Boot banner refresh** — new logo + rotating tip per boot.
+
+## 0.8.0 — Cross-device memory ✅ shipped
+
+**Delivered:** R4 — memories travel with the user, not the device. Cross-agent recall (Claude / Cursor / Codex) works cross-device on the same Pro account.
+
+**Purpose:** make the *"every agent, one shared brain"* tagline true across machines, not just across agents on one machine.
+
+**Shipped:**
+
+- ✅ **R4 cloud memory store** (#318) — `synced_memory_events` + `synced_memory_payloads` in D1, write-through outbox + cloud pull on focus/visibility/online/panel-mount/30s-poll, manual refresh button, profile-binding gate so account A's events don't pollute account B's local SQLite.
+- ✅ **Live panel updates** (#421) — `memory_changed` SSE on cloud pulls and local writes, so the Memories panel re-fetches without focus.
+- ✅ **Timezone-correct timestamps** (#422) — ISO-8601 UTC at the API boundary so non-UTC clients no longer render "ago" times skewed by their offset.
+
+**Punted to 0.9.0** (originally scoped here, moved out for shipping speed):
+
+- **Sync engine, broader** (#296) — beyond memory + spaces, the longer-tail surface. Memory-first stance from `archived/sync-direction.md` holds; transcripts intentionally cold-path.
+- **R1 fresh-machine restore** (#319) — Home (memories + spaces) restores today; the missing piece is artefact-byte restore, which is R7-shaped.
+- **R3 cold-storage transcripts** (#320) — durable backup of `session_events`, lazy-pulled by the inspector on first open per device.
+- **R2 semantic recall** (#321) — embedding-backed recall, cross-device.
+- **Pick up here** (#322) — cross-device session priming with summary + memories + artefact refs.
+
+## 0.9.0 — Pro continuity (deepened) + multi-agent + R7
+
+**Delivers:** the items punted from 0.8.0 (R1 / R2 / R3 / Pick-up-here / broader sync) plus R7 (artefact continuity across devices and across time) and native multi-agent ingestion beyond MCP memory.
+
+**Purpose:** the hardest pieces, after the cloud substrate has soaked. Don't let any of these block earlier milestones.
 
 **Ships:**
 
-- **Sync engine** (#296) — memory-first transport, end-to-end encrypted. Per `archived/sync-direction.md` framing: hot path = memories + spaces + artefact manifests + session metadata + summaries; cold path = transcripts.
-- **R4 cloud memory store** (#318) — memories travel with the user, not the device. Cross-agent recall (Claude / Cursor / Codex) works cross-device.
-- **R1 fresh-machine restore** (#319) — sign-in on a clean device populates Home from cloud, no manual setup.
-- **R3 cold-storage transcripts** (#320) — durable backup of `session_events`, lazy-pulled by the inspector on first open per device. Survives machine loss.
+- **Sync engine, broader** (#296) — extends 0.8.0's memory + spaces sync to the longer tail.
+- **R1 fresh-machine restore** (#319) — sign-in on a clean device populates Home from cloud end-to-end (memories + spaces shipped in 0.8.0; this finishes the artefact + transcript half).
 - **R2 semantic recall** (#321) — embedding-backed recall, replaces / augments the OR-joined FTS for natural-language queries. Cross-device because vectors live in cloud.
+- **R3 cold-storage transcripts** (#320) — durable backup of `session_events`, lazy-pulled by the inspector on first open per device. Survives machine loss.
 - **Pick up here** (#322) — the killer demo. Cross-device session priming with summary + memories + artefact refs. Not a transcript replay — the agent is *primed*, not replayed.
-
-**Won't ship:** artefact-byte sync, version history, diff/revert, cross-device artefact editing. R7 is its own arc.
-
-## 0.9.0 — Artefact continuity + multi-agent depth
-
-**Delivers:** R7 (artefact continuity across devices and across time) + R4 deepening (native multi-agent ingestion beyond MCP memory).
-
-**Purpose:** the hardest pieces, after the Cloud substrate is steady-state. Don't let any of these block 0.6.0 / 0.7.0 / 0.8.0.
-
-**Ships:**
-
-- **R7 across-time** (#323) — `artifact_versions` table (or git-backed), snapshot-on-write, history view, diff between versions, revert. Local-first is acceptable; the across-time axis is independent of cross-device. Ship first to prove the version-store choice.
+- **R7 across-time** (#323) — `artifact_versions` table (or git-backed), snapshot-on-write, history view, diff between versions, revert. Local-first is acceptable; the across-time axis is independent of cross-device.
 - **R7 across-device** (#324) — bidirectional artefact-byte sync with a defined conflict policy (LWW + version history is the leading candidate). The compound R7 scenario from the requirements doc passes end-to-end.
 - **Multi-agent ingestion** (#298) — beyond MCP memory: native session ingestion for Cursor, Codex, OpenCode and beyond. Folds in #177 (closed).
 
