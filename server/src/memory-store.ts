@@ -678,19 +678,25 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
   }
 
   async importMemories(memories: Memory[]): Promise<void> {
+    // Canonicalise to the SQLite space-form `YYYY-MM-DD HH:MM:SS` so the
+    // column form stays uniform regardless of whether a row was written
+    // organically or imported. Mixed forms break ORDER BY (T > space in
+    // ASCII would push all imports after all organic rows).
     const insertOrIgnore = this.db.prepare(
       `INSERT OR IGNORE INTO memories (id, space_id, content, tags, source_session_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, datetime(?, 'unixepoch'), datetime('now'))`,
     );
     const tx = this.db.transaction((items: Memory[]) => {
       for (const m of items) {
+        const ms = Date.parse(m.created_at);
+        const seconds = Number.isFinite(ms) ? Math.floor(ms / 1000) : Math.floor(Date.now() / 1000);
         insertOrIgnore.run(
           m.id,
           m.space_id,
           m.content,
           JSON.stringify(m.tags),
           m.source_session_id ?? null,
-          m.created_at,
+          seconds,
         );
       }
     });
