@@ -6,14 +6,14 @@ import { env } from "cloudflare:test";
 const SCHEMA_SQL = `
 -- Mirror of oyster-auth's relevant schema for tests. Keep in sync with:
 --   infra/auth-worker/migrations/0001_init.sql  (users, sessions)
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
   email         TEXT NOT NULL UNIQUE,
   created_at    INTEGER NOT NULL,
   last_seen_at  INTEGER,
   tier          TEXT NOT NULL DEFAULT 'free'
 );
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   id            TEXT PRIMARY KEY,
   user_id       TEXT NOT NULL REFERENCES users(id),
   created_at    INTEGER NOT NULL,

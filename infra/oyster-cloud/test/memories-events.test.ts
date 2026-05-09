@@ -236,6 +236,35 @@ describe("POST /api/memories/events", () => {
     expect(pay?.tags).toBe('["a"]');
   });
 
+  it("duplicate event_id re-runs payload upsert (heals partial-write race)", async () => {
+    const { token, userId } = await makeProSession();
+    // Simulate a partial-write race: insert ONLY the event row directly,
+    // skipping the payload — as if a prior request crashed between the
+    // event INSERT and the payload upsert.
+    await env.DB.prepare(
+      `INSERT INTO synced_memory_events (owner_id, event_id, memory_id, event_type, space_id, created_at, ingested_at)
+       VALUES (?, 'ev-orphan', 'mem-O', 'memory_created', NULL, 1000, 1000)`,
+    ).bind(userId).run();
+
+    // Now retry the SAME event with payload. The handler should classify
+    // as `duplicates` AND run the payload upsert, healing the orphan.
+    const res = await signedInRequest("/api/memories/events", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        events: [{ event_id: "ev-orphan", memory_id: "mem-O", event_type: "memory_created", space_id: null, created_at: 1000, payload: { content: "healed", tags: ["t"] } }],
+      }),
+    }, token);
+    const body = await res.json() as { duplicates: string[] };
+    expect(body.duplicates).toEqual(["ev-orphan"]);
+
+    // Payload should now exist with the healed content.
+    const pay = await env.DB.prepare(
+      `SELECT content, tags FROM synced_memory_payloads WHERE owner_id = ? AND memory_id = ?`,
+    ).bind(userId, "mem-O").first<{ content: string; tags: string }>();
+    expect(pay?.content).toBe("healed");
+    expect(pay?.tags).toBe('["t"]');
+  });
+
   it("memory_purged nulls payload content even if create arrives later", async () => {
     const { token, userId } = await makeProSession();
     // Send purge first (out-of-order delivery).

@@ -192,8 +192,18 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
       const dup = await env.DB.prepare(
         `SELECT 1 FROM synced_memory_events WHERE owner_id = ? AND event_id = ? LIMIT 1`,
       ).bind(user.id, ev.event_id).first();
-      if (dup) duplicates.push(ev.event_id);
-      else conflicts.push(ev.event_id);
+      if (dup) {
+        duplicates.push(ev.event_id);
+        // Run payload upsert to heal any partial-write race where the event
+        // landed in a prior request but the payload write didn't. Same event_id
+        // implies same canonical content, so this is idempotent for healthy
+        // clients.
+        if (payloadStmt) await payloadStmt.run();
+      } else {
+        conflicts.push(ev.event_id);
+        // DO NOT run payload — different event_id, the canonical content for
+        // this memory_id+type belongs to a different event.
+      }
     }
   } catch (err) {
     console.warn("[memory] events ingest db error:", err);

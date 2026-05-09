@@ -337,7 +337,14 @@ const memorySync: MemorySyncService = createMemorySyncService({
   workerBase: CLOUD_WORKER_BASE,
   fetch: globalThis.fetch,
 });
-memoryProvider.setOnWrite(() => { void memorySync.pushPending(); });
+memoryProvider.setOnWrite(() => {
+  // Fire-and-forget. Catch any error so a transient sync failure can never
+  // crash the server via unhandled rejection. pushPending swallows network
+  // errors internally; this is belt-and-braces for unexpected throws.
+  memorySync.pushPending().catch((err) => {
+    console.warn("[memory] onWrite-triggered pushPending failed:", err);
+  });
+});
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const publishService = createPublishService({
