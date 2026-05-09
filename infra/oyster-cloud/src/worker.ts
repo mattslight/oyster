@@ -45,6 +45,13 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
   const incoming = body.events ?? [];
   if (!Array.isArray(incoming)) return jsonError(400, "invalid_metadata");
 
+  // Defensive cap. The local sync service batches at 100 events; even
+  // aggressive backfills shouldn't exceed this.
+  const MAX_EVENTS_PER_REQUEST = 1000;
+  if (incoming.length > MAX_EVENTS_PER_REQUEST) {
+    return jsonError(413, "too_many_events");
+  }
+
   const accepted:   string[] = [];
   const duplicates: string[] = [];
   const conflicts:  string[] = [];
@@ -111,8 +118,6 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
         }
       }
 
-      // Build the event-insert + payload statement atomically via env.DB.batch.
-      // Each event's pair runs as one D1 transaction — no half-applied state.
       const eventStmt = env.DB.prepare(
         `INSERT OR IGNORE INTO synced_memory_events
            (owner_id, event_id, memory_id, event_type, space_id, created_at, ingested_at)
@@ -162,19 +167,28 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
         );
       }
 
-      const stmts = payloadStmt ? [eventStmt, payloadStmt] : [eventStmt];
-      const results = await env.DB.batch(stmts);
-      const eventChanges = results[0].meta.changes;
+      // Event INSERT first; classify the result; only THEN run the payload
+      // statement (and only when the event actually exists for this owner+id).
+      // We can't use env.DB.batch here because the payload statement must be
+      // conditional on the event INSERT actually inserting — running it for
+      // a per-type uniqueness conflict would overwrite the canonical payload.
+      const eventResult = await eventStmt.run();
+      const eventChanges = eventResult.meta.changes;
 
       if (eventChanges > 0) {
         accepted.push(ev.event_id);
+        // Event newly inserted. Run the payload now if there is one.
+        if (payloadStmt) {
+          await payloadStmt.run();
+        }
         continue;
       }
 
-      // Event INSERT was a no-op. Distinguish duplicate event_id from per-type
-      // uniqueness conflict. The PK is (owner_id, event_id); per-type partial
-      // unique indexes cover (owner_id, memory_id, event_type) WHERE the type
-      // matches. Both are safely idempotent — caller marks them synced.
+      // Event INSERT was a no-op. Distinguish duplicate (same event_id already
+      // exists) from conflict (per-type uniqueness rejected a different
+      // event_id for the same memory_id). For duplicates the payload is
+      // already canonical from the prior request; for conflicts the canonical
+      // payload belongs to a different event_id and must NOT be overwritten.
       const dup = await env.DB.prepare(
         `SELECT 1 FROM synced_memory_events WHERE owner_id = ? AND event_id = ? LIMIT 1`,
       ).bind(user.id, ev.event_id).first();

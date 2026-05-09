@@ -209,6 +209,33 @@ describe("POST /api/memories/events", () => {
     expect(pay?.purged_at).not.toBeNull();
   });
 
+  it("conflicting memory_created does NOT overwrite the canonical payload", async () => {
+    const { token, userId } = await makeProSession();
+    // Send canonical create.
+    await signedInRequest("/api/memories/events", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        events: [{ event_id: "ev-canonical", memory_id: "mem-K", event_type: "memory_created", space_id: null, created_at: 1000, payload: { content: "canonical", tags: ["a"] } }],
+      }),
+    }, token);
+    // Send conflicting create with different content.
+    const res = await signedInRequest("/api/memories/events", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        events: [{ event_id: "ev-conflict", memory_id: "mem-K", event_type: "memory_created", space_id: null, created_at: 2000, payload: { content: "should-not-stick", tags: ["b"] } }],
+      }),
+    }, token);
+    const body = await res.json() as { conflicts: string[] };
+    expect(body.conflicts).toEqual(["ev-conflict"]);
+
+    // Payload must still be canonical, NOT overwritten.
+    const pay = await env.DB.prepare(
+      `SELECT content, tags FROM synced_memory_payloads WHERE owner_id = ? AND memory_id = ?`,
+    ).bind(userId, "mem-K").first<{ content: string; tags: string }>();
+    expect(pay?.content).toBe("canonical");
+    expect(pay?.tags).toBe('["a"]');
+  });
+
   it("memory_purged nulls payload content even if create arrives later", async () => {
     const { token, userId } = await makeProSession();
     // Send purge first (out-of-order delivery).

@@ -20,9 +20,10 @@ export interface ProfileBindingService {
    *  owner. Returns `conflict` (bound=false) if a different owner is already
    *  bound — caller must treat that as a hard block on cloud sync. */
   bindToOwner(ownerId: string): BindResult;
-  /** True when userId is the bound owner, OR the profile is not yet bound.
-   *  False for null userId (not signed in) when bound, and for any userId
-   *  that doesn't match the existing binding. */
+  /** True if userId is non-null AND (the profile is unbound OR bound to userId).
+   *  False if userId is null, or if bound to a different user. A null user is
+   *  never an owner — sync gates use this to refuse the un-attributable case
+   *  cleanly. Use this as the gate in cloud sync services. */
   isOwnedBy(userId: string | null): boolean;
 }
 

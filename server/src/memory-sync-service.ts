@@ -94,7 +94,13 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
            FROM memory_events
           WHERE cloud_synced_at IS NULL
             AND cloud_owner_id = ?
-          ORDER BY created_at ASC
+          ORDER BY
+            CASE event_type
+              WHEN 'memory_purged'    THEN 0
+              WHEN 'memory_forgotten' THEN 1
+              WHEN 'memory_created'   THEN 2
+            END,
+            created_at ASC
           LIMIT ?`,
       );
       const fetchPayload = deps.db.prepare(

@@ -26,7 +26,7 @@ describe("MemorySyncService", () => {
     await provider.init();
     const fetchSpy = vi.fn();
     const svc = createMemorySyncService({
-      db: (provider as any).db,
+      db: provider.getInternalDbForSync(),
       provider,
       profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "free" }),
@@ -46,7 +46,7 @@ describe("MemorySyncService", () => {
 
     const fetchSpy = vi.fn();
     const svc = createMemorySyncService({
-      db: (provider as any).db,
+      db: provider.getInternalDbForSync(),
       provider,
       profileBinding,
       currentUser: () => ({ id: "user-B", email: "b@x", tier: "pro" }),
@@ -78,7 +78,7 @@ describe("MemorySyncService", () => {
     });
 
     const svc = createMemorySyncService({
-      db: (provider as any).db,
+      db: provider.getInternalDbForSync(),
       provider,
       profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
@@ -92,7 +92,7 @@ describe("MemorySyncService", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
 
     // Pending row count should drop to 0.
-    const db = (provider as any).db as Database.Database;
+    const db = provider.getInternalDbForSync() as Database.Database;
     const c = db.prepare(`SELECT COUNT(*) as c FROM memory_events WHERE cloud_synced_at IS NULL`).get() as { c: number };
     expect(c.c).toBe(0);
   });
@@ -119,7 +119,7 @@ describe("MemorySyncService", () => {
     ));
 
     const svc = createMemorySyncService({
-      db: (provider as any).db,
+      db: provider.getInternalDbForSync(),
       provider,
       profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
@@ -140,7 +140,7 @@ describe("MemorySyncService", () => {
     profileBinding.bindToOwner("u1");
     // Local creates a memory; the event is pending (cloud_synced_at IS NULL).
     const m = await provider.remember({ content: "round-trip", cloud_owner_id: "u1" });
-    const db = (provider as any).db as Database.Database;
+    const db = provider.getInternalDbForSync() as Database.Database;
     const localEvent = db.prepare(
       `SELECT event_id, cloud_synced_at FROM memory_events WHERE memory_id = ?`,
     ).get(m.id) as { event_id: string; cloud_synced_at: number | null };
@@ -195,7 +195,7 @@ describe("MemorySyncService", () => {
     ));
 
     const svc = createMemorySyncService({
-      db: (provider as any).db,
+      db: provider.getInternalDbForSync(),
       provider,
       profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
@@ -219,7 +219,7 @@ describe("MemorySyncService", () => {
 
     const fetchSpy = vi.fn().mockRejectedValue(new TypeError("network"));
     const svc = createMemorySyncService({
-      db: (provider as any).db,
+      db: provider.getInternalDbForSync(),
       provider,
       profileBinding,
       currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
@@ -231,7 +231,7 @@ describe("MemorySyncService", () => {
     const pushed = await svc.pushPending();
     expect(pushed).toBe(0);
 
-    const db = (provider as any).db as Database.Database;
+    const db = provider.getInternalDbForSync() as Database.Database;
     const c = db.prepare(`SELECT COUNT(*) as c FROM memory_events WHERE cloud_synced_at IS NULL`).get() as { c: number };
     expect(c.c).toBe(1);
   });
