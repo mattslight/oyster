@@ -43,13 +43,13 @@
     "url": "https://github.com/mattslight/oyster.git"
   },
   "dependencies": {
-    "@fal-ai/client": "^1.10.0",
+    "@fal-ai/client": "^1.10.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
     "ignore": "^7.0.5",
     "marked": "^18.0.3",
-    "opencode-ai": "^1.14.31",
+    "opencode-ai": "^1.14.41",
     "ws": "^8.20.0"
   },
   "optionalDependencies": {
