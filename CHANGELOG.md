@@ -4,10 +4,24 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-09
+
+Memories follow you across Pro devices. Headline changes from the 0.8.0-beta cycle:
+
+### Added
+
+- **Memories follow you across Pro devices.** Anything you remember on one Pro device shows up on every other Pro device signed into the same account. Forgetting and deletion propagate too. Only memories created while signed into your bound Pro profile sync — pre-existing local memories and anything created on a free account stay local.
+- **Refresh button on the Memories panel.** Click ↻ to pull cross-device updates immediately, with a brief "Synced" / "Pulled N updates" status flash.
+- **Version stamp on the boot banner.** A faint `vX.Y.Z` now sits below the bottom-right of the Oyster logo at startup — quick visual confirmation of which version is running.
+
+### Changed
+
+- **Memory sync feels instant when you switch back to a device.** Focusing the Oyster window, returning to the Memories panel, or coming back online now triggers a pull within seconds, alongside a regular ~30-second background check.
+
 ### Fixed
 
 - **Memory timestamps now respect your timezone.** "Created" times in the Memories panel previously read as up to several hours off when running outside UTC; they now reflect the actual moment a memory was written.
-- **Memories panel updates live again.** Writing a memory in chat, or having one arrive from another device on the periodic poll, now refreshes the panel automatically — previously only window focus or the manual refresh button surfaced changes.
+- **Memories panel updates live again.** Writing a memory in chat, or having one arrive from another device, now refreshes the panel automatically — previously only window focus or the manual refresh button surfaced changes.
 
 ## [0.8.0-beta.3] - 2026-05-09
 
