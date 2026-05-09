@@ -84,13 +84,24 @@ interface MemoryRow {
   source_session_id: string | null;
 }
 
+// SQLite's datetime('now') yields "YYYY-MM-DD HH:MM:SS" — UTC but without a
+// zone marker. JS Date.parse() on that string is engine-defined and on V8
+// is treated as local time, so a non-UTC client shows a skewed "ago" label.
+// Normalise to canonical ISO-8601 UTC at the API boundary.
+function toIsoUtc(text: string): string {
+  let iso = text.replace(" ", "T");
+  if (!iso.includes("T")) iso += "T00:00:00";
+  if (!iso.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(iso)) iso += "Z";
+  return iso;
+}
+
 function rowToMemory(row: MemoryRow): Memory {
   return {
     id: row.id,
     content: row.content,
     space_id: row.space_id,
     tags: JSON.parse(row.tags),
-    created_at: row.created_at,
+    created_at: toIsoUtc(row.created_at),
     source_session_id: row.source_session_id ?? null,
   };
 }

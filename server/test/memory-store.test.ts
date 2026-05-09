@@ -75,6 +75,24 @@ describe("SqliteFtsMemoryProvider", () => {
       expect(written).toHaveLength(1);
       expect(written[0].id).toBe(m.id);
     });
+
+    it("returns created_at as an unambiguous UTC ISO-8601 string", async () => {
+      // SQLite's datetime('now') yields "YYYY-MM-DD HH:MM:SS" (UTC, no zone
+      // marker). JS Date.parse() of that string is treated as local time —
+      // so a Dubai (UTC+4) browser shows a 4-hour skew. The provider must
+      // return an unambiguous form (trailing Z or a +HH:MM offset).
+      const before = Date.now();
+      const m = await provider.remember({ content: "timestamp-shape" });
+      const after = Date.now();
+      // Must end with Z or include an explicit ±HH:MM offset.
+      expect(m.created_at).toMatch(/(Z|[+-]\d{2}:\d{2})$/);
+      // Must round-trip via Date to a moment within the call window
+      // (allow 5s slack for slow CI).
+      const parsed = Date.parse(m.created_at);
+      expect(Number.isNaN(parsed)).toBe(false);
+      expect(parsed).toBeGreaterThanOrEqual(before - 5_000);
+      expect(parsed).toBeLessThanOrEqual(after + 5_000);
+    });
   });
 
   describe("recall query parsing", () => {
