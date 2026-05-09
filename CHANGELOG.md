@@ -4,6 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.0-beta.3] - 2026-05-09
+
+### Added
+
+- **Version stamp on the boot banner.** A faint `vX.Y.Z` now sits below the bottom-right of the Oyster logo at startup — quick visual confirmation of which version is running.
+
 ## [0.8.0-beta.2] - 2026-05-09
 
 ### Added
