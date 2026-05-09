@@ -322,8 +322,8 @@ describe("GET /api/memories/events", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { events: Array<{ event_id: string; event_type: string; payload?: { content: string | null } }> };
     expect(body.events.map((e) => e.event_id)).toEqual(["ev-A", "ev-B"]);
-    expect(body.events[0].payload?.content).toBe("hello");
-    expect(body.events[1].payload).toBeUndefined();
+    expect(body.events[0]?.payload?.content).toBe("hello");
+    expect(body.events[1]?.payload).toBeUndefined();
   });
 
   it("excludes other users' events", async () => {
