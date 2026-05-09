@@ -4,6 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.0-beta.1] - 2026-05-09
+
+### Changed
+
+- **Cross-device memory updates appear within ~30 seconds** without requiring a restart. Previously, a running device only checked for new memories from your other devices on sign-in or app launch.
+
 ## [0.8.0-beta.0] - 2026-05-09
 
 ### Added
