@@ -23,6 +23,12 @@ export interface MemorySyncDeps {
   sessionToken: () => string | null;
   workerBase: string;
   fetch: typeof fetch;
+  /** Optional: invoked after a successful pull when applied > 0. Used by the
+   *  server entry point to broadcast a `memory_changed` SSE so the UI
+   *  re-fetches its memory list. Cloud-pulled events bypass the local
+   *  `onWrite` hook, so without this the periodic poll lands fresh data
+   *  silently and the panel stays stale until a focus/refresh trigger. */
+  onApplied?: (applied: number) => void;
 }
 
 export interface MemorySyncService {
@@ -316,6 +322,9 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
 
       if (applied > 0) {
         console.log(`[memory] pulled: applied=${applied}`);
+        try { deps.onApplied?.(applied); } catch (err) {
+          console.warn("[memory] onApplied threw:", err);
+        }
       }
 
       return applied;

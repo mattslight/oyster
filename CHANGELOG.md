@@ -7,6 +7,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 ### Fixed
 
 - **Memory timestamps now respect your timezone.** "Created" times in the Memories panel previously read as up to several hours off when running outside UTC; they now reflect the actual moment a memory was written.
+- **Memories panel updates live again.** Writing a memory in chat, or having one arrive from another device on the periodic poll, now refreshes the panel automatically — previously only window focus or the manual refresh button surfaced changes.
 
 ## [0.8.0-beta.3] - 2026-05-09
 
