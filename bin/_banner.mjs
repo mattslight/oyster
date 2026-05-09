@@ -101,8 +101,12 @@ export function getTips() {
 // `tipIndex` lets the preview script iterate every variant deterministically;
 // production calls omit it and get a random tip.
 // `options.logo` lets the preview script swap the ASCII font.
+// `options.version` (e.g. "0.8.0-beta.2") renders a faint `vX.Y.Z` flush
+// to the bottom-right of the ASCII block — quietly visible without
+// crowding the rest of the banner.
 export function printHeroBox(url, tipIndex, options = {}) {
   const logo = options.logo || DEFAULT_LOGO;
+  const version = options.version;
   const tips = getTips();
   const tip = tipIndex != null
     ? tips[tipIndex]
@@ -147,7 +151,17 @@ export function printHeroBox(url, tipIndex, options = {}) {
     return `${" ".repeat(artLeftPad)}${coloured}`;
   });
 
-  const lines = [``, ...artLines, ...contentLines];
+  // Faint `vX.Y.Z` right-aligned to the ASCII block's right edge — sits
+  // immediately under the logo so it reads as an attached marker rather
+  // than a separate banner row.
+  const versionLines = [];
+  if (version) {
+    const versionText = `v${version}`;
+    const versionLeftPad = Math.max(0, artLeftPad + artLineLen - versionText.length);
+    versionLines.push(`${" ".repeat(versionLeftPad)}${D}${versionText}${R}`);
+  }
+
+  const lines = [``, ...artLines, ...versionLines, ...contentLines];
 
   const hr = "─".repeat(innerWidth);
   const out = [];

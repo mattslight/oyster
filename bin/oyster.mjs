@@ -419,7 +419,8 @@ async function main() {
       if (match) {
         opened = true;
         const url = match[1];
-        printHeroBox(url);
+        const pkg = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8"));
+        printHeroBox(url, undefined, { version: pkg.version });
         try {
           const platform = process.platform;
           if (platform === "darwin") execSync(`open ${url}`);

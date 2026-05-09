@@ -3,7 +3,14 @@
 // full server. Run with `npm run preview:banner` (tip rotation) or
 // `npm run preview:banner -- --fonts` (logo font comparison).
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { printHeroBox, getTips, LOGO_FONTS } from "../bin/_banner.mjs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8"));
+const version = pkg.version;
 
 const url = "http://127.0.0.1:4444";
 const args = process.argv.slice(2);
@@ -12,13 +19,13 @@ if (args[0] === "--fonts" || args[0] === "-f") {
   console.log(`\nComparing ${Object.keys(LOGO_FONTS).length} logo fonts (using tip 1 throughout):\n`);
   for (const name of Object.keys(LOGO_FONTS)) {
     console.log(`--- font: ${name} ---`);
-    printHeroBox(url, 0, { logo: LOGO_FONTS[name] });
+    printHeroBox(url, 0, { logo: LOGO_FONTS[name], version });
   }
 } else {
   const tips = getTips();
   console.log(`\nRendering ${tips.length} tip variants:\n`);
   for (let i = 0; i < tips.length; i++) {
     console.log(`--- variant ${i + 1} of ${tips.length} ---`);
-    printHeroBox(url, i);
+    printHeroBox(url, i, { version });
   }
 }
