@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
 import type { SessionState } from "../../data/sessions-api";
@@ -170,6 +170,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // space starts collapsed too.
   const [memoriesLimit, setMemoriesLimit] = useState(MEMORIES_PREVIEW);
   const [showAddMemory, setShowAddMemory] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
+  const [lastSyncMessage, setLastSyncMessage] = useState<string | null>(null);
+  const lastAutoReconcileRef = useRef<number>(0);
+  const AUTO_THROTTLE_MS = 10_000;
   const [sessionsLimit, setSessionsLimit] = useState(SESSIONS_PREVIEW);
   // Artefact source filter (#280) + 3-row collapse. Reset on scope change
   // so each space starts compact and at "all".
@@ -547,6 +551,71 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     };
     window.addEventListener("oyster:open-session", handler);
     return () => window.removeEventListener("oyster:open-session", handler);
+  }, []);
+
+  // Manual refresh: calls reconcile immediately (bypasses throttle), then
+  // refreshes the memories list on success.
+  const handleManualReconcile = useCallback(async () => {
+    if (reconciling) return;
+    setReconciling(true);
+    setLastSyncMessage(null);
+    try {
+      const res = await fetch("/api/memories/reconcile?reason=manual", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json() as { applied?: number; status?: string };
+        await refreshMemories();
+        const msg = data.applied && data.applied > 0
+          ? `Pulled ${data.applied} update${data.applied === 1 ? "" : "s"}`
+          : "Synced";
+        setLastSyncMessage(msg);
+        setTimeout(() => setLastSyncMessage(null), 3000);
+        // Reset the auto throttle so lifecycle events respect the 10s window
+        lastAutoReconcileRef.current = Date.now();
+      }
+    } catch (err) {
+      console.warn("[memory] manual reconcile failed:", err);
+    } finally {
+      setReconciling(false);
+    }
+  }, [reconciling, refreshMemories]);
+
+  // Lifecycle-triggered reconcile: focus, visibilitychange, online, panel-open.
+  // Throttled to once per 10s so rapid events don't pile up.
+  const triggerLifecycleReconcile = useCallback((reason: string) => {
+    const now = Date.now();
+    if (now - lastAutoReconcileRef.current < AUTO_THROTTLE_MS) return;
+    lastAutoReconcileRef.current = now;
+    fetch(`/api/memories/reconcile?reason=${reason}`, { method: "POST" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { applied?: number } | null) => {
+        if (data?.applied && data.applied > 0) refreshMemories();
+      })
+      .catch((err) => console.warn("[memory] lifecycle reconcile failed:", err));
+  }, [refreshMemories]);
+
+  useEffect(() => {
+    const onFocus = () => triggerLifecycleReconcile("focus");
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") triggerLifecycleReconcile("visible");
+    };
+    const onOnline = () => triggerLifecycleReconcile("online");
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [triggerLifecycleReconcile]);
+
+  // Trigger reconcile when the Memories section becomes visible (panel open /
+  // scope navigation mounts this component).
+  useEffect(() => {
+    triggerLifecycleReconcile("panel-open");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeSpaceRow = scopedSpace ? spaces.find((s) => s.id === scopedSpace) : null;
@@ -1126,6 +1195,32 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <span className="home-section-label">Memories</span>
             <span className="home-artefacts-count">{scopedMemories.length}</span>
             <span className="home-section-rule" />
+            <button
+              type="button"
+              className="home-memories-refresh-btn"
+              onClick={handleManualReconcile}
+              disabled={reconciling}
+              aria-label="Sync memories"
+              title="Sync memories"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ width: 13, height: 13, display: "block", transition: "transform 0.6s linear", transform: reconciling ? "rotate(360deg)" : "none" }}
+                aria-hidden="true"
+              >
+                <path d="M23 4v6h-6" />
+                <path d="M1 20v-6h6" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+            </button>
+            {lastSyncMessage && (
+              <span className="home-memories-sync-msg">{lastSyncMessage}</span>
+            )}
             <button
               type="button"
               className="home-memories-add-btn"

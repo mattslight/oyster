@@ -593,6 +593,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     memoryProvider,
     broadcastUiEvent,
     resolveCurrentOwnerId,
+    memorySync,
   })) return;
 
   // /api/auth/* — local glue (whoami / startSignIn / signOut). Real auth

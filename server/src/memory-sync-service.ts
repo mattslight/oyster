@@ -72,6 +72,7 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
   // (e.g. multiple onWrite triggers in quick succession) await the same
   // promise rather than racing.
   let inFlightPush: Promise<number> | null = null;
+  let inFlightReconcile: Promise<{ pulled: number; pushed: number }> | null = null;
 
   async function doPushPending(): Promise<number> {
       const session = isProSession(deps);
@@ -320,13 +321,21 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
       return applied;
   }
 
-  return {
+  const service: MemorySyncService = {
     async reconcile() {
+      if (inFlightReconcile) return inFlightReconcile;
       const session = isProSession(deps);
       if (!session) return { pulled: 0, pushed: 0 };
-      const pulled = await pull();
-      const pushed = await this.pushPending();
-      return { pulled, pushed };
+      inFlightReconcile = (async () => {
+        const pulled = await pull();
+        const pushed = await service.pushPending();
+        return { pulled, pushed };
+      })();
+      try {
+        return await inFlightReconcile;
+      } finally {
+        inFlightReconcile = null;
+      }
     },
 
     async pushPending() {
@@ -341,4 +350,5 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
 
     pull,
   };
+  return service;
 }

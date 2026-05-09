@@ -6,11 +6,13 @@ import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
 import type { UiCommand } from "../../../shared/types.js";
+import type { MemorySyncService } from "../memory-sync-service.js";
 
 export interface MemoryRouteDeps {
   memoryProvider: MemoryProvider;
   broadcastUiEvent: (event: UiCommand) => void;
   resolveCurrentOwnerId: () => string | null;
+  memorySync: MemorySyncService;
 }
 
 export async function tryHandleMemoryRoute(
@@ -24,6 +26,27 @@ export async function tryHandleMemoryRoute(
   const { memoryProvider, broadcastUiEvent } = deps;
 
   const memoriesPath = url.split("?")[0];
+
+  // POST /api/memories/reconcile — manual / lifecycle-triggered sync pass.
+  // Calls memorySync.reconcile(); returns { pulled, pushed, applied, status }.
+  // No-op (free user / signed out / profile conflict) returns 200 + zero counts.
+  if (req.method === "POST" && memoriesPath === "/api/memories/reconcile") {
+    if (rejectIfNonLocalOrigin()) return true;
+    try {
+      const parsed = new URL(req.url ?? "/", "http://localhost");
+      const reason = parsed.searchParams.get("reason") ?? "";
+      const result = await deps.memorySync.reconcile();
+      const status = result.pulled || result.pushed ? "synced" : "noop";
+      if (status === "synced") {
+        const tag = reason ? `manual reconcile (reason=${reason})` : "manual reconcile";
+        console.log(`[memory] ${tag}: pulled=${result.pulled} pushed=${result.pushed}`);
+      }
+      sendJson({ ...result, applied: result.pulled, status });
+    } catch (err) {
+      sendError(err);
+    }
+    return true;
+  }
 
   // DELETE /api/memories/:id — soft-delete (mark forgotten). Mirrors the MCP
   // `forget` tool. 404 if the id doesn't exist so the UI can distinguish
