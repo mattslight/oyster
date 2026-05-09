@@ -4,6 +4,16 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.0-beta.2] - 2026-05-09
+
+### Added
+
+- **Refresh button on the Memories panel.** Click ↻ to pull cross-device updates immediately, with a brief "Synced" / "Pulled N updates" status flash. Useful when you've just made a change on another device and don't want to wait.
+
+### Changed
+
+- **Memory sync feels instant when you switch back to a device.** Focusing the Oyster window, returning to the Memories panel, or coming back online now triggers a pull within seconds — no need to wait for the 30-second poll.
+
 ## [0.8.0-beta.1] - 2026-05-09
 
 ### Changed
