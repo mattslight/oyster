@@ -346,6 +346,27 @@ memoryProvider.setOnWrite(() => {
   });
 });
 
+// Periodic pull. Pull-only triggers (auth-changed and app-startup) leave a
+// running server stale until the next reconcile event. A modest 30s tick
+// keeps cross-device memory updates fresh without burning excessive
+// requests. Pro-only via canRunCloudSync (also covers profile-binding
+// conflict). Configurable via OYSTER_SYNC_POLL_MS for ops/testing.
+const MEMORY_POLL_INTERVAL_MS = Math.max(
+  5_000,
+  Number(process.env.OYSTER_SYNC_POLL_MS) || 30_000,
+);
+const memoryPollHandle = setInterval(() => {
+  if (!canRunCloudSync()) return;
+  memorySync.pull().then((applied) => {
+    if (applied > 0) {
+      console.log(`[memory] periodic pull: applied=${applied}`);
+    }
+  }).catch((err) => {
+    console.warn("[memory] periodic pull failed:", err);
+  });
+}, MEMORY_POLL_INTERVAL_MS);
+memoryPollHandle.unref();
+
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const publishService = createPublishService({
   db,

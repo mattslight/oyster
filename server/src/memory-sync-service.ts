@@ -193,6 +193,13 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
         markTxn();
         totalAccepted += accepted.length;
 
+        // Success log: only when something actually moved through this batch.
+        // Quiet in steady-state, visible when activity happens.
+        const moved = accepted.length + duplicates.length;
+        if (moved > 0) {
+          console.log(`[memory] pushed: accepted=${accepted.length} duplicates=${duplicates.length}${conflicts.length ? ` conflicts=${conflicts.length}` : ""}${rejected.length ? ` rejected=${rejected.length}` : ""}`);
+        }
+
         // Termination condition: count only "things that cleared from the
         // outbox" as progress. A batch with only conflicts/rejected events
         // breaks out of the drain loop so we don't hot-loop.
@@ -305,6 +312,10 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
         for (const id of touched) deps.provider.materialiseMemory(id);
       });
       txn();
+
+      if (applied > 0) {
+        console.log(`[memory] pulled: applied=${applied}`);
+      }
 
       return applied;
   }
