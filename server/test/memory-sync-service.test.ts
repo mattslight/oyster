@@ -250,6 +250,37 @@ describe("MemorySyncService", () => {
     expect(postCount).toBe(1);
   });
 
+  it("concurrent reconcile calls share a single in-flight pass", async () => {
+    const { provider, profileBinding } = harness();
+    await provider.init();
+    profileBinding.bindToOwner("u1");
+
+    let pullCount = 0;
+    const fetchSpy = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      // GET = pull
+      if (!init?.method || init.method === "GET") {
+        pullCount++;
+        await new Promise((r) => setTimeout(r, 10));
+        return new Response(JSON.stringify({ events: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      // POST = pushPending
+      return new Response(JSON.stringify({ accepted: [], duplicates: [], conflicts: [], rejected: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const svc = createMemorySyncService({
+      db: provider.getInternalDbForSync(),
+      provider,
+      profileBinding,
+      currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+
+    await Promise.all([svc.reconcile(), svc.reconcile()]);
+    expect(pullCount).toBe(1);
+  });
+
   it("network errors during push are swallowed; events stay pending", async () => {
     const { provider, profileBinding } = harness();
     await provider.init();
