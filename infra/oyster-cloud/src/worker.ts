@@ -127,23 +127,34 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
       let payloadStmt: ReturnType<typeof env.DB.prepare> | null = null;
       if (ev.event_type === "memory_purged") {
         payloadStmt = env.DB.prepare(
+          // Guard on event_id presence so a per-type uniqueness conflict
+          // (different event_id, same memory_id+purged) is a no-op for the
+          // payload. The event INSERT runs first in the batch; if it was
+          // ignored, the EXISTS check fails and nothing is written.
           `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
-           VALUES (?, ?, NULL, '[]', ?)
+             SELECT ?, ?, NULL, '[]', ?
+              WHERE EXISTS (SELECT 1 FROM synced_memory_events
+                             WHERE owner_id = ? AND event_id = ?)
            ON CONFLICT(owner_id, memory_id) DO UPDATE SET
              content   = NULL,
              tags      = '[]',
              purged_at = excluded.purged_at`,
-        ).bind(user.id, ev.memory_id, ev.created_at);
+        ).bind(user.id, ev.memory_id, ev.created_at, user.id, ev.event_id);
       } else if (ev.event_type === "memory_created" && ev.payload) {
         // Idempotent payload upsert that respects an earlier purge.
         // If a purge exists for this memory_id (in cloud), content stays NULL.
         payloadStmt = env.DB.prepare(
+          // Guards: (1) the event INSERT actually landed for this event_id (so
+          // per-type uniqueness conflicts skip the payload), AND (2) no purge
+          // exists for this memory_id (so prior purges are not undone).
           `INSERT INTO synced_memory_payloads (owner_id, memory_id, content, tags, purged_at)
              SELECT ?, ?, ?, ?, NULL
-              WHERE NOT EXISTS (
-                SELECT 1 FROM synced_memory_events
-                 WHERE owner_id = ? AND memory_id = ? AND event_type = 'memory_purged'
-              )
+              WHERE EXISTS (SELECT 1 FROM synced_memory_events
+                             WHERE owner_id = ? AND event_id = ?)
+                AND NOT EXISTS (
+                  SELECT 1 FROM synced_memory_events
+                   WHERE owner_id = ? AND memory_id = ? AND event_type = 'memory_purged'
+                )
            ON CONFLICT(owner_id, memory_id) DO UPDATE SET
              content = CASE
                WHEN EXISTS (SELECT 1 FROM synced_memory_events
@@ -163,47 +174,33 @@ async function handleMemoryEventsPost(req: Request, env: Env): Promise<Response>
              END`,
         ).bind(
           user.id, ev.memory_id, ev.payload.content, JSON.stringify(ev.payload.tags),
+          user.id, ev.event_id,
           user.id, ev.memory_id,
         );
       }
 
-      // Event INSERT first; classify the result; only THEN run the payload
-      // statement (and only when the event actually exists for this owner+id).
-      // We can't use env.DB.batch here because the payload statement must be
-      // conditional on the event INSERT actually inserting — running it for
-      // a per-type uniqueness conflict would overwrite the canonical payload.
-      const eventResult = await eventStmt.run();
-      const eventChanges = eventResult.meta.changes;
+      // Atomic: event INSERT + payload upsert run as one D1 transaction. The
+      // payload SQL guards on event_id presence, so per-type uniqueness
+      // conflicts naturally skip the payload write. Duplicates (same event_id
+      // already exists) heal the payload via the EXISTS guard matching the
+      // pre-existing event row. Newly-inserted events get their payload set.
+      const stmts = payloadStmt ? [eventStmt, payloadStmt] : [eventStmt];
+      const results = await env.DB.batch(stmts);
+      // results[0] is always present — batch never returns an empty array here.
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const eventChanges = results[0]!.meta.changes;
 
       if (eventChanges > 0) {
         accepted.push(ev.event_id);
-        // Event newly inserted. Run the payload now if there is one.
-        if (payloadStmt) {
-          await payloadStmt.run();
-        }
         continue;
       }
 
-      // Event INSERT was a no-op. Distinguish duplicate (same event_id already
-      // exists) from conflict (per-type uniqueness rejected a different
-      // event_id for the same memory_id). For duplicates the payload is
-      // already canonical from the prior request; for conflicts the canonical
-      // payload belongs to a different event_id and must NOT be overwritten.
+      // Event INSERT was a no-op. Distinguish duplicate from conflict.
       const dup = await env.DB.prepare(
         `SELECT 1 FROM synced_memory_events WHERE owner_id = ? AND event_id = ? LIMIT 1`,
       ).bind(user.id, ev.event_id).first();
-      if (dup) {
-        duplicates.push(ev.event_id);
-        // Run payload upsert to heal any partial-write race where the event
-        // landed in a prior request but the payload write didn't. Same event_id
-        // implies same canonical content, so this is idempotent for healthy
-        // clients.
-        if (payloadStmt) await payloadStmt.run();
-      } else {
-        conflicts.push(ev.event_id);
-        // DO NOT run payload — different event_id, the canonical content for
-        // this memory_id+type belongs to a different event.
-      }
+      if (dup) duplicates.push(ev.event_id);
+      else conflicts.push(ev.event_id);
     }
   } catch (err) {
     console.warn("[memory] events ingest db error:", err);

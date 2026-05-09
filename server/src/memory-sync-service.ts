@@ -68,16 +68,12 @@ function isProSession(deps: MemorySyncDeps): { user: SyncUser; token: string } |
 const BATCH_SIZE = 100;
 
 export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService {
-  return {
-    async reconcile() {
-      const session = isProSession(deps);
-      if (!session) return { pulled: 0, pushed: 0 };
-      const pulled = await this.pull();
-      const pushed = await this.pushPending();
-      return { pulled, pushed };
-    },
+  // In-flight guard: a single drain pass at a time. Concurrent callers
+  // (e.g. multiple onWrite triggers in quick succession) await the same
+  // promise rather than racing.
+  let inFlightPush: Promise<number> | null = null;
 
-    async pushPending() {
+  async function doPushPending(): Promise<number> {
       const session = isProSession(deps);
       if (!session) return 0;
 
@@ -209,13 +205,13 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
       // next reconcile cycle will see the now-richer local state and may or
       // may not still have something to push.
       if (conflictPullScheduled) {
-        try { await this.pull(); } catch { /* swallowed; logged elsewhere */ }
+        try { await pull(); } catch { /* swallowed; logged elsewhere */ }
       }
 
       return totalAccepted;
-    },
+  }
 
-    async pull() {
+  async function pull(): Promise<number> {
       const session = isProSession(deps);
       if (!session) return 0;
 
@@ -311,6 +307,27 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
       txn();
 
       return applied;
+  }
+
+  return {
+    async reconcile() {
+      const session = isProSession(deps);
+      if (!session) return { pulled: 0, pushed: 0 };
+      const pulled = await pull();
+      const pushed = await this.pushPending();
+      return { pulled, pushed };
     },
+
+    async pushPending() {
+      if (inFlightPush) return inFlightPush;
+      inFlightPush = doPushPending();
+      try {
+        return await inFlightPush;
+      } finally {
+        inFlightPush = null;
+      }
+    },
+
+    pull,
   };
 }

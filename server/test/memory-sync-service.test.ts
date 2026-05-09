@@ -211,6 +211,45 @@ describe("MemorySyncService", () => {
     expect(found).toHaveLength(0);
   });
 
+  it("concurrent pushPending calls share a single drain pass (no duplicate POSTs)", async () => {
+    const { provider, profileBinding } = harness();
+    await provider.init();
+    profileBinding.bindToOwner("u1");
+    await provider.remember({ content: "p1", cloud_owner_id: "u1" });
+    await provider.remember({ content: "p2", cloud_owner_id: "u1" });
+
+    let postCount = 0;
+    const fetchSpy = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      postCount++;
+      const body = JSON.parse(init.body as string) as { events: Array<{ event_id: string }> };
+      // Slight delay so concurrent callers can interleave.
+      await new Promise((r) => setTimeout(r, 10));
+      return new Response(
+        JSON.stringify({
+          accepted: body.events.map((e) => e.event_id),
+          duplicates: [], conflicts: [], rejected: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const svc = createMemorySyncService({
+      db: provider.getInternalDbForSync(),
+      provider,
+      profileBinding,
+      currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+
+    // Fire two concurrent pushPending calls. Without coalescing, fetchSpy
+    // would be called twice (one per drain). With coalescing, only one.
+    const [r1, r2] = await Promise.all([svc.pushPending(), svc.pushPending()]);
+    expect(r1).toBe(r2);
+    expect(postCount).toBe(1);
+  });
+
   it("network errors during push are swallowed; events stay pending", async () => {
     const { provider, profileBinding } = harness();
     await provider.init();
