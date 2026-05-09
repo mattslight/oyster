@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Memory timestamps now respect your timezone.** "Created" times in the Memories panel previously read as up to several hours off when running outside UTC; they now reflect the actual moment a memory was written.
+
 ## [0.8.0-beta.3] - 2026-05-09
 
 ### Added

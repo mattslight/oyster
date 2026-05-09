@@ -84,13 +84,24 @@ interface MemoryRow {
   source_session_id: string | null;
 }
 
+// SQLite's datetime('now') yields "YYYY-MM-DD HH:MM:SS" — UTC but without a
+// zone marker. JS Date.parse() on that string is engine-defined and on V8
+// is treated as local time, so a non-UTC client shows a skewed "ago" label.
+// Normalise to canonical ISO-8601 UTC at the API boundary.
+function toIsoUtc(text: string): string {
+  let iso = text.replace(" ", "T");
+  if (!iso.includes("T")) iso += "T00:00:00";
+  if (!iso.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(iso)) iso += "Z";
+  return iso;
+}
+
 function rowToMemory(row: MemoryRow): Memory {
   return {
     id: row.id,
     content: row.content,
     space_id: row.space_id,
     tags: JSON.parse(row.tags),
-    created_at: row.created_at,
+    created_at: toIsoUtc(row.created_at),
     source_session_id: row.source_session_id ?? null,
   };
 }
@@ -667,19 +678,25 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
   }
 
   async importMemories(memories: Memory[]): Promise<void> {
+    // Canonicalise to the SQLite space-form `YYYY-MM-DD HH:MM:SS` so the
+    // column form stays uniform regardless of whether a row was written
+    // organically or imported. Mixed forms break ORDER BY (T > space in
+    // ASCII would push all imports after all organic rows).
     const insertOrIgnore = this.db.prepare(
       `INSERT OR IGNORE INTO memories (id, space_id, content, tags, source_session_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, datetime(?, 'unixepoch'), datetime('now'))`,
     );
     const tx = this.db.transaction((items: Memory[]) => {
       for (const m of items) {
+        const ms = Date.parse(m.created_at);
+        const seconds = Number.isFinite(ms) ? Math.floor(ms / 1000) : Math.floor(Date.now() / 1000);
         insertOrIgnore.run(
           m.id,
           m.space_id,
           m.content,
           JSON.stringify(m.tags),
           m.source_session_id ?? null,
-          m.created_at,
+          seconds,
         );
       }
     });

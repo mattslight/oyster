@@ -75,6 +75,54 @@ describe("SqliteFtsMemoryProvider", () => {
       expect(written).toHaveLength(1);
       expect(written[0].id).toBe(m.id);
     });
+
+    it("returns created_at as an unambiguous UTC ISO-8601 string", async () => {
+      // SQLite's datetime('now') yields "YYYY-MM-DD HH:MM:SS" (UTC, no zone
+      // marker). JS Date.parse() of that string is treated as local time —
+      // so a Dubai (UTC+4) browser shows a 4-hour skew. The provider must
+      // return strict ISO-8601 with a T separator and a Z (or ±HH:MM) marker.
+      const before = Date.now();
+      const m = await provider.remember({ content: "timestamp-shape" });
+      const after = Date.now();
+      // Strict ISO-8601 datetime: YYYY-MM-DDThh:mm:ss[.sss](Z|±HH:MM)
+      expect(m.created_at).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+      );
+      // Must round-trip via Date to a moment within the call window
+      // (allow 5s slack for slow CI).
+      const parsed = Date.parse(m.created_at);
+      expect(Number.isNaN(parsed)).toBe(false);
+      expect(parsed).toBeGreaterThanOrEqual(before - 5_000);
+      expect(parsed).toBeLessThanOrEqual(after + 5_000);
+    });
+
+    it("importMemories canonicalises created_at to the SQLite text form", async () => {
+      // Read-side normalisation alone leaves a seam: exportMemories emits ISO
+      // strings, but importMemories used to insert them verbatim into a column
+      // that organic writes fill with `YYYY-MM-DD HH:MM:SS`. SQLite ORDER BY
+      // is lexicographic, so mixed forms reorder rows incorrectly (T > space
+      // in ASCII, so all imported rows sort after all organic rows regardless
+      // of when they were created). Inserts must canonicalise to keep the DB
+      // column uniform.
+      await provider.importMemories([
+        {
+          id: "imp-iso",
+          content: "imported with iso form",
+          space_id: null,
+          tags: [],
+          created_at: "2026-01-15T10:30:00.000Z",
+          source_session_id: null,
+        },
+      ]);
+      // Inspect the raw DB column directly — must be the SQLite space-form,
+      // not the ISO form passed in.
+      const db = (provider as unknown as { db: Database.Database }).db;
+      const row = db
+        .prepare("SELECT created_at FROM memories WHERE id = 'imp-iso'")
+        .get() as { created_at: string };
+      expect(row.created_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+      expect(Date.parse(row.created_at + "Z")).toBe(Date.parse("2026-01-15T10:30:00.000Z"));
+    });
   });
 
   describe("recall query parsing", () => {
