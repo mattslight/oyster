@@ -2,6 +2,19 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { SqliteSpaceStore } from "../src/space-store.js";
 import { createSpaceSyncService } from "../src/space-sync-service.js";
+import { createProfileBindingService, type ProfileBindingService } from "../src/profile-binding-service.js";
+
+/** Creates an in-memory ProfileBindingService already bound to userId so
+ *  existing happy-path tests don't have to set up the binding themselves. */
+function makeBoundProfileBinding(userId: string): ProfileBindingService {
+  const db = new Database(":memory:");
+  db.exec(
+    `CREATE TABLE profile_binding (id INTEGER PRIMARY KEY CHECK (id=1), cloud_owner_id TEXT NOT NULL, bound_at INTEGER NOT NULL)`,
+  );
+  const svc = createProfileBindingService({ db });
+  svc.bindToOwner(userId);
+  return svc;
+}
 
 function makeDb(): Database.Database {
   const db = new Database(":memory:");
@@ -74,6 +87,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => null,
       sessionToken: () => null,
       workerBase: "https://oyster.to",
@@ -90,6 +104,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => FREE_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -116,6 +131,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -148,6 +164,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -191,6 +208,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -221,6 +239,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -259,6 +278,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -290,6 +310,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -319,6 +340,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -339,6 +361,7 @@ describe("createSpaceSyncService — reconcile()", () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ spaces: [] }), { status: 200 }));
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -367,6 +390,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => null,
       sessionToken: () => null,
       workerBase: "https://oyster.to",
@@ -382,6 +406,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => FREE_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -395,6 +420,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -410,6 +436,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -426,6 +453,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -454,6 +482,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -473,6 +502,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     ));
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -489,6 +519,7 @@ describe("createSpaceSyncService — pushOne()", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -515,6 +546,7 @@ describe("createSpaceSyncService — pushDelete()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => null,
       sessionToken: () => null,
       workerBase: "https://oyster.to",
@@ -530,6 +562,7 @@ describe("createSpaceSyncService — pushDelete()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => FREE_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -544,6 +577,7 @@ describe("createSpaceSyncService — pushDelete()", () => {
     const fetchMock = vi.fn();
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -565,6 +599,7 @@ describe("createSpaceSyncService — pushDelete()", () => {
     });
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -586,6 +621,7 @@ describe("createSpaceSyncService — pushDelete()", () => {
     ));
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -605,6 +641,7 @@ describe("createSpaceSyncService — pushDelete()", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const svc = createSpaceSyncService({
       db, store,
+      profileBinding: makeBoundProfileBinding("u1"),
       currentUser: () => PRO_USER,
       sessionToken: () => "tok",
       workerBase: "https://oyster.to",
@@ -613,5 +650,41 @@ describe("createSpaceSyncService — pushDelete()", () => {
     await expect(svc.pushDelete("work")).resolves.toBeUndefined();
     // Tombstone remains pending — no cloud_synced_at update on network error.
     expect(store.getPendingDeletes().map(r => r.id)).toEqual(["work"]);
+  });
+});
+
+describe("createSpaceSyncService — profile binding gate", () => {
+  let db: Database.Database;
+  let store: SqliteSpaceStore;
+
+  beforeEach(() => {
+    db = makeDb();
+    store = new SqliteSpaceStore(db);
+    vi.restoreAllMocks();
+  });
+
+  it("blocks spaces sync when profile is bound to a different owner", async () => {
+    // Profile is bound to user-A; user-B signs in. All sync methods must be no-ops.
+    const profileBinding = makeBoundProfileBinding("user-A");
+
+    insertRow(store, "space-1", { displayName: "S1" });
+    store.markSyncDirty("space-1", 1000);
+    store.softDelete("space-1", 2000);
+
+    const fetchSpy = vi.fn();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const svc = createSpaceSyncService({
+      db, store,
+      profileBinding,
+      currentUser: () => ({ id: "user-B", email: "b@x.com", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+
+    expect(await svc.reconcile()).toEqual({ pulled: 0, pushed: 0, tombstoned: 0 });
+    await svc.pushOne("space-1");
+    await svc.pushDelete("space-1");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

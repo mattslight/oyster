@@ -167,6 +167,18 @@ export function initDb(userlandDir: string): Database.Database {
   // the user pinned the artefact, used to sort most-recently-pinned first.
   try { db.exec("ALTER TABLE artifacts ADD COLUMN pinned_at INTEGER"); } catch { /* already exists */ }
 
+  // Profile binding (#318). Locks this local Oyster profile to one cloud
+  // account on first Pro sign-in, preventing a second Pro user from pulling
+  // their cloud data into the wrong local SQLite via cross-device sync.
+  // CHECK (id = 1) enforces at most one row — no separate UNIQUE index needed.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS profile_binding (
+      id              INTEGER PRIMARY KEY CHECK (id = 1),
+      cloud_owner_id  TEXT    NOT NULL,
+      bound_at        INTEGER NOT NULL
+    )
+  `);
+
   // Sessions arc (0.5.0). Three tables that capture agent activity (claude-code,
   // opencode, codex) read from external session logs. See
   // docs/plans/sessions-arc.md for the design.

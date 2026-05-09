@@ -33,6 +33,8 @@ import { tryHandlePublishRoute } from "./routes/publish.js";
 import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
 import { createSpaceSyncService } from "./space-sync-service.js";
+import { createMemorySyncService, type MemorySyncService } from "./memory-sync-service.js";
+import { createProfileBindingService } from "./profile-binding-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
 import { tryHandleImportRoute } from "./routes/import.js";
@@ -251,6 +253,8 @@ const WORKER_BASE = process.env.OYSTER_AUTH_BASE
   ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
   : "https://oyster.to";
 
+const CLOUD_WORKER_BASE = process.env.OYSTER_CLOUD_BASE ?? "https://cloud.oyster.to";
+
 // VIEWER_BASE is the public origin where /p/{token} renders (issue #397).
 // In production it's a separate subdomain so untrusted published content
 // can't read main-app cookies/storage. In local wrangler dev, the API and
@@ -283,12 +287,35 @@ authService.onAuthChanged((state) => {
 });
 void authService.validatePersistedSession();
 
+// Profile binding — locks this local profile to the first Pro account that
+// signs in. Prevents a second Pro user from pulling their cloud data into
+// the wrong local SQLite. canRunCloudSync() is the ONLY caller of bindToOwner.
+const profileBinding = createProfileBindingService({ db });
+
+/** Returns true when the signed-in user is Pro AND this local profile is
+ *  either unbound or already bound to that user. Side-effect on first call
+ *  for a new Pro user: binds the profile. */
+function canRunCloudSync(): boolean {
+  const u = authService.getState().user;
+  if (!u || u.tier !== "pro") return false;
+
+  const result = profileBinding.bindToOwner(u.id);
+  if (!result.bound) {
+    console.warn(
+      `[profile] cloud sync blocked: profile bound to ${profileBinding.getBoundOwner()}, signed-in user is ${u.id} (${result.reason})`,
+    );
+    return false;
+  }
+  return true;
+}
+
 // spaceSync provides cross-device mirror of the spaces table to D1.
 // Constructed before spaceService so the latter can fire pushOne/pushDelete
 // after each mutation. Same auth bridge as publishService.
 const spaceSync = createSpaceSyncService({
   db,
   store: spaceStore,
+  profileBinding,
   currentUser: () => {
     const u = authService.getState().user;
     return u ? { id: u.id, email: u.email, tier: u.tier } : null;
@@ -296,6 +323,27 @@ const spaceSync = createSpaceSyncService({
   sessionToken: () => authService.getState().sessionToken,
   workerBase: WORKER_BASE,
   fetch,
+});
+
+const memorySync: MemorySyncService = createMemorySyncService({
+  db: memoryProvider.getInternalDbForSync(),
+  provider: memoryProvider,
+  profileBinding,                           // constructed in Task 4.4
+  currentUser: () => {
+    const u = authService.getState().user;
+    return u ? { id: u.id, email: u.email, tier: u.tier } : null;
+  },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: CLOUD_WORKER_BASE,
+  fetch: globalThis.fetch,
+});
+memoryProvider.setOnWrite(() => {
+  // Fire-and-forget. Catch any error so a transient sync failure can never
+  // crash the server via unhandled rejection. pushPending swallows network
+  // errors internally; this is belt-and-braces for unexpected throws.
+  memorySync.pushPending().catch((err) => {
+    console.warn("[memory] onWrite-triggered pushPending failed:", err);
+  });
 });
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
@@ -344,19 +392,34 @@ function logBackfill(label: string, result: { mirrored: number; skipped: number 
 artifactService.setCloudOnlyPublicationsSource(() => publishService.getCloudOnlyPublications());
 
 async function syncOnAuth(label: string): Promise<void> {
-  // Spaces FIRST — the headline fix of #406 is that published-artefact
-  // ghosts resolve to real spaces, not _cloud. Doing publications first
-  // defeats that — the ghost render would still fall through to _cloud
-  // until the *next* sign-in. spaces first → publications second → render.
-  try {
-    const sr = await spaceSync.reconcile();
-    console.log(`[spaces] ${label}: pulled=${sr.pulled} pushed=${sr.pushed} tombstoned=${sr.tombstoned}`);
-    if (sr.pulled > 0 || sr.tombstoned > 0) {
-      // Notify the surface so any space pills update immediately.
-      broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+  // Spaces sync is gated: Pro-only, and the profile must be unbound or already
+  // bound to this user. canRunCloudSync() is also the sole production caller of
+  // bindToOwner — first Pro sign-in binds the profile here as a side effect.
+  // publishService.backfillPublications() is NOT gated: it runs for any
+  // signed-in user (free or Pro) and handles sign-out cleanup internally.
+  if (canRunCloudSync()) {
+    // Spaces FIRST — the headline fix of #406 is that published-artefact
+    // ghosts resolve to real spaces, not _cloud. Doing publications first
+    // defeats that — the ghost render would still fall through to _cloud
+    // until the *next* sign-in. spaces first → publications second → render.
+    try {
+      const sr = await spaceSync.reconcile();
+      console.log(`[spaces] ${label}: pulled=${sr.pulled} pushed=${sr.pushed} tombstoned=${sr.tombstoned}`);
+      if (sr.pulled > 0 || sr.tombstoned > 0) {
+        // Notify the surface so any space pills update immediately.
+        broadcastUiEvent({ version: 1, command: "artifact_changed", payload: { id: null } });
+      }
+    } catch (err) {
+      console.warn(`[spaces] ${label} failed:`, err);
     }
-  } catch (err) {
-    console.warn(`[spaces] ${label} failed:`, err);
+    try {
+      const memResult = await memorySync.reconcile();
+      if (memResult.pulled || memResult.pushed) {
+        console.log(`[memory] reconcile (${label}): pulled=${memResult.pulled} pushed=${memResult.pushed}`);
+      }
+    } catch (err) {
+      console.warn(`[memory] ${label} reconcile failed:`, err);
+    }
   }
   // Then publications (preserves existing behaviour: clears ghost cache on
   // sign-out, broadcasts artifact_changed unconditionally via logBackfill).

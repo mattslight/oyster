@@ -584,3 +584,42 @@ describe("backfill from legacy memories rows", () => {
     provider2.close();
   });
 });
+
+describe("onWrite hook", () => {
+  it("fires after remember (writeCreated path)", async () => {
+    const t = tmp("onwrite-remember-");
+    const provider = new SqliteFtsMemoryProvider(t);
+    await provider.init();
+    let calls = 0;
+    provider.setOnWrite(() => { calls++; });
+    await provider.remember({ content: "hook test" });
+    // queueMicrotask fires after the current microtask checkpoint
+    await Promise.resolve();
+    expect(calls).toBe(1);
+    provider.close();
+  });
+
+  it("fires after forget and purge (writeForgotten / writePurged paths)", async () => {
+    const t = tmp("onwrite-forget-purge-");
+    const provider = new SqliteFtsMemoryProvider(t);
+    await provider.init();
+    let calls = 0;
+    provider.setOnWrite(() => { calls++; });
+    const { memory_id } = provider.writeCreated({ content: "to be forgotten" });
+    await Promise.resolve(); // drain writeCreated hook
+    calls = 0; // reset after writeCreated
+
+    provider.writeForgotten(memory_id);
+    await Promise.resolve();
+    expect(calls).toBe(1);
+
+    const { memory_id: mid2 } = provider.writeCreated({ content: "to be purged" });
+    await Promise.resolve();
+    calls = 0; // reset after second writeCreated
+
+    provider.writePurged(mid2);
+    await Promise.resolve();
+    expect(calls).toBe(1);
+    provider.close();
+  });
+});

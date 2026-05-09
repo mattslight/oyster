@@ -112,10 +112,25 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
   // transaction so a 50-row recall is one fsync, not 100.
   private postRecallTxn!: (rows: MemoryRow[], recallerId: string | null) => void;
   private storagePath: string;
+  /** Fire-and-forget sync trigger. Set by the server after init() to call
+   *  memorySync.pushPending(). Errors are swallowed; the hook must not
+   *  throw into the write path. */
+  private onWrite: (() => void) | null = null;
 
   constructor(storagePath: string) {
     this.storagePath = storagePath;
   }
+
+  /** Register a callback that fires (via queueMicrotask) after every
+   *  successful event write. Replaces any previously registered callback. */
+  setOnWrite(cb: () => void): void {
+    this.onWrite = cb;
+  }
+
+  /** Internal DB handle for the sync service ONLY. Do not use elsewhere —
+   *  sync needs it for batched outbox queries; everything else should go
+   *  through the provider's typed methods. */
+  getInternalDbForSync(): Database.Database { return this.db; }
 
   async init(): Promise<void> {
     mkdirSync(this.storagePath, { recursive: true });
@@ -360,6 +375,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       this.materialiseMemory(memory_id, { ssid });
     });
     txn();
+    queueMicrotask(() => { try { this.onWrite?.(); } catch { /* swallowed */ } });
     return { memory_id, event_id: returned_event_id, inserted };
   }
 
@@ -516,6 +532,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       this.materialiseMemory(memory_id);
     });
     txn();
+    queueMicrotask(() => { try { this.onWrite?.(); } catch { /* swallowed */ } });
     return inserted;
   }
 
@@ -540,6 +557,7 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
       this.materialiseMemory(memory_id);
     });
     txn();
+    queueMicrotask(() => { try { this.onWrite?.(); } catch { /* swallowed */ } });
     return inserted;
   }
 

@@ -12,6 +12,7 @@
 
 import type Database from "better-sqlite3";
 import type { SpaceStore, SpaceRow } from "./space-store.js";
+import type { ProfileBindingService } from "./profile-binding-service.js";
 
 export interface SyncUser {
   id: string;
@@ -22,6 +23,11 @@ export interface SyncUser {
 export interface SpaceSyncDeps {
   db: Database.Database;
   store: SpaceStore;
+  /** Required: gates pull AND push on profile ownership so a second Pro
+   *  account signing into the same local profile cannot push spaces into
+   *  the wrong cloud bucket or pull spaces into the wrong local DB.
+   *  See Task 4.4 of docs/superpowers/plans/2026-05-08-memory-sync.md. */
+  profileBinding: ProfileBindingService;
   currentUser: () => SyncUser | null;
   sessionToken: () => string | null;
   workerBase: string;
@@ -64,12 +70,19 @@ interface CloudDeleteResponse {
   updated_at: number;
 }
 
-/** Pro tier check. Spec: R1 (this wedge) is Pro-only per the requirements doc
- *  tier mapping. Keep in one place so it's easy to change if the gate moves. */
+/** Pro tier + profile ownership check. Returns the active session or null.
+ *  Gates both push and pull so a second Pro user sharing the same local
+ *  SQLite cannot contaminate either cloud bucket or local DB. */
 function isProSession(deps: SpaceSyncDeps): { user: SyncUser; token: string } | null {
   const user = deps.currentUser();
   const token = deps.sessionToken();
   if (!user || !token || user.tier !== "pro") return null;
+  if (!deps.profileBinding.isOwnedBy(user.id)) {
+    console.warn(
+      `[spaces] sync blocked — profile is bound to a different account; current=${user.id}, bound=${deps.profileBinding.getBoundOwner()}`,
+    );
+    return null;
+  }
   return { user, token };
 }
 
