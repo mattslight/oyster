@@ -5,12 +5,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
-import type { UiCommand } from "../../../shared/types.js";
 import type { MemorySyncService } from "../memory-sync-service.js";
 
 export interface MemoryRouteDeps {
   memoryProvider: MemoryProvider;
-  broadcastUiEvent: (event: UiCommand) => void;
   resolveCurrentOwnerId: () => string | null;
   memorySync: MemorySyncService;
 }
@@ -23,7 +21,7 @@ export async function tryHandleMemoryRoute(
   deps: MemoryRouteDeps,
 ): Promise<boolean> {
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
-  const { memoryProvider, broadcastUiEvent } = deps;
+  const { memoryProvider } = deps;
 
   const memoriesPath = url.split("?")[0];
 
@@ -68,7 +66,8 @@ export async function tryHandleMemoryRoute(
         sendJson({ error: "memory not found" }, 404);
         return true;
       }
-      broadcastUiEvent({ version: 1, command: "memory_changed", payload: { id, op: "forget" } });
+      // SSE broadcast is fired via the provider's onWrite hook in index.ts —
+      // no need to emit here too (would cause a duplicate refetch).
       res.statusCode = 204;
       res.end();
     } catch (err) {

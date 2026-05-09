@@ -305,4 +305,68 @@ describe("MemorySyncService", () => {
     const c = db.prepare(`SELECT COUNT(*) as c FROM memory_events WHERE cloud_synced_at IS NULL`).get() as { c: number };
     expect(c.c).toBe(1);
   });
+
+  it("invokes onApplied(applied) when pull lands new events", async () => {
+    const { provider, profileBinding } = harness();
+    await provider.init();
+    profileBinding.bindToOwner("u1");
+
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({
+        events: [
+          {
+            event_id:  "ev-applied-1",
+            memory_id: "mem-applied-1",
+            event_type: "memory_created",
+            space_id: null,
+            created_at: 1000,
+            payload: { content: "from-cloud", tags: [], purged_at: null },
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+
+    const onApplied = vi.fn();
+    const svc = createMemorySyncService({
+      db: provider.getInternalDbForSync(),
+      provider,
+      profileBinding,
+      currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+      onApplied,
+    });
+
+    await svc.pull();
+    expect(onApplied).toHaveBeenCalledTimes(1);
+    expect(onApplied).toHaveBeenCalledWith(1);
+  });
+
+  it("does not invoke onApplied when pull applies zero events", async () => {
+    const { provider, profileBinding } = harness();
+    await provider.init();
+    profileBinding.bindToOwner("u1");
+
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ events: [] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+
+    const onApplied = vi.fn();
+    const svc = createMemorySyncService({
+      db: provider.getInternalDbForSync(),
+      provider,
+      profileBinding,
+      currentUser: () => ({ id: "u1", email: "x@x", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+      onApplied,
+    });
+
+    await svc.pull();
+    expect(onApplied).not.toHaveBeenCalled();
+  });
 });

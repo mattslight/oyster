@@ -336,6 +336,7 @@ const memorySync: MemorySyncService = createMemorySyncService({
   sessionToken: () => authService.getState().sessionToken,
   workerBase: CLOUD_WORKER_BASE,
   fetch: globalThis.fetch,
+  onApplied: () => broadcastUiEvent({ version: 1, command: "memory_changed", payload: { op: "pull" } }),
 });
 memoryProvider.setOnWrite(() => {
   // Fire-and-forget. Catch any error so a transient sync failure can never
@@ -344,6 +345,10 @@ memoryProvider.setOnWrite(() => {
   memorySync.pushPending().catch((err) => {
     console.warn("[memory] onWrite-triggered pushPending failed:", err);
   });
+  // Notify the UI on every local mutation (remember/forget/purge). The
+  // routes/memories.ts forget-DELETE used to be the only emitter; this
+  // covers MCP-initiated remember and any other provider-level write path.
+  broadcastUiEvent({ version: 1, command: "memory_changed", payload: { op: "write" } });
 });
 
 // Periodic pull. Pull-only triggers (auth-changed and app-startup) leave a
@@ -591,7 +596,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/memories
   if (await tryHandleMemoryRoute(req, res, url, ctx, {
     memoryProvider,
-    broadcastUiEvent,
     resolveCurrentOwnerId,
     memorySync,
   })) return;
