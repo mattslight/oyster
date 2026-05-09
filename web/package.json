@@ -18,7 +18,7 @@
     "dompurify": "^3.4.2",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.14.0",
-    "marked": "^17.0.4",
+    "marked": "^18.0.3",
     "motion": "^12.38.0",
     "ogl": "^1.0.11",
     "qrcode-generator": "^2.0.4",
