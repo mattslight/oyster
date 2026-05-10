@@ -179,6 +179,18 @@ export function initDb(userlandDir: string): Database.Database {
     )
   `);
 
+  // Device identity (#322 session sync). Stable per-device id + label so cloud
+  // metadata can attribute "this session originated on Matthew's MacBook Pro".
+  // Singleton like profile_binding. The id and label are seeded by the server
+  // on first boot if missing (see device-identity-service).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS device_identity (
+      id         INTEGER PRIMARY KEY CHECK (id = 1),
+      device_id  TEXT    NOT NULL,
+      label      TEXT    NOT NULL
+    )
+  `);
+
   // Sessions arc (0.5.0). Three tables that capture agent activity (claude-code,
   // opencode, codex) read from external session logs. See
   // docs/plans/sessions-arc.md for the design.
@@ -369,6 +381,32 @@ export function initDb(userlandDir: string): Database.Database {
   try {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
+
+  // Cloud session sync (#322). Three columns drive the cross-device sync:
+  // - sync_dirty_at: unix-ms when the row was first marked dirty since last
+  //   successful push. NULL = clean. Mirrors spaces.sync_dirty_at.
+  // - cloud_owner_id: which Pro account owns this session. The push gate
+  //   only sends events whose cloud_owner_id matches the current Pro user
+  //   (account-switching protection, mirrors the memory-events column).
+  // - jsonl_synced_at / jsonl_snapshot_offset: tracks how much of the JSONL
+  //   bytes have been uploaded to R2. NULL means no upload yet. Snapshot
+  //   offset lets the 5-min snapshot timer skip sessions whose disk file
+  //   hasn't grown since the last upload.
+  for (const sql of [
+    "ALTER TABLE sessions ADD COLUMN sync_dirty_at INTEGER",
+    "ALTER TABLE sessions ADD COLUMN cloud_synced_at INTEGER",
+    "ALTER TABLE sessions ADD COLUMN cloud_owner_id TEXT",
+    "ALTER TABLE sessions ADD COLUMN jsonl_synced_at INTEGER",
+    "ALTER TABLE sessions ADD COLUMN jsonl_snapshot_offset INTEGER",
+  ]) {
+    try { db.exec(sql); } catch { /* already exists */ }
+  }
+  // Index the dirty predicate so the outbox scan stays cheap as the
+  // sessions table grows. Mirror of spaces.sync_dirty_at pattern.
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS sessions_sync_dirty
+       ON sessions(sync_dirty_at) WHERE sync_dirty_at IS NOT NULL`,
+  );
 
   // ── R2 verbatim recall (#311): FTS5 over session_events.text ──
   // Lives after the state-rename rebuild block (which DROPs and rebuilds
