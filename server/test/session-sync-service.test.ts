@@ -84,6 +84,30 @@ describe("SessionSyncService", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("markDirty sets sync_dirty_at + cloud_owner_id so the row becomes pendable", () => {
+    const { db, profileBinding } = harness();
+    db.prepare(
+      `INSERT INTO sessions (id, agent, state, last_event_at)
+       VALUES ('s1', 'claude-code', 'active', datetime('now'))`,
+    ).run();
+    const svc = createSessionSyncService({
+      db,
+      profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: vi.fn(),
+    });
+
+    svc.markDirty("s1", "user-A", 1234);
+
+    const row = db.prepare(
+      "SELECT sync_dirty_at, cloud_owner_id FROM sessions WHERE id='s1'",
+    ).get() as { sync_dirty_at: number; cloud_owner_id: string };
+    expect(row.sync_dirty_at).toBe(1234);
+    expect(row.cloud_owner_id).toBe("user-A");
+  });
+
   it("pushPending sends dirty sessions for the current owner and marks them synced", async () => {
     const { db, profileBinding } = harness();
     profileBinding.bindToOwner("user-A");

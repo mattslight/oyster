@@ -34,6 +34,7 @@ import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
 import { createSpaceSyncService } from "./space-sync-service.js";
 import { createMemorySyncService, type MemorySyncService } from "./memory-sync-service.js";
+import { createSessionSyncService, type SessionSyncService } from "./session-sync-service.js";
 import { createProfileBindingService } from "./profile-binding-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
@@ -351,6 +352,23 @@ memoryProvider.setOnWrite(() => {
   broadcastUiEvent({ version: 1, command: "memory_changed", payload: { op: "write" } });
 });
 
+// Sessions arc — cross-device sync of agent session metadata (#322). The
+// service drains dirty rows from the `sessions` table on push; the watcher
+// hook below marks rows dirty whenever a session row changes. pushBytes
+// (R2 jsonl upload) lives on the same service and lands in PR 1c when the
+// cloud worker route is ready. pull() and remote_sessions land in PR 2.
+const sessionSync: SessionSyncService = createSessionSyncService({
+  db,
+  profileBinding,
+  currentUser: () => {
+    const u = authService.getState().user;
+    return u ? { id: u.id, email: u.email, tier: u.tier } : null;
+  },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: CLOUD_WORKER_BASE,
+  fetch: globalThis.fetch,
+});
+
 // Periodic pull. Pull-only triggers (auth-changed and app-startup) leave a
 // running server stale until the next reconcile event. A modest 30s tick
 // keeps cross-device memory updates fresh without burning excessive
@@ -445,6 +463,14 @@ async function syncOnAuth(label: string): Promise<void> {
       }
     } catch (err) {
       console.warn(`[memory] ${label} reconcile failed:`, err);
+    }
+    try {
+      const sesResult = await sessionSync.reconcile();
+      if (sesResult.pulled || sesResult.pushed) {
+        console.log(`[sessions] reconcile (${label}): pulled=${sesResult.pulled} pushed=${sesResult.pushed}`);
+      }
+    } catch (err) {
+      console.warn(`[sessions] ${label} reconcile failed:`, err);
     }
   }
   // Then publications (preserves existing behaviour: clears ghost cache on
@@ -864,8 +890,20 @@ httpServer.listen(port, "127.0.0.1", () => {
     sessionStore,
     spaceStore,
     artifactStore: store,
-    emitSessionChanged: (id) =>
-      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } }),
+    emitSessionChanged: (id) => {
+      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
+      // Cross-device session sync (#322): every session-row change marks the
+      // row dirty for the current Pro owner, then fires a fire-and-forget
+      // push. The in-flight guard inside SessionSyncService coalesces bursty
+      // updates from active sessions into a single pass.
+      const u = authService.getState().user;
+      if (u && u.tier === "pro") {
+        sessionSync.markDirty(id, u.id);
+        sessionSync.pushPending().catch((err) => {
+          console.warn("[sessions] watcher-triggered pushPending failed:", err);
+        });
+      }
+    },
   });
   claudeCodeWatcher.start().catch((err) => {
     console.warn(`[claude-code-watcher] start failed: ${err instanceof Error ? err.message : err}`);
