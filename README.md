@@ -103,14 +103,14 @@ Browser → http://localhost:4444
 
 ## Status
 
-Early v1. Local-first. Single-user. Built for fast iteration.
+Early v1. Local-first. Cross-device for Pro. Built for fast iteration.
 
-- **Now (`0.5.x`)** — Sessions feed (Claude Code), Memories on Home, Project tiles per space, repo onboarding, 19 MCP tools, slash commands.
-- **Next (`0.6.x`)** — Bundles. Multi-file static artefacts; agents push artefacts via MCP.
-- **Then (`0.7.x`)** — Oyster Pro. Auth, cross-device sync, end-to-end encrypted storage, shareable links. ([pricing](https://oyster.to/pricing))
-- **Then (`0.8.x`)** — Multi-agent ingestion. Cursor, Codex, OpenCode session feeds — every agent feeds the same workspace.
+- **Now (`0.8.x`)** — Cross-device memory sync (Pro). Anything you remember on one signed-in device shows up on every other.
+- **Recently shipped** — Sign in with GitHub or magic-link (0.7.0), Publish & share artefacts (0.7.0), Spaces sync across devices (0.7.1), Cloud memory store (0.8.0).
+- **Next (`0.9.x`)** — Fresh-machine restore from cloud, semantic recall, *Pick up here* cross-device session priming, cold-storage transcript backup, multi-agent ingestion (Cursor, Codex, OpenCode).
+- **Later** — Artefact version history, cross-device artefact-byte sync.
 
-See every shipped change in the [changelog](https://oyster.to/changelog).
+See every shipped change in the [changelog](https://oyster.to/changelog). Pro details on the [pricing page](https://oyster.to/pricing).
 
 ## Contributing
 

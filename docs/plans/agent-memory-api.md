@@ -13,8 +13,9 @@ Agent (Claude Code / Cursor / Codex / …)
    ▼
 Local Oyster server (always running on the user's machine)
    │
-   │  free / today: SqliteFtsMemoryProvider → <userland>/db/memory.db
-   │  Pro (0.8.0+):  CloudMemoryProvider → Cloudflare D1 + Vectorize
+   │  free:         SqliteFtsMemoryProvider → <userland>/db/memory.db (local only)
+   │  Pro (0.8.0+): SqliteFtsMemoryProvider + write-through outbox → Cloudflare D1
+   │                (cross-device + cross-agent; FTS5 today, embeddings deferred to 0.9.0)
    ▼
 Cloud (Pro only)
 ```
@@ -25,15 +26,16 @@ Cloud (Pro only)
 
 - **R4 (memory crosses agents)** — delivered structurally by every connected agent talking to the same MCP. A per-agent integration or per-agent skill would need re-implementing across the matrix of agents.
 - **R2 (conversational recall)** — needs FTS + vector queries that aren't realistic over a flat file scan. The MCP boundary lets us put the index where it has to go without leaking that detail to agents.
-- **R1 (empty-machine continuity)** — Pro turns on without agent reconfiguration. Magic-link sign-in flips the local provider from local-SQLite to cloud-backed; agents see no difference.
+- **R1 (empty-machine continuity)** — Pro turns on without agent reconfiguration. OAuth or magic-link sign-in attaches the local provider to the cloud event log; agents see no difference.
 
-## What 0.8.0 actually changes
+## What 0.8.0 changed
 
 Behind the same MCP tool surface:
 
-1. Magic-link sign-in stores a token in `~/Oyster/config/`.
-2. The local server's `MemoryProvider` becomes a write-through-cache: writes go to cloud + local; reads check local first then cloud; offline writes queue and replay.
-3. Cross-device propagation: another signed-in machine's local server pulls cloud writes and replays into its local DB. Its agents see the same memory store via MCP.
+1. Sign-in (OAuth GitHub primary, magic-link fallback) persists to `~/Oyster/config/auth.json`.
+2. The local server's memory writes go through a write-through outbox: events land locally in `memory_events` + `memory_payloads`, then push to the cloud Worker which ingests into D1's `synced_memory_events` + `synced_memory_payloads`. Reads stay against the local SQLite mirror — fast, offline-tolerant.
+3. Cross-device propagation: another signed-in machine's local server pulls cloud events and replays them into its local DB on focus / visibility / online / panel-mount / 30s-poll.
+4. Profile-binding gate ensures account A's events can't pollute a local profile bound to account B.
 
 Same MCP tools, same agent config, same `localhost:4444/mcp/`.
 
