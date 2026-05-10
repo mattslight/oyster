@@ -264,4 +264,53 @@ describe("PUT /api/sessions/bytes/:id + GET round-trip", () => {
     const body = await res.json() as { error: string };
     expect(body.error).toBe("bytes_not_uploaded");
   });
+
+  it("bytes PUT does NOT bump metadata.updated_at — preserves metadata LWW invariant", async () => {
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    // Push metadata at sync_dirty_at=1000 → updated_at=1000
+    await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
+    }, token);
+    // PUT bytes — wallclock is much larger than 1000
+    await signedFetch(`/api/sessions/bytes/${sid}`, {
+      method: "PUT",
+      headers: { "content-type": "application/octet-stream" },
+      body: new TextEncoder().encode("payload"),
+    }, token);
+    // updated_at MUST still be 1000. If the bytes-PUT bumped it to wallclock,
+    // a legitimate later metadata push at sync_dirty_at=1500 would be silently
+    // dropped by LWW (1500 < wallclock).
+    const row = await env.DB.prepare(
+      `SELECT updated_at, jsonl_r2_key FROM synced_session_metadata
+        WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ updated_at: number; jsonl_r2_key: string }>();
+    expect(row?.updated_at).toBe(1000);
+    expect(row?.jsonl_r2_key).toBe(`sessions/${userId}/${sid}.jsonl`);
+
+    // Confirm the no-skew invariant: a metadata push at sync_dirty_at=1500
+    // wins as expected.
+    await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessions: [sampleSession(sid, 1500, { title: "after-bytes" })] }),
+    }, token);
+    const after = await env.DB.prepare(
+      `SELECT title, updated_at FROM synced_session_metadata
+        WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ title: string; updated_at: number }>();
+    expect(after?.title).toBe("after-bytes");
+    expect(after?.updated_at).toBe(1500);
+  });
+
+  it("returns 400 (not 500) on malformed percent-encoding in the path", async () => {
+    const { token } = await makeProSession();
+    // %G is a malformed percent escape — decodeURIComponent throws URIError.
+    const res = await signedFetch("/api/sessions/bytes/bad%Gid", { method: "GET" }, token);
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("invalid_session_id");
+  });
 });

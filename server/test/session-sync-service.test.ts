@@ -84,7 +84,7 @@ describe("SessionSyncService", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("markDirty sets sync_dirty_at + cloud_owner_id so the row becomes pendable", () => {
+  it("markDirty sets sync_dirty_at + cloud_owner_id so the row becomes pending", () => {
     const { db, profileBinding } = harness();
     db.prepare(
       `INSERT INTO sessions (id, agent, state, last_event_at)

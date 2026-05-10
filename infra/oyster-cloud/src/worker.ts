@@ -32,7 +32,12 @@ export default {
 
     const bytesMatch = url.pathname.match(/^\/api\/sessions\/bytes\/([^/]+)$/);
     if (bytesMatch && bytesMatch[1]) {
-      const sessionId = decodeURIComponent(bytesMatch[1]);
+      // decodeURIComponent throws URIError on malformed percent-encoding
+      // (e.g. "%G"). Without this guard, a bad path would surface as an
+      // unhandled rejection instead of a structured 4xx.
+      let sessionId: string;
+      try { sessionId = decodeURIComponent(bytesMatch[1]); }
+      catch { return jsonError(400, "invalid_session_id"); }
       if (req.method === "PUT") return handleSessionsBytesPut(req, env, sessionId);
       if (req.method === "GET") return handleSessionsBytesGet(req, env, sessionId);
     }
@@ -435,11 +440,15 @@ async function handleSessionsBytesPut(req: Request, env: Env, sessionId: string)
   }
 
   // Record the R2 key on the metadata row so cross-device clients know bytes
-  // are available for lazy pull.
+  // are available for lazy pull. Deliberately NOT touching updated_at: that
+  // column is the LWW tiebreaker for metadata pushes (driven by the client's
+  // sync_dirty_at). Bumping it here would be a wallclock value the client
+  // can't beat, causing legitimate later metadata pushes with sync_dirty_at
+  // > the previous metadata but < the bytes-PUT wallclock to be dropped.
   await env.DB.prepare(
-    `UPDATE synced_session_metadata SET jsonl_r2_key = ?, updated_at = ?
+    `UPDATE synced_session_metadata SET jsonl_r2_key = ?
       WHERE owner_id = ? AND session_id = ?`,
-  ).bind(key, Date.now(), user.id, sessionId).run();
+  ).bind(key, user.id, sessionId).run();
 
   return jsonOk({ ok: true, key, plaintextSize: plaintext.byteLength, ciphertextSize: ciphertext.byteLength });
 }

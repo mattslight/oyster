@@ -896,13 +896,18 @@ httpServer.listen(port, "127.0.0.1", () => {
       // row dirty for the current Pro owner, then fires a fire-and-forget
       // push. The in-flight guard inside SessionSyncService coalesces bursty
       // updates from active sessions into a single pass.
-      const u = authService.getState().user;
-      if (u && u.tier === "pro") {
-        sessionSync.markDirty(id, u.id);
-        sessionSync.pushPending().catch((err) => {
-          console.warn("[sessions] watcher-triggered pushPending failed:", err);
-        });
-      }
+      //
+      // canRunCloudSync() (not a bare tier check): when the local profile is
+      // bound to a different account, we MUST NOT call markDirty — it would
+      // overwrite cloud_owner_id to the wrong owner and the rightful bound
+      // owner's later pushPending would no longer find these rows in the
+      // owner-scoped scan.
+      if (!canRunCloudSync()) return;
+      const u = authService.getState().user!;
+      sessionSync.markDirty(id, u.id);
+      sessionSync.pushPending().catch((err) => {
+        console.warn("[sessions] watcher-triggered pushPending failed:", err);
+      });
     },
   });
   claudeCodeWatcher.start().catch((err) => {
