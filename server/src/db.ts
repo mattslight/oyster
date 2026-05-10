@@ -181,8 +181,9 @@ export function initDb(userlandDir: string): Database.Database {
 
   // Device identity (#322 session sync). Stable per-device id + label so cloud
   // metadata can attribute "this session originated on Matthew's MacBook Pro".
-  // Singleton like profile_binding. The id and label are seeded by the server
-  // on first boot if missing (see device-identity-service).
+  // Singleton like profile_binding. The seeding helper (uuid + os.hostname()
+  // derivation) lands in PR 1b alongside SessionSyncService wiring; this
+  // table is created up-front so the migration sits with the other singletons.
   db.exec(`
     CREATE TABLE IF NOT EXISTS device_identity (
       id         INTEGER PRIMARY KEY CHECK (id = 1),
@@ -382,9 +383,14 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
-  // Cloud session sync (#322). Three columns drive the cross-device sync:
-  // - sync_dirty_at: unix-ms when the row was first marked dirty since last
-  //   successful push. NULL = clean. Mirrors spaces.sync_dirty_at.
+  // Cloud session sync (#322). Five columns drive the cross-device sync:
+  // - sync_dirty_at: unix-ms of the most recent material change since last
+  //   successful push. NULL = clean. Overwritten on every dirty mark, so
+  //   bursty updates collapse to the latest. Mirrors spaces.sync_dirty_at.
+  // - cloud_synced_at: unix-ms of the last successful push acknowledgement.
+  //   The dirty predicate is `sync_dirty_at IS NOT NULL AND
+  //   (cloud_synced_at IS NULL OR cloud_synced_at < sync_dirty_at)`, so a
+  //   dirty bump after a successful push correctly re-pends the row.
   // - cloud_owner_id: which Pro account owns this session. The push gate
   //   only sends events whose cloud_owner_id matches the current Pro user
   //   (account-switching protection, mirrors the memory-events column).

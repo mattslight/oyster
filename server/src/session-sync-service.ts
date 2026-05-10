@@ -97,10 +97,14 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       LIMIT ?`,
   );
 
+  // Owner-scoped on the WHERE clause: if the server somehow echoes back an id
+  // that belongs to a different cloud_owner_id (account-switch race, server
+  // bug), refuse to mark it synced. Defensive — push is already owner-scoped
+  // on the scan side, but layered checks are cheap.
   const markSyncedStmt = deps.db.prepare(
     `UPDATE sessions
         SET cloud_synced_at = ?
-      WHERE id = ?`,
+      WHERE id = ? AND cloud_owner_id = ?`,
   );
 
   async function doPushPending(): Promise<number> {
@@ -138,7 +142,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       // > cloud_synced_at and the next scan picks it up.
       const now = Date.now();
       const tx = deps.db.transaction(() => {
-        for (const id of accepted) markSyncedStmt.run(now, id);
+        for (const id of accepted) markSyncedStmt.run(now, id, session.user.id);
       });
       tx();
       totalAccepted += accepted.length;
@@ -154,12 +158,15 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     return totalAccepted;
   }
 
-  return {
+  // Capture the service object so methods don't depend on `this` binding —
+  // safe to pass `service.reconcile` directly into a setInterval / event
+  // emitter callback. Mirrors the memory-sync-service shape.
+  const service: SessionSyncService = {
     async reconcile() {
       const session = isProSession(deps);
       if (!session) return { pulled: 0, pushed: 0 };
       // Pull is PR 2 territory; for now reconcile = pushPending.
-      const pushed = await this.pushPending();
+      const pushed = await service.pushPending();
       return { pulled: 0, pushed };
     },
 
@@ -175,4 +182,5 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
 
     markDirty,
   };
+  return service;
 }
