@@ -32,8 +32,8 @@ Cloud (Pro only)
 
 Behind the same MCP tool surface:
 
-1. Sign-in (OAuth GitHub primary, magic-link fallback) stores a session in `~/Oyster/config/`.
-2. The local server's memory writes go through a write-through outbox: events land in `synced_memory_events` locally, then push to D1 via `cloud.oyster.to/api/memories/events`. Reads stay against the local SQLite mirror — fast, offline-tolerant.
+1. Sign-in (OAuth GitHub primary, magic-link fallback) persists to `~/Oyster/config/auth.json`.
+2. The local server's memory writes go through a write-through outbox: events land locally in `memory_events` + `memory_payloads`, then push to the cloud Worker which ingests into D1's `synced_memory_events` + `synced_memory_payloads`. Reads stay against the local SQLite mirror — fast, offline-tolerant.
 3. Cross-device propagation: another signed-in machine's local server pulls cloud events and replays them into its local DB on focus / visibility / online / panel-mount / 30s-poll.
 4. Profile-binding gate ensures account A's events can't pollute a local profile bound to account B.
 
