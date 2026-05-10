@@ -14,6 +14,13 @@ database_name = "oyster-auth"
 database_id = "44086805-fbfa-4446-8626-126af7e2ec19"
 migrations_dir = "../auth-worker/migrations"
 
+# Session jsonl bytes (#322 Pick-up-here). Each object is a per-user
+# AES-GCM-encrypted Claude Code transcript. Bucket creation:
+#   wrangler r2 bucket create oyster-session-bytes
+[[r2_buckets]]
+binding = "SESSIONS_BUCKET"
+bucket_name = "oyster-session-bytes"
+
 [[routes]]
 pattern = "cloud.oyster.to/api/*"
 zone_name = "oyster.to"

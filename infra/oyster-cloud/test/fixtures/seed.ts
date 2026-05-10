@@ -49,6 +49,25 @@ CREATE TABLE IF NOT EXISTS synced_memory_payloads (
   purged_at  INTEGER,
   PRIMARY KEY (owner_id, memory_id)
 );
+-- Mirror of infra/auth-worker/migrations/0008_synced_sessions.sql
+CREATE TABLE IF NOT EXISTS synced_session_metadata (
+  owner_id        TEXT    NOT NULL,
+  session_id      TEXT    NOT NULL,
+  device_id       TEXT,
+  agent           TEXT    NOT NULL,
+  title           TEXT,
+  state           TEXT    NOT NULL,
+  cwd             TEXT,
+  model           TEXT,
+  started_at      TEXT    NOT NULL,
+  ended_at        TEXT,
+  last_event_at   TEXT    NOT NULL,
+  jsonl_r2_key    TEXT,
+  updated_at      INTEGER NOT NULL,
+  PRIMARY KEY (owner_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_synced_session_metadata_owner_updated
+  ON synced_session_metadata (owner_id, updated_at DESC);
 `;
 
 export async function applySchema(): Promise<void> {

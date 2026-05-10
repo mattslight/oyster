@@ -1,6 +1,7 @@
 import { jsonOk, jsonError } from "./json.js";
 import type { Env } from "./session.js";
 import { resolveSession } from "./session.js";
+import { encryptForUser, decryptForUser } from "./encryption.js";
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -19,6 +20,21 @@ export default {
 
     if (url.pathname === "/api/memories/events" && req.method === "GET") {
       return handleMemoryEventsGet(req, env);
+    }
+
+    if (url.pathname === "/api/sessions/metadata" && req.method === "POST") {
+      return handleSessionsMetadataPost(req, env);
+    }
+
+    if (url.pathname === "/api/sessions/metadata" && req.method === "GET") {
+      return handleSessionsMetadataGet(req, env);
+    }
+
+    const bytesMatch = url.pathname.match(/^\/api\/sessions\/bytes\/([^/]+)$/);
+    if (bytesMatch && bytesMatch[1]) {
+      const sessionId = decodeURIComponent(bytesMatch[1]);
+      if (req.method === "PUT") return handleSessionsBytesPut(req, env, sessionId);
+      if (req.method === "GET") return handleSessionsBytesGet(req, env, sessionId);
     }
 
     return jsonError(404, "not_found");
@@ -254,4 +270,211 @@ async function handleMemoryEventsGet(req: Request, env: Env): Promise<Response> 
   });
 
   return jsonOk({ events }, 200, { "cache-control": "private, no-store" });
+}
+
+// ── Session sync (#322) ──────────────────────────────────────────────
+
+interface IncomingSession {
+  id: string;
+  device_id?: string | null;
+  agent: string;
+  title: string | null;
+  state: string;
+  cwd: string | null;
+  model: string | null;
+  started_at: string;
+  ended_at: string | null;
+  last_event_at: string;
+  // Local sync_dirty_at acts as the LWW tiebreaker on the wire — newer
+  // wins on conflicts so a Device-A push during a Device-B-stale window
+  // doesn't get clobbered.
+  sync_dirty_at: number;
+}
+
+function isValidSession(s: unknown): s is IncomingSession {
+  if (!s || typeof s !== "object") return false;
+  const o = s as Record<string, unknown>;
+  if (typeof o.id !== "string" || o.id.length === 0) return false;
+  if (typeof o.agent !== "string" || o.agent.length === 0) return false;
+  if (typeof o.state !== "string" || o.state.length === 0) return false;
+  if (typeof o.started_at !== "string") return false;
+  if (typeof o.last_event_at !== "string") return false;
+  if (typeof o.sync_dirty_at !== "number" || !Number.isFinite(o.sync_dirty_at)) return false;
+  // title / cwd / model / ended_at / device_id are nullable; minimal check.
+  return true;
+}
+
+async function handleSessionsMetadataPost(req: Request, env: Env): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (user.tier !== "pro") return jsonError(403, "pro_required");
+
+  let body: { sessions?: unknown };
+  try { body = await req.json() as { sessions?: unknown }; }
+  catch { return jsonError(400, "invalid_metadata"); }
+
+  const incoming = body.sessions;
+  if (!Array.isArray(incoming)) return jsonError(400, "invalid_metadata");
+
+  const MAX_SESSIONS_PER_REQUEST = 1000;
+  if (incoming.length > MAX_SESSIONS_PER_REQUEST) {
+    return jsonError(413, "too_many_sessions");
+  }
+
+  const accepted: string[] = [];
+  const rejected: string[] = [];
+
+  try {
+    for (const raw of incoming) {
+      if (!isValidSession(raw)) {
+        const id = (raw as { id?: unknown })?.id;
+        rejected.push(typeof id === "string" && id.length > 0 ? id : "<malformed>");
+        continue;
+      }
+      const s = raw;
+      // LWW: only overwrite an existing row when the incoming sync_dirty_at
+      // is strictly greater than what's stored. New rows always insert.
+      // Using INSERT … ON CONFLICT DO UPDATE WHERE keeps it one statement.
+      const result = await env.DB.prepare(
+        `INSERT INTO synced_session_metadata
+           (owner_id, session_id, device_id, agent, title, state, cwd, model,
+            started_at, ended_at, last_event_at, jsonl_r2_key, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+         ON CONFLICT(owner_id, session_id) DO UPDATE SET
+           device_id     = excluded.device_id,
+           agent         = excluded.agent,
+           title         = excluded.title,
+           state         = excluded.state,
+           cwd           = excluded.cwd,
+           model         = excluded.model,
+           started_at    = excluded.started_at,
+           ended_at      = excluded.ended_at,
+           last_event_at = excluded.last_event_at,
+           updated_at    = excluded.updated_at
+          WHERE excluded.updated_at > synced_session_metadata.updated_at`,
+      ).bind(
+        user.id, s.id, s.device_id ?? null, s.agent, s.title, s.state, s.cwd, s.model,
+        s.started_at, s.ended_at, s.last_event_at, s.sync_dirty_at,
+      ).run();
+      // changes > 0 means a row was inserted or LWW won an update. changes 0
+      // means an older sync_dirty_at lost the LWW race; still acknowledge so
+      // the client clears its dirty flag — cloud has a newer version.
+      accepted.push(s.id);
+      // touch result so the linter is satisfied
+      void result;
+    }
+  } catch (err) {
+    console.warn("[sessions] metadata ingest db error:", err);
+    return jsonError(500, "db_error");
+  }
+
+  return jsonOk({ accepted, rejected });
+}
+
+async function handleSessionsMetadataGet(req: Request, env: Env): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (user.tier !== "pro") return jsonError(403, "pro_required");
+
+  type Row = {
+    session_id: string; device_id: string | null; agent: string; title: string | null;
+    state: string; cwd: string | null; model: string | null; started_at: string;
+    ended_at: string | null; last_event_at: string; jsonl_r2_key: string | null;
+    updated_at: number;
+  };
+  const { results } = await env.DB.prepare(
+    `SELECT session_id, device_id, agent, title, state, cwd, model, started_at,
+            ended_at, last_event_at, jsonl_r2_key, updated_at
+       FROM synced_session_metadata
+      WHERE owner_id = ?
+      ORDER BY last_event_at DESC`,
+  ).bind(user.id).all<Row>();
+
+  return jsonOk({ sessions: results ?? [] }, 200, { "cache-control": "private, no-store" });
+}
+
+function r2KeyFor(ownerId: string, sessionId: string): string {
+  // No device_id in the key — sessions have a single canonical jsonl per
+  // owner+session. Snapshot updates from the originating device overwrite.
+  return `sessions/${ownerId}/${sessionId}.jsonl`;
+}
+
+async function handleSessionsBytesPut(req: Request, env: Env, sessionId: string): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (user.tier !== "pro") return jsonError(403, "pro_required");
+
+  // Confirm the session belongs to the caller before accepting bytes. Without
+  // this check, a Pro user could arbitrarily overwrite any session id in
+  // their own R2 prefix — harmless but wasteful and confusing in audit logs.
+  const owns = await env.DB.prepare(
+    `SELECT 1 FROM synced_session_metadata WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+  ).bind(user.id, sessionId).first();
+  if (!owns) return jsonError(404, "session_not_found");
+
+  const plaintext = new Uint8Array(await req.arrayBuffer());
+  if (plaintext.byteLength === 0) return jsonError(400, "empty_body");
+
+  let ciphertext: Uint8Array;
+  try {
+    ciphertext = await encryptForUser(env.SESSIONS_ENCRYPTION_KEY, user.id, plaintext);
+  } catch (err) {
+    console.warn("[sessions] encrypt failed:", err);
+    return jsonError(500, "encrypt_failed");
+  }
+
+  const key = r2KeyFor(user.id, sessionId);
+  try {
+    await env.SESSIONS_BUCKET.put(key, ciphertext, {
+      httpMetadata: { contentType: "application/octet-stream" },
+      customMetadata: { ownerId: user.id, sessionId, plaintextSize: String(plaintext.byteLength) },
+    });
+  } catch (err) {
+    console.warn("[sessions] R2 put failed:", err);
+    return jsonError(500, "r2_put_failed");
+  }
+
+  // Record the R2 key on the metadata row so cross-device clients know bytes
+  // are available for lazy pull.
+  await env.DB.prepare(
+    `UPDATE synced_session_metadata SET jsonl_r2_key = ?, updated_at = ?
+      WHERE owner_id = ? AND session_id = ?`,
+  ).bind(key, Date.now(), user.id, sessionId).run();
+
+  return jsonOk({ ok: true, key, plaintextSize: plaintext.byteLength, ciphertextSize: ciphertext.byteLength });
+}
+
+async function handleSessionsBytesGet(req: Request, env: Env, sessionId: string): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (user.tier !== "pro") return jsonError(403, "pro_required");
+
+  // Owner check: refuse if the session isn't in this owner's metadata. Stops
+  // any ""guess another user's session_id"" cross-account read attempt before
+  // we even hit R2.
+  const owns = await env.DB.prepare(
+    `SELECT jsonl_r2_key FROM synced_session_metadata WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+  ).bind(user.id, sessionId).first<{ jsonl_r2_key: string | null }>();
+  if (!owns) return jsonError(404, "session_not_found");
+  if (!owns.jsonl_r2_key) return jsonError(404, "bytes_not_uploaded");
+
+  const obj = await env.SESSIONS_BUCKET.get(owns.jsonl_r2_key);
+  if (!obj) return jsonError(404, "bytes_missing");
+
+  const ciphertext = new Uint8Array(await obj.arrayBuffer());
+  let plaintext: Uint8Array;
+  try {
+    plaintext = await decryptForUser(env.SESSIONS_ENCRYPTION_KEY, user.id, ciphertext);
+  } catch (err) {
+    console.warn("[sessions] decrypt failed:", err);
+    return jsonError(500, "decrypt_failed");
+  }
+
+  return new Response(plaintext, {
+    status: 200,
+    headers: {
+      "content-type": "application/jsonl",
+      "cache-control": "private, no-store",
+    },
+  });
 }
