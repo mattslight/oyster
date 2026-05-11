@@ -4,6 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.1-beta.1] - 2026-05-11
+
+### Fixed
+
+- **Conversation backup uploads reliably from the first session.** Older transcripts discovered at startup are now backed up in the same boot rather than waiting for the next sync tick.
+
 ## [0.8.1-beta.0] - 2026-05-11
 
 ### Added
