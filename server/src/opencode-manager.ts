@@ -162,7 +162,8 @@ function logDisconnect(reason: "disconnected" | "failed to connect") {
   const suffix = suppressedDisconnects > 0
     ? ` (+${suppressedDisconnects} suppressed)`
     : "";
-  console.log(`[auto-approver] ${reason}${suffix}, reconnecting in 3s...`);
+  const seconds = Math.round(RECONNECT_DELAY_MS / 1000);
+  console.log(`[auto-approver] ${reason}${suffix}, reconnecting in ${seconds}s...`);
   lastDisconnectLogAt = now;
   suppressedDisconnects = 0;
 }
