@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, mkdirSync, statSync, copyFileSync, readdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
+import { randomUUID } from "node:crypto";
 import { basename, extname, join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -293,6 +294,38 @@ void authService.validatePersistedSession();
 // the wrong local SQLite. canRunCloudSync() is the ONLY caller of bindToOwner.
 const profileBinding = createProfileBindingService({ db });
 
+// Device identity (#322 PR 2 hotfix). Seed the singleton on first boot so
+// every session pushed to cloud carries which device it originated on.
+// The device_id is a fresh uuid; the label is os.hostname() (e.g.
+// "Matthews-MacBook-Pro.local") for human-readable display in PR 3's
+// "Resumed from MacBook" chip. Stored in oyster.db so it survives
+// app restarts and npm uninstall/install of oyster-os (npm doesn't touch
+// the userland data dir). A factory-reset (deleting ~/Oyster/db/) creates
+// a new device_id, which is the correct behaviour — that's effectively a
+// new device.
+//
+// Backfill: if this is the FIRST seed (INSERT OR IGNORE actually inserted),
+// mark every locally-known session with a cloud_owner_id as dirty so the
+// next pushPending uploads them all with device_id attached. This is the
+// one-shot migration that fills in device_id for sessions already in cloud
+// from before this hotfix landed. The cost is one extra full push per
+// existing user; subsequent boots short-circuit (INSERT OR IGNORE = no-op).
+{
+  const deviceSeed = db.prepare(
+    `INSERT OR IGNORE INTO device_identity (id, device_id, label) VALUES (1, ?, ?)`,
+  ).run(randomUUID(), hostname());
+  if (deviceSeed.changes > 0) {
+    const backfill = db.prepare(
+      `UPDATE sessions SET sync_dirty_at = ? WHERE cloud_owner_id IS NOT NULL`,
+    ).run(Date.now());
+    if (backfill.changes > 0) {
+      console.log(`[sessions] device_identity seeded; marked ${backfill.changes} sessions dirty for device_id backfill`);
+    } else {
+      console.log("[sessions] device_identity seeded (no prior sessions to backfill)");
+    }
+  }
+}
+
 /** Returns true when the signed-in user is Pro AND this local profile is
  *  either unbound or already bound to that user. Side-effect on first call
  *  for a new Pro user: binds the profile. */
@@ -387,6 +420,17 @@ const memoryPollHandle = setInterval(() => {
     }
   }).catch((err) => {
     console.warn("[memory] periodic pull failed:", err);
+  });
+  // Cross-device session metadata pull on the same tick (#322 PR 2 hotfix).
+  // Without this, a running Oyster on Device B never sees sessions Device A
+  // pushed after Device B's last sign-in / app-start. Memory had this loop
+  // since 0.8.0; sessions need parity.
+  sessionSync.pull().then((applied) => {
+    if (applied > 0) {
+      console.log(`[sessions] periodic pull: applied=${applied}`);
+    }
+  }).catch((err) => {
+    console.warn("[sessions] periodic pull failed:", err);
   });
 }, MEMORY_POLL_INTERVAL_MS);
 memoryPollHandle.unref();

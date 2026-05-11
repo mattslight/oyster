@@ -134,6 +134,54 @@ describe("SessionSyncService", () => {
     expect(row.cloud_owner_id).toBe("user-A");
   });
 
+  it("pushPending stamps device_id from device_identity onto every payload row", async () => {
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    db.prepare(`INSERT INTO device_identity (id, device_id, label) VALUES (1, ?, ?)`)
+      .run("my-mac-uuid", "MacBook-Pro");
+    insertDirtySession(db, "s1", "user-A", 1000);
+
+    let capturedBody: string | null = null;
+    const fetchSpy = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      capturedBody = init?.body as string;
+      return new Response(JSON.stringify({ accepted: ["s1"] }), { status: 200 });
+    });
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.pushPending();
+    const body = JSON.parse(capturedBody ?? "{}") as { sessions: Array<{ id: string; device_id: string | null }> };
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0]!.device_id).toBe("my-mac-uuid");
+  });
+
+  it("pushPending tolerates missing device_identity (device_id null in payload)", async () => {
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    // device_identity intentionally NOT seeded
+    insertDirtySession(db, "s1", "user-A", 1000);
+
+    let capturedBody: string | null = null;
+    const fetchSpy = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      capturedBody = init?.body as string;
+      return new Response(JSON.stringify({ accepted: ["s1"] }), { status: 200 });
+    });
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.pushPending();
+    const body = JSON.parse(capturedBody ?? "{}") as { sessions: Array<{ device_id: string | null }> };
+    expect(body.sessions[0]!.device_id).toBeNull();
+  });
+
   it("pushPending sends dirty sessions for the current owner and marks them synced", async () => {
     const { db, profileBinding } = harness();
     profileBinding.bindToOwner("user-A");
