@@ -35,6 +35,30 @@ function harness() {
       cloud_owner_id TEXT NOT NULL,
       bound_at INTEGER NOT NULL
     );
+    CREATE TABLE device_identity (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      device_id TEXT NOT NULL,
+      label TEXT NOT NULL
+    );
+    CREATE TABLE remote_sessions (
+      session_id        TEXT NOT NULL,
+      owner_id          TEXT NOT NULL,
+      device_id         TEXT,
+      agent             TEXT NOT NULL,
+      title             TEXT,
+      state             TEXT NOT NULL,
+      cwd               TEXT,
+      model             TEXT,
+      started_at        TEXT NOT NULL,
+      ended_at          TEXT,
+      last_event_at     TEXT NOT NULL,
+      bytes_generation  INTEGER NOT NULL DEFAULT 0,
+      has_bytes         INTEGER NOT NULL DEFAULT 0,
+      cloud_updated_at  INTEGER NOT NULL,
+      fetched_at        INTEGER NOT NULL,
+      jsonl_local_path  TEXT,
+      PRIMARY KEY (owner_id, session_id)
+    );
   `);
   const profileBinding = createProfileBindingService({ db });
   return { db, profileBinding };
@@ -146,6 +170,142 @@ describe("SessionSyncService", () => {
     const s3 = db.prepare("SELECT cloud_synced_at FROM sessions WHERE id='s3'")
       .get() as { cloud_synced_at: number | null };
     expect(s3.cloud_synced_at).toBeNull();
+  });
+});
+
+describe("SessionSyncService.pull", () => {
+  function seedDevice(db: Database.Database, deviceId = "dev-mac"): void {
+    db.prepare(
+      `INSERT INTO device_identity (id, device_id, label) VALUES (1, ?, 'test')`,
+    ).run(deviceId);
+  }
+
+  function cloudPayload(sessions: Array<{
+    session_id: string;
+    device_id: string | null;
+    has_bytes?: boolean;
+    bytes_generation?: number;
+    updated_at?: number;
+    title?: string;
+    state?: string;
+  }>) {
+    return new Response(JSON.stringify({
+      sessions: sessions.map((s) => ({
+        session_id: s.session_id,
+        device_id: s.device_id,
+        agent: "claude-code",
+        title: s.title ?? "remote session",
+        state: s.state ?? "done",
+        cwd: "/tmp/x",
+        model: "claude-sonnet-4-6",
+        started_at: "2026-05-11T10:00:00Z",
+        ended_at: null,
+        last_event_at: "2026-05-11T10:30:00Z",
+        bytes_generation: s.bytes_generation ?? 0,
+        has_bytes: s.has_bytes ?? false,
+        updated_at: s.updated_at ?? 1000,
+      })),
+    }), { status: 200 });
+  }
+
+  it("no-op for free users", async () => {
+    const { db, profileBinding } = harness();
+    seedDevice(db);
+    const fetchSpy = vi.fn(async () => cloudPayload([]));
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "u1", email: "x@x", tier: "free" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    expect(await svc.pull()).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("upserts foreign-device sessions and skips this device", async () => {
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db, "dev-mac");
+    const fetchSpy = vi.fn(async () =>
+      cloudPayload([
+        { session_id: "s-mine", device_id: "dev-mac", has_bytes: true },
+        { session_id: "s-other", device_id: "dev-pc", has_bytes: true },
+        { session_id: "s-orphan", device_id: null, has_bytes: false },
+      ]),
+    );
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    const applied = await svc.pull();
+    // s-mine filtered out (own device); s-other + s-orphan upserted
+    expect(applied).toBe(2);
+    const rows = db.prepare(
+      `SELECT session_id, has_bytes FROM remote_sessions WHERE owner_id = ? ORDER BY session_id`,
+    ).all("user-A") as Array<{ session_id: string; has_bytes: number }>;
+    expect(rows.map((r) => r.session_id)).toEqual(["s-orphan", "s-other"]);
+    expect(rows.find((r) => r.session_id === "s-other")?.has_bytes).toBe(1);
+    expect(rows.find((r) => r.session_id === "s-orphan")?.has_bytes).toBe(0);
+  });
+
+  it("LWW: older cloud_updated_at does not overwrite newer local copy", async () => {
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db, "dev-mac");
+    let payload = cloudPayload([
+      { session_id: "s-other", device_id: "dev-pc", title: "v2", updated_at: 5000 },
+    ]);
+    const fetchSpy = vi.fn(async () => payload);
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.pull();
+    // Now serve an OLDER updated_at — should NOT overwrite.
+    payload = cloudPayload([
+      { session_id: "s-other", device_id: "dev-pc", title: "v1-ancient", updated_at: 1000 },
+    ]);
+    await svc.pull();
+    const row = db.prepare(
+      `SELECT title FROM remote_sessions WHERE owner_id = ? AND session_id = ?`,
+    ).get("user-A", "s-other") as { title: string };
+    expect(row.title).toBe("v2");
+  });
+
+  it("reconcile calls pull and pushPending", async () => {
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db);
+    insertDirtySession(db, "s-dirty", "user-A", 1000);
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/api/sessions/metadata") && !u.includes("?")) {
+        // Could be GET (pull) or POST (push). Either way, return a valid shape.
+        return new Response(JSON.stringify({ sessions: [], accepted: ["s-dirty"], rejected: [] }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    const r = await svc.reconcile();
+    expect(r.pulled).toBe(0);
+    expect(r.pushed).toBe(1);
+    // Both verbs were used
+    const methods = fetchSpy.mock.calls.map((c) => (c[1] as RequestInit | undefined)?.method ?? "GET");
+    expect(methods).toContain("GET");
+    expect(methods).toContain("POST");
   });
 });
 

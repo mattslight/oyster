@@ -53,6 +53,12 @@ export interface PushBytesResult {
 export interface SessionSyncService {
   reconcile(): Promise<{ pulled: number; pushed: number }>;
   pushPending(): Promise<number>;
+  /** Pull session metadata from cloud into `remote_sessions`. Idempotent —
+   *  cloud rows are upserted by (owner_id, session_id). Pro-only;
+   *  no-op for free users and when profile-bound to a different account.
+   *  Returns the count of rows newly inserted or whose cloud_updated_at
+   *  advanced. */
+  pull(): Promise<number>;
   /** Push new jsonl bytes for a session up to cloud as chunked deltas.
    *  Reads from `~/.claude/projects/<encodeCwd(session.cwd)>/<id>.jsonl`
    *  starting at `sessions.jsonl_snapshot_offset`. Handles file truncation
@@ -443,6 +449,108 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     return { uploaded, offsetAfter: offset + pushedBytes, generation, resetFired };
   }
 
+  // In-flight guard for pull so concurrent reconcile triggers (focus +
+  // panel-mount + 30s-poll firing in quick succession) coalesce to one
+  // HTTP round-trip. Same shape as pushPending's guard.
+  let inFlightPull: Promise<number> | null = null;
+
+  const upsertRemoteSession = deps.db.prepare(
+    `INSERT INTO remote_sessions
+       (session_id, owner_id, device_id, agent, title, state, cwd, model,
+        started_at, ended_at, last_event_at, bytes_generation, has_bytes,
+        cloud_updated_at, fetched_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(owner_id, session_id) DO UPDATE SET
+       device_id         = excluded.device_id,
+       agent             = excluded.agent,
+       title             = excluded.title,
+       state             = excluded.state,
+       cwd               = excluded.cwd,
+       model             = excluded.model,
+       started_at        = excluded.started_at,
+       ended_at          = excluded.ended_at,
+       last_event_at     = excluded.last_event_at,
+       bytes_generation  = excluded.bytes_generation,
+       has_bytes         = excluded.has_bytes,
+       cloud_updated_at  = excluded.cloud_updated_at,
+       fetched_at        = excluded.fetched_at
+     WHERE excluded.cloud_updated_at > remote_sessions.cloud_updated_at`,
+  );
+
+  async function doPull(): Promise<number> {
+    const session = isProSession(deps);
+    if (!session) return 0;
+
+    let res: Response;
+    try {
+      res = await deps.fetch(`${deps.workerBase}/api/sessions/metadata`, {
+        headers: { Cookie: `oyster_session=${session.token}` },
+      });
+    } catch (err) {
+      console.warn("[sessions] pull failed:", err);
+      return 0;
+    }
+    if (!res.ok) {
+      console.warn(`[sessions] pull non-ok ${res.status}`);
+      return 0;
+    }
+
+    type CloudSession = {
+      session_id: string;
+      device_id: string | null;
+      agent: string;
+      title: string | null;
+      state: string;
+      cwd: string | null;
+      model: string | null;
+      started_at: string;
+      ended_at: string | null;
+      last_event_at: string;
+      bytes_generation: number;
+      has_bytes: boolean;
+      updated_at: number;
+    };
+    const body = await res.json().catch(() => null) as { sessions?: CloudSession[] } | null;
+    const incoming = body?.sessions ?? [];
+    if (incoming.length === 0) return 0;
+
+    // Filter out rows that belong to THIS device — we already have those
+    // in the local `sessions` table via the watcher. remote_sessions is for
+    // OTHER devices' sessions specifically.
+    const myDeviceId = getMyDeviceId();
+    const foreignRows = incoming.filter((s) => s.device_id !== myDeviceId);
+
+    const now = Date.now();
+    let applied = 0;
+    const tx = deps.db.transaction(() => {
+      for (const s of foreignRows) {
+        const info = upsertRemoteSession.run(
+          s.session_id, session.user.id, s.device_id, s.agent, s.title, s.state,
+          s.cwd, s.model, s.started_at, s.ended_at, s.last_event_at,
+          s.bytes_generation, s.has_bytes ? 1 : 0, s.updated_at, now,
+        );
+        if (info.changes > 0) applied++;
+      }
+    });
+    tx();
+
+    if (applied > 0) {
+      console.log(`[sessions] pulled: applied=${applied}`);
+    }
+    return applied;
+  }
+
+  /** Stable per-device id; lazy-initialised on first read. */
+  let cachedDeviceId: string | null = null;
+  function getMyDeviceId(): string | null {
+    if (cachedDeviceId !== null) return cachedDeviceId;
+    const row = deps.db.prepare(
+      `SELECT device_id FROM device_identity WHERE id = 1 LIMIT 1`,
+    ).get() as { device_id: string } | undefined;
+    cachedDeviceId = row?.device_id ?? null;
+    return cachedDeviceId;
+  }
+
   // Capture the service object so methods don't depend on `this` binding —
   // safe to pass `service.reconcile` directly into a setInterval / event
   // emitter callback. Mirrors the memory-sync-service shape.
@@ -450,9 +558,21 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     async reconcile() {
       const session = isProSession(deps);
       if (!session) return { pulled: 0, pushed: 0 };
-      // Pull is PR 2 territory; for now reconcile = pushPending.
+      // Mirror memory-sync: pull first so we have the latest cloud state
+      // visible locally, then push any local-only changes back up.
+      const pulled = await service.pull();
       const pushed = await service.pushPending();
-      return { pulled: 0, pushed };
+      return { pulled, pushed };
+    },
+
+    async pull() {
+      if (inFlightPull) return inFlightPull;
+      inFlightPull = doPull();
+      try {
+        return await inFlightPull;
+      } finally {
+        inFlightPull = null;
+      }
     },
 
     async pushPending() {
