@@ -34,7 +34,7 @@ import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
 import { createSpaceSyncService } from "./space-sync-service.js";
 import { createMemorySyncService, type MemorySyncService } from "./memory-sync-service.js";
-import { createSessionSyncService, type SessionSyncService } from "./session-sync-service.js";
+import { createSessionSyncService, encodeCwd, projectsRoot, type SessionSyncService } from "./session-sync-service.js";
 import { createProfileBindingService } from "./profile-binding-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
@@ -352,11 +352,12 @@ memoryProvider.setOnWrite(() => {
   broadcastUiEvent({ version: 1, command: "memory_changed", payload: { op: "write" } });
 });
 
-// Sessions arc — cross-device sync of agent session metadata (#322). The
-// service drains dirty rows from the `sessions` table on push; the watcher
-// hook below marks rows dirty whenever a session row changes. pushBytes
-// (R2 jsonl upload) lives on the same service and lands in PR 1c when the
-// cloud worker route is ready. pull() and remote_sessions land in PR 2.
+// Sessions arc — cross-device sync of agent sessions (#322). Two flows on
+// the same service: metadata (markDirty + pushPending → D1) and bytes
+// (pushBytes → chunked-delta uploads to R2 via worker). The watcher hook
+// below marks rows dirty + fires pushBytes on terminal state. The 5-min
+// snapshot timer (further below) drives mid-session bytes uploads.
+// pull() + remote_sessions + resume API land in PR 2.
 const sessionSync: SessionSyncService = createSessionSyncService({
   db,
   profileBinding,
@@ -418,12 +419,10 @@ async function runSessionsSnapshotTick(): Promise<void> {
   ).all(authService.getState().user?.id ?? "") as Candidate[];
   if (candidates.length === 0) return;
 
-  const root = process.env.OYSTER_CLAUDE_PROJECTS_ROOT
-    ?? join(homedir(), ".claude", "projects");
+  const root = projectsRoot();
   for (const cand of candidates) {
     if (!cand.cwd) continue;
-    const encoded = cand.cwd.replace(/[^A-Za-z0-9]/g, "-");
-    const jsonlPath = join(root, encoded, `${cand.id}.jsonl`);
+    const jsonlPath = join(root, encodeCwd(cand.cwd), `${cand.id}.jsonl`);
     let size = 0;
     try {
       const st = statSync(jsonlPath);

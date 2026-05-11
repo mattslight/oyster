@@ -212,6 +212,36 @@ describe("POST /api/sessions/metadata", () => {
     expect(count?.n).toBe(1);
   });
 
+  it("accepts a session with nullable fields missing entirely (undefined → null at bind)", async () => {
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    const res = await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessions: [{
+          id: sid,
+          agent: "claude-code",
+          state: "done",
+          started_at: "2026-05-11T10:00:00Z",
+          last_event_at: "2026-05-11T10:30:00Z",
+          sync_dirty_at: 1000,
+          // title, cwd, model, ended_at, device_id all omitted
+        }],
+      }),
+    }, token);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { accepted: string[]; rejected: string[] };
+    expect(body.accepted).toEqual([sid]);
+    expect(body.rejected).toEqual([]);
+    // The row landed with null for the unspecified columns.
+    const row = await env.DB.prepare(
+      `SELECT title, cwd, model, ended_at, device_id FROM synced_session_metadata
+        WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first();
+    expect(row).toMatchObject({ title: null, cwd: null, model: null, ended_at: null, device_id: null });
+  });
+
   it("rejects negative sync_dirty_at", async () => {
     const { token } = await makeProSession();
     const sid = `s-${crypto.randomUUID()}`;

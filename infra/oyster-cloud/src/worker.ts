@@ -391,9 +391,14 @@ async function handleSessionsMetadataPost(req: Request, env: Env): Promise<Respo
            last_event_at = excluded.last_event_at,
            updated_at    = excluded.updated_at
           WHERE excluded.updated_at > synced_session_metadata.updated_at`,
+      // D1 .bind() throws on undefined; the nullable fields are typed as
+      // `string | null` in IncomingSession but the validator allows them to
+      // be missing entirely. Coerce every nullable to null before binding so
+      // a partial-shape session doesn't fail the whole batch with 500.
       ).bind(
-        user.id, s.id, s.device_id ?? null, s.agent, s.title, s.state, s.cwd, s.model,
-        s.started_at, s.ended_at, s.last_event_at, s.sync_dirty_at,
+        user.id, s.id, s.device_id ?? null, s.agent,
+        s.title ?? null, s.state, s.cwd ?? null, s.model ?? null,
+        s.started_at, s.ended_at ?? null, s.last_event_at, s.sync_dirty_at,
       ).run();
       // changes > 0 means a row was inserted or LWW won an update. changes 0
       // means an older sync_dirty_at lost the LWW race; still acknowledge so
@@ -613,15 +618,22 @@ async function handleSessionsBytesChunkPut(
   // idempotency check above already returned 200 on exact-match retry.
   // A race between two clients pushing the same chunk would hit either
   // the existing-row path or this insert; either way the table is consistent.
-  await env.DB.prepare(
-    `INSERT OR IGNORE INTO synced_session_chunks
-       (owner_id, session_id, bytes_generation, chunk_number,
-        start_offset, end_offset, byte_count, plaintext_sha256, uploaded_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(
-    user.id, sessionId, generation, chunkNumber,
-    startOffset, endOffset, declaredSize, plaintextSha256Header, Date.now(),
-  ).run();
+  // Wrap in try/catch so a transient D1 hiccup surfaces as structured 500
+  // rather than an unhandled exception.
+  try {
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO synced_session_chunks
+         (owner_id, session_id, bytes_generation, chunk_number,
+          start_offset, end_offset, byte_count, plaintext_sha256, uploaded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      user.id, sessionId, generation, chunkNumber,
+      startOffset, endOffset, declaredSize, plaintextSha256Header, Date.now(),
+    ).run();
+  } catch (err) {
+    console.warn("[sessions] chunk insert db error:", err);
+    return jsonError(500, "db_error");
+  }
 
   return jsonOk({
     ok: true,
@@ -751,11 +763,16 @@ async function handleSessionsBytesReset(
   if (currentGen === null) return jsonError(404, "session_not_found");
 
   const newGen = currentGen + 1;
-  await env.DB.prepare(
-    `UPDATE synced_session_metadata
-        SET bytes_generation = ?
-      WHERE owner_id = ? AND session_id = ?`,
-  ).bind(newGen, user.id, sessionId).run();
+  try {
+    await env.DB.prepare(
+      `UPDATE synced_session_metadata
+          SET bytes_generation = ?
+        WHERE owner_id = ? AND session_id = ?`,
+    ).bind(newGen, user.id, sessionId).run();
+  } catch (err) {
+    console.warn("[sessions] reset db error:", err);
+    return jsonError(500, "db_error");
+  }
 
   // Prior-generation chunk rows are deliberately left in place — the
   // generation filter on manifest / chunk-get makes them effectively

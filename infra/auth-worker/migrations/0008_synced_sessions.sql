@@ -1,5 +1,5 @@
 -- 0008_synced_sessions.sql — cross-device session sync substrate (#322).
--- Spec: PR #431 (eventual-soaring-swan plan).
+-- Implementation: PR #431.
 --
 -- Two tables drive the cross-device sync:
 --   1. synced_session_metadata — per-session metadata row, LWW on updated_at,

@@ -72,8 +72,9 @@ const BATCH_SIZE = 100;
 const MAX_CHUNK_BYTES = 25 * 1024 * 1024;
 
 /** Claude Code's projects root. Read fresh each call so tests can swap the
- *  env var per case without re-importing the module. */
-function projectsRoot(): string {
+ *  env var per case without re-importing the module. Exported so the
+ *  snapshot timer in index.ts uses the same resolution. */
+export function projectsRoot(): string {
   return process.env.OYSTER_CLAUDE_PROJECTS_ROOT ?? join(homedir(), ".claude", "projects");
 }
 
@@ -326,84 +327,95 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       return { uploaded: 0, offsetAfter: offset, generation, resetFired };
     }
 
-    // Read the whole pending region in one shot. We split into chunks in
-    // memory, then PUT each. For the 50 MB-and-up outlier case, the loop
-    // does multiple ~25 MB chunks in one snapshot pass.
-    let pendingBuf: Buffer;
+    // Stream pending bytes one chunk at a time, capped at MAX_CHUNK_BYTES.
+    // A user offline for a while may have a multi-hundred-MB pending region;
+    // we must NOT Buffer.alloc the whole thing or we OOM the server process.
+    //
+    // The read window starts at PROBE_WINDOW (MAX_CHUNK_BYTES + tail slack)
+    // so we can find a newline boundary up to MAX_CHUNK_BYTES back from the
+    // top of the window. If no newline exists in that window, we fall back
+    // to a hard MAX_CHUNK_BYTES slice (per the byte-order reconstruction
+    // contract — JSON-awareness is advisory).
     let fh: import("node:fs/promises").FileHandle | null = null;
+    let uploaded = 0;
+    let pushedBytes = 0;  // plaintext bytes successfully uploaded this call
     try {
       fh = await fs.open(jsonlPath, "r");
-      const length = stat.size - offset;
-      const buf = Buffer.alloc(length);
-      const read = await fh.read(buf, 0, length, offset);
-      pendingBuf = buf.subarray(0, read.bytesRead);
+
+      while (offset + pushedBytes < stat.size) {
+        const cursor = offset + pushedBytes;
+        const remainingTotal = stat.size - cursor;
+        const windowSize = Math.min(remainingTotal, MAX_CHUNK_BYTES);
+        const windowBuf = Buffer.alloc(windowSize);
+        const { bytesRead } = await fh.read(windowBuf, 0, windowSize, cursor);
+        if (bytesRead === 0) break;  // shouldn't happen given the loop guard
+        const window = windowBuf.subarray(0, bytesRead);
+
+        // chooseChunkSize keeps us at-or-under MAX_CHUNK_BYTES and prefers a
+        // newline boundary. For the final chunk it returns the remaining
+        // size (which equals bytesRead, == remainingTotal when ≤ cap).
+        const sliceSize = chooseChunkSize(window, MAX_CHUNK_BYTES);
+        const chunkBytes = window.subarray(0, sliceSize);
+
+        // Copy into a detached ArrayBuffer so the fetch BodyInit type is
+        // happy and the chunk can be released after the PUT regardless of
+        // what runtime fetch does internally.
+        const chunkBody = new ArrayBuffer(sliceSize);
+        new Uint8Array(chunkBody).set(chunkBytes);
+
+        const startOffset = cursor;
+        const endOffset = startOffset + sliceSize;
+        const hash = sha256Hex(new Uint8Array(chunkBody));
+        const nextChunkNumber = chunkCount + 1;
+
+        let res: Response;
+        try {
+          res = await deps.fetch(
+            `${deps.workerBase}/api/sessions/bytes/${encodeURIComponent(sessionId)}/chunk/${nextChunkNumber}`,
+            {
+              method: "PUT",
+              headers: {
+                Cookie: `oyster_session=${session.token}`,
+                "content-type": "application/octet-stream",
+                "x-chunk-start-offset": String(startOffset),
+                "x-chunk-end-offset": String(endOffset),
+                "x-plaintext-sha256": hash,
+                "x-bytes-generation": String(generation),
+              },
+              body: chunkBody,
+            },
+          );
+        } catch (err) {
+          console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} fetch failed for ${sessionId}:`, err);
+          break;
+        }
+
+        if (res.status === 200) {
+          // Persist after every chunk so a mid-loop crash doesn't re-upload
+          // bytes already in cloud. snapshot_offset advances by exactly
+          // sliceSize plaintext bytes.
+          chunkCount = nextChunkNumber;
+          pushedBytes += sliceSize;
+          advanceBytesState.run(offset + pushedBytes, chunkCount, Date.now(), sessionId);
+          uploaded++;
+          continue;
+        }
+
+        // Per the worker's idempotency contract, an exact-match retry returns
+        // 200 idempotent:true (not 409). So any non-200 here is a real
+        // problem (conflict, stale gen, non-contiguous) — log and abort.
+        // The next reconcile cycle re-derives state from the server's
+        // manifest and recovers.
+        console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} rejected (${res.status}) for ${sessionId}`);
+        break;
+      }
     } catch (err) {
-      console.warn(`[sessions] pushBytes: read failed for ${jsonlPath}:`, err);
-      return { uploaded: 0, offsetAfter: offset, generation, resetFired };
+      console.warn(`[sessions] pushBytes loop failed for ${jsonlPath}:`, err);
     } finally {
       if (fh) await fh.close().catch(() => { /* ignore */ });
     }
 
-    let uploaded = 0;
-    let bufOffset = 0;
-
-    while (bufOffset < pendingBuf.byteLength) {
-      const remaining = pendingBuf.subarray(bufOffset);
-      const sliceSize = chooseChunkSize(remaining, MAX_CHUNK_BYTES);
-      const chunkBytes = remaining.subarray(0, sliceSize);
-      // Node Buffer extends Uint8Array at runtime, but TS's fetch BodyInit
-      // type is picky. Copy into a plain detached ArrayBuffer for the body —
-      // ArrayBuffer IS in BodyInit. The copy is cheap relative to the HTTP
-      // round-trip and avoids cross-realm Uint8Array issues.
-      const chunkBody = new ArrayBuffer(sliceSize);
-      new Uint8Array(chunkBody).set(chunkBytes);
-      const startOffset = offset + bufOffset;
-      const endOffset = startOffset + sliceSize;
-      const hash = sha256Hex(new Uint8Array(chunkBody));
-      const nextChunkNumber = chunkCount + 1;
-
-      let res: Response;
-      try {
-        res = await deps.fetch(
-          `${deps.workerBase}/api/sessions/bytes/${encodeURIComponent(sessionId)}/chunk/${nextChunkNumber}`,
-          {
-            method: "PUT",
-            headers: {
-              Cookie: `oyster_session=${session.token}`,
-              "content-type": "application/octet-stream",
-              "x-chunk-start-offset": String(startOffset),
-              "x-chunk-end-offset": String(endOffset),
-              "x-plaintext-sha256": hash,
-              "x-bytes-generation": String(generation),
-            },
-            body: chunkBody,
-          },
-        );
-      } catch (err) {
-        console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} fetch failed for ${sessionId}:`, err);
-        break;
-      }
-
-      if (res.status === 200) {
-        // Advance local state and continue the loop. We persist after every
-        // chunk so a mid-loop crash doesn't re-upload bytes already in cloud.
-        chunkCount = nextChunkNumber;
-        bufOffset += sliceSize;
-        advanceBytesState.run(offset + bufOffset, chunkCount, Date.now(), sessionId);
-        uploaded++;
-        continue;
-      }
-
-      // 409 idempotent retry — the worker's idempotency contract guarantees
-      // an exact-match retry returns 200 with idempotent:true, not 409. So
-      // any 409 here is a real conflict (different content / stale gen /
-      // non-contiguous) — log and abort the loop. The next reconcile cycle
-      // will re-derive state from the server's manifest and recover.
-      console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} rejected (${res.status}) for ${sessionId}`);
-      break;
-    }
-
-    return { uploaded, offsetAfter: offset + bufOffset, generation, resetFired };
+    return { uploaded, offsetAfter: offset + pushedBytes, generation, resetFired };
   }
 
   // Capture the service object so methods don't depend on `this` binding —
