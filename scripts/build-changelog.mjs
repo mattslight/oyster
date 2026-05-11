@@ -63,18 +63,45 @@ const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g
 // We post-process both the raw-bracket form and the link-rendered form.
 const releases = [];
 
-// Single pass: marked renders `[Unreleased]` as a reference-link (because of the
-// compare-link footer defining it) and `[0.0.x]` as plain brackets (no matching
-// definition). Match both forms in one regex so releases stay in document order.
+const REPO_URL = "https://github.com/mattslight/oyster";
+const H2_VERSION_RE =
+  /<h2[^>]*>(?:<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>|\[([^\]]+)\])(?:\s*-\s*([^<]+?))?<\/h2>/g;
+
+// Derive Unreleased's compare base from the doc, not from a hand-edited footer
+// reference in CHANGELOG.md. The footer used to point at `v0.7.0...HEAD` and
+// drifted across every release since (#440). Walk h2s in document order
+// (newest first) and pick the first non-Unreleased version as the compare base.
+let unreleasedCompareUrl = null;
+for (const m of rawRendered.matchAll(H2_VERSION_RE)) {
+  const v = m[2] || m[3];
+  if (v && v !== "Unreleased") {
+    unreleasedCompareUrl = `${REPO_URL}/compare/v${v}...HEAD`;
+    break;
+  }
+}
+
+// Single pass: marked may render `[Unreleased]` as a reference-link (if the
+// footer compare-link definition exists) and `[0.0.x]` as plain brackets.
+// Match both forms in one regex so releases stay in document order.
 // The `<h2[^>]*>` tolerates any attributes marked may emit in future versions.
 // Captured values (version, rest, href) are escaped before interpolation.
 const rendered = rawRendered.replace(
-  /<h2[^>]*>(?:<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>|\[([^\]]+)\])(?:\s*-\s*([^<]+?))?<\/h2>/g,
+  H2_VERSION_RE,
   (_, linkedHref, linkedVersion, bracketVersion, rest) => {
     const version = linkedVersion || bracketVersion;
     const id = `v-${slug(version)}`;
     const versionSpan = `<span class="release-version">${escapeHtml(version)}</span>`;
-    const resolvedHref = linkedHref ? safeHref(linkedHref) : null;
+    // For Unreleased, always use the synthesized compare URL — ignore any
+    // stale footer reference. For released versions, honour the footer def
+    // when one exists (older releases up to 0.7.0 still have them and
+    // render as compare links); newer releases have no footer def, so
+    // linkedHref is null and we render a plain span.
+    const resolvedHref =
+      version === "Unreleased"
+        ? unreleasedCompareUrl
+        : linkedHref
+          ? safeHref(linkedHref)
+          : null;
     const relAttr = resolvedHref && /^https?:/i.test(resolvedHref) ? ' rel="noopener noreferrer"' : "";
     const versionHtml = resolvedHref
       ? `<a class="release-version-link" href="${escapeHtml(resolvedHref)}"${relAttr}>${versionSpan}</a>`
