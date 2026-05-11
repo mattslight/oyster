@@ -192,6 +192,45 @@ export function initDb(userlandDir: string): Database.Database {
     )
   `);
 
+  // Cross-device session metadata mirror (#322 PR 2). Populated by
+  // SessionSyncService.pull() from the cloud worker's GET
+  // /api/sessions/metadata. Kept in a SEPARATE table from `sessions` so
+  // foreign devices' data never contaminates the local watcher's source
+  // of truth: the watcher writes only to `sessions`; the pull layer
+  // writes only here. The Home / sessions list view merges both for
+  // display via routes/sessions.ts.
+  //
+  // jsonl_local_path is set once a Device-B "Resume on this device"
+  // reassembles the chunks to disk. Subsequent resumes can short-circuit
+  // and just surface the existing local path.
+  //
+  // has_bytes mirrors the cloud manifest's "is there a chunk for this
+  // session in the current generation" — gates whether the Resume button
+  // can even fire (no bytes → only metadata is available, no transcript).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS remote_sessions (
+      session_id        TEXT    NOT NULL,
+      owner_id          TEXT    NOT NULL,
+      device_id         TEXT,
+      agent             TEXT    NOT NULL,
+      title             TEXT,
+      state             TEXT    NOT NULL,
+      cwd               TEXT,
+      model             TEXT,
+      started_at        TEXT    NOT NULL,
+      ended_at          TEXT,
+      last_event_at     TEXT    NOT NULL,
+      bytes_generation  INTEGER NOT NULL DEFAULT 0,
+      has_bytes         INTEGER NOT NULL DEFAULT 0,
+      cloud_updated_at  INTEGER NOT NULL,
+      fetched_at        INTEGER NOT NULL,
+      jsonl_local_path  TEXT,
+      PRIMARY KEY (owner_id, session_id)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS remote_sessions_owner_last_event
+             ON remote_sessions(owner_id, last_event_at DESC)`);
+
   // Sessions arc (0.5.0). Three tables that capture agent activity (claude-code,
   // opencode, codex) read from external session logs. See
   // docs/plans/sessions-arc.md for the design.

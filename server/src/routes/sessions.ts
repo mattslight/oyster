@@ -6,18 +6,129 @@
 // behavioural changes, only refactored shape.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import type Database from "better-sqlite3";
 import type { SessionStore } from "../session-store.js";
 import type { SqliteSpaceStore } from "../space-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
+import {
+  encodeCwd,
+  projectsRoot,
+  type SessionSyncService,
+} from "../session-sync-service.js";
 
 export interface SessionRouteDeps {
+  db: Database.Database;
   sessionStore: SessionStore;
   spaceStore: SqliteSpaceStore;
   artifactService: ArtifactService;
   memoryProvider: MemoryProvider;
+  sessionSync: SessionSyncService;
+  /** Caller for the current Pro user (for resume gating + path queries). */
+  currentUserId: () => string | null;
+}
+
+// ── Resume helpers (#322 PR 2) ──────────────────────────────────────────
+
+interface SourceCandidate {
+  path: string;
+  label: string | null;
+}
+
+/** Find which local folder(s) match a remote session's space_id. Returns
+ *  exactly one when there's an unambiguous mapping, an empty array when
+ *  this device hasn't attached any source to that space (needs_target),
+ *  or N candidates when multiple sources exist for the space (pick_source). */
+function findResumeCandidates(
+  db: Database.Database,
+  spaceStore: SqliteSpaceStore,
+  sessionId: string,
+  ownerId: string,
+): { spaceId: string | null; candidates: SourceCandidate[]; remoteCwd: string | null } {
+  // Look up the remote session's space_id by joining to the local sessions
+  // table first (if we happen to have ingested it locally too), else fall
+  // back to nothing — remote sessions don't carry space_id today; their
+  // cwd is the only locator we have. We use that to find a matching source
+  // by path-prefix as a best-effort.
+  const remote = db.prepare(
+    `SELECT cwd FROM remote_sessions WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+  ).get(ownerId, sessionId) as { cwd: string | null } | undefined;
+  const remoteCwd = remote?.cwd ?? null;
+
+  // Approach: scan all active local sources. A source is a candidate when
+  // either: (a) its path is a prefix of the remote cwd (the remote session
+  // lived inside a project the user has attached locally — even if at a
+  // different on-disk path), or (b) the basename of its path matches the
+  // basename of the remote cwd (rough but useful for "same project, sister
+  // worktrees" cases). Both checks are advisory — the picker is the
+  // safety net for anything we don't auto-resolve.
+  if (!remoteCwd) {
+    return { spaceId: null, candidates: [], remoteCwd: null };
+  }
+  const remoteBasename = basename(remoteCwd);
+  const allSources = db.prepare(
+    `SELECT id, space_id, path, label FROM sources WHERE removed_at IS NULL`,
+  ).all() as Array<{ id: string; space_id: string; path: string; label: string | null }>;
+  const candidates: SourceCandidate[] = [];
+  for (const src of allSources) {
+    const matchesPrefix = remoteCwd === src.path || remoteCwd.startsWith(`${src.path}/`);
+    const matchesBasename = basename(src.path) === remoteBasename;
+    if (matchesPrefix || matchesBasename) {
+      candidates.push({ path: src.path, label: src.label ?? basename(src.path) });
+    }
+  }
+  // Dedupe by path (sources can legitimately share a basename + prefix overlap).
+  const seen = new Set<string>();
+  const deduped = candidates.filter((c) => seen.has(c.path) ? false : (seen.add(c.path), true));
+  void spaceStore;  // currently unused; reserved for future space-based heuristics
+  return { spaceId: null, candidates: deduped, remoteCwd };
+}
+
+interface ValidationOutcome {
+  ok: boolean;
+  reasons: string[];
+}
+
+/** Validate a user-supplied targetCwd before reassembling into it.
+ *  Hard fail (returns ok:false) only on folder-doesn't-exist. Other
+ *  conditions are advisory and surfaced as reasons so the UI can
+ *  prompt for force:true confirmation. */
+function validateOverrideTarget(targetCwd: string, remoteCwd: string | null): ValidationOutcome {
+  const reasons: string[] = [];
+  if (!existsSync(targetCwd)) {
+    return { ok: false, reasons: ["target_folder_missing"] };
+  }
+  const st = statSync(targetCwd);
+  if (!st.isDirectory()) {
+    return { ok: false, reasons: ["target_not_a_directory"] };
+  }
+  if (!existsSync(join(targetCwd, ".git"))) {
+    reasons.push("not_a_git_repo");
+  }
+  if (remoteCwd) {
+    if (basename(targetCwd).toLowerCase() !== basename(remoteCwd).toLowerCase()) {
+      reasons.push("repo_basename_differs");
+    }
+    // If the target is a git repo AND the session's original cwd was a git
+    // repo, prefer to match remotes. We can only check the LOCAL remote; we
+    // don't store the original. Best we can do is check there IS a remote.
+    if (existsSync(join(targetCwd, ".git"))) {
+      try {
+        execFileSync("git", ["-C", targetCwd, "remote", "get-url", "origin"], {
+          stdio: ["ignore", "pipe", "ignore"],
+          encoding: "utf8",
+        });
+        // origin exists — assume the user knows what they're doing.
+      } catch {
+        reasons.push("no_git_remote_origin");
+      }
+    }
+  }
+  return { ok: reasons.length === 0, reasons };
 }
 
 export async function tryHandleSessionRoute(
@@ -27,8 +138,8 @@ export async function tryHandleSessionRoute(
   ctx: RouteCtx,
   deps: SessionRouteDeps,
 ): Promise<boolean> {
-  const { sendJson, sendError, rejectIfNonLocalOrigin } = ctx;
-  const { sessionStore, spaceStore, artifactService, memoryProvider } = deps;
+  const { sendJson, sendError, rejectIfNonLocalOrigin, readJsonBody } = ctx;
+  const { db, sessionStore, spaceStore, artifactService, memoryProvider, sessionSync, currentUserId } = deps;
 
   // GET /api/sessions — agent sessions captured by the watchers (#251).
   // Read-only for 0.5.0; the home feed renders these. Local-origin only —
@@ -49,8 +160,24 @@ export async function tryHandleSessionRoute(
     for (let i = 0; i < sourceIds.length; i += SOURCE_BATCH) {
       sourceList.push(...spaceStore.getSourcesByIds(sourceIds.slice(i, i + SOURCE_BATCH)));
     }
+    interface MergedSessionPayload {
+      id: string;
+      spaceId: string | null;
+      sourceId: string | null;
+      sourceLabel: string | null;
+      cwd: string | null;
+      agent: string;
+      title: string | null;
+      state: string;
+      startedAt: string;
+      endedAt: string | null;
+      model: string | null;
+      lastEventAt: string;
+      originDeviceId: string | null;
+      jsonlAvailableLocally: boolean;
+    }
     const sourcesById = new Map(sourceList.map((s) => [s.id, s]));
-    sendJson(rows.map((row) => {
+    const localPayload: MergedSessionPayload[] = rows.map((row) => {
       const src = row.source_id ? sourcesById.get(row.source_id) : null;
       const label = src ? (src.label ?? (basename(src.path) || null)) : null;
       return {
@@ -66,8 +193,59 @@ export async function tryHandleSessionRoute(
         endedAt: row.ended_at,
         model: row.model,
         lastEventAt: row.last_event_at,
+        // Local sessions are by definition available on this device.
+        originDeviceId: null,
+        jsonlAvailableLocally: true,
       };
-    }));
+    });
+
+    // Merge cross-device sessions from remote_sessions. Pulled by
+    // SessionSyncService from the cloud's GET /api/sessions/metadata.
+    // We exclude any remote rows whose session_id already exists locally
+    // (the watcher's source of truth for things this device produced).
+    const ownerId = currentUserId();
+    let remotePayload: MergedSessionPayload[] = [];
+    if (ownerId) {
+      const localIds = new Set(rows.map((r) => r.id));
+      type RemoteRow = {
+        session_id: string; device_id: string | null; agent: string; title: string | null;
+        state: string; cwd: string | null; model: string | null; started_at: string;
+        ended_at: string | null; last_event_at: string; has_bytes: number;
+        jsonl_local_path: string | null;
+      };
+      const remoteRows = db.prepare(
+        `SELECT session_id, device_id, agent, title, state, cwd, model, started_at,
+                ended_at, last_event_at, has_bytes, jsonl_local_path
+           FROM remote_sessions
+          WHERE owner_id = ?
+          ORDER BY last_event_at DESC`,
+      ).all(ownerId) as RemoteRow[];
+      remotePayload = remoteRows
+        .filter((r) => !localIds.has(r.session_id))
+        .map((r) => ({
+          id: r.session_id,
+          spaceId: null,
+          sourceId: null,
+          sourceLabel: null,
+          cwd: r.cwd,
+          agent: r.agent,
+          title: r.title,
+          state: r.state,
+          startedAt: r.started_at,
+          endedAt: r.ended_at,
+          model: r.model,
+          lastEventAt: r.last_event_at,
+          originDeviceId: r.device_id,
+          // Available locally only if the user has already reassembled it.
+          jsonlAvailableLocally: r.jsonl_local_path !== null,
+        }));
+    }
+
+    // Combine; sort by lastEventAt DESC to keep the list cohesive.
+    const merged = [...localPayload, ...remotePayload].sort((a, b) =>
+      (b.lastEventAt ?? "").localeCompare(a.lastEventAt ?? ""),
+    );
+    sendJson(merged);
     return true;
   }
 
@@ -303,5 +481,121 @@ export async function tryHandleSessionRoute(
     }
   }
 
+  // POST /api/sessions/:id/resume — pull a cross-device session's encrypted
+  // jsonl chunks from cloud, reassemble + verify locally, return the
+  // `claude --resume <id>` command for the user to run.
+  //
+  // Body: { targetCwd?: string, force?: boolean }
+  //
+  // Without `targetCwd`: auto-resolve via remote_sessions.cwd + local sources.
+  //   - 1 unambiguous candidate → use it
+  //   - 0 candidates → return { status: "needs_target", remoteCwd }
+  //   - N candidates → return { status: "pick_source", candidates: [...] }
+  //
+  // With `targetCwd`: validate (folder exists, git repo, basename match,
+  // remote present). On warnings, return { status: "validation_warning",
+  // reasons: [...] } and require force:true to bypass.
+  //
+  // Local-origin only — placing a jsonl on the user's filesystem.
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)\/resume$/);
+    if (m && req.method === "POST") {
+      if (rejectIfNonLocalOrigin()) return true;
+      const sessionId = m[1]!;
+      try {
+        const body = await readJsonBody();
+        const ownerId = currentUserId();
+        if (!ownerId) {
+          sendJson({ error: "sign_in_required" }, 401);
+          return true;
+        }
+
+        // 1. The session must be in remote_sessions and have bytes uploaded.
+        type RemoteRow = { cwd: string | null; has_bytes: number };
+        const remoteRow = db.prepare(
+          `SELECT cwd, has_bytes FROM remote_sessions WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+        ).get(ownerId, sessionId) as RemoteRow | undefined;
+        if (!remoteRow) {
+          sendJson({ error: "session_not_found_in_remote" }, 404);
+          return true;
+        }
+        if (remoteRow.has_bytes !== 1) {
+          sendJson({ error: "bytes_not_available", message: "Cloud has metadata for this session but no chunks yet." }, 409);
+          return true;
+        }
+
+        // 2. Resolve target cwd.
+        let targetCwd: string;
+        const overrideCwd = typeof body.targetCwd === "string" ? body.targetCwd : null;
+        const force = body.force === true;
+
+        if (overrideCwd) {
+          // User-supplied target — validate.
+          const validation = validateOverrideTarget(overrideCwd, remoteRow.cwd);
+          // Only "target_folder_missing" / "target_not_a_directory" are truly
+          // fatal — force:true cannot conjure a folder into existence. All
+          // other reasons (.git missing, basename differs, no origin remote)
+          // are soft and require explicit force:true to bypass.
+          const HARD_REASONS = new Set<string>(["target_folder_missing", "target_not_a_directory"]);
+          const hardReasons = validation.reasons.filter((r) => HARD_REASONS.has(r));
+          const softReasons = validation.reasons.filter((r) => !HARD_REASONS.has(r));
+          if (hardReasons.length > 0) {
+            sendJson({ status: "validation_warning", reasons: validation.reasons }, 200);
+            return true;
+          }
+          if (softReasons.length > 0 && !force) {
+            sendJson({ status: "validation_warning", reasons: validation.reasons }, 200);
+            return true;
+          }
+          targetCwd = overrideCwd;
+        } else {
+          // No override — try auto-resolve via local sources.
+          const { candidates, remoteCwd } = findResumeCandidates(db, spaceStore, sessionId, ownerId);
+          if (candidates.length === 0) {
+            sendJson({ status: "needs_target", remoteCwd, suggestedSpaceId: null }, 200);
+            return true;
+          }
+          if (candidates.length > 1) {
+            sendJson({ status: "pick_source", candidates, remoteCwd }, 200);
+            return true;
+          }
+          targetCwd = candidates[0]!.path;
+        }
+
+        // 3. Reassemble chunks into the encoded jsonl path Claude Code expects.
+        const localJsonlPath = join(projectsRoot(), encodeCwd(targetCwd), `${sessionId}.jsonl`);
+        try {
+          await sessionSync.reassembleSessionJsonl(sessionId, localJsonlPath);
+        } catch (err) {
+          sendJson(
+            { error: "reassemble_failed", message: err instanceof Error ? err.message : String(err) },
+            500,
+          );
+          return true;
+        }
+
+        sendJson({
+          status: "ok",
+          sessionId,
+          localCwd: targetCwd,
+          jsonlPath: localJsonlPath,
+          command: `cd ${shellQuote(targetCwd)} && claude --resume ${sessionId}`,
+        });
+        return true;
+      } catch (err) {
+        sendError(err, 500);
+        return true;
+      }
+    }
+  }
+
   return false;
+}
+
+/** Minimal shell-safe quoting for paths surfaced in resume commands. We
+ *  don't need a full shell-parser-grade escape — just wrap in single
+ *  quotes and escape any embedded single quotes. */
+function shellQuote(s: string): string {
+  if (/^[A-Za-z0-9_\-./]+$/.test(s)) return s;  // safe characters, no quotes needed
+  return `'${s.replace(/'/g, "'\\''")}'`;
 }

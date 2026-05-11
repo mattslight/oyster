@@ -651,7 +651,8 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/sessions/* — first extracted route bucket. Returns true when
   // handled; falls through if no session route matched.
   if (await tryHandleSessionRoute(req, res, url, ctx, {
-    sessionStore, spaceStore, artifactService, memoryProvider,
+    db, sessionStore, spaceStore, artifactService, memoryProvider, sessionSync,
+    currentUserId: () => authService.getState().user?.id ?? null,
   })) return;
 
   // /api/artifacts/*, /api/groups/*, /api/plugins/:id/uninstall.
