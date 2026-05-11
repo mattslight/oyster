@@ -156,6 +156,10 @@ interface OutgoingSession {
   cwd: string | null;
   last_event_at: string;
   sync_dirty_at: number;
+  /** Stable per-device id from the local device_identity singleton.
+   *  Attached at push time so cloud knows which device produced each
+   *  session — drives the "from MacBook" chip on Device B in PR 3. */
+  device_id: string | null;
 }
 
 export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncService {
@@ -204,16 +208,30 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     let totalAccepted = 0;
     const MAX_BATCHES = 1000;  // defensive safety cap
 
+    // Cache device_id once per drain — it doesn't change during a server
+    // lifetime. NULL is tolerated (cloud upsert accepts NULL) but warns so
+    // a missing device_identity seed is visible.
+    const myDeviceId = getMyDeviceId();
+    if (!myDeviceId) {
+      console.warn("[sessions] pushPending: device_identity not seeded; pushing without device_id");
+    }
+
     for (let i = 0; i < MAX_BATCHES; i++) {
       const pending = scanDirty.all(session.user.id, BATCH_SIZE) as OutgoingSession[];
       if (pending.length === 0) break;
+
+      // Stamp every row with this device's id at push time. Rows in the
+      // local `sessions` table don't carry a device_id column — they're
+      // implicitly produced by this device because the watcher only sees
+      // its own filesystem.
+      const stamped = pending.map((s) => ({ ...s, device_id: myDeviceId }));
 
       let res: Response;
       try {
         res = await deps.fetch(`${deps.workerBase}/api/sessions/metadata`, {
           method: "POST",
           headers: { Cookie: `oyster_session=${session.token}`, "content-type": "application/json" },
-          body: JSON.stringify({ sessions: pending }),
+          body: JSON.stringify({ sessions: stamped }),
         });
       } catch (err) {
         console.warn("[sessions] pushPending failed:", err);
