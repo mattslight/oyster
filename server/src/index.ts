@@ -34,6 +34,7 @@ import { tryHandlePinRoute } from "./routes/pin.js";
 import { createPublishService, PublishError } from "./publish-service.js";
 import { createSpaceSyncService } from "./space-sync-service.js";
 import { createMemorySyncService, type MemorySyncService } from "./memory-sync-service.js";
+import { createSessionSyncService, encodeCwd, projectsRoot, type SessionSyncService } from "./session-sync-service.js";
 import { createProfileBindingService } from "./profile-binding-service.js";
 import { hashPassword } from "./password-hash.js";
 import { tryHandleOAuthMcpRoute } from "./routes/oauth-mcp.js";
@@ -351,6 +352,24 @@ memoryProvider.setOnWrite(() => {
   broadcastUiEvent({ version: 1, command: "memory_changed", payload: { op: "write" } });
 });
 
+// Sessions arc — cross-device sync of agent sessions (#322). Two flows on
+// the same service: metadata (markDirty + pushPending → D1) and bytes
+// (pushBytes → chunked-delta uploads to R2 via worker). The watcher hook
+// below marks rows dirty + fires pushBytes on terminal state. The 5-min
+// snapshot timer (further below) drives mid-session bytes uploads.
+// pull() + remote_sessions + resume API land in PR 2.
+const sessionSync: SessionSyncService = createSessionSyncService({
+  db,
+  profileBinding,
+  currentUser: () => {
+    const u = authService.getState().user;
+    return u ? { id: u.id, email: u.email, tier: u.tier } : null;
+  },
+  sessionToken: () => authService.getState().sessionToken,
+  workerBase: CLOUD_WORKER_BASE,
+  fetch: globalThis.fetch,
+});
+
 // Periodic pull. Pull-only triggers (auth-changed and app-startup) leave a
 // running server stale until the next reconcile event. A modest 30s tick
 // keeps cross-device memory updates fresh without burning excessive
@@ -371,6 +390,58 @@ const memoryPollHandle = setInterval(() => {
   });
 }, MEMORY_POLL_INTERVAL_MS);
 memoryPollHandle.unref();
+
+// Session bytes snapshot timer (#322). Every 5 minutes, scan
+// active/waiting sessions whose disk file has grown by >= 1 MB beyond
+// jsonl_snapshot_offset and fire pushBytes for each. The in-flight guard
+// inside SessionSyncService coalesces with any concurrent terminal-hook
+// push. Configurable via OYSTER_SESSIONS_SNAPSHOT_MS for ops/testing.
+const SESSION_SNAPSHOT_INTERVAL_MS = Math.max(
+  30_000,
+  Number(process.env.OYSTER_SESSIONS_SNAPSHOT_MS) || 5 * 60_000,
+);
+const SESSION_SNAPSHOT_DELTA_THRESHOLD = Math.max(
+  64 * 1024,
+  Number(process.env.OYSTER_SESSIONS_SNAPSHOT_DELTA_BYTES) || 1024 * 1024,
+);
+async function runSessionsSnapshotTick(): Promise<void> {
+  if (!canRunCloudSync()) return;
+  // Candidates: active/waiting sessions owned by the current user. We
+  // intentionally don't filter on file size in SQL because the database
+  // doesn't know the current on-disk size — only the offset already uploaded.
+  type Candidate = { id: string; cwd: string | null; jsonl_snapshot_offset: number };
+  const candidates = db.prepare(
+    `SELECT id, cwd, jsonl_snapshot_offset
+       FROM sessions
+      WHERE state IN ('active', 'waiting')
+        AND cwd IS NOT NULL
+        AND cloud_owner_id = ?`,
+  ).all(authService.getState().user?.id ?? "") as Candidate[];
+  if (candidates.length === 0) return;
+
+  const root = projectsRoot();
+  for (const cand of candidates) {
+    if (!cand.cwd) continue;
+    const jsonlPath = join(root, encodeCwd(cand.cwd), `${cand.id}.jsonl`);
+    let size = 0;
+    try {
+      const st = statSync(jsonlPath);
+      size = st.size;
+    } catch {
+      continue;  // file gone or unreadable; nothing to push
+    }
+    if (size - cand.jsonl_snapshot_offset < SESSION_SNAPSHOT_DELTA_THRESHOLD) continue;
+    sessionSync.pushBytes(cand.id).catch((err) => {
+      console.warn(`[sessions] snapshot pushBytes failed for ${cand.id}:`, err);
+    });
+  }
+}
+const sessionSnapshotHandle = setInterval(() => {
+  runSessionsSnapshotTick().catch((err) => {
+    console.warn("[sessions] snapshot tick failed:", err);
+  });
+}, SESSION_SNAPSHOT_INTERVAL_MS);
+sessionSnapshotHandle.unref();
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const publishService = createPublishService({
@@ -445,6 +516,14 @@ async function syncOnAuth(label: string): Promise<void> {
       }
     } catch (err) {
       console.warn(`[memory] ${label} reconcile failed:`, err);
+    }
+    try {
+      const sesResult = await sessionSync.reconcile();
+      if (sesResult.pulled || sesResult.pushed) {
+        console.log(`[sessions] reconcile (${label}): pulled=${sesResult.pulled} pushed=${sesResult.pushed}`);
+      }
+    } catch (err) {
+      console.warn(`[sessions] ${label} reconcile failed:`, err);
     }
   }
   // Then publications (preserves existing behaviour: clears ghost cache on
@@ -864,8 +943,35 @@ httpServer.listen(port, "127.0.0.1", () => {
     sessionStore,
     spaceStore,
     artifactStore: store,
-    emitSessionChanged: (id) =>
-      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } }),
+    emitSessionChanged: (id) => {
+      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
+      // Cross-device session sync (#322): every session-row change marks the
+      // row dirty for the current Pro owner, then fires a fire-and-forget
+      // metadata push + bytes push on terminal state. The in-flight guards
+      // inside SessionSyncService coalesce bursty updates into single passes.
+      //
+      // canRunCloudSync() (not a bare tier check): when the local profile is
+      // bound to a different account, we MUST NOT call markDirty — it would
+      // overwrite cloud_owner_id to the wrong owner and the rightful bound
+      // owner's later pushPending would no longer find these rows in the
+      // owner-scoped scan.
+      if (!canRunCloudSync()) return;
+      const u = authService.getState().user!;
+      sessionSync.markDirty(id, u.id);
+      sessionSync.pushPending().catch((err) => {
+        console.warn("[sessions] watcher-triggered pushPending failed:", err);
+      });
+      // Terminal-state hook: fire one final pushBytes when the session
+      // transitions to done/disconnected so the tail of the jsonl makes it
+      // to cloud even if it's under the snapshot-timer's 1 MB threshold.
+      // sessionStore lookup is a single PK read — cheap.
+      const row = sessionStore.getById(id);
+      if (row && (row.state === "done" || row.state === "disconnected")) {
+        sessionSync.pushBytes(id).catch((err) => {
+          console.warn("[sessions] terminal pushBytes failed:", err);
+        });
+      }
+    },
   });
   claudeCodeWatcher.start().catch((err) => {
     console.warn(`[claude-code-watcher] start failed: ${err instanceof Error ? err.message : err}`);

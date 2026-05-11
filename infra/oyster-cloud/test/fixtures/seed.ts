@@ -49,6 +49,41 @@ CREATE TABLE IF NOT EXISTS synced_memory_payloads (
   purged_at  INTEGER,
   PRIMARY KEY (owner_id, memory_id)
 );
+-- Mirror of infra/auth-worker/migrations/0008_synced_sessions.sql
+CREATE TABLE IF NOT EXISTS synced_session_metadata (
+  owner_id          TEXT    NOT NULL,
+  session_id        TEXT    NOT NULL,
+  device_id         TEXT,
+  agent             TEXT    NOT NULL,
+  title             TEXT,
+  state             TEXT    NOT NULL,
+  cwd               TEXT,
+  model             TEXT,
+  started_at        TEXT    NOT NULL,
+  ended_at          TEXT,
+  last_event_at     TEXT    NOT NULL,
+  bytes_generation  INTEGER NOT NULL DEFAULT 0,
+  updated_at        INTEGER NOT NULL,
+  PRIMARY KEY (owner_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_synced_session_metadata_owner_updated
+  ON synced_session_metadata (owner_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_synced_session_metadata_owner_last_event
+  ON synced_session_metadata (owner_id, last_event_at DESC);
+CREATE TABLE IF NOT EXISTS synced_session_chunks (
+  owner_id          TEXT    NOT NULL,
+  session_id        TEXT    NOT NULL,
+  bytes_generation  INTEGER NOT NULL,
+  chunk_number      INTEGER NOT NULL,
+  start_offset      INTEGER NOT NULL,
+  end_offset        INTEGER NOT NULL,
+  byte_count        INTEGER NOT NULL,
+  plaintext_sha256  TEXT    NOT NULL,
+  uploaded_at       INTEGER NOT NULL,
+  PRIMARY KEY (owner_id, session_id, bytes_generation, chunk_number)
+);
+CREATE INDEX IF NOT EXISTS idx_synced_session_chunks_active
+  ON synced_session_chunks (owner_id, session_id, bytes_generation, chunk_number);
 `;
 
 export async function applySchema(): Promise<void> {

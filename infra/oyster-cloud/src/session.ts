@@ -3,6 +3,13 @@
 
 export interface Env {
   DB: D1Database; // shared with oyster-auth (same database_id)
+  // Session bytes (#322): per-user AES-GCM encrypted jsonl objects.
+  SESSIONS_BUCKET: R2Bucket;
+  // HKDF input keying material — provisioned via:
+  //   wrangler secret put SESSIONS_ENCRYPTION_KEY
+  // The actual AES key is derived per-user (salt = user id) so a leak of
+  // one user's derived key never compromises another.
+  SESSIONS_ENCRYPTION_KEY: string;
 }
 
 interface SessionUser {

@@ -179,6 +179,19 @@ export function initDb(userlandDir: string): Database.Database {
     )
   `);
 
+  // Device identity (#322 session sync). Stable per-device id + label so cloud
+  // metadata can attribute "this session originated on Matthew's MacBook Pro".
+  // Singleton like profile_binding. The seeding helper (uuid + os.hostname()
+  // derivation) lands in PR 1b alongside SessionSyncService wiring; this
+  // table is created up-front so the migration sits with the other singletons.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS device_identity (
+      id         INTEGER PRIMARY KEY CHECK (id = 1),
+      device_id  TEXT    NOT NULL,
+      label      TEXT    NOT NULL
+    )
+  `);
+
   // Sessions arc (0.5.0). Three tables that capture agent activity (claude-code,
   // opencode, codex) read from external session logs. See
   // docs/plans/sessions-arc.md for the design.
@@ -369,6 +382,45 @@ export function initDb(userlandDir: string): Database.Database {
   try {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
+
+  // Cloud session sync (#322). Seven columns drive the cross-device sync:
+  // - sync_dirty_at: unix-ms of the most recent material change since last
+  //   successful push. NULL = clean. Overwritten on every dirty mark, so
+  //   bursty updates collapse to the latest. Mirrors spaces.sync_dirty_at.
+  // - cloud_synced_at: unix-ms of the last successful push acknowledgement.
+  //   The dirty predicate is `sync_dirty_at IS NOT NULL AND
+  //   (cloud_synced_at IS NULL OR cloud_synced_at < sync_dirty_at)`, so a
+  //   dirty bump after a successful push correctly re-pends the row.
+  // - cloud_owner_id: which Pro account owns this session. The push gate
+  //   only sends events whose cloud_owner_id matches the current Pro user
+  //   (account-switching protection, mirrors the memory-events column).
+  // - jsonl_synced_at: unix-ms of last successful chunked-bytes push.
+  // - jsonl_snapshot_offset: plaintext-byte offset already uploaded for this
+  //   session in the current bytes_generation. Snapshot timer skips a
+  //   session whose disk file hasn't grown past this. Reset to 0 on
+  //   truncation (which also bumps bytes_generation).
+  // - jsonl_chunk_count: number of chunks uploaded in the current generation.
+  //   Next PUT goes as chunk (jsonl_chunk_count + 1).
+  // - bytes_generation: monotonic per-session counter. Bumped when the local
+  //   jsonl is truncated (rare). Stale in-flight chunks from earlier
+  //   generations are rejected by the worker.
+  for (const sql of [
+    "ALTER TABLE sessions ADD COLUMN sync_dirty_at INTEGER",
+    "ALTER TABLE sessions ADD COLUMN cloud_synced_at INTEGER",
+    "ALTER TABLE sessions ADD COLUMN cloud_owner_id TEXT",
+    "ALTER TABLE sessions ADD COLUMN jsonl_synced_at INTEGER",
+    "ALTER TABLE sessions ADD COLUMN jsonl_snapshot_offset INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE sessions ADD COLUMN jsonl_chunk_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE sessions ADD COLUMN bytes_generation INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    try { db.exec(sql); } catch { /* already exists */ }
+  }
+  // Index the dirty predicate so the outbox scan stays cheap as the
+  // sessions table grows. Mirror of spaces.sync_dirty_at pattern.
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS sessions_sync_dirty
+       ON sessions(sync_dirty_at) WHERE sync_dirty_at IS NOT NULL`,
+  );
 
   // ── R2 verbatim recall (#311): FTS5 over session_events.text ──
   // Lives after the state-rename rebuild block (which DROPs and rebuilds
