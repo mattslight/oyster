@@ -254,6 +254,21 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     const session = isProSession(deps);
     if (!session) return empty;
 
+    // Metadata must be in cloud before chunk PUTs — the worker rejects chunks
+    // for unknown sessions with 404 session_not_found. Without this await,
+    // a boot-scan that fires pushBytes alongside pushPending for many
+    // freshly-dirty sessions hits a race: chunk PUT arrives before metadata
+    // upsert, gets 404, the chunk is lost until the next reconcile.
+    // Drain any pending metadata first. In-flight guard makes concurrent
+    // pushBytes calls share the same pushPending promise.
+    try {
+      await service.pushPending();
+    } catch (err) {
+      console.warn("[sessions] pushBytes: pre-flight pushPending failed:", err);
+      // Continue anyway — pushPending might be transiently failing; the
+      // chunk PUT will surface its own error if metadata still isn't there.
+    }
+
     const state = getBytesState.get(sessionId) as {
       cwd: string | null;
       jsonl_snapshot_offset: number;
