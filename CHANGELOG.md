@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Chat replies stream again, and the boot console is quiet.** A recent AI-engine update silently broke the live event stream, which made assistant replies fail to render and flooded the terminal with reconnect messages. Both are working again.
+
 ## [0.8.1-beta.2] - 2026-05-11
 
 ### Added

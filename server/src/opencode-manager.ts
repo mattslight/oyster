@@ -138,6 +138,35 @@ export function isShuttingDown() {
 // ── Auto-approve permission requests from opencode ──
 // In the PoC, we trust all tool use. This listens to the SSE stream
 // and auto-approves any permission.asked events.
+//
+// We subscribe to /global/event rather than /event: in opencode 1.14.41+
+// (the Effect HttpApi backend that replaced Hono) /event closes the
+// stream within ~40ms of server.connected when the workspace event bus
+// is empty, because the merged events+heartbeat stream uses
+// haltStrategy:"left" and the bus terminates immediately. /global/event
+// stays open and emits the same event types (plus extras we ignore),
+// wrapped in { payload, directory, project, workspace }.
+
+const RECONNECT_DELAY_MS = 3000;
+const DISCONNECT_LOG_INTERVAL_MS = 30_000;
+
+let lastDisconnectLogAt = 0;
+let suppressedDisconnects = 0;
+
+function logDisconnect(reason: "disconnected" | "failed to connect") {
+  const now = Date.now();
+  if (now - lastDisconnectLogAt < DISCONNECT_LOG_INTERVAL_MS) {
+    suppressedDisconnects++;
+    return;
+  }
+  const suffix = suppressedDisconnects > 0
+    ? ` (+${suppressedDisconnects} suppressed)`
+    : "";
+  const seconds = Math.round(RECONNECT_DELAY_MS / 1000);
+  console.log(`[auto-approver] ${reason}${suffix}, reconnecting in ${seconds}s...`);
+  lastDisconnectLogAt = now;
+  suppressedDisconnects = 0;
+}
 
 export function startAutoApprover(
   getPort: () => number,
@@ -147,18 +176,18 @@ export function startAutoApprover(
     const opencodePort = getPort();
     if (!opencodePort) {
       // Port not resolved yet, retry
-      setTimeout(connect, 3000);
+      setTimeout(connect, RECONNECT_DELAY_MS);
       return;
     }
     const controller = new AbortController();
     try {
-      const res = await fetch(`http://127.0.0.1:${opencodePort}/event`, {
+      const res = await fetch(`http://127.0.0.1:${opencodePort}/global/event`, {
         headers: { Accept: "text/event-stream" },
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
-        console.log("[auto-approver] failed to connect, retrying in 3s...");
-        setTimeout(connect, 3000);
+        logDisconnect("failed to connect");
+        setTimeout(connect, RECONNECT_DELAY_MS);
         return;
       }
 
@@ -171,17 +200,7 @@ export function startAutoApprover(
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            const text = decoder.decode(value, { stream: true });
-
-            // Fan out the raw SSE bytes to any connected browser clients
-            // before we parse them for our own reactive behaviour below.
-            // This replaces the previous per-client proxySSE — a single
-            // upstream subscription avoids multiplying opencode load by
-            // the number of open tabs, and gives us a place to inject
-            // server-originated synthetic events.
-            broadcastRaw(text);
-
-            buffer += text;
+            buffer += decoder.decode(value, { stream: true });
 
             // Parse SSE lines
             const lines = buffer.split("\n");
@@ -190,7 +209,22 @@ export function startAutoApprover(
             for (const line of lines) {
               if (!line.startsWith("data: ")) continue;
               try {
-                const event = JSON.parse(line.slice(6));
+                const wrapper = JSON.parse(line.slice(6));
+                // /global/event wraps every event in { payload, directory, project, workspace }.
+                // Unwrap so downstream consumers (the browser EventSource at
+                // /api/chat/events, and the permission/file checks below) see
+                // the same { type, properties } shape /event used to emit.
+                const event = wrapper && typeof wrapper === "object" && "payload" in wrapper
+                  ? wrapper.payload
+                  : wrapper;
+                if (!event || typeof event !== "object") continue;
+
+                // Fan out the unwrapped event to any connected browser clients.
+                // A single upstream subscription avoids multiplying opencode load
+                // by the number of open tabs and gives us a place to inject
+                // server-originated synthetic events.
+                broadcastRaw(`data: ${JSON.stringify(event)}\n\n`);
+
                 if (event.type === "permission.asked") {
                   const requestId = event.properties.id;
                   console.log(`[auto-approver] approving ${requestId}: ${event.properties.permission}`);
@@ -215,17 +249,17 @@ export function startAutoApprover(
       pump().finally(() => {
         controller.abort();
         if (!shuttingDown) {
-          console.log("[auto-approver] disconnected, reconnecting in 3s...");
-          setTimeout(connect, 3000);
+          logDisconnect("disconnected");
+          setTimeout(connect, RECONNECT_DELAY_MS);
         }
       });
     } catch {
-      if (!shuttingDown) setTimeout(connect, 3000);
+      if (!shuttingDown) setTimeout(connect, RECONNECT_DELAY_MS);
     }
   }
 
   // Give opencode serve a moment to start before connecting
-  setTimeout(connect, 3000);
+  setTimeout(connect, RECONNECT_DELAY_MS);
 }
 
 // ── Proxy helpers for opencode API ──
