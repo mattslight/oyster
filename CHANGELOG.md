@@ -4,6 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.1-beta.2] - 2026-05-11
+
+### Added
+
+- **Pick up sessions on your other devices (preview).** Sessions backed up on one Pro device now appear in the API as cross-device entries on your other devices. A new local endpoint reassembles a chosen session's encrypted transcript onto disk so you can run `claude --resume <id>` on a second machine. The UI surface arrives in the next release.
+
 ## [0.8.1-beta.1] - 2026-05-11
 
 ### Fixed
