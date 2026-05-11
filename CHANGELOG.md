@@ -4,9 +4,13 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.1-beta.3] - 2026-05-11
+
 ### Fixed
 
 - **Chat replies stream again, and the boot console is quiet.** A recent AI-engine update silently broke the live event stream, which made assistant replies fail to render and flooded the terminal with reconnect messages. Both are working again.
+- **Cross-device session list refreshes automatically.** Sessions you back up on one Pro device now appear on your other devices within seconds, without needing to sign out and back in.
+- **Sessions remember which device they came from.** Each backed-up session is now tagged with the device that uploaded it, so a future "Resume on this device" experience can show "from MacBook Pro" rather than just an unlabeled card. Sessions backed up before this release are re-tagged automatically the next time Oyster starts.
 
 ## [0.8.1-beta.2] - 2026-05-11
 
