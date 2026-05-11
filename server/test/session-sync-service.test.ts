@@ -173,6 +173,175 @@ describe("SessionSyncService", () => {
   });
 });
 
+describe("SessionSyncService.reassembleSessionJsonl", () => {
+  function hash(bytes: Uint8Array): string {
+    // Same algo + format as the service (Node crypto SHA-256 hex).
+    // Use a worker-side equivalent: hash via crypto.subtle on the actual bytes.
+    // For brevity here we just import the runtime's createHash.
+    // (Mirror of sha256Hex in session-sync-service.)
+    // We do this synchronously via require to keep this test file simple.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { createHash } = require("node:crypto");
+    return createHash("sha256").update(bytes).digest("hex");
+  }
+
+  function makeFetch(
+    chunks: Uint8Array[],
+    generation = 0,
+    overrides: { manifestStatus?: number; chunkStatus?: number; corruptChunk?: number } = {},
+  ): typeof fetch {
+    return (vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        if (overrides.manifestStatus && overrides.manifestStatus !== 200) {
+          return new Response("err", { status: overrides.manifestStatus });
+        }
+        let off = 0;
+        const manifestChunks = chunks.map((c, i) => {
+          const start = off;
+          off += c.byteLength;
+          return {
+            chunk_number: i + 1,
+            start_offset: start,
+            end_offset: off,
+            byte_count: c.byteLength,
+            plaintext_sha256: hash(c),
+          };
+        });
+        return new Response(JSON.stringify({
+          bytes_generation: generation,
+          total_size: off,
+          chunks: manifestChunks,
+        }), { status: 200 });
+      }
+      const m = u.match(/\/chunk\/(\d+)$/);
+      if (m) {
+        const idx = Number(m[1]) - 1;
+        if (overrides.chunkStatus && overrides.chunkStatus !== 200) {
+          return new Response("err", { status: overrides.chunkStatus });
+        }
+        let bytes = chunks[idx]!;
+        if (overrides.corruptChunk === idx + 1) {
+          // Same-length corruption — exercises the hash check specifically,
+          // not the byte-count check that fires earlier on size mismatch.
+          bytes = new Uint8Array(bytes.byteLength);
+          bytes.fill(0xff);
+        }
+        return new Response(bytes, { status: 200 });
+      }
+      return new Response("not_found", { status: 404 });
+    }) as unknown as typeof fetch);
+  }
+
+  function harnessForReassemble(): { db: Database.Database; profileBinding: ReturnType<typeof createProfileBindingService> } {
+    const h = harness();
+    h.profileBinding.bindToOwner("user-A");
+    h.db.prepare(`INSERT INTO device_identity (id, device_id, label) VALUES (1, 'dev-mac', 'test')`).run();
+    h.db.prepare(`
+      INSERT INTO remote_sessions
+        (session_id, owner_id, device_id, agent, title, state, cwd, model,
+         started_at, ended_at, last_event_at, bytes_generation, has_bytes,
+         cloud_updated_at, fetched_at, jsonl_local_path)
+      VALUES ('s-remote', 'user-A', 'dev-pc', 'claude-code', 't', 'done', '/tmp/x', 'm',
+              '2026-05-11T10:00:00Z', NULL, '2026-05-11T10:30:00Z',
+              0, 1, 1000, ?, NULL)
+    `).run(Date.now());
+    return h;
+  }
+
+  it("happy path: chunks reassemble byte-for-byte and remote_sessions.jsonl_local_path is set", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "reassembled.jsonl");
+    const c1 = new TextEncoder().encode("{\"role\":\"user\",\"content\":\"hi\"}\n");
+    const c2 = new TextEncoder().encode("{\"role\":\"assistant\",\"content\":\"hey\"}\n");
+    const c3 = new TextEncoder().encode("{\"role\":\"user\",\"content\":\"bye\"}\n");
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: makeFetch([c1, c2, c3]),
+    });
+    const r = await svc.reassembleSessionJsonl("s-remote", targetPath);
+
+    expect(r.chunkCount).toBe(3);
+    expect(r.totalBytes).toBe(c1.byteLength + c2.byteLength + c3.byteLength);
+    expect(r.generation).toBe(0);
+
+    const expected = new Uint8Array(r.totalBytes);
+    expected.set(c1, 0);
+    expected.set(c2, c1.byteLength);
+    expected.set(c3, c1.byteLength + c2.byteLength);
+    const got = new Uint8Array(statSync(targetPath).size);
+    // Read back from disk
+    const fs = require("node:fs");
+    fs.readFileSync(targetPath).copy(got);
+    expect(got).toEqual(expected);
+
+    // jsonl_local_path got recorded
+    const row = db.prepare(
+      `SELECT jsonl_local_path FROM remote_sessions WHERE owner_id = ? AND session_id = ?`,
+    ).get("user-A", "s-remote") as { jsonl_local_path: string };
+    expect(row.jsonl_local_path).toBe(targetPath);
+  });
+
+  it("hash mismatch deletes partial + throws + leaves no jsonl on disk", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "reassembled.jsonl");
+    const c1 = new TextEncoder().encode("good\n");
+    const c2 = new TextEncoder().encode("also good\n");
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: makeFetch([c1, c2], 0, { corruptChunk: 2 }),
+    });
+    await expect(svc.reassembleSessionJsonl("s-remote", targetPath)).rejects.toThrow(/hash mismatch/);
+
+    // No file on disk
+    const fs = require("node:fs");
+    expect(fs.existsSync(targetPath)).toBe(false);
+    expect(fs.existsSync(`${targetPath}.partial`)).toBe(false);
+    // jsonl_local_path stayed NULL
+    const row = db.prepare(
+      `SELECT jsonl_local_path FROM remote_sessions WHERE owner_id = ? AND session_id = ?`,
+    ).get("user-A", "s-remote") as { jsonl_local_path: string | null };
+    expect(row.jsonl_local_path).toBeNull();
+  });
+
+  it("free user throws (pro-only)", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "free" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: vi.fn() as unknown as typeof fetch,
+    });
+    await expect(svc.reassembleSessionJsonl("s-remote", "/tmp/x.jsonl"))
+      .rejects.toThrow(/pro-only/);
+  });
+
+  it("empty manifest throws", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: makeFetch([]),
+    });
+    await expect(svc.reassembleSessionJsonl("s-remote", join(root, "out.jsonl")))
+      .rejects.toThrow(/no chunks/);
+  });
+});
+
 describe("SessionSyncService.pull", () => {
   function seedDevice(db: Database.Database, deviceId = "dev-mac"): void {
     db.prepare(

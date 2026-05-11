@@ -50,6 +50,17 @@ export interface PushBytesResult {
   resetFired: boolean;
 }
 
+export interface ReassembleResult {
+  /** Number of chunks fetched and concatenated. */
+  chunkCount: number;
+  /** Total plaintext bytes written to disk (== manifest's final end_offset). */
+  totalBytes: number;
+  /** Generation that was reassembled. */
+  generation: number;
+  /** Absolute path the jsonl was written to. */
+  targetPath: string;
+}
+
 export interface SessionSyncService {
   reconcile(): Promise<{ pulled: number; pushed: number }>;
   pushPending(): Promise<number>;
@@ -65,6 +76,13 @@ export interface SessionSyncService {
    *  via a generation bump. No-ops cleanly when the file hasn't grown,
    *  when the session row is missing cwd, or when the gate fails. */
   pushBytes(sessionId: string): Promise<PushBytesResult>;
+  /** Pull a session's encrypted chunks down from cloud, decrypt (in the
+   *  worker, returned plaintext over TLS), verify each chunk's
+   *  plaintext_sha256 against the manifest, and write the assembled
+   *  jsonl to targetPath atomically (writes to .partial then renames).
+   *  Throws on auth failure, manifest GET error, hash mismatch, partial
+   *  fetch, or final-size mismatch. */
+  reassembleSessionJsonl(sessionId: string, targetPath: string): Promise<ReassembleResult>;
   /** Mark a session row dirty so the next pushPending() picks it up. The
    *  watcher should call this on every material session change. */
   markDirty(sessionId: string, ownerId: string, at?: number): void;
@@ -551,6 +569,113 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     return cachedDeviceId;
   }
 
+  const updateRemoteSessionLocalPath = deps.db.prepare(
+    `UPDATE remote_sessions
+        SET jsonl_local_path = ?
+      WHERE owner_id = ? AND session_id = ?`,
+  );
+
+  async function doReassemble(
+    sessionId: string,
+    targetPath: string,
+  ): Promise<ReassembleResult> {
+    const session = isProSession(deps);
+    if (!session) {
+      throw new Error("sessions reassemble: pro-only and profile-binding gate failed");
+    }
+
+    // Fetch manifest.
+    type ManifestChunk = {
+      chunk_number: number;
+      start_offset: number;
+      end_offset: number;
+      byte_count: number;
+      plaintext_sha256: string;
+    };
+    type Manifest = { bytes_generation: number; total_size: number; chunks: ManifestChunk[] };
+
+    let manifest: Manifest;
+    try {
+      const res = await deps.fetch(
+        `${deps.workerBase}/api/sessions/bytes/${encodeURIComponent(sessionId)}/manifest`,
+        { headers: { Cookie: `oyster_session=${session.token}` } },
+      );
+      if (!res.ok) throw new Error(`manifest non-ok ${res.status}`);
+      manifest = await res.json() as Manifest;
+    } catch (err) {
+      throw new Error(`sessions reassemble: manifest fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!manifest.chunks || manifest.chunks.length === 0) {
+      throw new Error("sessions reassemble: manifest has no chunks (no bytes uploaded yet)");
+    }
+    // Sanity: chunks must be in chunk_number order. The worker promises this
+    // (ORDER BY chunk_number ASC) but verify defensively.
+    for (let i = 1; i < manifest.chunks.length; i++) {
+      if (manifest.chunks[i]!.chunk_number <= manifest.chunks[i - 1]!.chunk_number) {
+        throw new Error("sessions reassemble: manifest chunks not in ascending order");
+      }
+    }
+
+    // Write to a sibling .partial path first; rename on success. This means
+    // a mid-fetch crash leaves a discardable partial file instead of a
+    // half-baked jsonl masquerading as complete.
+    const partialPath = `${targetPath}.partial`;
+    await fs.mkdir(join(targetPath, ".."), { recursive: true }).catch(() => { /* exists */ });
+    const fh = await fs.open(partialPath, "w");
+    let writtenBytes = 0;
+    try {
+      for (const meta of manifest.chunks) {
+        const url = `${deps.workerBase}/api/sessions/bytes/${encodeURIComponent(sessionId)}/chunk/${meta.chunk_number}`;
+        const r = await deps.fetch(url, { headers: { Cookie: `oyster_session=${session.token}` } });
+        if (!r.ok) {
+          throw new Error(`chunk ${meta.chunk_number} fetch non-ok ${r.status}`);
+        }
+        const buf = new Uint8Array(await r.arrayBuffer());
+        if (buf.byteLength !== meta.byte_count) {
+          throw new Error(`chunk ${meta.chunk_number} size mismatch: expected ${meta.byte_count}, got ${buf.byteLength}`);
+        }
+        const hash = sha256Hex(buf);
+        if (hash !== meta.plaintext_sha256) {
+          throw new Error(`chunk ${meta.chunk_number} hash mismatch: expected ${meta.plaintext_sha256}, got ${hash}`);
+        }
+        await fh.write(buf, 0, buf.byteLength, meta.start_offset);
+        writtenBytes += buf.byteLength;
+      }
+    } catch (err) {
+      await fh.close().catch(() => { /* ignore */ });
+      await fs.unlink(partialPath).catch(() => { /* ignore */ });
+      throw err;
+    }
+    await fh.close();
+
+    // Final-size assertion: writtenBytes must equal the last chunk's end_offset
+    // (== sum of byte_counts == manifest.total_size).
+    const expectedTotal = manifest.chunks[manifest.chunks.length - 1]!.end_offset;
+    if (writtenBytes !== expectedTotal) {
+      await fs.unlink(partialPath).catch(() => { /* ignore */ });
+      throw new Error(`sessions reassemble: total size mismatch (wrote ${writtenBytes}, manifest says ${expectedTotal})`);
+    }
+
+    // Atomic move into place.
+    await fs.rename(partialPath, targetPath);
+
+    // Record the local path in remote_sessions so subsequent UI checks can
+    // surface "already reassembled".
+    updateRemoteSessionLocalPath.run(targetPath, session.user.id, sessionId);
+
+    console.log(
+      `[sessions] reassembled: session=${sessionId.slice(0, 8)} chunks=${manifest.chunks.length} bytes=${writtenBytes} → ${targetPath}`,
+    );
+
+    return {
+      chunkCount: manifest.chunks.length,
+      totalBytes: writtenBytes,
+      generation: manifest.bytes_generation,
+      targetPath,
+    };
+  }
+
   // Capture the service object so methods don't depend on `this` binding —
   // safe to pass `service.reconcile` directly into a setInterval / event
   // emitter callback. Mirrors the memory-sync-service shape.
@@ -594,6 +719,8 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       inFlightBytes.set(sessionId, promise);
       return promise;
     },
+
+    reassembleSessionJsonl: doReassemble,
 
     markDirty,
   };

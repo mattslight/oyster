@@ -107,7 +107,21 @@ export interface Session {
   endedAt: string | null;
   model: string | null;
   lastEventAt: string;
+  /** Pick-up-here cross-device fields (#322). Both null/false for local
+   *  sessions discovered by this device's watcher; populated for remote
+   *  sessions pulled from the cloud manifest. */
+  originDeviceId?: string | null;
+  /** True for local sessions; true for remote sessions whose jsonl has
+   *  already been reassembled to disk on this device; false otherwise. */
+  jsonlAvailableLocally?: boolean;
 }
+
+/** POST /api/sessions/:id/resume response shapes. */
+export type SessionResumeResponse =
+  | { status: "ok"; sessionId: string; localCwd: string; jsonlPath: string; command: string }
+  | { status: "needs_target"; remoteCwd: string | null; suggestedSpaceId: string | null }
+  | { status: "pick_source"; candidates: Array<{ path: string; label: string | null }>; remoteCwd: string | null }
+  | { status: "validation_warning"; reasons: string[] };
 
 export type SessionEventRole =
   | "user"
