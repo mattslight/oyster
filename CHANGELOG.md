@@ -575,3 +575,28 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
+[0.7.0]: https://github.com/mattslight/oyster/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/mattslight/oyster/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...v0.5.0
+[0.5.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2
+[0.5.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
+[0.5.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0
+[0.4.0]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.8...v0.4.0
+[0.4.0-beta.8]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.7...v0.4.0-beta.8
+[0.4.0-beta.7]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.6...v0.4.0-beta.7
+[0.4.0-beta.6]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.5...v0.4.0-beta.6
+[0.4.0-beta.5]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.4...v0.4.0-beta.5
+[0.4.0-beta.4]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.3...v0.4.0-beta.4
+[0.4.0-beta.3]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.2...v0.4.0-beta.3
+[0.4.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.1...v0.4.0-beta.2
+[0.4.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.0...v0.4.0-beta.1
+[0.4.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.3.8...v0.4.0-beta.0
+[0.3.5]: https://github.com/mattslight/oyster/compare/v0.3.4...v0.3.5
+[0.3.4]: https://github.com/mattslight/oyster/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/mattslight/oyster/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/mattslight/oyster/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/mattslight/oyster/compare/v0.2.4...v0.3.1
+[0.2.4]: https://github.com/mattslight/oyster/compare/v0.1.21...v0.2.4
+[0.1.21]: https://github.com/mattslight/oyster/compare/v0.1.17...v0.1.21
+[0.1.17]: https://github.com/mattslight/oyster/compare/v0.1.10...v0.1.17
+[0.1.10]: https://github.com/mattslight/oyster/releases/tag/v0.1.10

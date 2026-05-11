@@ -71,15 +71,18 @@ const H2_VERSION_RE =
 // to link the heading itself.
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/;
 
-// Derive every compare URL from the doc, not from hand-edited footer references
-// in CHANGELOG.md. The Unreleased footer pointed at `v0.7.0...HEAD` and drifted
-// every release since 0.7.0 (#440); release-version footer refs stopped being
-// added at 0.8.0, leaving every newer release heading as plain text (#444).
-// One pre-scan in doc order (newest first) gives us:
+// Synthesize compare URLs from doc order for headings that lack a footer
+// reference in CHANGELOG.md. The Unreleased footer ref pointed at
+// `v0.7.0...HEAD` and drifted every release since 0.7.0 (#440); release-
+// version footer refs stopped being added at 0.8.0, leaving every newer
+// release heading as plain text on docs/changelog.html (#444). Synthesis
+// covers the gap so docs/changelog.html always links; we still honour the
+// existing footer refs for 0.7.0 and below so GitHub's CHANGELOG.md view
+// keeps its links too. One pre-scan in doc order (newest first) gives us:
 //   • Unreleased's compare base = the newest real-tag version
 //   • each release's compare base = the next real-tag version below it
-// For the very first taggable version (no older entry), link to the tag itself,
-// matching the footer pattern that used to exist for [0.1.10].
+// For the very first taggable version (no older entry), link to the tag
+// itself, matching the footer pattern that used to exist for [0.1.10].
 const orderedVersions = [];
 for (const m of rawRendered.matchAll(H2_VERSION_RE)) {
   const v = m[2] || m[3];
@@ -96,7 +99,7 @@ for (let i = 0; i < taggedVersions.length - 1; i++) {
   previousTagged.set(taggedVersions[i], taggedVersions[i + 1]);
 }
 
-function compareUrlFor(version) {
+function synthesizedHrefFor(version) {
   if (version === "Unreleased") return unreleasedCompareUrl;
   if (!SEMVER_RE.test(version)) return null;
   const prev = previousTagged.get(version);
@@ -106,19 +109,26 @@ function compareUrlFor(version) {
 }
 
 // Single pass: marked may render `[X.Y.Z]` as either a reference-link (when
-// CHANGELOG.md still has a footer def for it) or plain brackets (no def).
-// Match both forms in one regex so releases stay in document order, and
-// override any footer-supplied link with our synthesized one — the footer
-// is no longer a source of truth.
+// CHANGELOG.md has a footer def for it) or plain brackets (no def). Match
+// both forms in one regex so releases stay in document order. For Unreleased
+// we always override any footer reference with the synthesized URL because
+// the footer can't track HEAD. For released versions we prefer the footer
+// reference when present (keeps GitHub's CHANGELOG.md view linked exactly as
+// before) and fall back to synthesis only when none exists.
 // The `<h2[^>]*>` tolerates any attributes marked may emit in future versions.
-// Captured values (version, rest) are escaped before interpolation.
+// Captured values (version, rest, href) are escaped before interpolation.
 const rendered = rawRendered.replace(
   H2_VERSION_RE,
-  (_, _linkedHref, linkedVersion, bracketVersion, rest) => {
+  (_, linkedHref, linkedVersion, bracketVersion, rest) => {
     const version = linkedVersion || bracketVersion;
     const id = `v-${slug(version)}`;
     const versionSpan = `<span class="release-version">${escapeHtml(version)}</span>`;
-    const resolvedHref = compareUrlFor(version);
+    const resolvedHref =
+      version === "Unreleased"
+        ? synthesizedHrefFor(version)
+        : linkedHref
+          ? safeHref(linkedHref)
+          : synthesizedHrefFor(version);
     const relAttr = resolvedHref && /^https?:/i.test(resolvedHref) ? ' rel="noopener noreferrer"' : "";
     const versionHtml = resolvedHref
       ? `<a class="release-version-link" href="${escapeHtml(resolvedHref)}"${relAttr}>${versionSpan}</a>`
