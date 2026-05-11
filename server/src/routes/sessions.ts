@@ -532,11 +532,18 @@ export async function tryHandleSessionRoute(
         if (overrideCwd) {
           // User-supplied target — validate.
           const validation = validateOverrideTarget(overrideCwd, remoteRow.cwd);
-          if (!validation.ok) {
+          // Only "target_folder_missing" / "target_not_a_directory" are truly
+          // fatal — force:true cannot conjure a folder into existence. All
+          // other reasons (.git missing, basename differs, no origin remote)
+          // are soft and require explicit force:true to bypass.
+          const hardReasons = validation.reasons.filter((r) =>
+            r === "target_folder_missing" || r === "target_not_a_directory");
+          const softReasons = validation.reasons.filter((r) => !hardReasons.includes(r));
+          if (hardReasons.length > 0) {
             sendJson({ status: "validation_warning", reasons: validation.reasons }, 200);
             return true;
           }
-          if (validation.reasons.length > 0 && !force) {
+          if (softReasons.length > 0 && !force) {
             sendJson({ status: "validation_warning", reasons: validation.reasons }, 200);
             return true;
           }
