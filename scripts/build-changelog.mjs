@@ -66,42 +66,59 @@ const releases = [];
 const REPO_URL = "https://github.com/mattslight/oyster";
 const H2_VERSION_RE =
   /<h2[^>]*>(?:<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>|\[([^\]]+)\])(?:\s*-\s*([^<]+?))?<\/h2>/g;
+// What counts as a real git-tag version. The `0.0.x` prototype heading
+// isn't tagged, so we skip it when picking a compare base and don't try
+// to link the heading itself.
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/;
 
-// Derive Unreleased's compare base from the doc, not from a hand-edited footer
-// reference in CHANGELOG.md. The footer used to point at `v0.7.0...HEAD` and
-// drifted across every release since (#440). Walk h2s in document order
-// (newest first) and pick the first non-Unreleased version as the compare base.
-let unreleasedCompareUrl = null;
+// Derive every compare URL from the doc, not from hand-edited footer references
+// in CHANGELOG.md. The Unreleased footer pointed at `v0.7.0...HEAD` and drifted
+// every release since 0.7.0 (#440); release-version footer refs stopped being
+// added at 0.8.0, leaving every newer release heading as plain text (#444).
+// One pre-scan in doc order (newest first) gives us:
+//   • Unreleased's compare base = the newest real-tag version
+//   • each release's compare base = the next real-tag version below it
+// For the very first taggable version (no older entry), link to the tag itself,
+// matching the footer pattern that used to exist for [0.1.10].
+const orderedVersions = [];
 for (const m of rawRendered.matchAll(H2_VERSION_RE)) {
   const v = m[2] || m[3];
-  if (v && v !== "Unreleased") {
-    unreleasedCompareUrl = `${REPO_URL}/compare/v${v}...HEAD`;
-    break;
-  }
+  if (v) orderedVersions.push(v);
+}
+const taggedVersions = orderedVersions.filter(
+  (v) => v !== "Unreleased" && SEMVER_RE.test(v),
+);
+const unreleasedCompareUrl = taggedVersions.length
+  ? `${REPO_URL}/compare/v${taggedVersions[0]}...HEAD`
+  : null;
+const previousTagged = new Map();
+for (let i = 0; i < taggedVersions.length - 1; i++) {
+  previousTagged.set(taggedVersions[i], taggedVersions[i + 1]);
 }
 
-// Single pass: marked may render `[Unreleased]` as a reference-link (if the
-// footer compare-link definition exists) and `[0.0.x]` as plain brackets.
-// Match both forms in one regex so releases stay in document order.
+function compareUrlFor(version) {
+  if (version === "Unreleased") return unreleasedCompareUrl;
+  if (!SEMVER_RE.test(version)) return null;
+  const prev = previousTagged.get(version);
+  return prev
+    ? `${REPO_URL}/compare/v${prev}...v${version}`
+    : `${REPO_URL}/releases/tag/v${version}`;
+}
+
+// Single pass: marked may render `[X.Y.Z]` as either a reference-link (when
+// CHANGELOG.md still has a footer def for it) or plain brackets (no def).
+// Match both forms in one regex so releases stay in document order, and
+// override any footer-supplied link with our synthesized one — the footer
+// is no longer a source of truth.
 // The `<h2[^>]*>` tolerates any attributes marked may emit in future versions.
-// Captured values (version, rest, href) are escaped before interpolation.
+// Captured values (version, rest) are escaped before interpolation.
 const rendered = rawRendered.replace(
   H2_VERSION_RE,
-  (_, linkedHref, linkedVersion, bracketVersion, rest) => {
+  (_, _linkedHref, linkedVersion, bracketVersion, rest) => {
     const version = linkedVersion || bracketVersion;
     const id = `v-${slug(version)}`;
     const versionSpan = `<span class="release-version">${escapeHtml(version)}</span>`;
-    // For Unreleased, always use the synthesized compare URL — ignore any
-    // stale footer reference. For released versions, honour the footer def
-    // when one exists (older releases up to 0.7.0 still have them and
-    // render as compare links); newer releases have no footer def, so
-    // linkedHref is null and we render a plain span.
-    const resolvedHref =
-      version === "Unreleased"
-        ? unreleasedCompareUrl
-        : linkedHref
-          ? safeHref(linkedHref)
-          : null;
+    const resolvedHref = compareUrlFor(version);
     const relAttr = resolvedHref && /^https?:/i.test(resolvedHref) ? ' rel="noopener noreferrer"' : "";
     const versionHtml = resolvedHref
       ? `<a class="release-version-link" href="${escapeHtml(resolvedHref)}"${relAttr}>${versionSpan}</a>`
