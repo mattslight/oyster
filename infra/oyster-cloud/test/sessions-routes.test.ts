@@ -49,6 +49,49 @@ function sampleSession(id: string, syncDirtyAt: number, overrides: Record<string
   };
 }
 
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const view = new Uint8Array(digest);
+  let hex = "";
+  for (let i = 0; i < view.length; i++) hex += view[i]!.toString(16).padStart(2, "0");
+  return hex;
+}
+
+async function putChunk(
+  token: string,
+  sessionId: string,
+  chunkNumber: number,
+  bytes: Uint8Array,
+  startOffset: number,
+  generation: number,
+): Promise<{ res: Response; sha: string }> {
+  const sha = await sha256Hex(bytes);
+  const res = await signedFetch(
+    `/api/sessions/bytes/${sessionId}/chunk/${chunkNumber}`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/octet-stream",
+        "x-chunk-start-offset": String(startOffset),
+        "x-chunk-end-offset": String(startOffset + bytes.byteLength),
+        "x-plaintext-sha256": sha,
+        "x-bytes-generation": String(generation),
+      },
+      body: bytes,
+    },
+    token,
+  );
+  return { res, sha };
+}
+
+async function registerSession(token: string, sid: string) {
+  await signedFetch("/api/sessions/metadata", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
+  }, token);
+}
+
 describe("POST /api/sessions/metadata", () => {
   beforeAll(async () => { await applySchema(); });
 
@@ -85,28 +128,28 @@ describe("POST /api/sessions/metadata", () => {
     expect(body.rejected).toEqual([]);
 
     const row = await env.DB.prepare(
-      `SELECT owner_id, agent, state, updated_at FROM synced_session_metadata
-        WHERE owner_id = ? AND session_id = ?`,
+      `SELECT owner_id, agent, state, updated_at, bytes_generation
+         FROM synced_session_metadata WHERE owner_id = ? AND session_id = ?`,
     ).bind(userId, sid).first();
-    expect(row).toMatchObject({ owner_id: userId, agent: "claude-code", state: "done", updated_at: 1000 });
+    expect(row).toMatchObject({
+      owner_id: userId, agent: "claude-code", state: "done",
+      updated_at: 1000, bytes_generation: 0,
+    });
   });
 
   it("LWW: a newer sync_dirty_at wins; an older one is dropped", async () => {
     const { token, userId } = await makeProSession();
     const sid = `s-${crypto.randomUUID()}`;
-    // First push at t=2000 with title "v1"
     await signedFetch("/api/sessions/metadata", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ sessions: [sampleSession(sid, 2000, { title: "v1" })] }),
     }, token);
-    // Newer push at t=3000 with title "v2" — should win
     await signedFetch("/api/sessions/metadata", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ sessions: [sampleSession(sid, 3000, { title: "v2" })] }),
     }, token);
-    // Older push at t=1000 with title "ancient" — should lose
     await signedFetch("/api/sessions/metadata", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -120,7 +163,7 @@ describe("POST /api/sessions/metadata", () => {
     expect(row?.updated_at).toBe(3000);
   });
 
-  it("rejects malformed sessions but still accepts the valid ones in the same batch", async () => {
+  it("rejects malformed sessions but accepts valid ones in the same batch", async () => {
     const { token, userId } = await makeProSession();
     const goodId = `s-${crypto.randomUUID()}`;
     const res = await signedFetch("/api/sessions/metadata", {
@@ -129,8 +172,8 @@ describe("POST /api/sessions/metadata", () => {
       body: JSON.stringify({
         sessions: [
           sampleSession(goodId, 1000),
-          { id: "bad", agent: "claude-code" },  // missing required fields
-          { /* no id */ agent: "claude-code", state: "done", started_at: "x", last_event_at: "y", sync_dirty_at: 1 },
+          { id: "bad", agent: "claude-code" },
+          { agent: "claude-code", state: "done", started_at: "x", last_event_at: "y", sync_dirty_at: 1 },
         ],
       }),
     }, token);
@@ -155,7 +198,6 @@ describe("POST /api/sessions/metadata", () => {
       body: JSON.stringify({
         sessions: [
           sampleSession(goodId, 1000),
-          // title is a number — would reach D1.bind() with the lax validation.
           sampleSession(badTypeId, 1000, { title: 12345 }),
         ],
       }),
@@ -164,7 +206,6 @@ describe("POST /api/sessions/metadata", () => {
     const body = await res.json() as { accepted: string[]; rejected: string[] };
     expect(body.accepted).toEqual([goodId]);
     expect(body.rejected).toEqual([badTypeId]);
-    // Only the well-formed session landed.
     const count = await env.DB.prepare(
       `SELECT COUNT(*) as n FROM synced_session_metadata WHERE owner_id = ?`,
     ).bind(userId).first<{ n: number }>();
@@ -189,210 +230,285 @@ describe("POST /api/sessions/metadata", () => {
 describe("GET /api/sessions/metadata", () => {
   beforeAll(async () => { await applySchema(); });
 
-  it("returns only the caller's sessions", async () => {
+  it("returns only the caller's sessions with has_bytes=false when no chunks", async () => {
     const a = await makeProSession();
     const b = await makeProSession();
     const sidA = `s-${crypto.randomUUID()}`;
     const sidB = `s-${crypto.randomUUID()}`;
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sidA, 1000)] }),
-    }, a.token);
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sidB, 1000)] }),
-    }, b.token);
+    await registerSession(a.token, sidA);
+    await registerSession(b.token, sidB);
 
     const res = await signedFetch("/api/sessions/metadata", { method: "GET" }, a.token);
     expect(res.status).toBe(200);
-    const body = await res.json() as { sessions: Array<{ session_id: string }> };
+    const body = await res.json() as { sessions: Array<{ session_id: string; has_bytes: boolean }> };
     const ids = body.sessions.map((s) => s.session_id);
     expect(ids).toContain(sidA);
     expect(ids).not.toContain(sidB);
+    const ours = body.sessions.find((s) => s.session_id === sidA);
+    expect(ours?.has_bytes).toBe(false);
   });
 });
 
-describe("PUT /api/sessions/bytes/:id + GET round-trip", () => {
+describe("PUT/GET /api/sessions/bytes/:id/chunk/:n (chunked-delta)", () => {
   beforeAll(async () => { await applySchema(); });
 
-  it("encrypts on PUT, decrypts on GET, returns identical plaintext", async () => {
-    const { token } = await makeProSession();
-    const sid = `s-${crypto.randomUUID()}`;
-    // Metadata has to exist first (the PUT does an owner check against it).
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
-    }, token);
-
-    const plaintext = new TextEncoder().encode(
-      `{"type":"user","content":"hello"}\n{"type":"assistant","content":"hi"}\n`,
-    );
-    const putRes = await signedFetch(`/api/sessions/bytes/${sid}`, {
-      method: "PUT",
-      headers: { "content-type": "application/octet-stream" },
-      body: plaintext,
-    }, token);
-    expect(putRes.status).toBe(200);
-    const putBody = await putRes.json() as { ok: boolean; key: string; plaintextSize: number; ciphertextSize: number };
-    expect(putBody.ok).toBe(true);
-    expect(putBody.plaintextSize).toBe(plaintext.byteLength);
-    // Ciphertext = IV (12) + plaintext + AES-GCM tag (16)
-    expect(putBody.ciphertextSize).toBe(plaintext.byteLength + 12 + 16);
-
-    const getRes = await signedFetch(`/api/sessions/bytes/${sid}`, { method: "GET" }, token);
-    expect(getRes.status).toBe(200);
-    const got = new Uint8Array(await getRes.arrayBuffer());
-    expect(got).toEqual(plaintext);
-  });
-
-  it("R2 object stores ciphertext, not plaintext", async () => {
+  it("upload chunks 1 + 2 + 3, fetch manifest + each chunk individually, concatenate matches local", async () => {
     const { token, userId } = await makeProSession();
     const sid = `s-${crypto.randomUUID()}`;
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
-    }, token);
+    await registerSession(token, sid);
 
+    const c1 = new TextEncoder().encode("{\"role\":\"user\",\"content\":\"hello\"}\n");
+    const c2 = new TextEncoder().encode("{\"role\":\"assistant\",\"content\":\"hi\"}\n");
+    const c3 = new TextEncoder().encode("{\"role\":\"user\",\"content\":\"bye\"}\n");
+
+    expect((await putChunk(token, sid, 1, c1, 0, 0)).res.status).toBe(200);
+    expect((await putChunk(token, sid, 2, c2, c1.byteLength, 0)).res.status).toBe(200);
+    expect((await putChunk(token, sid, 3, c3, c1.byteLength + c2.byteLength, 0)).res.status).toBe(200);
+
+    // Manifest
+    const manifestRes = await signedFetch(`/api/sessions/bytes/${sid}/manifest`, { method: "GET" }, token);
+    expect(manifestRes.status).toBe(200);
+    const manifest = await manifestRes.json() as {
+      bytes_generation: number;
+      total_size: number;
+      chunks: Array<{ chunk_number: number; start_offset: number; end_offset: number; byte_count: number; plaintext_sha256: string }>;
+    };
+    expect(manifest.bytes_generation).toBe(0);
+    expect(manifest.total_size).toBe(c1.byteLength + c2.byteLength + c3.byteLength);
+    expect(manifest.chunks.map((c) => c.chunk_number)).toEqual([1, 2, 3]);
+
+    // Per-chunk download + concatenate
+    const local = new Uint8Array(manifest.total_size);
+    for (const meta of manifest.chunks) {
+      const r = await signedFetch(`/api/sessions/bytes/${sid}/chunk/${meta.chunk_number}`, { method: "GET" }, token);
+      expect(r.status).toBe(200);
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      expect(bytes.byteLength).toBe(meta.byte_count);
+      expect(await sha256Hex(bytes)).toBe(meta.plaintext_sha256);
+      local.set(bytes, meta.start_offset);
+    }
+
+    const expected = new Uint8Array(c1.byteLength + c2.byteLength + c3.byteLength);
+    expected.set(c1, 0); expected.set(c2, c1.byteLength); expected.set(c3, c1.byteLength + c2.byteLength);
+    expect(local).toEqual(expected);
+
+    // metadata.has_bytes should now be true
+    const listRes = await signedFetch("/api/sessions/metadata", { method: "GET" }, token);
+    const list = await listRes.json() as { sessions: Array<{ session_id: string; has_bytes: boolean }> };
+    expect(list.sessions.find((s) => s.session_id === sid)?.has_bytes).toBe(true);
+    void userId;  // silence unused
+  });
+
+  it("idempotent re-PUT of identical chunk → 200 idempotent:true, no duplicate row", async () => {
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+
+    const c1 = new TextEncoder().encode("identical bytes");
+    expect((await putChunk(token, sid, 1, c1, 0, 0)).res.status).toBe(200);
+    const second = await putChunk(token, sid, 1, c1, 0, 0);
+    expect(second.res.status).toBe(200);
+    const body = await second.res.json() as { idempotent?: boolean };
+    expect(body.idempotent).toBe(true);
+
+    const count = await env.DB.prepare(
+      `SELECT COUNT(*) as n FROM synced_session_chunks WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ n: number }>();
+    expect(count?.n).toBe(1);
+  });
+
+  it("conflicting re-PUT (same chunk_number, different hash) → 409 chunk_conflict", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+
+    const c1 = new TextEncoder().encode("first content");
+    expect((await putChunk(token, sid, 1, c1, 0, 0)).res.status).toBe(200);
+
+    const c1Alt = new TextEncoder().encode("DIFFERENT content");  // different length + bytes
+    const conflict = await putChunk(token, sid, 1, c1Alt, 0, 0);
+    expect(conflict.res.status).toBe(409);
+    const body = await conflict.res.json() as { error: string };
+    expect(body.error).toBe("chunk_conflict");
+  });
+
+  it("non-contiguous PUT (start_offset doesn't match previous end_offset) → 409 non_contiguous_start", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+
+    const c1 = new TextEncoder().encode("AAAA");
+    expect((await putChunk(token, sid, 1, c1, 0, 0)).res.status).toBe(200);
+
+    // Chunk 2 should start at offset 4, but we say 99.
+    const c2 = new TextEncoder().encode("BBBB");
+    const res = await putChunk(token, sid, 2, c2, 99, 0);
+    expect(res.res.status).toBe(409);
+    const body = await res.res.json() as { error: string };
+    expect(body.error).toBe("non_contiguous_start");
+  });
+
+  it("chunk 1 with non-zero start_offset → 409", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+    const bytes = new TextEncoder().encode("XXX");
+    const res = await putChunk(token, sid, 1, bytes, 100, 0);
+    expect(res.res.status).toBe(409);
+    const body = await res.res.json() as { error: string };
+    expect(body.error).toBe("non_contiguous_start");
+  });
+
+  it("wrong-generation PUT → 409 stale_generation", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+    const bytes = new TextEncoder().encode("hi");
+    const res = await putChunk(token, sid, 1, bytes, 0, 5 /* wrong gen */);
+    expect(res.res.status).toBe(409);
+    const body = await res.res.json() as { error: string };
+    expect(body.error).toBe("stale_generation");
+  });
+
+  it("sha256 mismatch → 400 sha256_mismatch", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+    const bytes = new TextEncoder().encode("the truth");
+    const res = await signedFetch(
+      `/api/sessions/bytes/${sid}/chunk/1`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-chunk-start-offset": "0",
+          "x-chunk-end-offset": String(bytes.byteLength),
+          "x-plaintext-sha256": "0".repeat(64),  // valid format, wrong digest
+          "x-bytes-generation": "0",
+        },
+        body: bytes,
+      },
+      token,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("sha256_mismatch");
+  });
+
+  it("R2 inspection of any chunk shows ciphertext, never plaintext marker", async () => {
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
     const plaintext = new TextEncoder().encode("PLAINTEXT_MARKER_DO_NOT_LEAK");
-    await signedFetch(`/api/sessions/bytes/${sid}`, {
-      method: "PUT",
-      headers: { "content-type": "application/octet-stream" },
-      body: plaintext,
-    }, token);
-
-    const obj = await env.SESSIONS_BUCKET.get(`sessions/${userId}/${sid}.jsonl`);
+    expect((await putChunk(token, sid, 1, plaintext, 0, 0)).res.status).toBe(200);
+    const obj = await env.SESSIONS_BUCKET.get(`sessions/${userId}/${sid}/g0/chunk-1.bin`);
     expect(obj).not.toBeNull();
     const stored = new Uint8Array(await obj!.arrayBuffer());
     const decoded = new TextDecoder().decode(stored);
     expect(decoded).not.toContain("PLAINTEXT_MARKER_DO_NOT_LEAK");
   });
 
-  it("returns 404 when uploading to a session that doesn't belong to the caller", async () => {
+  it("cross-account intrusion → 404 session_not_found", async () => {
     const owner = await makeProSession();
     const intruder = await makeProSession();
     const sid = `s-${crypto.randomUUID()}`;
-    // Owner registers metadata
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
-    }, owner.token);
-    // Intruder tries to upload bytes to that session id
-    const res = await signedFetch(`/api/sessions/bytes/${sid}`, {
-      method: "PUT",
-      headers: { "content-type": "application/octet-stream" },
-      body: new TextEncoder().encode("nope"),
-    }, intruder.token);
-    expect(res.status).toBe(404);
+    await registerSession(owner.token, sid);
+    const bytes = new TextEncoder().encode("nope");
+    const res = await putChunk(intruder.token, sid, 1, bytes, 0, 0);
+    expect(res.res.status).toBe(404);
   });
+});
 
-  it("returns 404 when GETting bytes that haven't been uploaded", async () => {
+describe("POST /api/sessions/bytes/:id/reset (generation bump)", () => {
+  beforeAll(async () => { await applySchema(); });
+
+  it("reset bumps generation, manifest goes empty, stale-gen PUT rejected, new-gen PUT succeeds", async () => {
     const { token } = await makeProSession();
     const sid = `s-${crypto.randomUUID()}`;
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
-    }, token);
+    await registerSession(token, sid);
 
-    const res = await signedFetch(`/api/sessions/bytes/${sid}`, { method: "GET" }, token);
-    expect(res.status).toBe(404);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe("bytes_not_uploaded");
+    // Upload chunks in gen 0
+    const a = new TextEncoder().encode("aaaa");
+    const b = new TextEncoder().encode("bbbb");
+    expect((await putChunk(token, sid, 1, a, 0, 0)).res.status).toBe(200);
+    expect((await putChunk(token, sid, 2, b, 4, 0)).res.status).toBe(200);
+
+    // Reset
+    const resetRes = await signedFetch(`/api/sessions/bytes/${sid}/reset`, { method: "POST" }, token);
+    expect(resetRes.status).toBe(200);
+    const resetBody = await resetRes.json() as { previous_generation: number; current_generation: number };
+    expect(resetBody.previous_generation).toBe(0);
+    expect(resetBody.current_generation).toBe(1);
+
+    // Manifest filtered to gen 1 is empty
+    const manifestRes = await signedFetch(`/api/sessions/bytes/${sid}/manifest`, { method: "GET" }, token);
+    const manifest = await manifestRes.json() as { bytes_generation: number; chunks: unknown[] };
+    expect(manifest.bytes_generation).toBe(1);
+    expect(manifest.chunks).toEqual([]);
+
+    // Stale-gen PUT (gen 0) rejected
+    const stale = await putChunk(token, sid, 3, new TextEncoder().encode("zzz"), 8, 0);
+    expect(stale.res.status).toBe(409);
+
+    // Fresh upload in gen 1 succeeds, chunk numbering restarts from 1
+    const fresh = new TextEncoder().encode("FRESH");
+    expect((await putChunk(token, sid, 1, fresh, 0, 1)).res.status).toBe(200);
+    const finalManifest = await (await signedFetch(`/api/sessions/bytes/${sid}/manifest`, { method: "GET" }, token)).json() as { chunks: Array<{ chunk_number: number }> };
+    expect(finalManifest.chunks.map((c) => c.chunk_number)).toEqual([1]);
   });
+});
 
-  it("bytes PUT does NOT bump metadata.updated_at — preserves metadata LWW invariant", async () => {
+describe("AAD binding negative test", () => {
+  beforeAll(async () => { await applySchema(); });
+
+  it("decryption fails when AAD reconstructed from a tampered D1 row", async () => {
     const { token, userId } = await makeProSession();
     const sid = `s-${crypto.randomUUID()}`;
-    // Push metadata at sync_dirty_at=1000 → updated_at=1000
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
-    }, token);
-    // PUT bytes — wallclock is much larger than 1000
-    await signedFetch(`/api/sessions/bytes/${sid}`, {
-      method: "PUT",
-      headers: { "content-type": "application/octet-stream" },
-      body: new TextEncoder().encode("payload"),
-    }, token);
-    // updated_at MUST still be 1000. If the bytes-PUT bumped it to wallclock,
-    // a legitimate later metadata push at sync_dirty_at=1500 would be silently
-    // dropped by LWW (1500 < wallclock).
-    const row = await env.DB.prepare(
-      `SELECT updated_at, jsonl_r2_key FROM synced_session_metadata
-        WHERE owner_id = ? AND session_id = ?`,
-    ).bind(userId, sid).first<{ updated_at: number; jsonl_r2_key: string }>();
-    expect(row?.updated_at).toBe(1000);
-    expect(row?.jsonl_r2_key).toBe(`sessions/${userId}/${sid}.jsonl`);
+    await registerSession(token, sid);
 
-    // Confirm the no-skew invariant: a metadata push at sync_dirty_at=1500
-    // wins as expected.
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1500, { title: "after-bytes" })] }),
-    }, token);
-    const after = await env.DB.prepare(
-      `SELECT title, updated_at FROM synced_session_metadata
-        WHERE owner_id = ? AND session_id = ?`,
-    ).bind(userId, sid).first<{ title: string; updated_at: number }>();
-    expect(after?.title).toBe("after-bytes");
-    expect(after?.updated_at).toBe(1500);
+    const a = new TextEncoder().encode("AAA");
+    expect((await putChunk(token, sid, 1, a, 0, 0)).res.status).toBe(200);
+    const b = new TextEncoder().encode("BBB");
+    expect((await putChunk(token, sid, 2, b, 3, 0)).res.status).toBe(200);
+
+    // Tamper: swap chunk 1's plaintext_sha256 in D1 to chunk 2's value.
+    // A GET for chunk 1 will reconstruct AAD with the tampered hash, which
+    // does NOT match what was bound at encrypt — decrypt MUST fail.
+    const chunk2Hash = await sha256Hex(b);
+    await env.DB.prepare(
+      `UPDATE synced_session_chunks SET plaintext_sha256 = ?
+        WHERE owner_id = ? AND session_id = ? AND bytes_generation = 0 AND chunk_number = 1`,
+    ).bind(chunk2Hash, userId, sid).run();
+
+    const res = await signedFetch(`/api/sessions/bytes/${sid}/chunk/1`, { method: "GET" }, token);
+    expect(res.status).toBe(500);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("decrypt_failed");
+  });
+});
+
+describe("GET manifest / chunk error paths", () => {
+  beforeAll(async () => { await applySchema(); });
+
+  it("manifest 404 when session not in caller's metadata", async () => {
+    const { token } = await makeProSession();
+    const res = await signedFetch(`/api/sessions/bytes/missing-id/manifest`, { method: "GET" }, token);
+    expect(res.status).toBe(404);
   });
 
-  it("returns 400 (not 500) on malformed percent-encoding in the path", async () => {
+  it("chunk GET 404 when chunk doesn't exist", async () => {
     const { token } = await makeProSession();
-    // %G is a malformed percent escape — decodeURIComponent throws URIError.
-    const res = await signedFetch("/api/sessions/bytes/bad%Gid", { method: "GET" }, token);
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+    const res = await signedFetch(`/api/sessions/bytes/${sid}/chunk/1`, { method: "GET" }, token);
+    expect(res.status).toBe(404);
+  });
+
+  it("malformed percent-encoding in path → 400 invalid_session_id", async () => {
+    const { token } = await makeProSession();
+    const res = await signedFetch(`/api/sessions/bytes/bad%Gid/manifest`, { method: "GET" }, token);
     expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
     expect(body.error).toBe("invalid_session_id");
-  });
-
-  it("rejects oversized PUT bodies with 413", async () => {
-    const { token } = await makeProSession();
-    const sid = `s-${crypto.randomUUID()}`;
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
-    }, token);
-
-    // 51 MB payload — over the 50 MB cap.
-    const huge = new Uint8Array(51 * 1024 * 1024);
-    const res = await signedFetch(`/api/sessions/bytes/${sid}`, {
-      method: "PUT",
-      headers: { "content-type": "application/octet-stream" },
-      body: huge,
-    }, token);
-    expect(res.status).toBe(413);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe("payload_too_large");
-  });
-
-  it("fast-rejects when Content-Length declares an oversized body", async () => {
-    const { token } = await makeProSession();
-    const sid = `s-${crypto.randomUUID()}`;
-    await signedFetch("/api/sessions/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
-    }, token);
-
-    // Small body but lying Content-Length header — the fast-path should fire.
-    const res = await signedFetch(`/api/sessions/bytes/${sid}`, {
-      method: "PUT",
-      headers: {
-        "content-type": "application/octet-stream",
-        "content-length": String(60 * 1024 * 1024),
-      },
-      body: new Uint8Array(8),
-    }, token);
-    expect(res.status).toBe(413);
   });
 });

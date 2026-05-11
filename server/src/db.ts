@@ -383,7 +383,7 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
-  // Cloud session sync (#322). Five columns drive the cross-device sync:
+  // Cloud session sync (#322). Seven columns drive the cross-device sync:
   // - sync_dirty_at: unix-ms of the most recent material change since last
   //   successful push. NULL = clean. Overwritten on every dirty mark, so
   //   bursty updates collapse to the latest. Mirrors spaces.sync_dirty_at.
@@ -394,16 +394,24 @@ export function initDb(userlandDir: string): Database.Database {
   // - cloud_owner_id: which Pro account owns this session. The push gate
   //   only sends events whose cloud_owner_id matches the current Pro user
   //   (account-switching protection, mirrors the memory-events column).
-  // - jsonl_synced_at / jsonl_snapshot_offset: tracks how much of the JSONL
-  //   bytes have been uploaded to R2. NULL means no upload yet. Snapshot
-  //   offset lets the 5-min snapshot timer skip sessions whose disk file
-  //   hasn't grown since the last upload.
+  // - jsonl_synced_at: unix-ms of last successful chunked-bytes push.
+  // - jsonl_snapshot_offset: plaintext-byte offset already uploaded for this
+  //   session in the current bytes_generation. Snapshot timer skips a
+  //   session whose disk file hasn't grown past this. Reset to 0 on
+  //   truncation (which also bumps bytes_generation).
+  // - jsonl_chunk_count: number of chunks uploaded in the current generation.
+  //   Next PUT goes as chunk (jsonl_chunk_count + 1).
+  // - bytes_generation: monotonic per-session counter. Bumped when the local
+  //   jsonl is truncated (rare). Stale in-flight chunks from earlier
+  //   generations are rejected by the worker.
   for (const sql of [
     "ALTER TABLE sessions ADD COLUMN sync_dirty_at INTEGER",
     "ALTER TABLE sessions ADD COLUMN cloud_synced_at INTEGER",
     "ALTER TABLE sessions ADD COLUMN cloud_owner_id TEXT",
     "ALTER TABLE sessions ADD COLUMN jsonl_synced_at INTEGER",
-    "ALTER TABLE sessions ADD COLUMN jsonl_snapshot_offset INTEGER",
+    "ALTER TABLE sessions ADD COLUMN jsonl_snapshot_offset INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE sessions ADD COLUMN jsonl_chunk_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE sessions ADD COLUMN bytes_generation INTEGER NOT NULL DEFAULT 0",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }
   }

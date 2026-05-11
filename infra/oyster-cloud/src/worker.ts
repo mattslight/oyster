@@ -1,15 +1,20 @@
 import { jsonOk, jsonError } from "./json.js";
 import type { Env } from "./session.js";
 import { resolveSession } from "./session.js";
-import { encryptForUser, decryptForUser } from "./encryption.js";
+import { encryptChunk, decryptChunk, sha256Hex, type ChunkAad } from "./encryption.js";
+
+// Safe decode helper used by all bytes routes. decodeURIComponent throws
+// URIError on malformed percent-encoding (e.g. "%G"); we'd rather a 400 than
+// an unhandled rejection.
+function safeDecode(raw: string): string | null {
+  try { return decodeURIComponent(raw); }
+  catch { return null; }
+}
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
-    // Routes for this worker land in Tasks 6 and 7. For now, anything
-    // that isn't matched returns 404. Health-check responds 200 for
-    // deployment smoke-tests.
     if (url.pathname === "/health" && req.method === "GET") {
       return new Response("ok", { status: 200 });
     }
@@ -30,16 +35,35 @@ export default {
       return handleSessionsMetadataGet(req, env);
     }
 
-    const bytesMatch = url.pathname.match(/^\/api\/sessions\/bytes\/([^/]+)$/);
-    if (bytesMatch && bytesMatch[1]) {
-      // decodeURIComponent throws URIError on malformed percent-encoding
-      // (e.g. "%G"). Without this guard, a bad path would surface as an
-      // unhandled rejection instead of a structured 4xx.
-      let sessionId: string;
-      try { sessionId = decodeURIComponent(bytesMatch[1]); }
-      catch { return jsonError(400, "invalid_session_id"); }
-      if (req.method === "PUT") return handleSessionsBytesPut(req, env, sessionId);
-      if (req.method === "GET") return handleSessionsBytesGet(req, env, sessionId);
+    // Session bytes — chunked-delta routes (#322). Four shapes:
+    //   PUT  /api/sessions/bytes/:id/chunk/:n        upload one chunk
+    //   GET  /api/sessions/bytes/:id/manifest        list chunks for current gen
+    //   GET  /api/sessions/bytes/:id/chunk/:n        download one chunk
+    //   POST /api/sessions/bytes/:id/reset           bump generation
+    const chunkMatch = url.pathname.match(/^\/api\/sessions\/bytes\/([^/]+)\/chunk\/(\d+)$/);
+    if (chunkMatch && chunkMatch[1] && chunkMatch[2]) {
+      const sessionId = safeDecode(chunkMatch[1]);
+      const chunkNumber = Number(chunkMatch[2]);
+      if (sessionId === null) return jsonError(400, "invalid_session_id");
+      if (!Number.isInteger(chunkNumber) || chunkNumber < 1) {
+        return jsonError(400, "invalid_chunk_number");
+      }
+      if (req.method === "PUT") return handleSessionsBytesChunkPut(req, env, sessionId, chunkNumber);
+      if (req.method === "GET") return handleSessionsBytesChunkGet(req, env, sessionId, chunkNumber);
+    }
+
+    const manifestMatch = url.pathname.match(/^\/api\/sessions\/bytes\/([^/]+)\/manifest$/);
+    if (manifestMatch && manifestMatch[1] && req.method === "GET") {
+      const sessionId = safeDecode(manifestMatch[1]);
+      if (sessionId === null) return jsonError(400, "invalid_session_id");
+      return handleSessionsBytesManifestGet(req, env, sessionId);
+    }
+
+    const resetMatch = url.pathname.match(/^\/api\/sessions\/bytes\/([^/]+)\/reset$/);
+    if (resetMatch && resetMatch[1] && req.method === "POST") {
+      const sessionId = safeDecode(resetMatch[1]);
+      if (sessionId === null) return jsonError(400, "invalid_session_id");
+      return handleSessionsBytesReset(req, env, sessionId);
     }
 
     return jsonError(404, "not_found");
@@ -348,11 +372,13 @@ async function handleSessionsMetadataPost(req: Request, env: Env): Promise<Respo
       // LWW: only overwrite an existing row when the incoming sync_dirty_at
       // is strictly greater than what's stored. New rows always insert.
       // Using INSERT … ON CONFLICT DO UPDATE WHERE keeps it one statement.
+      // bytes_generation is owned by the chunked-bytes flow and never set
+      // from metadata pushes — left at its existing value (default 0 on insert).
       const result = await env.DB.prepare(
         `INSERT INTO synced_session_metadata
            (owner_id, session_id, device_id, agent, title, state, cwd, model,
-            started_at, ended_at, last_event_at, jsonl_r2_key, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+            started_at, ended_at, last_event_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(owner_id, session_id) DO UPDATE SET
            device_id     = excluded.device_id,
            agent         = excluded.agent,
@@ -389,128 +415,351 @@ async function handleSessionsMetadataGet(req: Request, env: Env): Promise<Respon
   if (!user) return jsonError(401, "sign_in_required");
   if (user.tier !== "pro") return jsonError(403, "pro_required");
 
+  // has_bytes is computed from EXISTS in chunks table at the current
+  // generation. A session may have metadata but no chunks yet (push
+  // hasn't fired) or chunks from older generations only (just reset).
   type Row = {
     session_id: string; device_id: string | null; agent: string; title: string | null;
     state: string; cwd: string | null; model: string | null; started_at: string;
-    ended_at: string | null; last_event_at: string; jsonl_r2_key: string | null;
-    updated_at: number;
+    ended_at: string | null; last_event_at: string;
+    bytes_generation: number; has_bytes: number; updated_at: number;
   };
   const { results } = await env.DB.prepare(
-    `SELECT session_id, device_id, agent, title, state, cwd, model, started_at,
-            ended_at, last_event_at, jsonl_r2_key, updated_at
-       FROM synced_session_metadata
-      WHERE owner_id = ?
-      ORDER BY last_event_at DESC`,
+    `SELECT m.session_id, m.device_id, m.agent, m.title, m.state, m.cwd, m.model,
+            m.started_at, m.ended_at, m.last_event_at, m.bytes_generation, m.updated_at,
+            CASE WHEN EXISTS (
+              SELECT 1 FROM synced_session_chunks c
+               WHERE c.owner_id = m.owner_id
+                 AND c.session_id = m.session_id
+                 AND c.bytes_generation = m.bytes_generation
+            ) THEN 1 ELSE 0 END AS has_bytes
+       FROM synced_session_metadata m
+      WHERE m.owner_id = ?
+      ORDER BY m.last_event_at DESC`,
   ).bind(user.id).all<Row>();
 
-  return jsonOk({ sessions: results ?? [] }, 200, { "cache-control": "private, no-store" });
+  // Normalise has_bytes to boolean for the client.
+  const sessions = (results ?? []).map((r) => ({ ...r, has_bytes: r.has_bytes === 1 }));
+  return jsonOk({ sessions }, 200, { "cache-control": "private, no-store" });
 }
 
-function r2KeyFor(ownerId: string, sessionId: string): string {
-  // No device_id in the key — sessions have a single canonical jsonl per
-  // owner+session. Snapshot updates from the originating device overwrite.
-  return `sessions/${ownerId}/${sessionId}.jsonl`;
+// Per-chunk upload cap. Workers' default body limit is 100 MB; we stay well
+// under that to leave headroom for encryption overhead + HTTP framing. There
+// is no per-session total cap — chunks accumulate as the session grows.
+const MAX_CHUNK_BYTES = 25 * 1024 * 1024;
+
+function chunkR2Key(ownerId: string, sessionId: string, generation: number, chunkNumber: number): string {
+  return `sessions/${ownerId}/${sessionId}/g${generation}/chunk-${chunkNumber}.bin`;
 }
 
-// Hard cap on jsonl uploads. Real Claude Code sessions are typically 1-50 MB;
-// 50 MB covers extreme edge cases without letting an abusive client fill R2
-// or burn worker CPU. Workers' default body limit (100 MB) and CPU budget
-// would catch this anyway, but we want a structured 413 instead of a runtime
-// crash and the limit is small enough to keep encryption fast.
-const MAX_BYTES_UPLOAD = 50 * 1024 * 1024;
+/** Look up the session's current generation. Returns null when the session
+ *  isn't in the caller's metadata (cross-account / never-pushed). */
+async function fetchCurrentGeneration(
+  env: Env,
+  ownerId: string,
+  sessionId: string,
+): Promise<number | null> {
+  const row = await env.DB.prepare(
+    `SELECT bytes_generation FROM synced_session_metadata
+      WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+  ).bind(ownerId, sessionId).first<{ bytes_generation: number }>();
+  return row ? row.bytes_generation : null;
+}
 
-async function handleSessionsBytesPut(req: Request, env: Env, sessionId: string): Promise<Response> {
+async function handleSessionsBytesChunkPut(
+  req: Request,
+  env: Env,
+  sessionId: string,
+  chunkNumber: number,
+): Promise<Response> {
   const user = await resolveSession(req, env);
   if (!user) return jsonError(401, "sign_in_required");
   if (user.tier !== "pro") return jsonError(403, "pro_required");
 
-  // Confirm the session belongs to the caller before accepting bytes. Without
-  // this check, a Pro user could arbitrarily overwrite any session id in
-  // their own R2 prefix — harmless but wasteful and confusing in audit logs.
-  const owns = await env.DB.prepare(
-    `SELECT 1 FROM synced_session_metadata WHERE owner_id = ? AND session_id = ? LIMIT 1`,
-  ).bind(user.id, sessionId).first();
-  if (!owns) return jsonError(404, "session_not_found");
+  const currentGen = await fetchCurrentGeneration(env, user.id, sessionId);
+  if (currentGen === null) return jsonError(404, "session_not_found");
 
-  // Fail fast on Content-Length when the client honestly declares it. Saves
-  // reading 50+ MB into memory only to reject. Content-Length can be missing
-  // or lie (chunked transfer, untrusted client) so we re-check after read.
+  // Headers carry the metadata that gets bound into AAD. Each field must be
+  // a number / string (validated below); the client's pushBytes always sets
+  // these, so any missing header is a client bug or a tampered request.
+  const startOffsetHeader = req.headers.get("x-chunk-start-offset");
+  const endOffsetHeader = req.headers.get("x-chunk-end-offset");
+  const plaintextSha256Header = req.headers.get("x-plaintext-sha256");
+  const generationHeader = req.headers.get("x-bytes-generation");
+
+  if (!startOffsetHeader || !endOffsetHeader || !plaintextSha256Header || !generationHeader) {
+    return jsonError(400, "missing_chunk_headers");
+  }
+
+  const startOffset = Number(startOffsetHeader);
+  const endOffset = Number(endOffsetHeader);
+  const generation = Number(generationHeader);
+
+  if (!Number.isInteger(startOffset) || startOffset < 0) return jsonError(400, "invalid_start_offset");
+  if (!Number.isInteger(endOffset) || endOffset <= startOffset) return jsonError(400, "invalid_end_offset");
+  if (!Number.isInteger(generation) || generation < 0) return jsonError(400, "invalid_generation");
+  if (!/^[0-9a-f]{64}$/.test(plaintextSha256Header)) return jsonError(400, "invalid_sha256");
+
+  // Generation check. Client's local generation must match cloud's current.
+  // Stale-generation PUTs from before a reset are rejected — they'd otherwise
+  // pollute the manifest.
+  if (generation !== currentGen) {
+    return jsonError(409, "stale_generation");
+  }
+
+  // Read body + verify Content-Length against declared end-start. Fail fast
+  // on declared sizes that exceed MAX_CHUNK_BYTES.
+  const declaredSize = endOffset - startOffset;
+  if (declaredSize > MAX_CHUNK_BYTES) return jsonError(413, "chunk_too_large");
+
   const lenHeader = req.headers.get("content-length");
   if (lenHeader) {
     const declared = Number(lenHeader);
-    if (Number.isFinite(declared) && declared > MAX_BYTES_UPLOAD) {
-      return jsonError(413, "payload_too_large");
+    if (Number.isFinite(declared) && declared > MAX_CHUNK_BYTES) {
+      return jsonError(413, "chunk_too_large");
     }
   }
 
   const plaintext = new Uint8Array(await req.arrayBuffer());
   if (plaintext.byteLength === 0) return jsonError(400, "empty_body");
-  if (plaintext.byteLength > MAX_BYTES_UPLOAD) return jsonError(413, "payload_too_large");
+  if (plaintext.byteLength > MAX_CHUNK_BYTES) return jsonError(413, "chunk_too_large");
+  if (plaintext.byteLength !== declaredSize) return jsonError(400, "size_mismatch_with_offsets");
 
+  // Verify the client's declared hash matches the actual body. Mismatch
+  // means corruption in transit or a buggy/tampered client.
+  const computedHash = await sha256Hex(plaintext);
+  if (computedHash !== plaintextSha256Header) {
+    return jsonError(400, "sha256_mismatch");
+  }
+
+  // Idempotency + contiguity checks. Look at any existing row for
+  // (owner, session, generation, chunk_number) and at the prior chunk.
+  const existing = await env.DB.prepare(
+    `SELECT start_offset, end_offset, byte_count, plaintext_sha256
+       FROM synced_session_chunks
+      WHERE owner_id = ? AND session_id = ? AND bytes_generation = ? AND chunk_number = ?
+      LIMIT 1`,
+  ).bind(user.id, sessionId, generation, chunkNumber).first<{
+    start_offset: number; end_offset: number; byte_count: number; plaintext_sha256: string;
+  }>();
+  if (existing) {
+    // Idempotent retry path: all four immutable fields must match.
+    if (
+      existing.start_offset === startOffset &&
+      existing.end_offset === endOffset &&
+      existing.byte_count === declaredSize &&
+      existing.plaintext_sha256 === plaintextSha256Header
+    ) {
+      return jsonOk({ ok: true, idempotent: true, chunk_number: chunkNumber, generation });
+    }
+    return jsonError(409, "chunk_conflict");
+  }
+
+  // Contiguity: this chunk's start_offset must equal the previous chunk's
+  // end_offset (within the same generation). For chunk 1 the previous is
+  // implicit-zero.
+  if (chunkNumber === 1) {
+    if (startOffset !== 0) return jsonError(409, "non_contiguous_start");
+  } else {
+    const prev = await env.DB.prepare(
+      `SELECT end_offset FROM synced_session_chunks
+        WHERE owner_id = ? AND session_id = ? AND bytes_generation = ? AND chunk_number = ?
+        LIMIT 1`,
+    ).bind(user.id, sessionId, generation, chunkNumber - 1).first<{ end_offset: number }>();
+    if (!prev) return jsonError(409, "previous_chunk_missing");
+    if (prev.end_offset !== startOffset) return jsonError(409, "non_contiguous_start");
+  }
+
+  // Encrypt with AAD-binding so the ciphertext can't be replayed as a
+  // different chunk / session / generation.
+  const aad: ChunkAad = {
+    owner_id: user.id,
+    session_id: sessionId,
+    bytes_generation: generation,
+    chunk_number: chunkNumber,
+    start_offset: startOffset,
+    end_offset: endOffset,
+    plaintext_sha256: plaintextSha256Header,
+  };
   let ciphertext: Uint8Array;
   try {
-    ciphertext = await encryptForUser(env.SESSIONS_ENCRYPTION_KEY, user.id, plaintext);
+    ciphertext = await encryptChunk(env.SESSIONS_ENCRYPTION_KEY, aad, plaintext);
   } catch (err) {
-    console.warn("[sessions] encrypt failed:", err);
+    console.warn("[sessions] encryptChunk failed:", err);
     return jsonError(500, "encrypt_failed");
   }
 
-  const key = r2KeyFor(user.id, sessionId);
+  const r2Key = chunkR2Key(user.id, sessionId, generation, chunkNumber);
   try {
-    await env.SESSIONS_BUCKET.put(key, ciphertext, {
+    await env.SESSIONS_BUCKET.put(r2Key, ciphertext, {
       httpMetadata: { contentType: "application/octet-stream" },
-      customMetadata: { ownerId: user.id, sessionId, plaintextSize: String(plaintext.byteLength) },
+      customMetadata: {
+        ownerId: user.id,
+        sessionId,
+        generation: String(generation),
+        chunkNumber: String(chunkNumber),
+        startOffset: String(startOffset),
+        endOffset: String(endOffset),
+        plaintextSha256: plaintextSha256Header,
+        plaintextSize: String(plaintext.byteLength),
+      },
     });
   } catch (err) {
     console.warn("[sessions] R2 put failed:", err);
     return jsonError(500, "r2_put_failed");
   }
 
-  // Record the R2 key on the metadata row so cross-device clients know bytes
-  // are available for lazy pull. Deliberately NOT touching updated_at: that
-  // column is the LWW tiebreaker for metadata pushes (driven by the client's
-  // sync_dirty_at). Bumping it here would be a wallclock value the client
-  // can't beat, causing legitimate later metadata pushes with sync_dirty_at
-  // > the previous metadata but < the bytes-PUT wallclock to be dropped.
+  // Insert the chunk row. INSERT OR IGNORE is safe here because the
+  // idempotency check above already returned 200 on exact-match retry.
+  // A race between two clients pushing the same chunk would hit either
+  // the existing-row path or this insert; either way the table is consistent.
   await env.DB.prepare(
-    `UPDATE synced_session_metadata SET jsonl_r2_key = ?
-      WHERE owner_id = ? AND session_id = ?`,
-  ).bind(key, user.id, sessionId).run();
+    `INSERT OR IGNORE INTO synced_session_chunks
+       (owner_id, session_id, bytes_generation, chunk_number,
+        start_offset, end_offset, byte_count, plaintext_sha256, uploaded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    user.id, sessionId, generation, chunkNumber,
+    startOffset, endOffset, declaredSize, plaintextSha256Header, Date.now(),
+  ).run();
 
-  return jsonOk({ ok: true, key, plaintextSize: plaintext.byteLength, ciphertextSize: ciphertext.byteLength });
+  return jsonOk({
+    ok: true,
+    chunk_number: chunkNumber,
+    generation,
+    ciphertextSize: ciphertext.byteLength,
+  });
 }
 
-async function handleSessionsBytesGet(req: Request, env: Env, sessionId: string): Promise<Response> {
+async function handleSessionsBytesManifestGet(
+  req: Request,
+  env: Env,
+  sessionId: string,
+): Promise<Response> {
   const user = await resolveSession(req, env);
   if (!user) return jsonError(401, "sign_in_required");
   if (user.tier !== "pro") return jsonError(403, "pro_required");
 
-  // Owner check: refuse if the session isn't in this owner's metadata. Stops
-  // any ""guess another user's session_id"" cross-account read attempt before
-  // we even hit R2.
-  const owns = await env.DB.prepare(
-    `SELECT jsonl_r2_key FROM synced_session_metadata WHERE owner_id = ? AND session_id = ? LIMIT 1`,
-  ).bind(user.id, sessionId).first<{ jsonl_r2_key: string | null }>();
-  if (!owns) return jsonError(404, "session_not_found");
-  if (!owns.jsonl_r2_key) return jsonError(404, "bytes_not_uploaded");
+  const currentGen = await fetchCurrentGeneration(env, user.id, sessionId);
+  if (currentGen === null) return jsonError(404, "session_not_found");
 
-  const obj = await env.SESSIONS_BUCKET.get(owns.jsonl_r2_key);
-  if (!obj) return jsonError(404, "bytes_missing");
+  type Row = {
+    chunk_number: number; start_offset: number; end_offset: number;
+    byte_count: number; plaintext_sha256: string;
+  };
+  const { results } = await env.DB.prepare(
+    `SELECT chunk_number, start_offset, end_offset, byte_count, plaintext_sha256
+       FROM synced_session_chunks
+      WHERE owner_id = ? AND session_id = ? AND bytes_generation = ?
+      ORDER BY chunk_number ASC`,
+  ).bind(user.id, sessionId, currentGen).all<Row>();
+
+  const chunks = results ?? [];
+  const totalSize = chunks.length > 0 ? chunks[chunks.length - 1]!.end_offset : 0;
+  return jsonOk(
+    { bytes_generation: currentGen, total_size: totalSize, chunks },
+    200,
+    { "cache-control": "private, no-store" },
+  );
+}
+
+async function handleSessionsBytesChunkGet(
+  req: Request,
+  env: Env,
+  sessionId: string,
+  chunkNumber: number,
+): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (user.tier !== "pro") return jsonError(403, "pro_required");
+
+  // Optional ?gen=N selects a specific generation (for diagnostic / future
+  // historical access). Defaults to current.
+  const url = new URL(req.url);
+  const genParam = url.searchParams.get("gen");
+  let generation: number;
+  if (genParam !== null) {
+    generation = Number(genParam);
+    if (!Number.isInteger(generation) || generation < 0) {
+      return jsonError(400, "invalid_generation");
+    }
+  } else {
+    const currentGen = await fetchCurrentGeneration(env, user.id, sessionId);
+    if (currentGen === null) return jsonError(404, "session_not_found");
+    generation = currentGen;
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT start_offset, end_offset, byte_count, plaintext_sha256
+       FROM synced_session_chunks
+      WHERE owner_id = ? AND session_id = ? AND bytes_generation = ? AND chunk_number = ?
+      LIMIT 1`,
+  ).bind(user.id, sessionId, generation, chunkNumber).first<{
+    start_offset: number; end_offset: number; byte_count: number; plaintext_sha256: string;
+  }>();
+  if (!row) return jsonError(404, "chunk_not_found");
+
+  const r2Key = chunkR2Key(user.id, sessionId, generation, chunkNumber);
+  const obj = await env.SESSIONS_BUCKET.get(r2Key);
+  if (!obj) return jsonError(404, "chunk_bytes_missing");
 
   const ciphertext = new Uint8Array(await obj.arrayBuffer());
+  // Reconstruct AAD from the D1 row state (the source of truth). The
+  // R2 customMetadata is diagnostic only — the worker never trusts it
+  // for AAD reconstruction.
+  const aad: ChunkAad = {
+    owner_id: user.id,
+    session_id: sessionId,
+    bytes_generation: generation,
+    chunk_number: chunkNumber,
+    start_offset: row.start_offset,
+    end_offset: row.end_offset,
+    plaintext_sha256: row.plaintext_sha256,
+  };
+
   let plaintext: Uint8Array;
   try {
-    plaintext = await decryptForUser(env.SESSIONS_ENCRYPTION_KEY, user.id, ciphertext);
+    plaintext = await decryptChunk(env.SESSIONS_ENCRYPTION_KEY, aad, ciphertext);
   } catch (err) {
-    console.warn("[sessions] decrypt failed:", err);
+    console.warn("[sessions] decryptChunk failed:", err);
     return jsonError(500, "decrypt_failed");
   }
 
   return new Response(plaintext, {
     status: 200,
     headers: {
-      "content-type": "application/jsonl",
+      "content-type": "application/octet-stream",
       "cache-control": "private, no-store",
+      "x-plaintext-sha256": row.plaintext_sha256,
+      "x-chunk-start-offset": String(row.start_offset),
+      "x-chunk-end-offset": String(row.end_offset),
+      "x-bytes-generation": String(generation),
     },
   });
+}
+
+async function handleSessionsBytesReset(
+  req: Request,
+  env: Env,
+  sessionId: string,
+): Promise<Response> {
+  const user = await resolveSession(req, env);
+  if (!user) return jsonError(401, "sign_in_required");
+  if (user.tier !== "pro") return jsonError(403, "pro_required");
+
+  const currentGen = await fetchCurrentGeneration(env, user.id, sessionId);
+  if (currentGen === null) return jsonError(404, "session_not_found");
+
+  const newGen = currentGen + 1;
+  await env.DB.prepare(
+    `UPDATE synced_session_metadata
+        SET bytes_generation = ?
+      WHERE owner_id = ? AND session_id = ?`,
+  ).bind(newGen, user.id, sessionId).run();
+
+  // Prior-generation chunk rows are deliberately left in place — the
+  // generation filter on manifest / chunk-get makes them effectively
+  // tombstoned. R2 objects for old generations stay until v1.1 GC ships;
+  // they cost a few cents per heavy user, acceptable.
+  return jsonOk({ ok: true, previous_generation: currentGen, current_generation: newGen });
 }

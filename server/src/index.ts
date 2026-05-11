@@ -390,6 +390,60 @@ const memoryPollHandle = setInterval(() => {
 }, MEMORY_POLL_INTERVAL_MS);
 memoryPollHandle.unref();
 
+// Session bytes snapshot timer (#322). Every 5 minutes, scan
+// active/waiting sessions whose disk file has grown by >= 1 MB beyond
+// jsonl_snapshot_offset and fire pushBytes for each. The in-flight guard
+// inside SessionSyncService coalesces with any concurrent terminal-hook
+// push. Configurable via OYSTER_SESSIONS_SNAPSHOT_MS for ops/testing.
+const SESSION_SNAPSHOT_INTERVAL_MS = Math.max(
+  30_000,
+  Number(process.env.OYSTER_SESSIONS_SNAPSHOT_MS) || 5 * 60_000,
+);
+const SESSION_SNAPSHOT_DELTA_THRESHOLD = Math.max(
+  64 * 1024,
+  Number(process.env.OYSTER_SESSIONS_SNAPSHOT_DELTA_BYTES) || 1024 * 1024,
+);
+async function runSessionsSnapshotTick(): Promise<void> {
+  if (!canRunCloudSync()) return;
+  // Candidates: active/waiting sessions owned by the current user. We
+  // intentionally don't filter on file size in SQL because the database
+  // doesn't know the current on-disk size — only the offset already uploaded.
+  type Candidate = { id: string; cwd: string | null; jsonl_snapshot_offset: number };
+  const candidates = db.prepare(
+    `SELECT id, cwd, jsonl_snapshot_offset
+       FROM sessions
+      WHERE state IN ('active', 'waiting')
+        AND cwd IS NOT NULL
+        AND cloud_owner_id = ?`,
+  ).all(authService.getState().user?.id ?? "") as Candidate[];
+  if (candidates.length === 0) return;
+
+  const root = process.env.OYSTER_CLAUDE_PROJECTS_ROOT
+    ?? join(homedir(), ".claude", "projects");
+  for (const cand of candidates) {
+    if (!cand.cwd) continue;
+    const encoded = cand.cwd.replace(/[^A-Za-z0-9]/g, "-");
+    const jsonlPath = join(root, encoded, `${cand.id}.jsonl`);
+    let size = 0;
+    try {
+      const st = statSync(jsonlPath);
+      size = st.size;
+    } catch {
+      continue;  // file gone or unreadable; nothing to push
+    }
+    if (size - cand.jsonl_snapshot_offset < SESSION_SNAPSHOT_DELTA_THRESHOLD) continue;
+    sessionSync.pushBytes(cand.id).catch((err) => {
+      console.warn(`[sessions] snapshot pushBytes failed for ${cand.id}:`, err);
+    });
+  }
+}
+const sessionSnapshotHandle = setInterval(() => {
+  runSessionsSnapshotTick().catch((err) => {
+    console.warn("[sessions] snapshot tick failed:", err);
+  });
+}, SESSION_SNAPSHOT_INTERVAL_MS);
+sessionSnapshotHandle.unref();
+
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const publishService = createPublishService({
   db,
@@ -894,8 +948,8 @@ httpServer.listen(port, "127.0.0.1", () => {
       broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
       // Cross-device session sync (#322): every session-row change marks the
       // row dirty for the current Pro owner, then fires a fire-and-forget
-      // push. The in-flight guard inside SessionSyncService coalesces bursty
-      // updates from active sessions into a single pass.
+      // metadata push + bytes push on terminal state. The in-flight guards
+      // inside SessionSyncService coalesce bursty updates into single passes.
       //
       // canRunCloudSync() (not a bare tier check): when the local profile is
       // bound to a different account, we MUST NOT call markDirty — it would
@@ -908,6 +962,16 @@ httpServer.listen(port, "127.0.0.1", () => {
       sessionSync.pushPending().catch((err) => {
         console.warn("[sessions] watcher-triggered pushPending failed:", err);
       });
+      // Terminal-state hook: fire one final pushBytes when the session
+      // transitions to done/disconnected so the tail of the jsonl makes it
+      // to cloud even if it's under the snapshot-timer's 1 MB threshold.
+      // sessionStore lookup is a single PK read — cheap.
+      const row = sessionStore.getById(id);
+      if (row && (row.state === "done" || row.state === "disconnected")) {
+        sessionSync.pushBytes(id).catch((err) => {
+          console.warn("[sessions] terminal pushBytes failed:", err);
+        });
+      }
     },
   });
   claudeCodeWatcher.start().catch((err) => {
