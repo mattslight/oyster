@@ -305,7 +305,15 @@ function isValidSession(s: unknown): s is IncomingSession {
   if (typeof o.started_at !== "string") return false;
   if (typeof o.last_event_at !== "string") return false;
   if (typeof o.sync_dirty_at !== "number" || !Number.isFinite(o.sync_dirty_at)) return false;
-  // title / cwd / model / ended_at / device_id are nullable; minimal check.
+  if (o.sync_dirty_at < 0) return false;
+  // Nullable fields must be string-or-null. Anything else (number, object,
+  // array) would either crash D1 .bind() with TypeError or silently coerce
+  // to a useless string representation. Each malformed session is rejected
+  // individually so the rest of the batch still lands.
+  for (const key of ["title", "cwd", "model", "ended_at", "device_id"] as const) {
+    const v = o[key];
+    if (v !== null && v !== undefined && typeof v !== "string") return false;
+  }
   return true;
 }
 
@@ -404,6 +412,13 @@ function r2KeyFor(ownerId: string, sessionId: string): string {
   return `sessions/${ownerId}/${sessionId}.jsonl`;
 }
 
+// Hard cap on jsonl uploads. Real Claude Code sessions are typically 1-50 MB;
+// 50 MB covers extreme edge cases without letting an abusive client fill R2
+// or burn worker CPU. Workers' default body limit (100 MB) and CPU budget
+// would catch this anyway, but we want a structured 413 instead of a runtime
+// crash and the limit is small enough to keep encryption fast.
+const MAX_BYTES_UPLOAD = 50 * 1024 * 1024;
+
 async function handleSessionsBytesPut(req: Request, env: Env, sessionId: string): Promise<Response> {
   const user = await resolveSession(req, env);
   if (!user) return jsonError(401, "sign_in_required");
@@ -417,8 +432,20 @@ async function handleSessionsBytesPut(req: Request, env: Env, sessionId: string)
   ).bind(user.id, sessionId).first();
   if (!owns) return jsonError(404, "session_not_found");
 
+  // Fail fast on Content-Length when the client honestly declares it. Saves
+  // reading 50+ MB into memory only to reject. Content-Length can be missing
+  // or lie (chunked transfer, untrusted client) so we re-check after read.
+  const lenHeader = req.headers.get("content-length");
+  if (lenHeader) {
+    const declared = Number(lenHeader);
+    if (Number.isFinite(declared) && declared > MAX_BYTES_UPLOAD) {
+      return jsonError(413, "payload_too_large");
+    }
+  }
+
   const plaintext = new Uint8Array(await req.arrayBuffer());
   if (plaintext.byteLength === 0) return jsonError(400, "empty_body");
+  if (plaintext.byteLength > MAX_BYTES_UPLOAD) return jsonError(413, "payload_too_large");
 
   let ciphertext: Uint8Array;
   try {

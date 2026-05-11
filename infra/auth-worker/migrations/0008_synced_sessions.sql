@@ -25,3 +25,9 @@ CREATE TABLE IF NOT EXISTS synced_session_metadata (
 
 CREATE INDEX IF NOT EXISTS idx_synced_session_metadata_owner_updated
   ON synced_session_metadata (owner_id, updated_at DESC);
+
+-- The list endpoint orders by last_event_at DESC (user-facing ""most recently
+-- active first""), distinct from updated_at (the LWW sync tiebreaker). Without
+-- this index a Pro user with hundreds of sessions would force a sort per GET.
+CREATE INDEX IF NOT EXISTS idx_synced_session_metadata_owner_last_event
+  ON synced_session_metadata (owner_id, last_event_at DESC);

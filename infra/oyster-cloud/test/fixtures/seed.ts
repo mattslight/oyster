@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS synced_session_metadata (
 );
 CREATE INDEX IF NOT EXISTS idx_synced_session_metadata_owner_updated
   ON synced_session_metadata (owner_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_synced_session_metadata_owner_last_event
+  ON synced_session_metadata (owner_id, last_event_at DESC);
 `;
 
 export async function applySchema(): Promise<void> {

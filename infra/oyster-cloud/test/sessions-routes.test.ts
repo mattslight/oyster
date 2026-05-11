@@ -144,6 +144,46 @@ describe("POST /api/sessions/metadata", () => {
     ).bind(userId).first<{ n: number }>();
     expect(count?.n).toBe(1);
   });
+
+  it("rejects nullable fields with non-string types instead of crashing D1.bind", async () => {
+    const { token, userId } = await makeProSession();
+    const goodId = `s-${crypto.randomUUID()}`;
+    const badTypeId = `s-${crypto.randomUUID()}`;
+    const res = await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessions: [
+          sampleSession(goodId, 1000),
+          // title is a number — would reach D1.bind() with the lax validation.
+          sampleSession(badTypeId, 1000, { title: 12345 }),
+        ],
+      }),
+    }, token);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { accepted: string[]; rejected: string[] };
+    expect(body.accepted).toEqual([goodId]);
+    expect(body.rejected).toEqual([badTypeId]);
+    // Only the well-formed session landed.
+    const count = await env.DB.prepare(
+      `SELECT COUNT(*) as n FROM synced_session_metadata WHERE owner_id = ?`,
+    ).bind(userId).first<{ n: number }>();
+    expect(count?.n).toBe(1);
+  });
+
+  it("rejects negative sync_dirty_at", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    const res = await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessions: [sampleSession(sid, -1)] }),
+    }, token);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { accepted: string[]; rejected: string[] };
+    expect(body.accepted).toEqual([]);
+    expect(body.rejected).toEqual([sid]);
+  });
 });
 
 describe("GET /api/sessions/metadata", () => {
@@ -312,5 +352,47 @@ describe("PUT /api/sessions/bytes/:id + GET round-trip", () => {
     expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
     expect(body.error).toBe("invalid_session_id");
+  });
+
+  it("rejects oversized PUT bodies with 413", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
+    }, token);
+
+    // 51 MB payload — over the 50 MB cap.
+    const huge = new Uint8Array(51 * 1024 * 1024);
+    const res = await signedFetch(`/api/sessions/bytes/${sid}`, {
+      method: "PUT",
+      headers: { "content-type": "application/octet-stream" },
+      body: huge,
+    }, token);
+    expect(res.status).toBe(413);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("payload_too_large");
+  });
+
+  it("fast-rejects when Content-Length declares an oversized body", async () => {
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessions: [sampleSession(sid, 1000)] }),
+    }, token);
+
+    // Small body but lying Content-Length header — the fast-path should fire.
+    const res = await signedFetch(`/api/sessions/bytes/${sid}`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/octet-stream",
+        "content-length": String(60 * 1024 * 1024),
+      },
+      body: new Uint8Array(8),
+    }, token);
+    expect(res.status).toBe(413);
   });
 });
