@@ -430,6 +430,16 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       if (fh) await fh.close().catch(() => { /* ignore */ });
     }
 
+    // Match the [sessions] pushed: accepted=N style from pushPending — only
+    // log when something actually moved through this call. sessionId truncated
+    // to the first 8 chars to keep lines scannable while preserving the
+    // useful "which session" hint.
+    if (uploaded > 0) {
+      console.log(
+        `[sessions] pushed chunks: session=${sessionId.slice(0, 8)} count=${uploaded} gen=${generation} bytes=${pushedBytes}${resetFired ? " (after reset)" : ""}`,
+      );
+    }
+
     return { uploaded, offsetAfter: offset + pushedBytes, generation, resetFired };
   }
 
