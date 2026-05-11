@@ -4,6 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.1-beta.0] - 2026-05-11
+
+### Added
+
+- **Conversation backup for Pro users.** Claude Code session transcripts now stream to your Oyster cloud as encrypted delta chunks. Each chunk is sealed with a key derived per user, so transcripts stay private to your account. Cross-device resume — picking up a session on your other machine — comes in a follow-up release.
+
 ## [0.8.0] - 2026-05-09
 
 Memories follow you across Pro devices. Headline changes from the 0.8.0-beta cycle:
