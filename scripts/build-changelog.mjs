@@ -92,9 +92,10 @@ const rendered = rawRendered.replace(
     const id = `v-${slug(version)}`;
     const versionSpan = `<span class="release-version">${escapeHtml(version)}</span>`;
     // For Unreleased, always use the synthesized compare URL — ignore any
-    // stale footer reference. For released versions, marked never emits a
-    // reference link (no footer defs), so linkedHref is null and we render
-    // a plain span.
+    // stale footer reference. For released versions, honour the footer def
+    // when one exists (older releases up to 0.7.0 still have them and
+    // render as compare links); newer releases have no footer def, so
+    // linkedHref is null and we render a plain span.
     const resolvedHref =
       version === "Unreleased"
         ? unreleasedCompareUrl
