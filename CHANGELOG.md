@@ -12,6 +12,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - **Empty cross-device sessions hidden from Home.** Aborted `claude` invocations (where the user opened a transcript but never had a real conversation) used to clutter the list as "(no title yet)" entries. Those are filtered out now. Sessions with real content always show, regardless of title. (Heuristic-based for the moment; the durable fix lands in a follow-up.)
 - **Device labels backfill automatically on upgrade.** Devices that backed up sessions before the label-sync change won't have a friendly name in cloud yet. On first boot of this release each device marks its own sessions for re-push, so the labels show up everywhere within a few minutes — no manual action required.
+- **Session metadata sync is quieter under load.** During a busy conversation, every new turn was sending its own one-row push to the cloud — dozens of HTTP round-trips per minute, all with a single session in the payload. Pushes are now coalesced: one round-trip after a ~1-second quiet window, and at most one every ~5 seconds during sustained activity. No data is lost. Transcript bytes still push on terminal state immediately.
 
 ### Fixed
 
