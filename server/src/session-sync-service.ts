@@ -660,15 +660,30 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
   // INSERT path covers the case where the file is reassembled before the
   // user runs `claude --resume` (no watcher upsert has fired yet).
   // UPDATE path covers the inverse race + heals existing 0/0/0 rows on
-  // re-resume. ISO timestamps to match the watcher's column shape.
+  // re-resume.
+  //
+  // Carefully chosen columns:
+  //  - last_event_at on INSERT comes from remote_sessions (cloud truth).
+  //    The watcher's upsert uses MAX(...) so a NOW value would ratchet
+  //    last_event_at forward and prevent the watcher from later setting
+  //    the real transcript timestamp.
+  //  - cloud_synced_at is left alone — it's the *metadata* push-ack
+  //    timestamp and is part of the dirty predicate; touching it could
+  //    falsely mark a dirty row as synced. Bytes-side ack lives in
+  //    jsonl_synced_at instead.
+  const getRemoteLastEventAt = deps.db.prepare(
+    `SELECT last_event_at FROM remote_sessions
+       WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+  );
   const seedSessionBytesStateAtReassemble = deps.db.prepare(
     `INSERT INTO sessions
        (id, agent, state, started_at, last_event_at,
         cwd, jsonl_path,
         jsonl_snapshot_offset, jsonl_chunk_count, bytes_generation,
-        cloud_owner_id, cloud_synced_at)
+        cloud_owner_id, jsonl_synced_at)
      VALUES
-       (@id, 'claude-code', 'waiting', @now_iso, @now_iso,
+       (@id, 'claude-code', 'waiting', @now_iso,
+        COALESCE(@last_event_at_iso, @now_iso),
         NULL, @jsonl_path,
         @offset, @chunk_count, @generation,
         @owner_id, @now_ms)
@@ -678,7 +693,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
        jsonl_chunk_count     = excluded.jsonl_chunk_count,
        bytes_generation      = excluded.bytes_generation,
        cloud_owner_id        = excluded.cloud_owner_id,
-       cloud_synced_at       = excluded.cloud_synced_at`,
+       jsonl_synced_at       = excluded.jsonl_synced_at`,
   );
 
   function seedReassembledBookkeeping(
@@ -689,6 +704,8 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     expectedTotal: number,
   ): void {
     const now = Date.now();
+    const remoteRow = getRemoteLastEventAt.get(ownerId, sessionId) as
+      { last_event_at: string | null } | undefined;
     seedSessionBytesStateAtReassemble.run({
       id: sessionId,
       jsonl_path: targetPath,
@@ -698,6 +715,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       owner_id: ownerId,
       now_iso: new Date(now).toISOString(),
       now_ms: now,
+      last_event_at_iso: remoteRow?.last_event_at ?? null,
     });
   }
 
