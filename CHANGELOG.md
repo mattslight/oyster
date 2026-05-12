@@ -6,7 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
-- **Resumed cross-device sessions sync their continuations back to the cloud.** After resuming another device's session locally, the original fix in beta.6 wasn't enough: Claude Code preserves the origin device's working directory in every event it writes, even on the resuming device, so the watcher had no event-side signal to recover from. Oyster now tracks each session's actual on-disk transcript path directly, bypassing the working-directory mismatch entirely. A Mac-resumed Windows session now backs up cleanly, and a third device can pick it up from where Mac left it. Existing poisoned rows self-heal on the next boot.
+- **Cross-device session continuations sync back to the cloud.** Resuming another device's session locally — then continuing the conversation — now correctly uploads the new turns. Previously the resuming device wrote new content but couldn't sync it (the cloud's existing chunks blocked re-upload of the same byte range), so the second device could read the original transcript but never push its own additions back. Future resumes from a third device will see the full conversation including everything added on the resuming device.
 
 ## [0.8.1-beta.5] - 2026-05-12
 
