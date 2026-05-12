@@ -326,6 +326,28 @@ const profileBinding = createProfileBindingService({ db });
   }
 }
 
+// Self-mirror cleanup (#322 PR 2 hotfix follow-up). Removes any
+// remote_sessions rows that are actually local — either device_id matches
+// this device, or session_id appears in the local `sessions` table. These
+// ghosts arose during the device_id backfill: pull ran before push, cloud
+// rows still had NULL device_id, so the old filter (device_id !== mine)
+// failed to recognise them as self. Harmless thanks to the GET
+// /api/sessions session_id de-dup, but better to remove the dead state so
+// remote_sessions stays a faithful "other devices only" mirror.
+//
+// Idempotent — runs on every boot. The cost is O(remote_rows + local_rows)
+// once at startup; negligible at typical scales.
+{
+  const cleaned = db.prepare(
+    `DELETE FROM remote_sessions
+      WHERE device_id = (SELECT device_id FROM device_identity WHERE id = 1)
+         OR session_id IN (SELECT id FROM sessions)`,
+  ).run();
+  if (cleaned.changes > 0) {
+    console.log(`[sessions] self-mirror cleanup: removed ${cleaned.changes} ghost remote_sessions rows`);
+  }
+}
+
 /** Returns true when the signed-in user is Pro AND this local profile is
  *  either unbound or already bound to that user. Side-effect on first call
  *  for a new Pro user: binds the profile. */
