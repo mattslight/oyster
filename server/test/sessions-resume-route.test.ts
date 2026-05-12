@@ -30,6 +30,7 @@ function makeDb(): Database.Database {
   db.exec(`
     CREATE TABLE remote_sessions (
       session_id TEXT NOT NULL, owner_id TEXT NOT NULL, device_id TEXT,
+      device_label TEXT,
       agent TEXT NOT NULL, title TEXT, state TEXT NOT NULL, cwd TEXT,
       model TEXT, started_at TEXT NOT NULL, ended_at TEXT,
       last_event_at TEXT NOT NULL, bytes_generation INTEGER NOT NULL DEFAULT 0,

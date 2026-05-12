@@ -137,3 +137,48 @@ export class SessionNotFoundError extends Error {
     this.name = "SessionNotFoundError";
   }
 }
+
+/** Re-exported shape so callers can type-check the dialog. The server side
+ *  is shared/types.ts → SessionResumeResponse. */
+export type { SessionResumeResponse } from "../../../shared/types";
+import type { SessionResumeResponse } from "../../../shared/types";
+
+/** POST /api/sessions/:id/resume. The route returns one of two shapes:
+ *
+ *  - 200 with a tagged `SessionResumeResponse` body (status: ok |
+ *    needs_target | pick_source | validation_warning).
+ *  - 409 with EITHER `{ status: "local_diverged", ... }` (a real
+ *    response variant we want to surface) OR `{ error, message }` for
+ *    pre-flight errors like bytes_not_available. We re-throw the latter
+ *    as ApiError so the dialog doesn't render a blank state on a
+ *    `status`-less body.
+ *
+ *  Anything else (network failure, 5xx) throws ApiError. */
+export async function resumeSession(
+  sessionId: string,
+  opts: { targetCwd?: string; force?: boolean } = {},
+): Promise<SessionResumeResponse> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/resume`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  if (res.ok) {
+    return (await res.json()) as SessionResumeResponse;
+  }
+  if (res.status === 409) {
+    const body = await res.json().catch(() => null) as
+      | { status?: string; error?: string; message?: string }
+      | null;
+    // Only `local_diverged` is a real response variant on 409. Anything
+    // else (bytes_not_available, session_not_found_in_remote, etc.) is an
+    // operational error — surface as ApiError so callers can react
+    // distinctly rather than silently falling off the discriminated union.
+    if (body && body.status === "local_diverged") {
+      return body as SessionResumeResponse;
+    }
+    const message = body?.message ?? body?.error ?? "Conflict";
+    throw new ApiError(message, 409);
+  }
+  throw new ApiError(`Resume failed: ${res.status}`, res.status);
+}

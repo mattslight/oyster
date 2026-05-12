@@ -174,6 +174,10 @@ interface OutgoingSession {
    *  Attached at push time so cloud knows which device produced each
    *  session — drives the "from MacBook" chip on Device B in PR 3. */
   device_id: string | null;
+  /** Human-readable device label from device_identity.label. Sent
+   *  alongside device_id so Device B's UI can render "From MacBookPro"
+   *  rather than a UUID prefix. Capped at 64 chars worker-side. */
+  device_label: string | null;
 }
 
 export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncService {
@@ -222,10 +226,11 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     let totalAccepted = 0;
     const MAX_BATCHES = 1000;  // defensive safety cap
 
-    // Cache device_id once per drain — it doesn't change during a server
-    // lifetime. NULL is tolerated (cloud upsert accepts NULL) but warns so
-    // a missing device_identity seed is visible.
+    // Cache device id + label once per drain — neither changes during a
+    // server lifetime. NULL is tolerated (cloud upsert accepts both) but a
+    // missing device_identity seed warns so it's visible.
     const myDeviceId = getMyDeviceId();
+    const myDeviceLabel = getMyDeviceLabel();
     if (!myDeviceId) {
       console.warn("[sessions] pushPending: device_identity not seeded; pushing without device_id");
     }
@@ -234,11 +239,15 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       const pending = scanDirty.all(session.user.id, BATCH_SIZE) as OutgoingSession[];
       if (pending.length === 0) break;
 
-      // Stamp every row with this device's id at push time. Rows in the
-      // local `sessions` table don't carry a device_id column — they're
+      // Stamp every row with this device's id + label at push time. Rows in
+      // the local `sessions` table don't carry these columns — they're
       // implicitly produced by this device because the watcher only sees
       // its own filesystem.
-      const stamped = pending.map((s) => ({ ...s, device_id: myDeviceId }));
+      const stamped = pending.map((s) => ({
+        ...s,
+        device_id: myDeviceId,
+        device_label: myDeviceLabel,
+      }));
 
       let res: Response;
       try {
@@ -530,12 +539,16 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
 
   const upsertRemoteSession = deps.db.prepare(
     `INSERT INTO remote_sessions
-       (session_id, owner_id, device_id, agent, title, state, cwd, model,
+       (session_id, owner_id, device_id, device_label, agent, title, state, cwd, model,
         started_at, ended_at, last_event_at, bytes_generation, has_bytes,
         active_device_id, cloud_updated_at, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(owner_id, session_id) DO UPDATE SET
        device_id         = excluded.device_id,
+       -- Preserve a known label if cloud sends NULL (legacy row, or
+       -- transient race where a partial-shape session arrived). Only a
+       -- non-null cloud value replaces what we have.
+       device_label      = COALESCE(excluded.device_label, remote_sessions.device_label),
        agent             = excluded.agent,
        title             = excluded.title,
        state             = excluded.state,
@@ -573,6 +586,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     type CloudSession = {
       session_id: string;
       device_id: string | null;
+      device_label: string | null;
       agent: string;
       title: string | null;
       state: string;
@@ -614,8 +628,9 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     const tx = deps.db.transaction(() => {
       for (const s of foreignRows) {
         const info = upsertRemoteSession.run(
-          s.session_id, session.user.id, s.device_id, s.agent, s.title, s.state,
-          s.cwd, s.model, s.started_at, s.ended_at, s.last_event_at,
+          s.session_id, session.user.id, s.device_id, s.device_label ?? null,
+          s.agent, s.title, s.state, s.cwd, s.model,
+          s.started_at, s.ended_at, s.last_event_at,
           s.bytes_generation, s.has_bytes ? 1 : 0, s.active_device_id ?? null,
           s.updated_at, now,
         );
@@ -630,16 +645,27 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     return applied;
   }
 
-  /** Stable per-device id; lazy-initialised on first read. */
-  let cachedDeviceId: string | null = null;
-  function getMyDeviceId(): string | null {
-    if (cachedDeviceId !== null) return cachedDeviceId;
+  /** Stable per-device identity; lazy-initialised on first successful
+   *  read. We cache ONLY on success — a missing device_identity row
+   *  means the install seed hasn't run yet (test setup, repair flows,
+   *  or first-boot ordering), and we want subsequent calls to retry
+   *  rather than locking in a null forever. Once seeded, the row never
+   *  changes for the process lifetime, so one cache is enough. */
+  let cachedDeviceIdentity: { device_id: string; label: string } | null = null;
+  function loadDeviceIdentity(): { device_id: string | null; label: string | null } {
+    if (cachedDeviceIdentity !== null) return cachedDeviceIdentity;
     const row = deps.db.prepare(
-      `SELECT device_id FROM device_identity WHERE id = 1 LIMIT 1`,
-    ).get() as { device_id: string } | undefined;
-    cachedDeviceId = row?.device_id ?? null;
-    return cachedDeviceId;
+      `SELECT device_id, label FROM device_identity WHERE id = 1 LIMIT 1`,
+    ).get() as { device_id: string; label: string } | undefined;
+    if (row) {
+      cachedDeviceIdentity = row;
+      return row;
+    }
+    // Don't cache the null result — next caller retries.
+    return { device_id: null, label: null };
   }
+  function getMyDeviceId(): string | null { return loadDeviceIdentity().device_id; }
+  function getMyDeviceLabel(): string | null { return loadDeviceIdentity().label; }
 
   const updateRemoteSessionLocalPath = deps.db.prepare(
     `UPDATE remote_sessions

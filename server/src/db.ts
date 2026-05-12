@@ -233,6 +233,13 @@ export function initDb(userlandDir: string): Database.Database {
   try {
     db.exec(`ALTER TABLE remote_sessions ADD COLUMN active_device_id TEXT`);
   } catch { /* already exists */ }
+  // Additive: device_label added for the cross-device session chip (PR 3.1).
+  // Human-readable name pulled from each device's device_identity.label
+  // (hostname() at install). Null on rows pushed before this column existed —
+  // UI falls back to "Other device" then.
+  try {
+    db.exec(`ALTER TABLE remote_sessions ADD COLUMN device_label TEXT`);
+  } catch { /* already exists */ }
   db.exec(`CREATE INDEX IF NOT EXISTS remote_sessions_owner_last_event
              ON remote_sessions(owner_id, last_event_at DESC)`);
 

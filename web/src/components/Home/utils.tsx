@@ -62,6 +62,27 @@ export function spaceLabelFor(spaceId: string | null, spaces: Space[]): string |
   return spaces.find((s) => s.id === spaceId)?.displayName ?? spaceId;
 }
 
+/** Decide whether to show the cross-device chip on a session card and what
+ *  to put in it. Returns null for local sessions and during the brief
+ *  window before useMyDeviceId resolves (we render conservatively rather
+ *  than flashing chips on local sessions). */
+export function originDeviceChipFor(
+  session: Session,
+  myDeviceId: string | null,
+): { label: string; titleTooltip: string } | null {
+  const origin = session.originDeviceId;
+  if (!origin) return null;             // local session, no chip
+  if (!myDeviceId) return null;          // identity still loading
+  if (origin === myDeviceId) return null; // own session, no chip
+  // Prefer the human label pushed by the origin device; fall back to a
+  // generic "Other device" rather than exposing the UUID prefix in the UI.
+  const label = session.originDeviceLabel ?? "Other device";
+  // Tooltip carries the UUID for diagnostic copy-paste, never user-facing
+  // text. Truncated to first 8 chars to match the prior debug format.
+  const titleTooltip = `From ${label} (device ${origin.slice(0, 8)})`;
+  return { label, titleTooltip };
+}
+
 export function metaForSession(session: Session): string {
   const rel = formatRelative(session.lastEventAt) ?? "—";
   if (session.state === "waiting") return `${session.agent} · waiting ${rel}`;

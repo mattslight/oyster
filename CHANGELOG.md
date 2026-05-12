@@ -4,9 +4,9 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- **Cross-device session continuations sync back to the cloud.** Resuming another device's session locally — then continuing the conversation — now correctly uploads the new turns. Previously the resuming device wrote new content but couldn't sync it (the cloud's existing chunks blocked re-upload of the same byte range), so the second device could read the original transcript but never push its own additions back. Future resumes from a third device will see the full conversation including everything added on the resuming device.
+- **Cross-device sessions in Home, with a one-click resume.** Sessions backed up on another device now appear in Home with an `↗ MacBookPro` chip (or "Other device" if the origin's label hasn't synced yet) on both the grid and list views. Click into one and you'll see a new **Resume on this device** button — it walks you through reassembling the transcript locally and gives you a copyable command to continue the conversation. Sessions whose transcript bytes haven't synced from the origin device yet show the button as disabled with an explanation.
 
 ## [0.8.1-beta.5] - 2026-05-12
 

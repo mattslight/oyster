@@ -45,6 +45,7 @@ function harness() {
       session_id        TEXT NOT NULL,
       owner_id          TEXT NOT NULL,
       device_id         TEXT,
+      device_label      TEXT,
       agent             TEXT NOT NULL,
       title             TEXT,
       state             TEXT NOT NULL,
@@ -136,7 +137,7 @@ describe("SessionSyncService", () => {
     expect(row.cloud_owner_id).toBe("user-A");
   });
 
-  it("pushPending stamps device_id from device_identity onto every payload row", async () => {
+  it("pushPending stamps device_id and device_label from device_identity onto every payload row", async () => {
     const { db, profileBinding } = harness();
     profileBinding.bindToOwner("user-A");
     db.prepare(`INSERT INTO device_identity (id, device_id, label) VALUES (1, ?, ?)`)
@@ -156,9 +157,14 @@ describe("SessionSyncService", () => {
       fetch: fetchSpy as unknown as typeof fetch,
     });
     await svc.pushPending();
-    const body = JSON.parse(capturedBody ?? "{}") as { sessions: Array<{ id: string; device_id: string | null }> };
+    const body = JSON.parse(capturedBody ?? "{}") as {
+      sessions: Array<{ id: string; device_id: string | null; device_label: string | null }>
+    };
     expect(body.sessions).toHaveLength(1);
     expect(body.sessions[0]!.device_id).toBe("my-mac-uuid");
+    // device_label rides alongside so Device B can render "From MacBook-Pro"
+    // without needing a separate hostname-lookup round-trip.
+    expect(body.sessions[0]!.device_label).toBe("MacBook-Pro");
   });
 
   it("pushPending tolerates missing device_identity (device_id null in payload)", async () => {
@@ -756,6 +762,7 @@ describe("SessionSyncService.pull", () => {
   function cloudPayload(sessions: Array<{
     session_id: string;
     device_id: string | null;
+    device_label?: string | null;
     has_bytes?: boolean;
     bytes_generation?: number;
     updated_at?: number;
@@ -766,6 +773,7 @@ describe("SessionSyncService.pull", () => {
       sessions: sessions.map((s) => ({
         session_id: s.session_id,
         device_id: s.device_id,
+        device_label: s.device_label ?? null,
         agent: "claude-code",
         title: s.title ?? "remote session",
         state: s.state ?? "done",
@@ -823,6 +831,67 @@ describe("SessionSyncService.pull", () => {
     expect(rows.map((r) => r.session_id)).toEqual(["s-orphan", "s-other"]);
     expect(rows.find((r) => r.session_id === "s-other")?.has_bytes).toBe(1);
     expect(rows.find((r) => r.session_id === "s-orphan")?.has_bytes).toBe(0);
+  });
+
+  it("populates remote_sessions.device_label from the cloud payload", async () => {
+    // The cross-device session chip in the UI renders this label rather than
+    // the opaque device_id UUID, so it has to flow through the pull path.
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db, "dev-mac");
+    const fetchSpy = vi.fn(async () =>
+      cloudPayload([
+        { session_id: "s-from-windows", device_id: "dev-pc", device_label: "DESKTOP-WIN", has_bytes: true },
+        { session_id: "s-legacy", device_id: "dev-pc", device_label: null, has_bytes: true },
+      ]),
+    );
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.pull();
+    const rows = db.prepare(
+      `SELECT session_id, device_label FROM remote_sessions WHERE owner_id = ? ORDER BY session_id`,
+    ).all("user-A") as Array<{ session_id: string; device_label: string | null }>;
+    expect(rows.find((r) => r.session_id === "s-from-windows")?.device_label).toBe("DESKTOP-WIN");
+    expect(rows.find((r) => r.session_id === "s-legacy")?.device_label).toBeNull();
+  });
+
+  it("preserves an existing device_label when cloud later sends NULL (COALESCE)", async () => {
+    // A subsequent pull where the origin device is offline or pushed a
+    // partial-shape session must not erase the known label. The upsert's
+    // COALESCE(excluded.device_label, ...) protects against that.
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db, "dev-mac");
+    let phase: "labelled" | "null" = "labelled";
+    const fetchSpy = vi.fn(async () => {
+      if (phase === "labelled") {
+        return cloudPayload([
+          { session_id: "s1", device_id: "dev-pc", device_label: "DESKTOP-WIN", updated_at: 1000 },
+        ]);
+      }
+      return cloudPayload([
+        { session_id: "s1", device_id: "dev-pc", device_label: null, updated_at: 2000 },
+      ]);
+    });
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.pull();
+    phase = "null";
+    await svc.pull();
+    const row = db.prepare(
+      `SELECT device_label FROM remote_sessions WHERE session_id = 's1'`,
+    ).get() as { device_label: string | null };
+    expect(row.device_label).toBe("DESKTOP-WIN");
   });
 
   it("skips remote rows whose session_id already exists locally (legacy NULL device_id)", async () => {

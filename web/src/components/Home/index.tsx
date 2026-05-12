@@ -6,6 +6,7 @@ import type { Artifact, Space } from "../../../../shared/types";
 import { useSessions } from "../../hooks/useSessions";
 import { useMemories } from "../../hooks/useMemories";
 import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
+import { useMyDeviceId } from "../../hooks/useMyDeviceId";
 import { useSpaceSources } from "../../hooks/useSpaceSources";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 import { Desktop } from "../Desktop";
@@ -128,6 +129,8 @@ const FILTER_LABELS: Record<StateFilter, string> = {
 export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange }: Props) {
   const { sessions, error, loading } = useSessions();
   const signedIn = useAuthSignedIn();
+  const myDevice = useMyDeviceId();
+  const myDeviceId = myDevice?.deviceId ?? null;
   const [signingIn, setSigningIn] = useState(false);
   const {
     memories,
@@ -1015,6 +1018,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       session={session}
                       spaces={spaces}
                       showSpaceChip={isMetaView}
+                      myDeviceId={myDeviceId}
                       onOpen={(id) => setActivePanel({ kind: "session", id })}
                     />
                   ))}
@@ -1027,6 +1031,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                         key={session.id}
                         session={session}
                         spaces={spaces}
+                        myDeviceId={myDeviceId}
                         onOpen={(id) => setActivePanel({ kind: "session", id })}
                       />
                     ))}

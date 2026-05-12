@@ -105,6 +105,139 @@
   font-size: 11px;
 }
 
+/* Resume-on-this-device affordance + dialog (#322 PR 3.1) */
+.inspector-resume {
+  margin: 12px 28px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inspector-resume button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(143, 182, 255, 0.4);
+  background: rgba(143, 182, 255, 0.08);
+  color: #cfdcff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.inspector-resume button:hover:not(:disabled) {
+  background: rgba(143, 182, 255, 0.15);
+}
+.inspector-resume button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.inspector-resume-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.resume-dialog {
+  margin: 12px 28px 16px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(143, 182, 255, 0.2);
+  font-size: 13px;
+}
+.resume-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.resume-dialog-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.resume-dialog-header .close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+}
+.resume-dialog p { margin: 6px 0; }
+.resume-dialog code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+.resume-command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.resume-command code {
+  flex: 1;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+}
+.resume-command button,
+.resume-panel button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(143, 182, 255, 0.4);
+  background: rgba(143, 182, 255, 0.1);
+  color: #cfdcff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.resume-needs-target input {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.resume-warning ul, .resume-pick ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.resume-warning input {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.resume-warning-actions { display: flex; flex-direction: column; gap: 6px; }
+.resume-warning-actions details { font-size: 12px; }
+.resume-warning-actions summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+.resume-pick li { margin: 4px 0; display: flex; gap: 8px; align-items: center; }
+.resume-diverged .resume-tech {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.resume-error {
+  color: #f87171;
+}
+.resume-loading {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
 .inspector-tabs {
   display: flex;
   gap: 0;
