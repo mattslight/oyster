@@ -4,6 +4,15 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Active-writer signal on cross-device sessions.** When a session has been handed off — you resume a Mac session on Windows, or vice-versa — Home now shows a `Now active on MacBookPro` chip alongside the origin chip. It updates live as devices push new turns, so the demo "I picked this up over here" handoff is visible at a glance.
+
+### Changed
+
+- **Empty cross-device sessions hidden from Home.** Aborted `claude` invocations (where the user opened a transcript but never had a real conversation) used to clutter the list as "(no title yet)" entries. Those are filtered out now. Sessions with real content always show, regardless of title. (Heuristic-based for the moment; the durable fix lands in a follow-up.)
+- **Device labels backfill automatically on upgrade.** Devices that backed up sessions before the label-sync change won't have a friendly name in cloud yet. On first boot of this release each device marks its own sessions for re-push, so the labels show up everywhere within a few minutes — no manual action required.
+
 ### Fixed
 
 - **Clicking a cross-device session opens its inspector instead of erroring.** Previously the inspector failed with "Session no longer available" for any session that originated on another device, because the session-detail lookup only checked locally-discovered sessions. The lookup now falls back to the cross-device cache, and the inspector renders a friendly "Resume to view transcript" notice while the transcript hasn't been reassembled locally yet. The chip's tooltip also explains why a session shows "Other device" (its origin hasn't pushed its label yet).

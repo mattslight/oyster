@@ -2,7 +2,8 @@
 import type { Session } from "../../data/sessions-api";
 import type { Space } from "../../../../shared/types";
 import {
-  AGENT_PIP_CLASS, formatRelative, originDeviceChipFor, spaceLabelFor,
+  AGENT_PIP_CLASS, activeWriterChipFor, formatRelative,
+  originDeviceChipFor, spaceLabelFor,
 } from "./utils";
 
 interface SessionRowProps {
@@ -26,6 +27,7 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
   const cwdBasename = session.cwd ? session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
   const projectLabel = session.sourceLabel ?? spaceLabel ?? cwdBasename ?? "—";
   const remoteChip = originDeviceChipFor(session, myDeviceId);
+  const activeChip = activeWriterChipFor(session, myDeviceId);
   return (
     <div
       className="home-row"
@@ -42,6 +44,11 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
         {remoteChip && (
           <span className="home-remote-chip" title={remoteChip.titleTooltip}>
             <span aria-hidden="true">↗</span> {remoteChip.label}
+          </span>
+        )}
+        {activeChip && (
+          <span className="home-active-chip" title={activeChip.titleTooltip}>
+            {activeChip.label}
           </span>
         )}
         {title}

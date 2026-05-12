@@ -127,6 +127,11 @@ export interface Session {
    *  "Active on <device>" chip in the UI. Null for sessions that pre-date
    *  active-writer tracking. */
   activeDeviceId?: string | null;
+  /** Resolved human-readable label for `activeDeviceId`. The server
+   *  matches the active id against the local device_identity and against
+   *  remote_sessions.device_label and returns whichever matches; null when
+   *  active is some third device we don't yet have a label for. */
+  activeDeviceLabel?: string | null;
 }
 
 /** POST /api/sessions/:id/resume response shapes. */

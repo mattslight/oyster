@@ -240,6 +240,28 @@ export function initDb(userlandDir: string): Database.Database {
   try {
     db.exec(`ALTER TABLE remote_sessions ADD COLUMN device_label TEXT`);
   } catch { /* already exists */ }
+  // Additive: total_bytes (PR 3.2a) — denormalised sum of chunk byte_count
+  // across the current generation. Drives the empty-session filter on Home
+  // so cross-device "ghost" sessions (title NULL, ended_at NULL, only a
+  // handful of system events) stop crowding the list. NULL on rows pulled
+  // before this column existed — those rows stay visible until the next
+  // pull, then populate.
+  try {
+    db.exec(`ALTER TABLE remote_sessions ADD COLUMN total_bytes INTEGER`);
+  } catch { /* already exists */ }
+
+  // Tiny key→value table for one-shot migrations and feature flags. The
+  // existing INSERT-OR-IGNORE-on-device_identity pattern only fires once
+  // per install (first boot ever); for migrations gated on a specific
+  // version of Oyster being installed, we need a separate flag. Each
+  // flag's existence in this table means "this one-shot has already run."
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      applied_at INTEGER NOT NULL
+    )
+  `);
   db.exec(`CREATE INDEX IF NOT EXISTS remote_sessions_owner_last_event
              ON remote_sessions(owner_id, last_event_at DESC)`);
 

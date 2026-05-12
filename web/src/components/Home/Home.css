@@ -474,6 +474,36 @@
   font-size: 10px;
 }
 
+/* Active-writer chip — orange/amber so it reads as "live activity" and
+ * doesn't collide visually with the blue cross-device origin chip.
+ * Top-right corner on tiles, inline after the origin chip on rows. */
+.home-active-chip {
+  display: inline-flex;
+  align-items: center;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: #fbbf24;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-row-title .home-active-chip {
+  position: static;
+  margin-right: 8px;
+  vertical-align: baseline;
+  font-size: 10px;
+}
+
 /* ── Status indicator on the thumb ── */
 .home-status {
   position: absolute;
