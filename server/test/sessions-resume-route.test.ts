@@ -32,7 +32,8 @@ function makeDb(): Database.Database {
       agent TEXT NOT NULL, title TEXT, state TEXT NOT NULL, cwd TEXT,
       model TEXT, started_at TEXT NOT NULL, ended_at TEXT,
       last_event_at TEXT NOT NULL, bytes_generation INTEGER NOT NULL DEFAULT 0,
-      has_bytes INTEGER NOT NULL DEFAULT 0, cloud_updated_at INTEGER NOT NULL,
+      has_bytes INTEGER NOT NULL DEFAULT 0, active_device_id TEXT,
+      cloud_updated_at INTEGER NOT NULL,
       fetched_at INTEGER NOT NULL, jsonl_local_path TEXT,
       PRIMARY KEY (owner_id, session_id)
     );

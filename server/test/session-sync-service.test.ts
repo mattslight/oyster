@@ -54,6 +54,7 @@ function harness() {
       last_event_at     TEXT NOT NULL,
       bytes_generation  INTEGER NOT NULL DEFAULT 0,
       has_bytes         INTEGER NOT NULL DEFAULT 0,
+      active_device_id  TEXT,
       cloud_updated_at  INTEGER NOT NULL,
       fetched_at        INTEGER NOT NULL,
       jsonl_local_path  TEXT,
@@ -360,6 +361,185 @@ describe("SessionSyncService.reassembleSessionJsonl", () => {
       `SELECT jsonl_local_path FROM remote_sessions WHERE owner_id = ? AND session_id = ?`,
     ).get("user-A", "s-remote") as { jsonl_local_path: string | null };
     expect(row.jsonl_local_path).toBeNull();
+  });
+
+  it("catch-up: existing local file equal to cloud total is a no-op (no chunk fetches)", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "already-synced.jsonl");
+    const c1 = new TextEncoder().encode("event one\n");
+    const c2 = new TextEncoder().encode("event two\n");
+
+    // Pre-populate the local file with the exact contents the manifest will
+    // describe. Catch-up should detect local == cloud and skip fetches.
+    const fs = require("node:fs");
+    fs.writeFileSync(targetPath, Buffer.concat([c1, c2]));
+
+    let chunkFetches = 0;
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        return new Response(JSON.stringify({
+          bytes_generation: 0,
+          total_size: c1.byteLength + c2.byteLength,
+          active_device_id: "dev-mac",
+          chunks: [
+            { chunk_number: 1, start_offset: 0, end_offset: c1.byteLength, byte_count: c1.byteLength, plaintext_sha256: hash(c1) },
+            { chunk_number: 2, start_offset: c1.byteLength, end_offset: c1.byteLength + c2.byteLength, byte_count: c2.byteLength, plaintext_sha256: hash(c2) },
+          ],
+        }), { status: 200 });
+      }
+      if (u.includes("/chunk/")) chunkFetches++;
+      return new Response("should not fetch", { status: 500 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    const r = await svc.reassembleSessionJsonl("s-remote", targetPath);
+    expect(r.totalBytes).toBe(c1.byteLength + c2.byteLength);
+    expect(chunkFetches).toBe(0);
+    // remote_sessions.jsonl_local_path is set even for no-op
+    const row = db.prepare(
+      `SELECT jsonl_local_path FROM remote_sessions WHERE owner_id = ? AND session_id = ?`,
+    ).get("user-A", "s-remote") as { jsonl_local_path: string };
+    expect(row.jsonl_local_path).toBe(targetPath);
+  });
+
+  it("catch-up: local at chunk-1 boundary fetches only the missing tail (chunk 2+)", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "behind.jsonl");
+    const c1 = new TextEncoder().encode("first\n");
+    const c2 = new TextEncoder().encode("second\n");
+    const c3 = new TextEncoder().encode("third\n");
+
+    // Local has chunks 1 only.
+    const fs = require("node:fs");
+    fs.writeFileSync(targetPath, c1);
+
+    const chunkFetches: number[] = [];
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        return new Response(JSON.stringify({
+          bytes_generation: 0,
+          total_size: c1.byteLength + c2.byteLength + c3.byteLength,
+          active_device_id: "dev-pc",
+          chunks: [
+            { chunk_number: 1, start_offset: 0, end_offset: c1.byteLength, byte_count: c1.byteLength, plaintext_sha256: hash(c1) },
+            { chunk_number: 2, start_offset: c1.byteLength, end_offset: c1.byteLength + c2.byteLength, byte_count: c2.byteLength, plaintext_sha256: hash(c2) },
+            { chunk_number: 3, start_offset: c1.byteLength + c2.byteLength, end_offset: c1.byteLength + c2.byteLength + c3.byteLength, byte_count: c3.byteLength, plaintext_sha256: hash(c3) },
+          ],
+        }), { status: 200 });
+      }
+      const m = u.match(/\/chunk\/(\d+)$/);
+      if (m) {
+        const n = Number(m[1]);
+        chunkFetches.push(n);
+        const bytes = n === 2 ? c2 : n === 3 ? c3 : c1;
+        return new Response(bytes, { status: 200 });
+      }
+      return new Response("not_found", { status: 404 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    const r = await svc.reassembleSessionJsonl("s-remote", targetPath);
+    // Only chunks 2 + 3 fetched; chunk 1 reused from local.
+    expect(chunkFetches.sort()).toEqual([2, 3]);
+    expect(r.chunkCount).toBe(2);
+    expect(r.totalBytes).toBe(c1.byteLength + c2.byteLength + c3.byteLength);
+
+    const fs2 = require("node:fs");
+    const reassembled = fs2.readFileSync(targetPath) as Buffer;
+    expect(reassembled.equals(Buffer.concat([c1, c2, c3]))).toBe(true);
+  });
+
+  it("divergence: local jsonl larger than cloud total throws local_diverged", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "divergent.jsonl");
+    const c1 = new TextEncoder().encode("first\n");
+    const local = new TextEncoder().encode("first\nlocal-only-edits-not-in-cloud\n");
+
+    const fs = require("node:fs");
+    fs.writeFileSync(targetPath, local);
+
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        return new Response(JSON.stringify({
+          bytes_generation: 0,
+          total_size: c1.byteLength,
+          active_device_id: "dev-pc",
+          chunks: [
+            { chunk_number: 1, start_offset: 0, end_offset: c1.byteLength, byte_count: c1.byteLength, plaintext_sha256: hash(c1) },
+          ],
+        }), { status: 200 });
+      }
+      return new Response("should not fetch", { status: 500 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await expect(svc.reassembleSessionJsonl("s-remote", targetPath))
+      .rejects.toThrow(/local_diverged/);
+    // Local file untouched
+    const fs2 = require("node:fs");
+    const after = fs2.readFileSync(targetPath) as Buffer;
+    expect(after.equals(local)).toBe(true);
+  });
+
+  it("divergence: local jsonl mid-chunk (no matching boundary) throws local_diverged", async () => {
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "mid-chunk.jsonl");
+    const c1 = new TextEncoder().encode("aaaaa");  // 5 bytes
+    const c2 = new TextEncoder().encode("bbbbb");  // 5 bytes
+    // Local has 7 bytes — doesn't match either boundary (0, 5, 10).
+    const fs = require("node:fs");
+    fs.writeFileSync(targetPath, new TextEncoder().encode("aaaaabb"));
+
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        return new Response(JSON.stringify({
+          bytes_generation: 0,
+          total_size: 10,
+          active_device_id: "dev-pc",
+          chunks: [
+            { chunk_number: 1, start_offset: 0, end_offset: 5, byte_count: 5, plaintext_sha256: hash(c1) },
+            { chunk_number: 2, start_offset: 5, end_offset: 10, byte_count: 5, plaintext_sha256: hash(c2) },
+          ],
+        }), { status: 200 });
+      }
+      return new Response("should not fetch", { status: 500 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await expect(svc.reassembleSessionJsonl("s-remote", targetPath))
+      .rejects.toThrow(/local_diverged/);
   });
 
   it("free user throws (pro-only)", async () => {

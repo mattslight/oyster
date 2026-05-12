@@ -175,6 +175,8 @@ export async function tryHandleSessionRoute(
       lastEventAt: string;
       originDeviceId: string | null;
       jsonlAvailableLocally: boolean;
+      hasBytes: boolean;
+      activeDeviceId: string | null;
     }
     const sourcesById = new Map(sourceList.map((s) => [s.id, s]));
     const localPayload: MergedSessionPayload[] = rows.map((row) => {
@@ -196,6 +198,13 @@ export async function tryHandleSessionRoute(
         // Local sessions are by definition available on this device.
         originDeviceId: null,
         jsonlAvailableLocally: true,
+        // We don't track "is there a cloud chunk for this local session" here
+        // — that requires a cloud round-trip. For the UI, the
+        // jsonlAvailableLocally flag is the right gate. hasBytes mirrors that
+        // (the file is on disk, so there are bytes to read).
+        hasBytes: true,
+        // Local sessions are always actively written by this device.
+        activeDeviceId: null,
       };
     });
 
@@ -211,11 +220,11 @@ export async function tryHandleSessionRoute(
         session_id: string; device_id: string | null; agent: string; title: string | null;
         state: string; cwd: string | null; model: string | null; started_at: string;
         ended_at: string | null; last_event_at: string; has_bytes: number;
-        jsonl_local_path: string | null;
+        active_device_id: string | null; jsonl_local_path: string | null;
       };
       const remoteRows = db.prepare(
         `SELECT session_id, device_id, agent, title, state, cwd, model, started_at,
-                ended_at, last_event_at, has_bytes, jsonl_local_path
+                ended_at, last_event_at, has_bytes, active_device_id, jsonl_local_path
            FROM remote_sessions
           WHERE owner_id = ?
           ORDER BY last_event_at DESC`,
@@ -238,6 +247,8 @@ export async function tryHandleSessionRoute(
           originDeviceId: r.device_id,
           // Available locally only if the user has already reassembled it.
           jsonlAvailableLocally: r.jsonl_local_path !== null,
+          hasBytes: r.has_bytes === 1,
+          activeDeviceId: r.active_device_id,
         }));
     }
 
@@ -563,12 +574,26 @@ export async function tryHandleSessionRoute(
         }
 
         // 3. Reassemble chunks into the encoded jsonl path Claude Code expects.
+        // Three outcomes from the service:
+        //   - success: jsonl is on disk at localJsonlPath (or already was).
+        //   - throw "local_diverged": this device has unsynced edits past
+        //     cloud's chunk chain. Return 409 with a structured status so
+        //     the UI can surface "Local edits won't sync — fork or discard?".
+        //   - any other throw: 500 reassemble_failed.
         const localJsonlPath = join(projectsRoot(), encodeCwd(targetCwd), `${sessionId}.jsonl`);
         try {
           await sessionSync.reassembleSessionJsonl(sessionId, localJsonlPath);
         } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (message.includes("local_diverged")) {
+            sendJson(
+              { status: "local_diverged", localJsonlPath, message },
+              409,
+            );
+            return true;
+          }
           sendJson(
-            { error: "reassemble_failed", message: err instanceof Error ? err.message : String(err) },
+            { error: "reassemble_failed", message },
             500,
           );
           return true;

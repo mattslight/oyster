@@ -427,20 +427,23 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
 
         let res: Response;
         try {
+          const headers: Record<string, string> = {
+            Cookie: `oyster_session=${session.token}`,
+            "content-type": "application/octet-stream",
+            "x-chunk-start-offset": String(startOffset),
+            "x-chunk-end-offset": String(endOffset),
+            "x-plaintext-sha256": hash,
+            "x-bytes-generation": String(generation),
+          };
+          // Stamp the writing device on every chunk so cloud can track who's
+          // active. Worker uses this to bump synced_session_metadata.
+          // active_device_id, which other devices read to render "Active on
+          // <device>" in their session list.
+          const myDeviceId = getMyDeviceId();
+          if (myDeviceId) headers["x-bytes-device-id"] = myDeviceId;
           res = await deps.fetch(
             `${deps.workerBase}/api/sessions/bytes/${encodeURIComponent(sessionId)}/chunk/${nextChunkNumber}`,
-            {
-              method: "PUT",
-              headers: {
-                Cookie: `oyster_session=${session.token}`,
-                "content-type": "application/octet-stream",
-                "x-chunk-start-offset": String(startOffset),
-                "x-chunk-end-offset": String(endOffset),
-                "x-plaintext-sha256": hash,
-                "x-bytes-generation": String(generation),
-              },
-              body: chunkBody,
-            },
+            { method: "PUT", headers, body: chunkBody },
           );
         } catch (err) {
           console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} fetch failed for ${sessionId}:`, err);
@@ -460,10 +463,23 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
 
         // Per the worker's idempotency contract, an exact-match retry returns
         // 200 idempotent:true (not 409). So any non-200 here is a real
-        // problem (conflict, stale gen, non-contiguous) — log and abort.
-        // The next reconcile cycle re-derives state from the server's
-        // manifest and recovers.
-        console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} rejected (${res.status}) for ${sessionId}`);
+        // problem — most commonly a 409 because another device is now the
+        // active writer (Pattern A hand-off scenario): cloud already has
+        // chunk_number N+1 from them with different bytes, so this device's
+        // contiguous-offset push fails.
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        const reason = body?.error ?? `http_${res.status}`;
+        if (reason === "non_contiguous_start" || reason === "chunk_conflict" || reason === "stale_generation") {
+          // The user-facing framing for these all collapses to "this session
+          // was continued on another device or has divergent local edits."
+          // PR 3 surfaces this as a banner; for now a clear log is the only
+          // signal.
+          console.warn(
+            `[sessions] session=${sessionId.slice(0, 8)} chunk ${nextChunkNumber} rejected: ${reason} — session likely continued on another device or local jsonl has divergent edits. Next reconcile will refresh state.`,
+          );
+        } else {
+          console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} rejected (${res.status} ${reason}) for ${sessionId}`);
+        }
         break;
       }
     } catch (err) {
@@ -494,8 +510,8 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     `INSERT INTO remote_sessions
        (session_id, owner_id, device_id, agent, title, state, cwd, model,
         started_at, ended_at, last_event_at, bytes_generation, has_bytes,
-        cloud_updated_at, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        active_device_id, cloud_updated_at, fetched_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(owner_id, session_id) DO UPDATE SET
        device_id         = excluded.device_id,
        agent             = excluded.agent,
@@ -508,6 +524,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
        last_event_at     = excluded.last_event_at,
        bytes_generation  = excluded.bytes_generation,
        has_bytes         = excluded.has_bytes,
+       active_device_id  = excluded.active_device_id,
        cloud_updated_at  = excluded.cloud_updated_at,
        fetched_at        = excluded.fetched_at
      WHERE excluded.cloud_updated_at > remote_sessions.cloud_updated_at`,
@@ -544,6 +561,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       last_event_at: string;
       bytes_generation: number;
       has_bytes: boolean;
+      active_device_id: string | null;
       updated_at: number;
     };
     const body = await res.json().catch(() => null) as { sessions?: CloudSession[] } | null;
@@ -576,7 +594,8 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
         const info = upsertRemoteSession.run(
           s.session_id, session.user.id, s.device_id, s.agent, s.title, s.state,
           s.cwd, s.model, s.started_at, s.ended_at, s.last_event_at,
-          s.bytes_generation, s.has_bytes ? 1 : 0, s.updated_at, now,
+          s.bytes_generation, s.has_bytes ? 1 : 0, s.active_device_id ?? null,
+          s.updated_at, now,
         );
         if (info.changes > 0) applied++;
       }
@@ -623,7 +642,12 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       byte_count: number;
       plaintext_sha256: string;
     };
-    type Manifest = { bytes_generation: number; total_size: number; chunks: ManifestChunk[] };
+    type Manifest = {
+      bytes_generation: number;
+      total_size: number;
+      active_device_id: string | null;
+      chunks: ManifestChunk[];
+    };
 
     let manifest: Manifest;
     try {
@@ -648,15 +672,74 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       }
     }
 
-    // Write to a sibling .partial path first; rename on success. This means
-    // a mid-fetch crash leaves a discardable partial file instead of a
-    // half-baked jsonl masquerading as complete.
-    const partialPath = `${targetPath}.partial`;
-    await fs.mkdir(join(targetPath, ".."), { recursive: true }).catch(() => { /* exists */ });
-    const fh = await fs.open(partialPath, "w");
-    let writtenBytes = 0;
+    const expectedTotal = manifest.chunks[manifest.chunks.length - 1]!.end_offset;
+
+    // Probe the local file. Three states matter (Pattern A from the design):
+    //   1. No local file (or empty) → full fresh reassemble.
+    //   2. Local size == cloud total → no-op, session is already in sync.
+    //   3. Local size < cloud total AND aligns with a chunk boundary → catch up,
+    //      append the missing tail chunks.
+    //   4. Local size > cloud total → "local_diverged": this device has unsynced
+    //      edits past the cloud chunk chain. Block and surface conflict.
+    //   5. Local size doesn't match any chunk boundary → also divergent (mid-
+    //      chunk position from a prior crash or hand-edit).
+    let localSize = 0;
     try {
-      for (const meta of manifest.chunks) {
+      localSize = (await fs.stat(targetPath)).size;
+    } catch {
+      // No local file — fall through to full reassemble (localSize stays 0).
+    }
+
+    if (localSize === expectedTotal) {
+      // Already up-to-date — nothing to fetch. Just record the path.
+      updateRemoteSessionLocalPath.run(targetPath, session.user.id, sessionId);
+      console.log(
+        `[sessions] reassemble: session=${sessionId.slice(0, 8)} already up-to-date (${localSize} bytes)`,
+      );
+      return {
+        chunkCount: manifest.chunks.length,
+        totalBytes: localSize,
+        generation: manifest.bytes_generation,
+        targetPath,
+      };
+    }
+
+    if (localSize > expectedTotal) {
+      throw new Error(
+        `local_diverged: local jsonl is ${localSize} bytes but cloud chain is ${expectedTotal}. ` +
+        `This device has local-only edits past the cloud chunk chain. ` +
+        `Resolve by discarding local or forking to a new session.`,
+      );
+    }
+
+    // Find the first chunk we still need to fetch.
+    let firstIdx = 0;
+    if (localSize > 0) {
+      firstIdx = manifest.chunks.findIndex((c) => c.start_offset === localSize);
+      if (firstIdx < 0) {
+        throw new Error(
+          `local_diverged: local jsonl is ${localSize} bytes but no manifest chunk starts at that offset. ` +
+          `File is mid-chunk or contains bytes not present in any chunk.`,
+        );
+      }
+    }
+
+    // Two write strategies based on whether this is a fresh reassemble or a
+    // catch-up append:
+    //   - Fresh (firstIdx === 0): write to a .partial sibling then rename on
+    //     success, so a mid-fetch crash leaves a discardable artefact rather
+    //     than a half-baked jsonl masquerading as complete.
+    //   - Catch-up (firstIdx > 0): open the existing file in r+ mode, write
+    //     new chunks at their declared offsets. On failure, truncate back to
+    //     localSize so the file isn't left in a divergent state.
+    const isFresh = firstIdx === 0;
+    const writePath = isFresh ? `${targetPath}.partial` : targetPath;
+    await fs.mkdir(join(targetPath, ".."), { recursive: true }).catch(() => { /* exists */ });
+    const fh = await fs.open(writePath, isFresh ? "w" : "r+");
+    let writtenBytes = isFresh ? 0 : localSize;
+    try {
+      for (let i = firstIdx; i < manifest.chunks.length; i++) {
+        const meta = manifest.chunks[i]!;
         const url = `${deps.workerBase}/api/sessions/bytes/${encodeURIComponent(sessionId)}/chunk/${meta.chunk_number}`;
         const r = await deps.fetch(url, { headers: { Cookie: `oyster_session=${session.token}` } });
         if (!r.ok) {
@@ -675,32 +758,44 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       }
     } catch (err) {
       await fh.close().catch(() => { /* ignore */ });
-      await fs.unlink(partialPath).catch(() => { /* ignore */ });
+      if (isFresh) {
+        await fs.unlink(writePath).catch(() => { /* ignore */ });
+      } else {
+        // Best-effort rollback to the size we trusted at entry. Next call
+        // restarts the catch-up cleanly.
+        await fs.truncate(targetPath, localSize).catch(() => { /* ignore */ });
+      }
       throw err;
     }
     await fh.close();
 
-    // Final-size assertion: writtenBytes must equal the last chunk's end_offset
-    // (== sum of byte_counts == manifest.total_size).
-    const expectedTotal = manifest.chunks[manifest.chunks.length - 1]!.end_offset;
     if (writtenBytes !== expectedTotal) {
-      await fs.unlink(partialPath).catch(() => { /* ignore */ });
+      if (isFresh) {
+        await fs.unlink(writePath).catch(() => { /* ignore */ });
+      } else {
+        await fs.truncate(targetPath, localSize).catch(() => { /* ignore */ });
+      }
       throw new Error(`sessions reassemble: total size mismatch (wrote ${writtenBytes}, manifest says ${expectedTotal})`);
     }
 
-    // Atomic move into place.
-    await fs.rename(partialPath, targetPath);
+    if (isFresh) {
+      await fs.rename(writePath, targetPath);
+    }
 
-    // Record the local path in remote_sessions so subsequent UI checks can
-    // surface "already reassembled".
     updateRemoteSessionLocalPath.run(targetPath, session.user.id, sessionId);
 
-    console.log(
-      `[sessions] reassembled: session=${sessionId.slice(0, 8)} chunks=${manifest.chunks.length} bytes=${writtenBytes} → ${targetPath}`,
-    );
+    if (isFresh) {
+      console.log(
+        `[sessions] reassembled: session=${sessionId.slice(0, 8)} chunks=${manifest.chunks.length} bytes=${writtenBytes} → ${targetPath}`,
+      );
+    } else {
+      console.log(
+        `[sessions] reassembled (catch-up): session=${sessionId.slice(0, 8)} appended=${manifest.chunks.length - firstIdx} chunks new_bytes=${writtenBytes - localSize} total=${writtenBytes} → ${targetPath}`,
+      );
+    }
 
     return {
-      chunkCount: manifest.chunks.length,
+      chunkCount: manifest.chunks.length - firstIdx,
       totalBytes: writtenBytes,
       generation: manifest.bytes_generation,
       targetPath,

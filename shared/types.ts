@@ -114,6 +114,15 @@ export interface Session {
   /** True for local sessions; true for remote sessions whose jsonl has
    *  already been reassembled to disk on this device; false otherwise. */
   jsonlAvailableLocally?: boolean;
+  /** True when cloud has at least one chunk for this session at the current
+   *  generation. False for sessions that have only metadata in cloud (chunks
+   *  not yet uploaded, or never had any). The UI greys out "Resume on this
+   *  device" when this is false on a remote row. */
+  hasBytes?: boolean;
+  /** The device that most recently wrote a chunk for this session. Drives
+   *  "Active on <device>" chip in the UI. Null for sessions that pre-date
+   *  active-writer tracking. */
+  activeDeviceId?: string | null;
 }
 
 /** POST /api/sessions/:id/resume response shapes. */
@@ -121,7 +130,11 @@ export type SessionResumeResponse =
   | { status: "ok"; sessionId: string; localCwd: string; jsonlPath: string; command: string }
   | { status: "needs_target"; remoteCwd: string | null; suggestedSpaceId: string | null }
   | { status: "pick_source"; candidates: Array<{ path: string; label: string | null }>; remoteCwd: string | null }
-  | { status: "validation_warning"; reasons: string[] };
+  | { status: "validation_warning"; reasons: string[] }
+  /** Local jsonl has bytes past cloud's chunk chain — either real divergent
+   *  edits or a mid-chunk file from a prior crash. UI must offer "discard
+   *  local" or "fork as new session" to resolve. */
+  | { status: "local_diverged"; localJsonlPath: string; message: string };
 
 export type SessionEventRole =
   | "user"
