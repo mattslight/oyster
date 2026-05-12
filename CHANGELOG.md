@@ -4,6 +4,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.1-beta.4] - 2026-05-12
+
+### Fixed
+
+- **Cross-device session list no longer self-mirrors.** A first-boot edge case after the device-tagging fix in 0.8.1-beta.3 caused your own sessions to appear briefly in your own cross-device cache. The cache now stays a faithful "other devices only" view, and any leftover ghost rows from earlier installs are cleaned up automatically on next start.
+
 ## [0.8.1-beta.3] - 2026-05-11
 
 ### Fixed
