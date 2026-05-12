@@ -456,6 +456,13 @@ export function initDb(userlandDir: string): Database.Database {
     "ALTER TABLE sessions ADD COLUMN jsonl_snapshot_offset INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE sessions ADD COLUMN jsonl_chunk_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE sessions ADD COLUMN bytes_generation INTEGER NOT NULL DEFAULT 0",
+    // Absolute on-disk path to the session's jsonl file. The watcher knows
+    // this directly (it's the chokidar event path); pushBytes used to
+    // recompute it as `projectsRoot()/encodeCwd(cwd)/<id>.jsonl`, which
+    // breaks for cross-device resumed sessions where the events still carry
+    // the origin device's cwd (e.g. "C:\\Users\\matth" on a Mac-resumed
+    // Windows session). Storing the real path is the only ground truth.
+    "ALTER TABLE sessions ADD COLUMN jsonl_path TEXT",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }
   }

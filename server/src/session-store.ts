@@ -23,6 +23,10 @@ export interface SessionRow {
   space_id: string | null;
   source_id: string | null;
   cwd: string | null;
+  /** Absolute on-disk path to the jsonl. NULL on rows that pre-date this
+   *  column (back-compat) — pushBytes falls back to computing from cwd in
+   *  that case. */
+  jsonl_path: string | null;
   agent: SessionAgent;
   title: string | null;
   state: SessionState;
@@ -71,6 +75,12 @@ export interface InsertSession {
   space_id: string | null;
   source_id?: string | null;
   cwd?: string | null;
+  /** Absolute path to the jsonl file on disk. The watcher knows this from
+   *  its chokidar events; passing it on every upsert lets pushBytes locate
+   *  the file directly instead of recomputing it from cwd. Required for
+   *  cross-device resumed sessions where the events carry the origin
+   *  device's cwd, not the actual local file location. */
+  jsonl_path?: string | null;
   agent: SessionAgent;
   title?: string | null;
   state: SessionState;
@@ -170,9 +180,9 @@ export class SqliteSessionStore implements SessionStore {
         LIMIT 1
       `),
       insertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, agent, title, state, started_at, model, last_event_at)
+        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at)
         VALUES (
-          @id, @space_id, @source_id, @cwd, @agent, @title, @state,
+          @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now'))
@@ -189,9 +199,9 @@ export class SqliteSessionStore implements SessionStore {
       // reconcileExistingFile), so the overwrite here keeps the column
       // shape consistent across rows.
       upsertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, agent, title, state, started_at, model, last_event_at)
+        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at)
         VALUES (
-          @id, @space_id, @source_id, @cwd, @agent, @title, @state,
+          @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now'))
@@ -200,6 +210,11 @@ export class SqliteSessionStore implements SessionStore {
           space_id      = excluded.space_id,
           source_id     = excluded.source_id,
           cwd           = COALESCE(excluded.cwd, sessions.cwd),
+          -- jsonl_path: prefer the new value when the watcher knows where
+          -- the file is. The watcher always passes the real path on every
+          -- upsert, so this overwrite is what fixes cross-device rows
+          -- whose cwd field was poisoned with the origin device's path.
+          jsonl_path    = COALESCE(excluded.jsonl_path, sessions.jsonl_path),
           title         = excluded.title,
           state         = excluded.state,
           model         = excluded.model,
@@ -276,6 +291,7 @@ export class SqliteSessionStore implements SessionStore {
       last_event_at: null,
       source_id: null,
       cwd: null,
+      jsonl_path: null,
       ...row,
     });
   }
@@ -288,6 +304,7 @@ export class SqliteSessionStore implements SessionStore {
       last_event_at: null,
       source_id: null,
       cwd: null,
+      jsonl_path: null,
       ...row,
     });
   }
