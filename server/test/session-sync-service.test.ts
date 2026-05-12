@@ -545,6 +545,179 @@ describe("SessionSyncService.reassembleSessionJsonl", () => {
       .rejects.toBeInstanceOf(LocalDivergedError);
   });
 
+  it("seeds local sessions bookkeeping on successful fresh reassemble", async () => {
+    // Without this seed, a subsequent claude --resume appends new bytes,
+    // the watcher creates a sessions row with jsonl_snapshot_offset = 0,
+    // and pushBytes tries to re-upload chunk 1 → cloud returns 409
+    // chunk_conflict because the chain already has chunk 1 from the origin
+    // device. The seed makes pushBytes start at expectedTotal so the next
+    // push goes as chunk N+1 and the chain stays linear (Pattern A).
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "fresh.jsonl");
+    const c1 = new TextEncoder().encode("only-chunk\n");
+
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        return new Response(JSON.stringify({
+          bytes_generation: 3,
+          total_size: c1.byteLength,
+          active_device_id: "dev-origin",
+          chunks: [
+            { chunk_number: 1, start_offset: 0, end_offset: c1.byteLength, byte_count: c1.byteLength, plaintext_sha256: hash(c1) },
+          ],
+        }), { status: 200 });
+      }
+      if (u.includes("/chunk/")) return new Response(c1, { status: 200 });
+      return new Response("not_found", { status: 404 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.reassembleSessionJsonl("s-remote", targetPath);
+
+    const row = db.prepare(
+      `SELECT jsonl_path, jsonl_snapshot_offset, jsonl_chunk_count, bytes_generation,
+              cloud_owner_id, last_event_at, jsonl_synced_at, cloud_synced_at
+         FROM sessions WHERE id = 's-remote'`,
+    ).get() as {
+      jsonl_path: string;
+      jsonl_snapshot_offset: number;
+      jsonl_chunk_count: number;
+      bytes_generation: number;
+      cloud_owner_id: string;
+      last_event_at: string;
+      jsonl_synced_at: number | null;
+      cloud_synced_at: number | null;
+    };
+    expect(row.jsonl_path).toBe(targetPath);
+    expect(row.jsonl_snapshot_offset).toBe(c1.byteLength);
+    expect(row.jsonl_chunk_count).toBe(1);
+    expect(row.bytes_generation).toBe(3);
+    expect(row.cloud_owner_id).toBe("user-A");
+    // last_event_at must come from remote_sessions (cloud truth), not NOW —
+    // otherwise the watcher's MAX(...) upsert ratchets the column forward
+    // and the home feed shows the wrong timestamp until a new event lands.
+    // Harness seeds remote_sessions with '2026-05-11T10:30:00Z'.
+    expect(row.last_event_at).toBe("2026-05-11T10:30:00Z");
+    // Bytes-side ack lives in jsonl_synced_at. cloud_synced_at is for the
+    // metadata push ack; touching it here would corrupt the dirty predicate.
+    expect(row.jsonl_synced_at).toBeGreaterThan(0);
+    expect(row.cloud_synced_at).toBeNull();
+  });
+
+  it("seed does not clobber a dirty row's cloud_synced_at (metadata push ack stays intact)", async () => {
+    // Regression: an earlier draft of the seed wrote cloud_synced_at,
+    // which is the *metadata* push-ack timestamp used by the dirty
+    // predicate. Writing it here can falsely mark a dirty row as synced
+    // and lose a pending metadata push. Seed must touch only jsonl_synced_at.
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "dirty.jsonl");
+    const c1 = new TextEncoder().encode("x\n");
+    const fs = require("node:fs");
+    fs.writeFileSync(targetPath, c1);
+
+    // Pre-existing dirty row: sync_dirty_at > cloud_synced_at = predicate "dirty"
+    db.prepare(
+      `INSERT INTO sessions (id, agent, state, last_event_at,
+                             jsonl_path, jsonl_snapshot_offset, jsonl_chunk_count, bytes_generation,
+                             cloud_owner_id, sync_dirty_at, cloud_synced_at)
+       VALUES ('s-remote', 'claude-code', 'active', datetime('now'),
+               ?, 0, 0, 0,
+               'user-A', 2000, 1000)`,
+    ).run(targetPath);
+
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        return new Response(JSON.stringify({
+          bytes_generation: 0,
+          total_size: c1.byteLength,
+          active_device_id: "dev-mac",
+          chunks: [
+            { chunk_number: 1, start_offset: 0, end_offset: c1.byteLength, byte_count: c1.byteLength, plaintext_sha256: hash(c1) },
+          ],
+        }), { status: 200 });
+      }
+      return new Response("should not fetch", { status: 500 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.reassembleSessionJsonl("s-remote", targetPath);
+
+    const row = db.prepare(
+      `SELECT sync_dirty_at, cloud_synced_at FROM sessions WHERE id = 's-remote'`,
+    ).get() as { sync_dirty_at: number; cloud_synced_at: number };
+    // Untouched: row is still dirty by the predicate (sync_dirty_at > cloud_synced_at).
+    expect(row.sync_dirty_at).toBe(2000);
+    expect(row.cloud_synced_at).toBe(1000);
+  });
+
+  it("re-seeds bookkeeping on no-op reassemble (heals existing 0/0/0 rows)", async () => {
+    // For the user who hit this bug in beta.7: sessions.jsonl_path correct
+    // but snapshot_offset/chunk_count/generation all 0 because the original
+    // reassemble didn't seed. Calling reassemble again on a fully-synced
+    // local file should re-seed the bookkeeping (the no-op exit path
+    // also seeds).
+    const { db, profileBinding } = harnessForReassemble();
+    const root = setupBytesEnv();
+    const targetPath = join(root, "already-synced-seed.jsonl");
+    const c1 = new TextEncoder().encode("one\n");
+    const c2 = new TextEncoder().encode("two\n");
+    const fs = require("node:fs");
+    fs.writeFileSync(targetPath, Buffer.concat([c1, c2]));
+
+    // Pre-existing row simulating the beta.7 bug state.
+    db.prepare(
+      `INSERT INTO sessions (id, agent, state, last_event_at, jsonl_path, jsonl_snapshot_offset, jsonl_chunk_count, bytes_generation, cloud_owner_id)
+       VALUES ('s-remote', 'claude-code', 'active', datetime('now'), ?, 0, 0, 0, 'user-A')`,
+    ).run(targetPath);
+
+    const fetchSpy = vi.fn(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/manifest")) {
+        return new Response(JSON.stringify({
+          bytes_generation: 0,
+          total_size: c1.byteLength + c2.byteLength,
+          active_device_id: "dev-mac",
+          chunks: [
+            { chunk_number: 1, start_offset: 0, end_offset: c1.byteLength, byte_count: c1.byteLength, plaintext_sha256: hash(c1) },
+            { chunk_number: 2, start_offset: c1.byteLength, end_offset: c1.byteLength + c2.byteLength, byte_count: c2.byteLength, plaintext_sha256: hash(c2) },
+          ],
+        }), { status: 200 });
+      }
+      return new Response("should not fetch", { status: 500 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.reassembleSessionJsonl("s-remote", targetPath);
+
+    const row = db.prepare(
+      `SELECT jsonl_snapshot_offset, jsonl_chunk_count FROM sessions WHERE id = 's-remote'`,
+    ).get() as { jsonl_snapshot_offset: number; jsonl_chunk_count: number };
+    expect(row.jsonl_snapshot_offset).toBe(c1.byteLength + c2.byteLength);
+    expect(row.jsonl_chunk_count).toBe(2);
+  });
+
   it("free user throws (pro-only)", async () => {
     const { db, profileBinding } = harnessForReassemble();
     const svc = createSessionSyncService({

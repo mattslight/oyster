@@ -647,6 +647,78 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       WHERE owner_id = ? AND session_id = ?`,
   );
 
+  // Seed the local sessions bookkeeping to match cloud's chain at the
+  // moment of reassemble. Without this, the watcher's later upsert
+  // creates a row with jsonl_snapshot_offset = 0 and pushBytes tries to
+  // re-upload chunk 1 from byte 0 — which the worker rejects as
+  // chunk_conflict because cloud already has chunk 1 with different bytes.
+  //
+  // With the seed, the row tells the truth: "cloud has this much of me
+  // already; push only what's past expectedTotal." Subsequent Mac turns
+  // become chunk N+1, the chain stays linear (Pattern A).
+  //
+  // INSERT path covers the case where the file is reassembled before the
+  // user runs `claude --resume` (no watcher upsert has fired yet).
+  // UPDATE path covers the inverse race + heals existing 0/0/0 rows on
+  // re-resume.
+  //
+  // Carefully chosen columns:
+  //  - last_event_at on INSERT comes from remote_sessions (cloud truth).
+  //    The watcher's upsert uses MAX(...) so a NOW value would ratchet
+  //    last_event_at forward and prevent the watcher from later setting
+  //    the real transcript timestamp.
+  //  - cloud_synced_at is left alone — it's the *metadata* push-ack
+  //    timestamp and is part of the dirty predicate; touching it could
+  //    falsely mark a dirty row as synced. Bytes-side ack lives in
+  //    jsonl_synced_at instead.
+  const getRemoteLastEventAt = deps.db.prepare(
+    `SELECT last_event_at FROM remote_sessions
+       WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+  );
+  const seedSessionBytesStateAtReassemble = deps.db.prepare(
+    `INSERT INTO sessions
+       (id, agent, state, started_at, last_event_at,
+        cwd, jsonl_path,
+        jsonl_snapshot_offset, jsonl_chunk_count, bytes_generation,
+        cloud_owner_id, jsonl_synced_at)
+     VALUES
+       (@id, 'claude-code', 'waiting', @now_iso,
+        COALESCE(@last_event_at_iso, @now_iso),
+        NULL, @jsonl_path,
+        @offset, @chunk_count, @generation,
+        @owner_id, @now_ms)
+     ON CONFLICT(id) DO UPDATE SET
+       jsonl_path            = excluded.jsonl_path,
+       jsonl_snapshot_offset = excluded.jsonl_snapshot_offset,
+       jsonl_chunk_count     = excluded.jsonl_chunk_count,
+       bytes_generation      = excluded.bytes_generation,
+       cloud_owner_id        = excluded.cloud_owner_id,
+       jsonl_synced_at       = excluded.jsonl_synced_at`,
+  );
+
+  function seedReassembledBookkeeping(
+    sessionId: string,
+    ownerId: string,
+    targetPath: string,
+    manifest: { bytes_generation: number; chunks: Array<{ chunk_number: number }> },
+    expectedTotal: number,
+  ): void {
+    const now = Date.now();
+    const remoteRow = getRemoteLastEventAt.get(ownerId, sessionId) as
+      { last_event_at: string | null } | undefined;
+    seedSessionBytesStateAtReassemble.run({
+      id: sessionId,
+      jsonl_path: targetPath,
+      offset: expectedTotal,
+      chunk_count: manifest.chunks.length,
+      generation: manifest.bytes_generation,
+      owner_id: ownerId,
+      now_iso: new Date(now).toISOString(),
+      now_ms: now,
+      last_event_at_iso: remoteRow?.last_event_at ?? null,
+    });
+  }
+
   async function doReassemble(
     sessionId: string,
     targetPath: string,
@@ -715,6 +787,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     if (localSize === expectedTotal) {
       // Already up-to-date — nothing to fetch. Just record the path.
       updateRemoteSessionLocalPath.run(targetPath, session.user.id, sessionId);
+      seedReassembledBookkeeping(sessionId, session.user.id, targetPath, manifest, expectedTotal);
       console.log(
         `[sessions] reassemble: session=${sessionId.slice(0, 8)} already up-to-date (${localSize} bytes)`,
       );
@@ -805,6 +878,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     }
 
     updateRemoteSessionLocalPath.run(targetPath, session.user.id, sessionId);
+    seedReassembledBookkeeping(sessionId, session.user.id, targetPath, manifest, writtenBytes);
 
     if (isFresh) {
       console.log(
