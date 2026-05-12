@@ -336,6 +336,105 @@ describe("GET /api/sessions merges local + remote", () => {
   });
 });
 
+describe("GET /api/sessions/:id falls back to remote_sessions", () => {
+  // Regression: PR 3.1 surfaced cross-device sessions in the list view, but
+  // the singular GET only checked local sessions. Clicking a remote session
+  // returned 404 → the inspector closed with "Session no longer available".
+  it("returns a remote row when no local session matches the id", async () => {
+    const db = makeDb();
+    insertRemote(db, {
+      sessionId: "remote-only-1",
+      ownerId: "user-A",
+      cwd: "C:\\Users\\matth",
+      hasBytes: true,
+      deviceId: "dev-pc",
+    });
+    // Set device_label to verify it flows back through the route.
+    db.prepare(
+      `UPDATE remote_sessions SET device_label = 'WIN-DESKTOP' WHERE session_id = 'remote-only-1'`,
+    ).run();
+    const sessionStore = { getById: () => undefined } as any;
+    const spaceStore = { getSourceById: () => undefined } as any;
+    const { ctx, captured } = fakeCtx();
+    const req = { method: "GET" } as any;
+    const handled = await tryHandleSessionRoute(req, {} as any, "/api/sessions/remote-only-1",
+      ctx as any, {
+        db, sessionStore, spaceStore,
+        artifactService: {} as any, memoryProvider: {} as any,
+        sessionSync: stubSessionSync(),
+        currentUserId: () => "user-A",
+      });
+    expect(handled).toBe(true);
+    expect(captured.status).toBe(200);
+    expect(captured.json).toMatchObject({
+      id: "remote-only-1",
+      originDeviceId: "dev-pc",
+      originDeviceLabel: "WIN-DESKTOP",
+      hasBytes: true,
+      jsonlAvailableLocally: false,
+    });
+  });
+
+  it("still 404s when the id is in neither table", async () => {
+    const db = makeDb();
+    const sessionStore = { getById: () => undefined } as any;
+    const spaceStore = { getSourceById: () => undefined } as any;
+    const { ctx, captured } = fakeCtx();
+    const req = { method: "GET" } as any;
+    // Need a fake res that captures status — the route writes 404 directly
+    // via res.writeHead/end rather than ctx.sendJson, so add a minimal stub.
+    const res = {
+      writeHead: (s: number) => { captured.status = s; return res; },
+      end: (body: string) => { captured.json = JSON.parse(body); },
+    } as any;
+    await tryHandleSessionRoute(req, res, "/api/sessions/unknown-id",
+      ctx as any, {
+        db, sessionStore, spaceStore,
+        artifactService: {} as any, memoryProvider: {} as any,
+        sessionSync: stubSessionSync(),
+        currentUserId: () => "user-A",
+      });
+    expect(captured.status).toBe(404);
+    expect(captured.json).toEqual({ error: "session not found" });
+  });
+
+  it("returns a local row when one exists (preferred over remote)", async () => {
+    const db = makeDb();
+    insertRemote(db, {
+      sessionId: "dup-id",
+      ownerId: "user-A",
+      cwd: "C:\\elsewhere",
+      hasBytes: true,
+      deviceId: "dev-pc",
+    });
+    const localRow = {
+      id: "dup-id", space_id: "space-1", source_id: null, cwd: "/Users/me/local",
+      agent: "claude-code", title: "local title", state: "active",
+      started_at: "2026-05-11T09:00:00Z", ended_at: null, model: "m",
+      last_event_at: "2026-05-11T09:30:00Z",
+    };
+    const sessionStore = { getById: (id: string) => id === "dup-id" ? localRow : undefined } as any;
+    const spaceStore = { getSourceById: () => undefined } as any;
+    const { ctx, captured } = fakeCtx();
+    const req = { method: "GET" } as any;
+    await tryHandleSessionRoute(req, {} as any, "/api/sessions/dup-id",
+      ctx as any, {
+        db, sessionStore, spaceStore,
+        artifactService: {} as any, memoryProvider: {} as any,
+        sessionSync: stubSessionSync(),
+        currentUserId: () => "user-A",
+      });
+    expect(captured.status).toBe(200);
+    expect(captured.json).toMatchObject({
+      id: "dup-id",
+      title: "local title",
+      // Local row → null/true; not the cross-device shape.
+      originDeviceId: null,
+      jsonlAvailableLocally: true,
+    });
+  });
+});
+
 // Touch `existsSync` so the import isn't flagged as unused on linter passes
 // that don't see it via downstream calls. The test sometimes needs to assert
 // on file absence separately.

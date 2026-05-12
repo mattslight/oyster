@@ -4,9 +4,9 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-### Added
+### Fixed
 
-- **Cross-device sessions in Home, with a one-click resume.** Sessions backed up on another device now appear in Home with an `↗ MacBookPro` chip (or "Other device" if the origin's label hasn't synced yet) on both the grid and list views. Click into one and you'll see a new **Resume on this device** button — it walks you through reassembling the transcript locally and gives you a copyable command to continue the conversation. Sessions whose transcript bytes haven't synced from the origin device yet show the button as disabled with an explanation.
+- **Clicking a cross-device session opens its inspector instead of erroring.** Previously the inspector failed with "Session no longer available" for any session that originated on another device, because the session-detail lookup only checked locally-discovered sessions. The lookup now falls back to the cross-device cache, and the inspector renders a friendly "Resume to view transcript" notice while the transcript hasn't been reassembled locally yet. The chip's tooltip also explains why a session shows "Other device" (its origin hasn't pushed its label yet).
 
 ## [0.8.1-beta.5] - 2026-05-12
 
