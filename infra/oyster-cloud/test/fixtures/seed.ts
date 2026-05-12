@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS synced_session_metadata (
   ended_at          TEXT,
   last_event_at     TEXT    NOT NULL,
   bytes_generation  INTEGER NOT NULL DEFAULT 0,
+  active_device_id  TEXT,
   updated_at        INTEGER NOT NULL,
   PRIMARY KEY (owner_id, session_id)
 );

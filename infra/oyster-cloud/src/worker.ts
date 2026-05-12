@@ -427,11 +427,13 @@ async function handleSessionsMetadataGet(req: Request, env: Env): Promise<Respon
     session_id: string; device_id: string | null; agent: string; title: string | null;
     state: string; cwd: string | null; model: string | null; started_at: string;
     ended_at: string | null; last_event_at: string;
-    bytes_generation: number; has_bytes: number; updated_at: number;
+    bytes_generation: number; active_device_id: string | null;
+    has_bytes: number; updated_at: number;
   };
   const { results } = await env.DB.prepare(
     `SELECT m.session_id, m.device_id, m.agent, m.title, m.state, m.cwd, m.model,
-            m.started_at, m.ended_at, m.last_event_at, m.bytes_generation, m.updated_at,
+            m.started_at, m.ended_at, m.last_event_at, m.bytes_generation,
+            m.active_device_id, m.updated_at,
             CASE WHEN EXISTS (
               SELECT 1 FROM synced_session_chunks c
                WHERE c.owner_id = m.owner_id
@@ -491,6 +493,19 @@ async function handleSessionsBytesChunkPut(
   const endOffsetHeader = req.headers.get("x-chunk-end-offset");
   const plaintextSha256Header = req.headers.get("x-plaintext-sha256");
   const generationHeader = req.headers.get("x-bytes-generation");
+  // x-bytes-device-id is optional for backwards-compat with clients pre-PR-2.x.
+  // When present and well-formed, the worker bumps synced_session_metadata
+  // .active_device_id on every accepted chunk so any reader can tell who's
+  // currently writing. Clients generate it via crypto.randomUUID() (canonical
+  // lowercase UUID), so we enforce that shape — anything else is silently
+  // ignored to keep this back-compat (a malformed header doesn't fail the
+  // chunk write, it just doesn't bump the column).
+  const rawDeviceIdHeader = req.headers.get("x-bytes-device-id");
+  const deviceIdHeader =
+    rawDeviceIdHeader &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(rawDeviceIdHeader)
+      ? rawDeviceIdHeader
+      : null;
 
   if (!startOffsetHeader || !endOffsetHeader || !plaintextSha256Header || !generationHeader) {
     return jsonError(400, "missing_chunk_headers");
@@ -635,6 +650,25 @@ async function handleSessionsBytesChunkPut(
     return jsonError(500, "db_error");
   }
 
+  // Bump active_device_id to whoever just wrote (#322 Pattern A). The
+  // contiguity check above already enforces "you must be caught up to
+  // write" — by the time we get here, this device is genuinely the
+  // current writer. Header is optional for backwards-compat (pre-PR-2.x
+  // clients won't send it); when absent we leave the column alone.
+  if (deviceIdHeader) {
+    try {
+      await env.DB.prepare(
+        `UPDATE synced_session_metadata
+            SET active_device_id = ?
+          WHERE owner_id = ? AND session_id = ?`,
+      ).bind(deviceIdHeader, user.id, sessionId).run();
+    } catch (err) {
+      // Non-fatal — the chunk landed; the active_device_id bump is
+      // informational. Log and continue.
+      console.warn("[sessions] active_device_id update failed:", err);
+    }
+  }
+
   return jsonOk({
     ok: true,
     chunk_number: chunkNumber,
@@ -652,8 +686,13 @@ async function handleSessionsBytesManifestGet(
   if (!user) return jsonError(401, "sign_in_required");
   if (user.tier !== "pro") return jsonError(403, "pro_required");
 
-  const currentGen = await fetchCurrentGeneration(env, user.id, sessionId);
-  if (currentGen === null) return jsonError(404, "session_not_found");
+  const meta = await env.DB.prepare(
+    `SELECT bytes_generation, active_device_id
+       FROM synced_session_metadata
+      WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+  ).bind(user.id, sessionId).first<{ bytes_generation: number; active_device_id: string | null }>();
+  if (!meta) return jsonError(404, "session_not_found");
+  const currentGen = meta.bytes_generation;
 
   type Row = {
     chunk_number: number; start_offset: number; end_offset: number;
@@ -669,7 +708,16 @@ async function handleSessionsBytesManifestGet(
   const chunks = results ?? [];
   const totalSize = chunks.length > 0 ? chunks[chunks.length - 1]!.end_offset : 0;
   return jsonOk(
-    { bytes_generation: currentGen, total_size: totalSize, chunks },
+    {
+      bytes_generation: currentGen,
+      total_size: totalSize,
+      // active_device_id is the device that most recently wrote a chunk. NULL
+      // for sessions that pre-date the active_device tracking. Used by the
+      // client to surface "Session is active on <device>" and to decide
+      // whether resume should claim ownership.
+      active_device_id: meta.active_device_id,
+      chunks,
+    },
     200,
     { "cache-control": "private, no-store" },
   );

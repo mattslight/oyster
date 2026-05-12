@@ -64,21 +64,20 @@ async function putChunk(
   bytes: Uint8Array,
   startOffset: number,
   generation: number,
+  deviceId?: string,
 ): Promise<{ res: Response; sha: string }> {
   const sha = await sha256Hex(bytes);
+  const headers: Record<string, string> = {
+    "content-type": "application/octet-stream",
+    "x-chunk-start-offset": String(startOffset),
+    "x-chunk-end-offset": String(startOffset + bytes.byteLength),
+    "x-plaintext-sha256": sha,
+    "x-bytes-generation": String(generation),
+  };
+  if (deviceId) headers["x-bytes-device-id"] = deviceId;
   const res = await signedFetch(
     `/api/sessions/bytes/${sessionId}/chunk/${chunkNumber}`,
-    {
-      method: "PUT",
-      headers: {
-        "content-type": "application/octet-stream",
-        "x-chunk-start-offset": String(startOffset),
-        "x-chunk-end-offset": String(startOffset + bytes.byteLength),
-        "x-plaintext-sha256": sha,
-        "x-bytes-generation": String(generation),
-      },
-      body: bytes,
-    },
+    { method: "PUT", headers, body: bytes },
     token,
   );
   return { res, sha };
@@ -446,6 +445,85 @@ describe("PUT/GET /api/sessions/bytes/:id/chunk/:n (chunked-delta)", () => {
     const bytes = new TextEncoder().encode("nope");
     const res = await putChunk(intruder.token, sid, 1, bytes, 0, 0);
     expect(res.res.status).toBe(404);
+  });
+});
+
+describe("active_device_id tracking + manifest exposure (#322 Pattern A)", () => {
+  beforeAll(async () => { await applySchema(); });
+
+  it("chunk PUT with x-bytes-device-id sets active_device_id; manifest GET returns it", async () => {
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    const macDeviceId = crypto.randomUUID();
+    await registerSession(token, sid);
+    const bytes = new TextEncoder().encode("from device A\n");
+    expect((await putChunk(token, sid, 1, bytes, 0, 0, macDeviceId)).res.status).toBe(200);
+
+    // Manifest exposes the active_device_id.
+    const manifestRes = await signedFetch(`/api/sessions/bytes/${sid}/manifest`, { method: "GET" }, token);
+    const manifest = await manifestRes.json() as { active_device_id: string | null };
+    expect(manifest.active_device_id).toBe(macDeviceId);
+
+    // Underlying D1 row confirms persistence.
+    const row = await env.DB.prepare(
+      `SELECT active_device_id FROM synced_session_metadata WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ active_device_id: string }>();
+    expect(row?.active_device_id).toBe(macDeviceId);
+  });
+
+  it("hand-off: a chunk PUT from a different device flips active_device_id", async () => {
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    const macDeviceId = crypto.randomUUID();
+    const winDeviceId = crypto.randomUUID();
+    await registerSession(token, sid);
+    const c1 = new TextEncoder().encode("first\n");
+    const c2 = new TextEncoder().encode("second from Windows\n");
+    expect((await putChunk(token, sid, 1, c1, 0, 0, macDeviceId)).res.status).toBe(200);
+    expect((await putChunk(token, sid, 2, c2, c1.byteLength, 0, winDeviceId)).res.status).toBe(200);
+
+    const row = await env.DB.prepare(
+      `SELECT active_device_id FROM synced_session_metadata WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ active_device_id: string }>();
+    expect(row?.active_device_id).toBe(winDeviceId);
+  });
+
+  it("malformed x-bytes-device-id is silently ignored (chunk still lands, column not touched)", async () => {
+    // Validation defends D1 from arbitrary garbage in active_device_id, but a
+    // malformed header is back-compat-friendly: the chunk PUT still succeeds,
+    // the column just isn't bumped. Defence-in-depth, not a hard reject.
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    const goodDeviceId = crypto.randomUUID();
+    await registerSession(token, sid);
+    // Seed a valid active_device_id first.
+    const c1 = new TextEncoder().encode("first\n");
+    expect((await putChunk(token, sid, 1, c1, 0, 0, goodDeviceId)).res.status).toBe(200);
+    // Now PUT chunk 2 with garbage in the header.
+    const c2 = new TextEncoder().encode("second\n");
+    expect((await putChunk(token, sid, 2, c2, c1.byteLength, 0, "not-a-uuid; DROP TABLE")).res.status).toBe(200);
+    // active_device_id remains the original well-formed value.
+    const row = await env.DB.prepare(
+      `SELECT active_device_id FROM synced_session_metadata WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ active_device_id: string }>();
+    expect(row?.active_device_id).toBe(goodDeviceId);
+  });
+
+  it("chunk PUT without x-bytes-device-id leaves active_device_id unchanged (back-compat)", async () => {
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+    // Seed an existing active_device_id (as the migration's backfill would have).
+    await env.DB.prepare(
+      `UPDATE synced_session_metadata SET active_device_id = 'pre-existing-device' WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).run();
+    const bytes = new TextEncoder().encode("from a back-compat client\n");
+    // No deviceId argument → header omitted.
+    expect((await putChunk(token, sid, 1, bytes, 0, 0)).res.status).toBe(200);
+    const row = await env.DB.prepare(
+      `SELECT active_device_id FROM synced_session_metadata WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ active_device_id: string }>();
+    expect(row?.active_device_id).toBe("pre-existing-device");
   });
 });
 
