@@ -334,6 +334,7 @@
 <ul>
 <li><strong>Empty cross-device sessions hidden from Home.</strong> Aborted <code>claude</code> invocations (where the user opened a transcript but never had a real conversation) used to clutter the list as &quot;(no title yet)&quot; entries. Those are filtered out now. Sessions with real content always show, regardless of title. (Heuristic-based for the moment; the durable fix lands in a follow-up.)</li>
 <li><strong>Device labels backfill automatically on upgrade.</strong> Devices that backed up sessions before the label-sync change won&#39;t have a friendly name in cloud yet. On first boot of this release each device marks its own sessions for re-push, so the labels show up everywhere within a few minutes — no manual action required.</li>
+<li><strong>Session metadata sync is quieter under load.</strong> During a busy conversation, every new turn was sending its own one-row push to the cloud — dozens of HTTP round-trips per minute, all with a single session in the payload. Pushes are now coalesced: one round-trip after a ~1-second quiet window, and at most one every ~5 seconds during sustained activity. No data is lost. Transcript bytes still push on terminal state immediately.</li>
 </ul>
 <h3>Fixed</h3>
 <ul>

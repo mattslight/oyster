@@ -1034,30 +1034,50 @@ httpServer.listen(port, "127.0.0.1", () => {
   // (missing ~/.claude/projects, permission denied) shouldn't block the
   // server; the watcher logs and stays dormant.
 
-  // Debounce window for metadata push. The watcher fires emitSessionChanged
-  // on every jsonl event (assistant turn, tool call, etc.) — during a busy
-  // conversation that's many events per minute. Without debouncing, each
-  // event triggers its own pushPending → its own HTTP round-trip with one
-  // session in the payload (`[sessions] pushed: accepted=1` spam in logs).
+  // Debounce-with-max-wait for metadata push. The watcher fires
+  // emitSessionChanged on every jsonl event (assistant turn, tool call,
+  // etc.) — during a busy conversation that's many events per minute.
+  // Without coalescing, each event triggers its own pushPending → its own
+  // HTTP round-trip with one session in the payload
+  // (`[sessions] pushed: accepted=1` spam in logs).
   //
   // markDirty stays synchronous so durability is intact: any unpushed
   // session_id keeps its sync_dirty_at marker and is drained by the next
   // push or the next startup reconcile.
   //
-  // 1 s is the trade-off: long enough to coalesce a steady event stream
-  // into one push, short enough that cross-device visibility on a quiet
-  // session still feels live. Terminal-state pushBytes is unaffected —
-  // it fires immediately so a session ending lands its last bytes ASAP.
+  // Two timing knobs:
+  // - DEBOUNCE_MS (1 s): how long after the LAST event we wait before
+  //   firing. Coalesces a quick burst of events into a single push at the
+  //   tail of the burst.
+  // - MAX_WAIT_MS (5 s): hard cap on how long the first-event-in-burst
+  //   waits, no matter how many further events arrive. Without this, a
+  //   pure debounce can defer pushes arbitrarily during continuous
+  //   activity — bad for cross-device visibility during long sessions.
+  //
+  // Terminal-state pushBytes is unaffected — it fires immediately so a
+  // session ending lands its last bytes ASAP.
   const SESSION_PUSH_DEBOUNCE_MS = 1000;
+  const SESSION_PUSH_MAX_WAIT_MS = 5000;
   let sessionPushTimer: NodeJS.Timeout | null = null;
+  let sessionPushFirstScheduledAt: number | null = null;
   function schedulePushPending(): void {
+    const now = Date.now();
+    if (sessionPushFirstScheduledAt === null) {
+      sessionPushFirstScheduledAt = now;
+    }
+    // Cap the actual sleep so the first-scheduled event fires within
+    // MAX_WAIT_MS even if events keep arriving. Math.max(0, ...) handles
+    // the "already past the cap" case (next-tick fire).
+    const elapsed = now - sessionPushFirstScheduledAt;
+    const delay = Math.max(0, Math.min(SESSION_PUSH_DEBOUNCE_MS, SESSION_PUSH_MAX_WAIT_MS - elapsed));
     if (sessionPushTimer) clearTimeout(sessionPushTimer);
     sessionPushTimer = setTimeout(() => {
       sessionPushTimer = null;
+      sessionPushFirstScheduledAt = null;
       sessionSync.pushPending().catch((err) => {
         console.warn("[sessions] watcher-triggered pushPending failed:", err);
       });
-    }, SESSION_PUSH_DEBOUNCE_MS);
+    }, delay);
   }
 
   const claudeCodeWatcher = new ClaudeCodeWatcher({
