@@ -1,6 +1,6 @@
 {
   "name": "oyster-os",
-  "version": "0.8.1-beta.8",
+  "version": "0.8.1-beta.9",
   "description": "A modern workspace OS with AI at its core",
   "type": "module",
   "bin": {
