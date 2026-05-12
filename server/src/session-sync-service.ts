@@ -550,11 +550,24 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     const incoming = body?.sessions ?? [];
     if (incoming.length === 0) return 0;
 
-    // Filter out rows that belong to THIS device — we already have those
-    // in the local `sessions` table via the watcher. remote_sessions is for
-    // OTHER devices' sessions specifically.
+    // Filter out anything that's really a local session in disguise.
+    // Two guards:
+    //   1. device_id matches ours (cloud explicitly tagged this row as ours).
+    //   2. session_id collides with a row in the local `sessions` table
+    //      (the watcher's source-of-truth for sessions produced here —
+    //      catches the legacy case where cloud rows have NULL device_id
+    //      from before the device_id capture fix).
+    // Either guard is sufficient. Without (2), NULL-device_id rows that
+    // are actually our own session would have leaked into remote_sessions
+    // and then back into Home's merged list as ghost "from another device"
+    // entries.
     const myDeviceId = getMyDeviceId();
-    const foreignRows = incoming.filter((s) => s.device_id !== myDeviceId);
+    const localIds = new Set(
+      (deps.db.prepare(`SELECT id FROM sessions`).all() as Array<{ id: string }>).map((r) => r.id),
+    );
+    const foreignRows = incoming.filter((s) =>
+      s.device_id !== myDeviceId && !localIds.has(s.session_id),
+    );
 
     const now = Date.now();
     let applied = 0;

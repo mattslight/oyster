@@ -469,6 +469,39 @@ describe("SessionSyncService.pull", () => {
     expect(rows.find((r) => r.session_id === "s-orphan")?.has_bytes).toBe(0);
   });
 
+  it("skips remote rows whose session_id already exists locally (legacy NULL device_id)", async () => {
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db, "dev-mac");
+    // Simulate the post-backfill state: local sessions table has a row for
+    // "s-mine-legacy", and cloud has the same id but with NULL device_id
+    // (pre-fix data). Without the local-id filter, this would round-trip
+    // into remote_sessions as a ghost foreign row.
+    db.prepare(
+      `INSERT INTO sessions (id, agent, state, last_event_at, cloud_owner_id, sync_dirty_at)
+       VALUES ('s-mine-legacy', 'claude-code', 'done', datetime('now'), 'user-A', 1000)`,
+    ).run();
+    const fetchSpy = vi.fn(async () =>
+      cloudPayload([
+        { session_id: "s-mine-legacy", device_id: null, has_bytes: true },
+        { session_id: "s-other-pc", device_id: "dev-pc", has_bytes: true },
+      ]),
+    );
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    const applied = await svc.pull();
+    expect(applied).toBe(1);  // only s-other-pc
+    const rows = db.prepare(
+      `SELECT session_id FROM remote_sessions WHERE owner_id = ?`,
+    ).all("user-A") as Array<{ session_id: string }>;
+    expect(rows.map((r) => r.session_id)).toEqual(["s-other-pc"]);
+  });
+
   it("LWW: older cloud_updated_at does not overwrite newer local copy", async () => {
     const { db, profileBinding } = harness();
     profileBinding.bindToOwner("user-A");
