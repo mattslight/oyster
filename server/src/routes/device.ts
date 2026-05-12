@@ -33,6 +33,13 @@ export async function tryHandleDeviceRoute(
 ): Promise<boolean> {
   if (req.method !== "GET" || url !== "/api/device/identity") return false;
 
+  // The local server permits CORS broadly so the in-browser UI can hit it;
+  // gate this endpoint to localhost-origin requests since deviceId is a
+  // stable per-machine UUID (fingerprinting / leak risk if cross-origin
+  // pages could read it). Mirrors the gate other /api routes use for
+  // device-sensitive surfaces.
+  if (ctx.rejectIfNonLocalOrigin()) return true;
+
   const { db } = deps;
   const { sendJson } = ctx;
 

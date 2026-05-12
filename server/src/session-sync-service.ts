@@ -645,20 +645,24 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     return applied;
   }
 
-  /** Stable per-device identity; lazy-initialised on first read. Both
-   *  fields are written once at install and don't change at runtime, so
-   *  one cache survives the process. */
-  let cachedDeviceIdentity: { device_id: string | null; label: string | null } | null = null;
+  /** Stable per-device identity; lazy-initialised on first successful
+   *  read. We cache ONLY on success — a missing device_identity row
+   *  means the install seed hasn't run yet (test setup, repair flows,
+   *  or first-boot ordering), and we want subsequent calls to retry
+   *  rather than locking in a null forever. Once seeded, the row never
+   *  changes for the process lifetime, so one cache is enough. */
+  let cachedDeviceIdentity: { device_id: string; label: string } | null = null;
   function loadDeviceIdentity(): { device_id: string | null; label: string | null } {
     if (cachedDeviceIdentity !== null) return cachedDeviceIdentity;
     const row = deps.db.prepare(
       `SELECT device_id, label FROM device_identity WHERE id = 1 LIMIT 1`,
     ).get() as { device_id: string; label: string } | undefined;
-    cachedDeviceIdentity = {
-      device_id: row?.device_id ?? null,
-      label: row?.label ?? null,
-    };
-    return cachedDeviceIdentity;
+    if (row) {
+      cachedDeviceIdentity = row;
+      return row;
+    }
+    // Don't cache the null result — next caller retries.
+    return { device_id: null, label: null };
   }
   function getMyDeviceId(): string | null { return loadDeviceIdentity().device_id; }
   function getMyDeviceLabel(): string | null { return loadDeviceIdentity().label; }

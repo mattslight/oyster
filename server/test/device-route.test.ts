@@ -17,7 +17,7 @@ function makeDb(): Database.Database {
   return db;
 }
 
-function fakeCtx() {
+function fakeCtx(opts: { foreignOrigin?: boolean } = {}) {
   const captured: { status?: number; json?: unknown } = {};
   const ctx = {
     sendJson: (j: unknown, s = 200) => { captured.json = j; captured.status = s; },
@@ -25,7 +25,14 @@ function fakeCtx() {
       captured.json = { error: err instanceof Error ? err.message : String(err) };
       captured.status = s;
     },
-    rejectIfNonLocalOrigin: () => false,
+    rejectIfNonLocalOrigin: () => {
+      if (opts.foreignOrigin) {
+        captured.json = { error: "Forbidden origin" };
+        captured.status = 403;
+        return true;
+      }
+      return false;
+    },
     readJsonBody: async () => ({}),
   };
   return { ctx, captured };
@@ -69,5 +76,17 @@ describe("GET /api/device/identity", () => {
     const req = { method: "POST" } as any;
     const handled = await tryHandleDeviceRoute(req, {} as any, "/api/device/identity", ctx as any, { db });
     expect(handled).toBe(false);
+  });
+
+  it("returns 403 when origin is non-local (deviceId is a fingerprintable per-machine UUID)", async () => {
+    const db = makeDb();
+    db.prepare(`INSERT INTO device_identity (id, device_id, label) VALUES (1, 'x', 'y')`).run();
+    const { ctx, captured } = fakeCtx({ foreignOrigin: true });
+    const req = { method: "GET" } as any;
+    const handled = await tryHandleDeviceRoute(req, {} as any, "/api/device/identity", ctx as any, { db });
+    expect(handled).toBe(true);
+    expect(captured.status).toBe(403);
+    // The identity row is NEVER read in this path.
+    expect(captured.json).toMatchObject({ error: "Forbidden origin" });
   });
 });

@@ -3,11 +3,39 @@ import { useEffect, useState } from "react";
 // One-shot fetch of the local device identity. Used to distinguish "local"
 // (this device produced it) from "remote" (another device produced it,
 // pulled cross-device). The identity is stable across the server lifetime,
-// so a single fetch per page load is enough — no SSE refresh needed.
+// so a single fetch per page load is enough — the module-level promise
+// cache below ensures every consumer of this hook shares one request.
 
 export interface DeviceIdentity {
   deviceId: string;
   label: string;
+}
+
+// Shared in-flight promise so concurrent mounts (Home + SessionInspector
+// header etc.) reuse the same fetch rather than each firing its own. Reset
+// only on a hard 5xx — a 200 stays cached for the page lifetime, a 503
+// (device_identity not seeded yet) clears so the next caller can retry.
+let pending: Promise<DeviceIdentity | null> | null = null;
+
+async function fetchIdentity(): Promise<DeviceIdentity | null> {
+  try {
+    const res = await fetch("/api/device/identity");
+    if (!res.ok) {
+      // 503 = not seeded yet, retry on next hook mount. Other failures also
+      // retryable — leave the cache empty so a subsequent hook re-fires.
+      pending = null;
+      return null;
+    }
+    return (await res.json()) as DeviceIdentity;
+  } catch {
+    pending = null;
+    return null;
+  }
+}
+
+function loadIdentity(): Promise<DeviceIdentity | null> {
+  if (pending === null) pending = fetchIdentity();
+  return pending;
 }
 
 /** Returns the local device id + label, or null while loading / on error.
@@ -20,21 +48,18 @@ export function useMyDeviceId(): DeviceIdentity | null {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/device/identity")
-      .then(async (res) => {
-        if (!res.ok) throw new Error(String(res.status));
-        return (await res.json()) as DeviceIdentity;
-      })
-      .then((body) => {
-        if (!cancelled) setIdentity(body);
-      })
-      .catch(() => {
-        // Leave identity at null — UI degrades gracefully (no remote chip,
-        // no Resume button). A 503 means device_identity isn't seeded yet
-        // (race on first boot); other failures are network glitches.
-      });
+    loadIdentity().then((body) => {
+      if (!cancelled && body) setIdentity(body);
+    });
     return () => { cancelled = true; };
   }, []);
 
   return identity;
+}
+
+/** Test-only: reset the module-level cache. Not exported through the
+ *  package surface but available to vitest if we ever add web tests for
+ *  this hook. */
+export function __resetDeviceIdentityCacheForTests(): void {
+  pending = null;
 }

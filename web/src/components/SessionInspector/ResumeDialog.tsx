@@ -1,17 +1,19 @@
 // Inline dialog rendered below SessionInspector's Header when the user
 // clicks "Resume on this device" on a remote session. It steps through the
-// server's four response shapes and surfaces the right next action.
+// server's five SessionResumeResponse shapes and surfaces the right next
+// action.
 //
 // State machine:
-//   idle          — initial; show nothing (parent decides whether to mount)
 //   loading       — POST in flight; show a small spinner-ish message
 //   ok            — show copyable `cd <path> && claude --resume <id>` command
 //   needs_target  — show a text input prefilled with remoteCwd (if known) +
 //                   "Resume here" button → re-POST with { targetCwd }
-//   validation    — show reasons + "Use this folder anyway" → re-POST with
-//                   { targetCwd, force: true }
-//   diverged      — surface the conflict; resolution actions are 3.2 work
-//   error         — generic failure (network, 5xx)
+//   pick_source   — multiple sources match this session's space; user
+//                   chooses one → re-POST with that targetCwd
+//   validation_   — show reasons + "Use this folder anyway" → re-POST with
+//     warning       { targetCwd, force: true }
+//   local_diverged— surface the conflict; resolution actions are 3.2 work
+//   error         — generic failure (network, 5xx, 409 bytes_not_available)
 //
 // Folder picker is text-input-only in 3.1 — native picker is 3.2.
 
@@ -43,6 +45,7 @@ export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
     error: null,
     loading: true,
   });
+  const [copied, setCopied] = useState(false);
 
   // Kick off the initial auto-resolve POST when the dialog mounts.
   // Session id is stable for the dialog's lifetime so this fires once.
@@ -72,8 +75,21 @@ export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
     }
   }
 
+  // Match the existing SessionActions copy pattern: feature-detect the
+  // async clipboard API, fall back to alert() when blocked (insecure
+  // origin, permissions), and never produce an unhandled rejection.
   function copyCommand(command: string): void {
-    void navigator.clipboard.writeText(command);
+    if (!navigator.clipboard) {
+      alert(`Copy failed — resume command:\n${command}`);
+      return;
+    }
+    navigator.clipboard.writeText(command).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => alert(`Copy failed — resume command:\n${command}`),
+    );
   }
 
   return (
@@ -93,7 +109,7 @@ export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
       )}
 
       {!state.loading && state.response?.status === "ok" && (
-        <OkPanel response={state.response} onCopy={copyCommand} />
+        <OkPanel response={state.response} copied={copied} onCopy={copyCommand} />
       )}
 
       {!state.loading && state.response?.status === "needs_target" && (
@@ -130,9 +146,10 @@ export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
 // ── Panels ──
 
 function OkPanel({
-  response, onCopy,
+  response, copied, onCopy,
 }: {
   response: Extract<SessionResumeResponse, { status: "ok" }>;
+  copied: boolean;
   onCopy: (cmd: string) => void;
 }) {
   return (
@@ -141,7 +158,9 @@ function OkPanel({
       <p>Run this in a terminal to continue the session:</p>
       <div className="resume-command">
         <code>{response.command}</code>
-        <button type="button" onClick={() => onCopy(response.command)}>Copy command</button>
+        <button type="button" onClick={() => onCopy(response.command)}>
+          {copied ? "Copied" : "Copy command"}
+        </button>
       </div>
     </div>
   );
