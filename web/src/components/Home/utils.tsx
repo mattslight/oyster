@@ -104,7 +104,7 @@ export function activeWriterChipFor(
   if (!active) return null;
   const origin = session.originDeviceId;
   if (origin && active === origin) return null;  // no handoff
-  const isMe = myDeviceId && active === myDeviceId;
+  const isMe: boolean = myDeviceId !== null && active === myDeviceId;
   const label = session.activeDeviceLabel ?? (isMe ? "this device" : null);
   if (!label) return null;  // active is a third unknown device
   return {

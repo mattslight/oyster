@@ -559,7 +559,10 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
        last_event_at     = excluded.last_event_at,
        bytes_generation  = excluded.bytes_generation,
        has_bytes         = excluded.has_bytes,
-       total_bytes       = excluded.total_bytes,
+       -- Preserve a known total_bytes if cloud sends NULL (mid-rollout
+       -- where the worker hasn't been updated yet, or a partial-shape
+       -- response). Only a non-null cloud value replaces what we have.
+       total_bytes       = COALESCE(excluded.total_bytes, remote_sessions.total_bytes),
        active_device_id  = excluded.active_device_id,
        cloud_updated_at  = excluded.cloud_updated_at,
        fetched_at        = excluded.fetched_at
@@ -633,7 +636,14 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
           s.session_id, session.user.id, s.device_id, s.device_label ?? null,
           s.agent, s.title, s.state, s.cwd, s.model,
           s.started_at, s.ended_at, s.last_event_at,
-          s.bytes_generation, s.has_bytes ? 1 : 0, s.total_bytes ?? 0,
+          // total_bytes is NULL when the cloud worker hasn't been upgraded
+          // to the version that returns it. Preserve NULL on the wire so
+          // the upsert can decide whether to overwrite an existing known
+          // value (see COALESCE in upsertRemoteSession). Coercing to 0
+          // would defeat the "NULL = unknown, leave row visible" exemption
+          // in the ghost-session filter and could hide real sessions
+          // during a server-ahead-of-worker rollout window.
+          s.bytes_generation, s.has_bytes ? 1 : 0, s.total_bytes ?? null,
           s.active_device_id ?? null,
           s.updated_at, now,
         );

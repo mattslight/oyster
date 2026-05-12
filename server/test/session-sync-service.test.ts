@@ -861,6 +861,70 @@ describe("SessionSyncService.pull", () => {
     expect(rows.find((r) => r.session_id === "s-legacy")?.device_label).toBeNull();
   });
 
+  it("pull persists NULL total_bytes (not 0) when cloud omits the field (mid-rollout)", async () => {
+    // The cloud worker may briefly serve an older shape that doesn't
+    // include total_bytes (server-ahead-of-worker deploy window). The
+    // local store must record NULL — defaulting to 0 would defeat the
+    // "NULL is exempt" ghost-session filter and could silently hide
+    // real sessions until the worker deploy catches up.
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db, "dev-mac");
+    // cloudPayload() doesn't accept total_bytes; the field is omitted in
+    // the JSON, which mirrors the pre-3.2a worker response shape.
+    const fetchSpy = vi.fn(async () =>
+      cloudPayload([{ session_id: "s-no-total", device_id: "dev-pc", has_bytes: true }]),
+    );
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.pull();
+    const row = db.prepare(
+      `SELECT total_bytes FROM remote_sessions WHERE session_id = 's-no-total'`,
+    ).get() as { total_bytes: number | null };
+    expect(row.total_bytes).toBeNull();
+  });
+
+  it("preserves an existing total_bytes when cloud later sends NULL (COALESCE)", async () => {
+    // Same defensive logic as device_label: a later pull from a downgraded
+    // worker shouldn't wipe a known total_bytes value with NULL.
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    seedDevice(db, "dev-mac");
+    // First pull stores a known total_bytes by going through the upsert
+    // with an explicit value. cloudPayload doesn't include the field, so
+    // bypass it for the seed insert.
+    db.prepare(
+      `INSERT INTO remote_sessions
+         (session_id, owner_id, device_id, agent, title, state, cwd, model,
+          started_at, ended_at, last_event_at, bytes_generation, has_bytes, total_bytes,
+          cloud_updated_at, fetched_at)
+       VALUES ('s-keeps-total', 'user-A', 'dev-pc', 'claude-code', 't', 'done',
+               '/tmp/x', 'm', '2026-05-11T10:00:00Z', NULL,
+               '2026-05-11T10:30:00Z', 0, 1, 12345, 500, ?)`,
+    ).run(Date.now());
+    // Now pull a fresher version from cloud that omits total_bytes.
+    const fetchSpy = vi.fn(async () =>
+      cloudPayload([{ session_id: "s-keeps-total", device_id: "dev-pc", has_bytes: true, updated_at: 2000 }]),
+    );
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await svc.pull();
+    const row = db.prepare(
+      `SELECT total_bytes FROM remote_sessions WHERE session_id = 's-keeps-total'`,
+    ).get() as { total_bytes: number | null };
+    expect(row.total_bytes).toBe(12345);
+  });
+
   it("preserves an existing device_label when cloud later sends NULL (COALESCE)", async () => {
     // A subsequent pull where the origin device is offline or pushed a
     // partial-shape session must not erase the known label. The upsert's
