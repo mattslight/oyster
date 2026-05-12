@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import type { ArtifactStore } from "../artifact-store.js";
 import type { SpaceStore } from "../space-store.js";
@@ -11,6 +11,7 @@ import type {
   SessionState,
   SessionStore,
 } from "../session-store.js";
+import { encodeCwd } from "../session-sync-service.js";
 import { activeClaudeCwdCounts } from "./claude-process-probe.js";
 
 // claude-code session log watcher (Sprint 2 of the 0.5.0 sessions arc).
@@ -425,7 +426,11 @@ export class ClaudeCodeWatcher {
     const sessionIdFromName = filenameToSessionId(filePath);
     if (!sessionIdFromName) return null;
 
-    let cwd: string | null = null;
+    // Collect every ev.cwd we see (head + tail). After scanning, run them
+    // through pickJsonlCwd which picks the latest cwd whose encoding matches
+    // this file's actual on-disk parent directory. That lets cross-device
+    // resumes ignore the origin device's cwd embedded in early events.
+    const cwdCandidates: string[] = [];
     let startedAt: string | null = null;
     let model: string | null = null;
     let customTitle: string | null = null;
@@ -439,7 +444,7 @@ export class ClaudeCodeWatcher {
       const ev = safeParse(line);
       if (!ev) continue;
 
-      if (cwd === null && typeof ev.cwd === "string") cwd = ev.cwd;
+      if (typeof ev.cwd === "string") cwdCandidates.push(ev.cwd);
       if (startedAt === null && typeof ev.timestamp === "string") startedAt = ev.timestamp;
       if (model === null && ev.type === "assistant" && ev.message?.model) {
         model = String(ev.message.model);
@@ -459,6 +464,7 @@ export class ClaudeCodeWatcher {
 
     // Pass 2 — tail: take the LAST customTitle / agentName so user renames
     // override the auto-generated slug-style ones written near the start.
+    // Also picks up post-resume cwd updates that landed past the head window.
     // Skip the first line of the tail buffer since reads at an arbitrary
     // byte offset usually start mid-line.
     if (tail) {
@@ -468,6 +474,7 @@ export class ClaudeCodeWatcher {
         if (!line) continue;
         const ev = safeParse(line);
         if (!ev) continue;
+        if (typeof ev.cwd === "string") cwdCandidates.push(ev.cwd);
         if (ev.type === "custom-title" && typeof ev.customTitle === "string") {
           const t = ev.customTitle.trim().slice(0, TITLE_MAX);
           if (t) customTitle = t;
@@ -479,6 +486,7 @@ export class ClaudeCodeWatcher {
       }
     }
 
+    const cwd = pickJsonlCwd(filePath, cwdCandidates);
     return { sessionId: sessionIdFromName, cwd, startedAt, model, customTitle, agentName, userMessageTitle, slug };
   }
 
@@ -582,6 +590,12 @@ export class ClaudeCodeWatcher {
     let latestTimestamp: string | null = null;
     let sessionEnsured = false;
     let titleChanged = false;
+    // Encoded form of the file's parent dir — used to validate any cwd
+    // we'd otherwise pull from events. After cross-device resume, early
+    // events still carry the origin device's cwd; only later events from
+    // the local device match this encoding. Hoisted out of the loop since
+    // it's the same for every line.
+    const parentDir = basename(dirname(filePath));
 
     for (const line of lines) {
       if (!line) continue;
@@ -594,7 +608,12 @@ export class ClaudeCodeWatcher {
         // on a `custom-title` event that may be later in the file. We track
         // four title sources and keep upgrading whenever a higher-priority
         // one shows up (custom > agent-name > user message > slug).
-        if (!tracker.cwd && typeof ev.cwd === "string") tracker.cwd = ev.cwd;
+        // Cwd update: always accept a new ev.cwd if its encoding matches
+        // this file's parent dir. Lets a resumed session correct an earlier
+        // (origin-device) cwd captured at boot/onFileAppeared time.
+        if (typeof ev.cwd === "string" && encodeCwd(ev.cwd) === parentDir && ev.cwd !== tracker.cwd) {
+          tracker.cwd = ev.cwd;
+        }
         if (!tracker.startedAt && typeof ev.timestamp === "string") {
           tracker.startedAt = ev.timestamp;
         }
@@ -817,6 +836,33 @@ export function filenameToSessionId(filePath: string): string {
   // Filename is `<uuid>.jsonl`. The UUID is the session id.
   const base = basename(filePath);
   return base.endsWith(".jsonl") ? base.slice(0, -".jsonl".length) : base;
+}
+
+/** Resolve the local cwd for a jsonl from the candidate cwds embedded in
+ *  its events, validated against the file's actual parent-dir encoding.
+ *
+ *  Why: cross-device resume copies a jsonl whose early events still carry
+ *  the origin device's cwd (e.g. Windows "C:\\Users\\matth"). Naively
+ *  taking the first ev.cwd poisons the local sessions row with the origin
+ *  cwd, and pushBytes then computes a non-existent local path. Instead
+ *  we trust the on-disk path: only accept candidates whose encoding
+ *  matches the file's parent-dir name, and prefer the latest match so
+ *  cwd-changes mid-session (legitimate within one device) still win.
+ *  Returns null when nothing matches — caller falls back to the existing
+ *  "no cwd, skip" branch in pushBytes / source resolution. */
+export function pickJsonlCwd(
+  filePath: string,
+  candidates: Array<string | null | undefined>,
+): string | null {
+  const parent = basename(dirname(filePath));
+  // dirname("abc.jsonl") returns "." so basename(".") === "." — reject that.
+  if (!parent || parent === "." || parent === "/") return null;
+  let chosen: string | null = null;
+  for (const c of candidates) {
+    if (typeof c !== "string" || c.length === 0) continue;
+    if (encodeCwd(c) === parent) chosen = c;
+  }
+  return chosen;
 }
 
 function safeParse(line: string): Record<string, any> | null {
