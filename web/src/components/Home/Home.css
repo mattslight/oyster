@@ -439,6 +439,41 @@
   white-space: nowrap;
 }
 
+/* Cross-device chip — same chrome as the space chip but with a distinct
+ * tint so it reads as "origin device" not "space membership". Lives in
+ * the same top-left slot on tiles; inline-block on rows. */
+.home-remote-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: #8fb6ff;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Row variant — same colour treatment but flows inline next to the title
+ * rather than absolute-positioned over a thumb. Slight size bump so it
+ * doesn't get lost mid-line. */
+.home-row-title .home-remote-chip {
+  position: static;
+  margin-right: 8px;
+  vertical-align: baseline;
+  font-size: 10px;
+}
+
 /* ── Status indicator on the thumb ── */
 .home-status {
   position: absolute;

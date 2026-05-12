@@ -1,15 +1,19 @@
 // Session row (table-view list item). Extracted from Home/index.tsx.
 import type { Session } from "../../data/sessions-api";
 import type { Space } from "../../../../shared/types";
-import { AGENT_PIP_CLASS, formatRelative, spaceLabelFor } from "./utils";
+import {
+  AGENT_PIP_CLASS, formatRelative, originDeviceChipFor, spaceLabelFor,
+} from "./utils";
 
 interface SessionRowProps {
   session: Session;
   spaces: Space[];
+  /** Local device id; drives the cross-device chip. See SessionTile. */
+  myDeviceId: string | null;
   onOpen?: (id: string) => void;
 }
 
-export function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
+export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = session.state === "waiting" ? `waiting ${rel}`
@@ -21,6 +25,7 @@ export function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
   // the user can identify where the session was running.
   const cwdBasename = session.cwd ? session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
   const projectLabel = session.sourceLabel ?? spaceLabel ?? cwdBasename ?? "—";
+  const remoteChip = originDeviceChipFor(session, myDeviceId);
   return (
     <div
       className="home-row"
@@ -33,7 +38,14 @@ export function SessionRow({ session, spaces, onOpen }: SessionRowProps) {
     >
       <span className={`home-row-status ${session.state}`} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
-      <span className="home-row-title" title={title}>{title}</span>
+      <span className="home-row-title" title={title}>
+        {remoteChip && (
+          <span className="home-remote-chip" title={remoteChip.titleTooltip}>
+            <span aria-hidden="true">↗</span> {remoteChip.label}
+          </span>
+        )}
+        {title}
+      </span>
       <span className={`home-row-agent ${AGENT_PIP_CLASS[session.agent]}`}>
         <span className="home-agent-pip" />
         {session.agent}

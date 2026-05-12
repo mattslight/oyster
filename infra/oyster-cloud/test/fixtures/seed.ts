@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS synced_session_metadata (
   owner_id          TEXT    NOT NULL,
   session_id        TEXT    NOT NULL,
   device_id         TEXT,
+  device_label      TEXT,
   agent             TEXT    NOT NULL,
   title             TEXT,
   state             TEXT    NOT NULL,

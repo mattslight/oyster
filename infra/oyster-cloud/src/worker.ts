@@ -306,6 +306,11 @@ async function handleMemoryEventsGet(req: Request, env: Env): Promise<Response> 
 interface IncomingSession {
   id: string;
   device_id?: string | null;
+  /** Human-readable origin device label (e.g. "MacBookPro"). Drives the
+   *  cross-device chip in the UI. Sourced from device_identity.label on
+   *  the pushing device. Capped at 64 chars to bound a malicious or buggy
+   *  client's UX footprint. */
+  device_label?: string | null;
   agent: string;
   title: string | null;
   state: string;
@@ -319,6 +324,11 @@ interface IncomingSession {
   // doesn't get clobbered.
   sync_dirty_at: number;
 }
+
+/** Max length of an accepted device_label. Hostnames are RFC-bounded to 253
+ *  but realistic labels are far shorter; cap at 64 to stop a buggy or
+ *  malicious client from filling the UI chip with arbitrary text. */
+const DEVICE_LABEL_MAX = 64;
 
 function isValidSession(s: unknown): s is IncomingSession {
   if (!s || typeof s !== "object") return false;
@@ -334,9 +344,16 @@ function isValidSession(s: unknown): s is IncomingSession {
   // array) would either crash D1 .bind() with TypeError or silently coerce
   // to a useless string representation. Each malformed session is rejected
   // individually so the rest of the batch still lands.
-  for (const key of ["title", "cwd", "model", "ended_at", "device_id"] as const) {
+  for (const key of ["title", "cwd", "model", "ended_at", "device_id", "device_label"] as const) {
     const v = o[key];
     if (v !== null && v !== undefined && typeof v !== "string") return false;
+  }
+  // device_label length cap — over-long values are silently truncated to
+  // null rather than rejecting the whole session push. The pushing client
+  // shouldn't send a 1KB label, but if it does we'd rather lose the chip
+  // than lose the session.
+  if (typeof o.device_label === "string" && o.device_label.length > DEVICE_LABEL_MAX) {
+    o.device_label = null;
   }
   return true;
 }
@@ -376,11 +393,12 @@ async function handleSessionsMetadataPost(req: Request, env: Env): Promise<Respo
       // from metadata pushes — left at its existing value (default 0 on insert).
       const result = await env.DB.prepare(
         `INSERT INTO synced_session_metadata
-           (owner_id, session_id, device_id, agent, title, state, cwd, model,
+           (owner_id, session_id, device_id, device_label, agent, title, state, cwd, model,
             started_at, ended_at, last_event_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(owner_id, session_id) DO UPDATE SET
            device_id     = excluded.device_id,
+           device_label  = COALESCE(excluded.device_label, synced_session_metadata.device_label),
            agent         = excluded.agent,
            title         = excluded.title,
            state         = excluded.state,
@@ -396,7 +414,7 @@ async function handleSessionsMetadataPost(req: Request, env: Env): Promise<Respo
       // be missing entirely. Coerce every nullable to null before binding so
       // a partial-shape session doesn't fail the whole batch with 500.
       ).bind(
-        user.id, s.id, s.device_id ?? null, s.agent,
+        user.id, s.id, s.device_id ?? null, s.device_label ?? null, s.agent,
         s.title ?? null, s.state, s.cwd ?? null, s.model ?? null,
         s.started_at, s.ended_at ?? null, s.last_event_at, s.sync_dirty_at,
       ).run();
@@ -424,16 +442,17 @@ async function handleSessionsMetadataGet(req: Request, env: Env): Promise<Respon
   // generation. A session may have metadata but no chunks yet (push
   // hasn't fired) or chunks from older generations only (just reset).
   type Row = {
-    session_id: string; device_id: string | null; agent: string; title: string | null;
+    session_id: string; device_id: string | null; device_label: string | null;
+    agent: string; title: string | null;
     state: string; cwd: string | null; model: string | null; started_at: string;
     ended_at: string | null; last_event_at: string;
     bytes_generation: number; active_device_id: string | null;
     has_bytes: number; updated_at: number;
   };
   const { results } = await env.DB.prepare(
-    `SELECT m.session_id, m.device_id, m.agent, m.title, m.state, m.cwd, m.model,
-            m.started_at, m.ended_at, m.last_event_at, m.bytes_generation,
-            m.active_device_id, m.updated_at,
+    `SELECT m.session_id, m.device_id, m.device_label, m.agent, m.title, m.state,
+            m.cwd, m.model, m.started_at, m.ended_at, m.last_event_at,
+            m.bytes_generation, m.active_device_id, m.updated_at,
             CASE WHEN EXISTS (
               SELECT 1 FROM synced_session_chunks c
                WHERE c.owner_id = m.owner_id

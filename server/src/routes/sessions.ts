@@ -175,6 +175,7 @@ export async function tryHandleSessionRoute(
       model: string | null;
       lastEventAt: string;
       originDeviceId: string | null;
+      originDeviceLabel: string | null;
       jsonlAvailableLocally: boolean;
       hasBytes: boolean;
       activeDeviceId: string | null;
@@ -198,6 +199,7 @@ export async function tryHandleSessionRoute(
         lastEventAt: row.last_event_at,
         // Local sessions are by definition available on this device.
         originDeviceId: null,
+        originDeviceLabel: null,
         jsonlAvailableLocally: true,
         // We don't track "is there a cloud chunk for this local session" here
         // — that requires a cloud round-trip. For the UI, the
@@ -218,14 +220,16 @@ export async function tryHandleSessionRoute(
     if (ownerId) {
       const localIds = new Set(rows.map((r) => r.id));
       type RemoteRow = {
-        session_id: string; device_id: string | null; agent: string; title: string | null;
+        session_id: string; device_id: string | null; device_label: string | null;
+        agent: string; title: string | null;
         state: string; cwd: string | null; model: string | null; started_at: string;
         ended_at: string | null; last_event_at: string; has_bytes: number;
         active_device_id: string | null; jsonl_local_path: string | null;
       };
       const remoteRows = db.prepare(
-        `SELECT session_id, device_id, agent, title, state, cwd, model, started_at,
-                ended_at, last_event_at, has_bytes, active_device_id, jsonl_local_path
+        `SELECT session_id, device_id, device_label, agent, title, state, cwd, model,
+                started_at, ended_at, last_event_at, has_bytes, active_device_id,
+                jsonl_local_path
            FROM remote_sessions
           WHERE owner_id = ?
           ORDER BY last_event_at DESC`,
@@ -246,6 +250,7 @@ export async function tryHandleSessionRoute(
           model: r.model,
           lastEventAt: r.last_event_at,
           originDeviceId: r.device_id,
+          originDeviceLabel: r.device_label,
           // Available locally only if the user has already reassembled it.
           jsonlAvailableLocally: r.jsonl_local_path !== null,
           hasBytes: r.has_bytes === 1,

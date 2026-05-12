@@ -111,6 +111,10 @@ export interface Session {
    *  sessions discovered by this device's watcher; populated for remote
    *  sessions pulled from the cloud manifest. */
   originDeviceId?: string | null;
+  /** Human-readable origin device label (e.g. "MacBookPro"). Pulled from
+   *  the origin device's device_identity.label. Null on rows pushed before
+   *  this column existed — UI falls back to "Other device". */
+  originDeviceLabel?: string | null;
   /** True for local sessions; true for remote sessions whose jsonl has
    *  already been reassembled to disk on this device; false otherwise. */
   jsonlAvailableLocally?: boolean;

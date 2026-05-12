@@ -1,18 +1,26 @@
 // Session tile (icons-view card). Extracted from Home/index.tsx.
 import type { Session } from "../../data/sessions-api";
 import type { Space } from "../../../../shared/types";
-import { AGENT_CLASS, AGENT_LETTERS, metaForSession, spaceLabelFor } from "./utils";
+import {
+  AGENT_CLASS, AGENT_LETTERS,
+  metaForSession, originDeviceChipFor, spaceLabelFor,
+} from "./utils";
 
 interface SessionTileProps {
   session: Session;
   spaces: Space[];
   showSpaceChip: boolean;
+  /** Local device id, when known. Drives the cross-device chip. Null
+   *  during the brief window before useMyDeviceId resolves — chip is
+   *  suppressed during that window. */
+  myDeviceId: string | null;
   onOpen?: (id: string) => void;
 }
 
-export function SessionTile({ session, spaces, showSpaceChip, onOpen }: SessionTileProps) {
+export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, onOpen }: SessionTileProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const title = session.title ?? "(no title yet)";
+  const remoteChip = originDeviceChipFor(session, myDeviceId);
   return (
     <div
       className="home-tile"
@@ -24,8 +32,16 @@ export function SessionTile({ session, spaces, showSpaceChip, onOpen }: SessionT
       tabIndex={onOpen ? 0 : undefined}
     >
       <div className={`home-thumb ${AGENT_CLASS[session.agent]}`}>
-        {showSpaceChip && spaceLabel && (
-          <span className="home-space-chip">{spaceLabel}</span>
+        {remoteChip ? (
+          // Cross-device chip wins over the space chip when both would apply —
+          // origin is a stronger signal than space membership for these cards.
+          <span className="home-remote-chip" title={remoteChip.titleTooltip}>
+            <span aria-hidden="true">↗</span> {remoteChip.label}
+          </span>
+        ) : (
+          showSpaceChip && spaceLabel && (
+            <span className="home-space-chip">{spaceLabel}</span>
+          )
         )}
         <span className="home-agent-mark">{AGENT_LETTERS[session.agent]}</span>
         <span className={`home-status ${session.state}`} />

@@ -254,6 +254,54 @@ describe("POST /api/sessions/metadata", () => {
     expect(body.accepted).toEqual([]);
     expect(body.rejected).toEqual([sid]);
   });
+
+  it("persists device_label and returns it from GET", async () => {
+    // Verifies the device_label column added in migration 0010 round-trips:
+    // worker accepts it on POST, stores it in synced_session_metadata, and
+    // returns it on GET so receiving devices can render "From MacBookPro".
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    const post = await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessions: [sampleSession(sid, 1000, { device_label: "MacBookPro" })],
+      }),
+    }, token);
+    expect(post.status).toBe(200);
+    // Stored.
+    const row = await env.DB.prepare(
+      `SELECT device_label FROM synced_session_metadata WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ device_label: string }>();
+    expect(row?.device_label).toBe("MacBookPro");
+    // Returned in GET.
+    const get = await signedFetch("/api/sessions/metadata", { method: "GET" }, token);
+    const body = await get.json() as { sessions: Array<{ session_id: string; device_label: string | null }> };
+    expect(body.sessions.find((s) => s.session_id === sid)?.device_label).toBe("MacBookPro");
+  });
+
+  it("rejects an over-long device_label by nulling it (keeps the session push valid)", async () => {
+    // Defence-in-depth — a buggy or malicious client should not be able to
+    // stuff a 1KB label into the chip. Cap is 64 chars; over-long values
+    // are silently nulled rather than rejecting the whole push.
+    const { token, userId } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    const tooLong = "X".repeat(200);
+    const res = await signedFetch("/api/sessions/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessions: [sampleSession(sid, 1000, { device_label: tooLong })],
+      }),
+    }, token);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { accepted: string[]; rejected: string[] };
+    expect(body.accepted).toEqual([sid]);   // session still accepted
+    const row = await env.DB.prepare(
+      `SELECT device_label FROM synced_session_metadata WHERE owner_id = ? AND session_id = ?`,
+    ).bind(userId, sid).first<{ device_label: string | null }>();
+    expect(row?.device_label).toBeNull();
+  });
 });
 
 describe("GET /api/sessions/metadata", () => {

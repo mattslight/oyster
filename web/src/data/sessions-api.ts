@@ -137,3 +137,29 @@ export class SessionNotFoundError extends Error {
     this.name = "SessionNotFoundError";
   }
 }
+
+/** Re-exported shape so callers can type-check the dialog. The server side
+ *  is shared/types.ts → SessionResumeResponse. */
+export type { SessionResumeResponse } from "../../../shared/types";
+import type { SessionResumeResponse } from "../../../shared/types";
+
+/** POST /api/sessions/:id/resume. Returns one of five tagged shapes — see
+ *  SessionResumeResponse for the contract. The dialog renders different UI
+ *  per `status` value. Network or 5xx errors bubble as thrown ApiError. */
+export async function resumeSession(
+  sessionId: string,
+  opts: { targetCwd?: string; force?: boolean } = {},
+): Promise<SessionResumeResponse> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/resume`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  // 200 (ok / needs_target / pick_source) and 409 (validation_warning /
+  // local_diverged / bytes_not_available) all return JSON bodies the dialog
+  // routes on. Anything else is an exception.
+  if (!res.ok && res.status !== 409) {
+    throw new ApiError(`Resume failed: ${res.status}`, res.status);
+  }
+  return (await res.json()) as SessionResumeResponse;
+}
