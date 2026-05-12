@@ -90,6 +90,29 @@ export function originDeviceChipFor(
   };
 }
 
+/** Decide whether to show the active-writer chip on a session card. The
+ *  "Now active on X" signal fires when the most recent push to this
+ *  session came from a device OTHER than the origin — i.e. a handoff has
+ *  happened. Returns null when origin and active are the same (steady
+ *  state, no signal needed), when the active device label is unknown, or
+ *  when there's no active device yet (legacy rows pre-active-writer). */
+export function activeWriterChipFor(
+  session: Session,
+  myDeviceId: string | null,
+): { label: string; titleTooltip: string } | null {
+  const active = session.activeDeviceId;
+  if (!active) return null;
+  const origin = session.originDeviceId;
+  if (origin && active === origin) return null;  // no handoff
+  const isMe = myDeviceId && active === myDeviceId;
+  const label = session.activeDeviceLabel ?? (isMe ? "this device" : null);
+  if (!label) return null;  // active is a third unknown device
+  return {
+    label: isMe ? "Now active here" : `Now active on ${label}`,
+    titleTooltip: `Most recent chunk pushed by ${label} (device ${active.slice(0, 8)})`,
+  };
+}
+
 export function metaForSession(session: Session): string {
   const rel = formatRelative(session.lastEventAt) ?? "—";
   if (session.state === "waiting") return `${session.agent} · waiting ${rel}`;

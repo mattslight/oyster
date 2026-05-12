@@ -56,6 +56,7 @@ function harness() {
       last_event_at     TEXT NOT NULL,
       bytes_generation  INTEGER NOT NULL DEFAULT 0,
       has_bytes         INTEGER NOT NULL DEFAULT 0,
+      total_bytes       INTEGER,
       active_device_id  TEXT,
       cloud_updated_at  INTEGER NOT NULL,
       fetched_at        INTEGER NOT NULL,

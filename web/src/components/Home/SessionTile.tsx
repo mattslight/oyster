@@ -3,7 +3,7 @@ import type { Session } from "../../data/sessions-api";
 import type { Space } from "../../../../shared/types";
 import {
   AGENT_CLASS, AGENT_LETTERS,
-  metaForSession, originDeviceChipFor, spaceLabelFor,
+  activeWriterChipFor, metaForSession, originDeviceChipFor, spaceLabelFor,
 } from "./utils";
 
 interface SessionTileProps {
@@ -21,6 +21,7 @@ export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, onOpen
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const title = session.title ?? "(no title yet)";
   const remoteChip = originDeviceChipFor(session, myDeviceId);
+  const activeChip = activeWriterChipFor(session, myDeviceId);
   return (
     <div
       className="home-tile"
@@ -42,6 +43,14 @@ export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, onOpen
           showSpaceChip && spaceLabel && (
             <span className="home-space-chip">{spaceLabel}</span>
           )
+        )}
+        {activeChip && (
+          // Active-writer chip in the opposite corner so it doesn't clash with
+          // origin/space. Visible whenever there's been a hand-off, including
+          // back to this device.
+          <span className="home-active-chip" title={activeChip.titleTooltip}>
+            {activeChip.label}
+          </span>
         )}
         <span className="home-agent-mark">{AGENT_LETTERS[session.agent]}</span>
         <span className={`home-status ${session.state}`} />

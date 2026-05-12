@@ -324,6 +324,26 @@ describe("GET /api/sessions/metadata", () => {
     const ours = body.sessions.find((s) => s.session_id === sidA);
     expect(ours?.has_bytes).toBe(false);
   });
+
+  it("returns total_bytes summed from chunks of the current generation", async () => {
+    // Drives the empty-session filter on Device B — sessions with title NULL
+    // and total_bytes < 4KB look like aborted `claude` runs.
+    const { token } = await makeProSession();
+    const sid = `s-${crypto.randomUUID()}`;
+    await registerSession(token, sid);
+    // No chunks yet → total_bytes = 0.
+    const before = await signedFetch("/api/sessions/metadata", { method: "GET" }, token);
+    const beforeBody = await before.json() as { sessions: Array<{ session_id: string; total_bytes: number }> };
+    expect(beforeBody.sessions.find((s) => s.session_id === sid)?.total_bytes).toBe(0);
+    // Upload two chunks; total_bytes should sum.
+    const c1 = new TextEncoder().encode("hello\n");
+    const c2 = new TextEncoder().encode("world!\n");
+    expect((await putChunk(token, sid, 1, c1, 0, 0)).res.status).toBe(200);
+    expect((await putChunk(token, sid, 2, c2, c1.byteLength, 0)).res.status).toBe(200);
+    const after = await signedFetch("/api/sessions/metadata", { method: "GET" }, token);
+    const afterBody = await after.json() as { sessions: Array<{ session_id: string; total_bytes: number }> };
+    expect(afterBody.sessions.find((s) => s.session_id === sid)?.total_bytes).toBe(c1.byteLength + c2.byteLength);
+  });
 });
 
 describe("PUT/GET /api/sessions/bytes/:id/chunk/:n (chunked-delta)", () => {

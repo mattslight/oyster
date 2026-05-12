@@ -34,10 +34,16 @@ function makeDb(): Database.Database {
       agent TEXT NOT NULL, title TEXT, state TEXT NOT NULL, cwd TEXT,
       model TEXT, started_at TEXT NOT NULL, ended_at TEXT,
       last_event_at TEXT NOT NULL, bytes_generation INTEGER NOT NULL DEFAULT 0,
-      has_bytes INTEGER NOT NULL DEFAULT 0, active_device_id TEXT,
+      has_bytes INTEGER NOT NULL DEFAULT 0, total_bytes INTEGER,
+      active_device_id TEXT,
       cloud_updated_at INTEGER NOT NULL,
       fetched_at INTEGER NOT NULL, jsonl_local_path TEXT,
       PRIMARY KEY (owner_id, session_id)
+    );
+    CREATE TABLE device_identity (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      device_id TEXT NOT NULL,
+      label TEXT NOT NULL
     );
     CREATE TABLE sources (
       id TEXT PRIMARY KEY, space_id TEXT NOT NULL, type TEXT NOT NULL,
@@ -51,17 +57,40 @@ function makeDb(): Database.Database {
 
 function insertRemote(
   db: Database.Database,
-  opts: { sessionId: string; ownerId: string; cwd: string | null; hasBytes: boolean; deviceId?: string },
+  opts: {
+    sessionId: string;
+    ownerId: string;
+    cwd: string | null;
+    hasBytes: boolean;
+    deviceId?: string;
+    /** Override title (default 't') — pass null to test the ghost-session filter. */
+    title?: string | null;
+    /** Override ended_at (default null) — set to test "ended cleanly" exemption. */
+    endedAt?: string | null;
+    /** Override total_bytes — drives the ghost-session filter. */
+    totalBytes?: number | null;
+    /** Override active_device_id — drives the active-writer chip. */
+    activeDeviceId?: string | null;
+  },
 ) {
   db.prepare(
     `INSERT INTO remote_sessions
        (session_id, owner_id, device_id, agent, title, state, cwd, model,
-        started_at, ended_at, last_event_at, bytes_generation, has_bytes,
-        cloud_updated_at, fetched_at, jsonl_local_path)
-     VALUES (?, ?, ?, 'claude-code', 't', 'done', ?, 'm',
-             '2026-05-11T10:00:00Z', NULL, '2026-05-11T10:30:00Z',
-             0, ?, 1000, ?, NULL)`,
-  ).run(opts.sessionId, opts.ownerId, opts.deviceId ?? "dev-pc", opts.cwd, opts.hasBytes ? 1 : 0, Date.now());
+        started_at, ended_at, last_event_at, bytes_generation, has_bytes, total_bytes,
+        active_device_id, cloud_updated_at, fetched_at, jsonl_local_path)
+     VALUES (?, ?, ?, 'claude-code', ?, 'done', ?, 'm',
+             '2026-05-11T10:00:00Z', ?, '2026-05-11T10:30:00Z',
+             0, ?, ?, ?, 1000, ?, NULL)`,
+  ).run(
+    opts.sessionId, opts.ownerId, opts.deviceId ?? "dev-pc",
+    opts.title === undefined ? "t" : opts.title,
+    opts.cwd,
+    opts.endedAt === undefined ? null : opts.endedAt,
+    opts.hasBytes ? 1 : 0,
+    opts.totalBytes === undefined ? null : opts.totalBytes,
+    opts.activeDeviceId === undefined ? null : opts.activeDeviceId,
+    Date.now(),
+  );
 }
 
 function insertSource(db: Database.Database, id: string, path: string, spaceId = "space-1") {
@@ -333,6 +362,93 @@ describe("GET /api/sessions merges local + remote", () => {
     expect(list).toHaveLength(1);
     expect(list[0]!.title).toBe("local-version");
     expect(list[0]!.originDeviceId).toBeNull();
+  });
+
+  it("hides ghost remote sessions (title null + ended_at null + tiny byte count)", async () => {
+    // The dogfood `matth (no title yet)` rows: aborted `claude` invocations
+    // that left only permission/file-history/exit events in the jsonl. Hide
+    // them so Home doesn't fill up with non-content.
+    const db = makeDb();
+    insertRemote(db, {
+      sessionId: "ghost-1", ownerId: "user-A", cwd: "C:\\Users\\matth",
+      hasBytes: true, title: null, endedAt: null, totalBytes: 1853,
+    });
+    insertRemote(db, {
+      sessionId: "real-titled", ownerId: "user-A", cwd: "C:\\proj",
+      hasBytes: true, title: "real conversation", endedAt: null, totalBytes: 1500,
+    });
+    insertRemote(db, {
+      sessionId: "ended-untitled", ownerId: "user-A", cwd: "C:\\proj",
+      hasBytes: true, title: null, endedAt: "2026-05-10T12:00:00Z", totalBytes: 100,
+    });
+    insertRemote(db, {
+      sessionId: "big-untitled", ownerId: "user-A", cwd: "C:\\proj",
+      hasBytes: true, title: null, endedAt: null, totalBytes: 50_000,
+    });
+    insertRemote(db, {
+      sessionId: "legacy-no-bytecount", ownerId: "user-A", cwd: "C:\\proj",
+      hasBytes: true, title: null, endedAt: null, totalBytes: null,
+    });
+    const sessionStore = { getAll: () => [] } as any;
+    const { ctx, captured } = fakeCtx();
+    const req = { method: "GET" } as any;
+    await tryHandleSessionRoute(req, {} as any, "/api/sessions",
+      ctx as any, {
+        db, sessionStore, spaceStore: { getSourcesByIds: () => [] } as any,
+        artifactService: {} as any, memoryProvider: {} as any,
+        sessionSync: stubSessionSync(),
+        currentUserId: () => "user-A",
+      });
+    const ids = (captured.json as Array<{ id: string }>).map((s) => s.id).sort();
+    // ghost-1 hidden; everything else surfaced for one reason or another.
+    expect(ids).toEqual(["big-untitled", "ended-untitled", "legacy-no-bytecount", "real-titled"]);
+  });
+
+  it("computes activeDeviceLabel from local device_identity and origin", async () => {
+    // Three scenarios in one go:
+    //   - active is us → resolves to our local device_identity.label
+    //   - active equals origin → resolves to remote_sessions.device_label
+    //   - active is a third unknown device → null (we don't make one up)
+    const db = makeDb();
+    db.prepare(`INSERT INTO device_identity (id, device_id, label) VALUES (1, 'dev-mac', 'MacBookPro')`).run();
+
+    // Origin Windows, active = Mac (us). UI should render "Now active here".
+    insertRemote(db, {
+      sessionId: "s-handed-to-me", ownerId: "user-A", cwd: "C:\\proj",
+      hasBytes: true, deviceId: "dev-windows", activeDeviceId: "dev-mac",
+    });
+    db.prepare(`UPDATE remote_sessions SET device_label = 'WIN-DESKTOP' WHERE session_id = 's-handed-to-me'`).run();
+
+    // Origin Windows, active = Windows (steady state). resolveActiveLabel
+    // returns origin's label, but the UI helper hides this case (no handoff).
+    insertRemote(db, {
+      sessionId: "s-still-on-origin", ownerId: "user-A", cwd: "C:\\proj",
+      hasBytes: true, deviceId: "dev-windows", activeDeviceId: "dev-windows",
+    });
+    db.prepare(`UPDATE remote_sessions SET device_label = 'WIN-DESKTOP' WHERE session_id = 's-still-on-origin'`).run();
+
+    // Origin Windows, active = third Linux device we've never seen.
+    insertRemote(db, {
+      sessionId: "s-unknown-active", ownerId: "user-A", cwd: "C:\\proj",
+      hasBytes: true, deviceId: "dev-windows", activeDeviceId: "dev-linux",
+    });
+
+    const { ctx, captured } = fakeCtx();
+    const req = { method: "GET" } as any;
+    await tryHandleSessionRoute(req, {} as any, "/api/sessions",
+      ctx as any, {
+        db, sessionStore: { getAll: () => [] } as any,
+        spaceStore: { getSourcesByIds: () => [] } as any,
+        artifactService: {} as any, memoryProvider: {} as any,
+        sessionSync: stubSessionSync(),
+        currentUserId: () => "user-A",
+      });
+    const byId = new Map(
+      (captured.json as Array<{ id: string; activeDeviceLabel: string | null }>).map((s) => [s.id, s.activeDeviceLabel]),
+    );
+    expect(byId.get("s-handed-to-me")).toBe("MacBookPro");
+    expect(byId.get("s-still-on-origin")).toBe("WIN-DESKTOP");
+    expect(byId.get("s-unknown-active")).toBeNull();
   });
 });
 

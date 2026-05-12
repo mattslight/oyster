@@ -98,6 +98,38 @@ interface ValidationOutcome {
  *  Hard fail (returns ok:false) only on folder-doesn't-exist. Other
  *  conditions are advisory and surfaced as reasons so the UI can
  *  prompt for force:true confirmation. */
+/** Read the local device identity row (seeded at boot). Returns NULLs when
+ *  the row isn't present — callers degrade gracefully (no active chip). */
+function readMyDeviceIdentity(db: Database.Database): {
+  myDeviceId: string | null;
+  myDeviceLabel: string | null;
+} {
+  const row = db.prepare(
+    `SELECT device_id, label FROM device_identity WHERE id = 1 LIMIT 1`,
+  ).get() as { device_id: string; label: string } | undefined;
+  return {
+    myDeviceId: row?.device_id ?? null,
+    myDeviceLabel: row?.label ?? null,
+  };
+}
+
+/** Resolves `activeDeviceLabel` for a session row given this device's
+ *  identity. Two known sources for a label: device_identity (when active is
+ *  us) and remote_sessions.device_label (when active is the origin device).
+ *  Anything else — a third device we haven't seen yet — falls back to null
+ *  rather than guessing. Used by both the merge route and the singular GET. */
+function makeActiveLabelResolver(
+  myDeviceId: string | null,
+  myDeviceLabel: string | null,
+): (activeId: string | null, originId: string | null, originLabel: string | null) => string | null {
+  return (activeId, originId, originLabel) => {
+    if (!activeId) return null;
+    if (myDeviceId && activeId === myDeviceId) return myDeviceLabel;
+    if (originId && activeId === originId) return originLabel;
+    return null;
+  };
+}
+
 function validateOverrideTarget(targetCwd: string, remoteCwd: string | null): ValidationOutcome {
   const reasons: string[] = [];
   if (!existsSync(targetCwd)) {
@@ -179,7 +211,19 @@ export async function tryHandleSessionRoute(
       jsonlAvailableLocally: boolean;
       hasBytes: boolean;
       activeDeviceId: string | null;
+      /** Human-readable label of whichever device most recently wrote a
+       *  chunk for this session. Resolved server-side from one of:
+       *  - this device's device_identity.label (when active is us)
+       *  - remote_sessions.device_label (when active is the origin device)
+       *  - null (when active is some third device we don't yet know about).
+       *  Drives the "Now active on Mac" chip in the UI. */
+      activeDeviceLabel: string | null;
     }
+    // Cache the current device identity once — used to resolve "active is us"
+    // for both local and remote payload entries. NULL when device_identity
+    // hasn't been seeded yet; the chip silently skips in that case.
+    const { myDeviceId, myDeviceLabel } = readMyDeviceIdentity(db);
+    const resolveActiveLabel = makeActiveLabelResolver(myDeviceId, myDeviceLabel);
     const sourcesById = new Map(sourceList.map((s) => [s.id, s]));
     const localPayload: MergedSessionPayload[] = rows.map((row) => {
       const src = row.source_id ? sourcesById.get(row.source_id) : null;
@@ -208,6 +252,7 @@ export async function tryHandleSessionRoute(
         hasBytes: true,
         // Local sessions are always actively written by this device.
         activeDeviceId: null,
+        activeDeviceLabel: null,
       };
     });
 
@@ -224,18 +269,39 @@ export async function tryHandleSessionRoute(
         agent: string; title: string | null;
         state: string; cwd: string | null; model: string | null; started_at: string;
         ended_at: string | null; last_event_at: string; has_bytes: number;
+        total_bytes: number | null;
         active_device_id: string | null; jsonl_local_path: string | null;
       };
       const remoteRows = db.prepare(
         `SELECT session_id, device_id, device_label, agent, title, state, cwd, model,
-                started_at, ended_at, last_event_at, has_bytes, active_device_id,
-                jsonl_local_path
+                started_at, ended_at, last_event_at, has_bytes, total_bytes,
+                active_device_id, jsonl_local_path
            FROM remote_sessions
           WHERE owner_id = ?
           ORDER BY last_event_at DESC`,
       ).all(ownerId) as RemoteRow[];
+      // Ghost-session filter (PR 3.2a temporary heuristic): hide remote
+      // sessions that look like aborted `claude` invocations — title NULL,
+      // never properly ended, and the chunk chain is smaller than the
+      // typical "permission-mode + file-history + a couple of
+      // <command-name>/exit</command-name> events" overhead (~2 KB observed,
+      // 4 KB cap for headroom). Rows whose total_bytes is NULL (pre-3.2a
+      // pulls, or rows pushed before the column existed) are exempt — we'd
+      // rather keep them visible than risk hiding real sessions until the
+      // next pull populates the column.
+      //
+      // Durable fix [[durable-fix-deferred-to-3.2.x]]: add
+      // real_user_message_count + assistant_message_count to metadata and
+      // filter where both are 0. Tracks content, not size.
+      const GHOST_BYTE_THRESHOLD = 4096;
+      const isGhostSession = (r: RemoteRow): boolean =>
+        r.title === null
+        && r.ended_at === null
+        && r.total_bytes !== null
+        && r.total_bytes < GHOST_BYTE_THRESHOLD;
       remotePayload = remoteRows
         .filter((r) => !localIds.has(r.session_id))
+        .filter((r) => !isGhostSession(r))
         .map((r) => ({
           id: r.session_id,
           spaceId: null,
@@ -255,6 +321,7 @@ export async function tryHandleSessionRoute(
           jsonlAvailableLocally: r.jsonl_local_path !== null,
           hasBytes: r.has_bytes === 1,
           activeDeviceId: r.active_device_id,
+          activeDeviceLabel: resolveActiveLabel(r.active_device_id, r.device_id, r.device_label),
         }));
     }
 
@@ -342,6 +409,7 @@ export async function tryHandleSessionRoute(
           jsonlAvailableLocally: true,
           hasBytes: true,
           activeDeviceId: null,
+          activeDeviceLabel: null,
         });
         return true;
       }
@@ -364,6 +432,8 @@ export async function tryHandleSessionRoute(
             WHERE owner_id = ? AND session_id = ? LIMIT 1`,
         ).get(ownerId, id) as RemoteRow | undefined;
         if (remoteRow) {
+          const { myDeviceId, myDeviceLabel } = readMyDeviceIdentity(db);
+          const resolve = makeActiveLabelResolver(myDeviceId, myDeviceLabel);
           sendJson({
             id,
             spaceId: null,
@@ -382,6 +452,9 @@ export async function tryHandleSessionRoute(
             jsonlAvailableLocally: remoteRow.jsonl_local_path !== null,
             hasBytes: remoteRow.has_bytes === 1,
             activeDeviceId: remoteRow.active_device_id,
+            activeDeviceLabel: resolve(
+              remoteRow.active_device_id, remoteRow.device_id, remoteRow.device_label,
+            ),
           });
           return true;
         }

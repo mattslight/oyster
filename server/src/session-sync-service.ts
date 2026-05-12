@@ -540,9 +540,9 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
   const upsertRemoteSession = deps.db.prepare(
     `INSERT INTO remote_sessions
        (session_id, owner_id, device_id, device_label, agent, title, state, cwd, model,
-        started_at, ended_at, last_event_at, bytes_generation, has_bytes,
+        started_at, ended_at, last_event_at, bytes_generation, has_bytes, total_bytes,
         active_device_id, cloud_updated_at, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(owner_id, session_id) DO UPDATE SET
        device_id         = excluded.device_id,
        -- Preserve a known label if cloud sends NULL (legacy row, or
@@ -559,6 +559,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
        last_event_at     = excluded.last_event_at,
        bytes_generation  = excluded.bytes_generation,
        has_bytes         = excluded.has_bytes,
+       total_bytes       = excluded.total_bytes,
        active_device_id  = excluded.active_device_id,
        cloud_updated_at  = excluded.cloud_updated_at,
        fetched_at        = excluded.fetched_at
@@ -597,6 +598,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       last_event_at: string;
       bytes_generation: number;
       has_bytes: boolean;
+      total_bytes: number;
       active_device_id: string | null;
       updated_at: number;
     };
@@ -631,7 +633,8 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
           s.session_id, session.user.id, s.device_id, s.device_label ?? null,
           s.agent, s.title, s.state, s.cwd, s.model,
           s.started_at, s.ended_at, s.last_event_at,
-          s.bytes_generation, s.has_bytes ? 1 : 0, s.active_device_id ?? null,
+          s.bytes_generation, s.has_bytes ? 1 : 0, s.total_bytes ?? 0,
+          s.active_device_id ?? null,
           s.updated_at, now,
         );
         if (info.changes > 0) applied++;

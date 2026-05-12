@@ -447,8 +447,14 @@ async function handleSessionsMetadataGet(req: Request, env: Env): Promise<Respon
     state: string; cwd: string | null; model: string | null; started_at: string;
     ended_at: string | null; last_event_at: string;
     bytes_generation: number; active_device_id: string | null;
-    has_bytes: number; updated_at: number;
+    has_bytes: number; total_bytes: number; updated_at: number;
   };
+  // total_bytes: cheap sum across chunks of the current generation. Drives
+  // the "is this a real session or a ghost?" filter on Device B — a session
+  // whose only cloud content is the system permission-mode + file-history-
+  // snapshot + a couple of `<command-name>/exit</command-name>` events
+  // typically lands under ~2 KB. NULL counted as 0 via COALESCE so the
+  // wire shape is always a number.
   const { results } = await env.DB.prepare(
     `SELECT m.session_id, m.device_id, m.device_label, m.agent, m.title, m.state,
             m.cwd, m.model, m.started_at, m.ended_at, m.last_event_at,
@@ -458,7 +464,13 @@ async function handleSessionsMetadataGet(req: Request, env: Env): Promise<Respon
                WHERE c.owner_id = m.owner_id
                  AND c.session_id = m.session_id
                  AND c.bytes_generation = m.bytes_generation
-            ) THEN 1 ELSE 0 END AS has_bytes
+            ) THEN 1 ELSE 0 END AS has_bytes,
+            COALESCE((
+              SELECT SUM(c.byte_count) FROM synced_session_chunks c
+               WHERE c.owner_id = m.owner_id
+                 AND c.session_id = m.session_id
+                 AND c.bytes_generation = m.bytes_generation
+            ), 0) AS total_bytes
        FROM synced_session_metadata m
       WHERE m.owner_id = ?
       ORDER BY m.last_event_at DESC`,

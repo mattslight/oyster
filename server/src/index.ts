@@ -327,6 +327,29 @@ const profileBinding = createProfileBindingService({ db });
   }
 }
 
+// One-shot device_label backfill (PR 3.2a). The metadata-sync path stamps
+// device_label on every outgoing push, but that only happens for sessions
+// the push code actually drains — i.e. those whose sync_dirty_at is set.
+// Sessions pushed before beta.9 have a NULL label in cloud and will stay
+// that way until something else makes them dirty. Bump sync_dirty_at on
+// all owned sessions exactly once so the next reconcile re-stamps every
+// row with this device's label. Guarded via app_state so it runs once per
+// install, not on every boot.
+{
+  const flag = db.prepare(
+    `INSERT OR IGNORE INTO app_state (key, value, applied_at)
+     VALUES ('device_label_backfill_done', '1', ?)`,
+  ).run(Date.now());
+  if (flag.changes > 0) {
+    const bumped = db.prepare(
+      `UPDATE sessions SET sync_dirty_at = ? WHERE cloud_owner_id IS NOT NULL`,
+    ).run(Date.now());
+    if (bumped.changes > 0) {
+      console.log(`[sessions] device_label backfill: marked ${bumped.changes} sessions dirty for re-push`);
+    }
+  }
+}
+
 // Self-mirror cleanup (#322 PR 2 hotfix follow-up). Removes any
 // remote_sessions rows that are actually local — either device_id matches
 // this device, or session_id appears in the local `sessions` table. These
