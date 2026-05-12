@@ -307,33 +307,88 @@ export async function tryHandleSessionRoute(
     }
   }
 
-  // GET /api/sessions/:id — single session row (or 404)
+  // GET /api/sessions/:id — single session row (or 404). Checks the local
+  // sessions table first; falls back to remote_sessions so clicking a
+  // cross-device row from Home opens its inspector with the same shape
+  // (plus originDeviceId/Label/hasBytes for the Resume affordance).
+  // Without the fallback every remote click returns 404 → "session no
+  // longer available", which is wrong: the row IS in our DB, just in the
+  // remote_sessions table.
   {
     const m = url.match(/^\/api\/sessions\/([^/]+)$/);
     if (m && req.method === "GET") {
       if (rejectIfNonLocalOrigin()) return true;
-      const row = sessionStore.getById(m[1]);
-      if (!row) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "session not found" }));
+      const id = m[1]!;
+      const row = sessionStore.getById(id);
+      if (row) {
+        const src = row.source_id ? spaceStore.getSourceById(row.source_id) : undefined;
+        const sourceLabel = src ? (src.label ?? (basename(src.path) || null)) : null;
+        sendJson({
+          id: row.id,
+          spaceId: row.space_id,
+          sourceId: row.source_id ?? null,
+          sourceLabel,
+          cwd: row.cwd,
+          agent: row.agent,
+          title: row.title,
+          state: row.state,
+          startedAt: row.started_at,
+          endedAt: row.ended_at,
+          model: row.model,
+          lastEventAt: row.last_event_at,
+          // Local sessions are by definition local — null/true.
+          originDeviceId: null,
+          originDeviceLabel: null,
+          jsonlAvailableLocally: true,
+          hasBytes: true,
+          activeDeviceId: null,
+        });
         return true;
       }
-      const src = row.source_id ? spaceStore.getSourceById(row.source_id) : undefined;
-      const sourceLabel = src ? (src.label ?? (basename(src.path) || null)) : null;
-      sendJson({
-        id: row.id,
-        spaceId: row.space_id,
-        sourceId: row.source_id ?? null,
-        sourceLabel,
-        cwd: row.cwd,
-        agent: row.agent,
-        title: row.title,
-        state: row.state,
-        startedAt: row.started_at,
-        endedAt: row.ended_at,
-        model: row.model,
-        lastEventAt: row.last_event_at,
-      });
+
+      const ownerId = currentUserId();
+      if (ownerId) {
+        type RemoteRow = {
+          device_id: string | null; device_label: string | null;
+          agent: string; title: string | null; state: string;
+          cwd: string | null; model: string | null; started_at: string;
+          ended_at: string | null; last_event_at: string;
+          has_bytes: number; active_device_id: string | null;
+          jsonl_local_path: string | null;
+        };
+        const remoteRow = db.prepare(
+          `SELECT device_id, device_label, agent, title, state, cwd, model,
+                  started_at, ended_at, last_event_at, has_bytes,
+                  active_device_id, jsonl_local_path
+             FROM remote_sessions
+            WHERE owner_id = ? AND session_id = ? LIMIT 1`,
+        ).get(ownerId, id) as RemoteRow | undefined;
+        if (remoteRow) {
+          sendJson({
+            id,
+            spaceId: null,
+            sourceId: null,
+            sourceLabel: null,
+            cwd: remoteRow.cwd,
+            agent: remoteRow.agent,
+            title: remoteRow.title,
+            state: remoteRow.state,
+            startedAt: remoteRow.started_at,
+            endedAt: remoteRow.ended_at,
+            model: remoteRow.model,
+            lastEventAt: remoteRow.last_event_at,
+            originDeviceId: remoteRow.device_id,
+            originDeviceLabel: remoteRow.device_label,
+            jsonlAvailableLocally: remoteRow.jsonl_local_path !== null,
+            hasBytes: remoteRow.has_bytes === 1,
+            activeDeviceId: remoteRow.active_device_id,
+          });
+          return true;
+        }
+      }
+
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "session not found" }));
       return true;
     }
   }

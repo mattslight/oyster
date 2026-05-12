@@ -74,13 +74,20 @@ export function originDeviceChipFor(
   if (!origin) return null;             // local session, no chip
   if (!myDeviceId) return null;          // identity still loading
   if (origin === myDeviceId) return null; // own session, no chip
-  // Prefer the human label pushed by the origin device; fall back to a
-  // generic "Other device" rather than exposing the UUID prefix in the UI.
-  const label = session.originDeviceLabel ?? "Other device";
-  // Tooltip carries the UUID for diagnostic copy-paste, never user-facing
-  // text. Truncated to first 8 chars to match the prior debug format.
-  const titleTooltip = `From ${label} (device ${origin.slice(0, 8)})`;
-  return { label, titleTooltip };
+  // Prefer the human label pushed by the origin device. If null, the
+  // session was pushed before device_label sync existed and won't get a
+  // name until that device sends another update. Make the chip text and
+  // tooltip explain why rather than leaving the user wondering.
+  if (session.originDeviceLabel) {
+    return {
+      label: session.originDeviceLabel,
+      titleTooltip: `From ${session.originDeviceLabel} (device ${origin.slice(0, 8)})`,
+    };
+  }
+  return {
+    label: "Other device",
+    titleTooltip: `From another device — its label hasn't synced yet (device ${origin.slice(0, 8)})`,
+  };
 }
 
 export function metaForSession(session: Session): string {

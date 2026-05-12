@@ -259,34 +259,55 @@ export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, 
     );
   }
 
+  // A remote session whose jsonl hasn't been reassembled yet has no local
+  // transcript to show. Render a "reassemble to view" notice instead of
+  // an empty transcript body; the Header above already exposes the Resume
+  // affordance. Once the user resumes, the watcher ingests the jsonl and
+  // the events tab becomes the right surface.
+  const isRemoteUnsynced =
+    !!session.originDeviceId && session.jsonlAvailableLocally === false;
+
   return (
     <>
       <Header session={session} onClose={onClose} />
       <Banner session={session} />
-      <Tabs
-        tab={tab}
-        setTab={setTab}
-        eventsCount={events?.length ?? 0}
-        hasMoreOlder={hasMoreOlder}
-        artefactsCount={artefacts ? new Set(artefacts.map((a) => a.artifact.id)).size : 0}
-        memoryCount={memory ? memory.written.length + memory.pulled.length : 0}
-      />
-      <TranscriptBody
-        tab={tab}
-        events={events}
-        artefacts={artefacts}
-        memory={memory}
-        memoryError={memoryError}
-        focusEventId={focusEventId}
-        initialSearchQuery={initialSearchQuery}
-        onSwitchTo={onSwitchTo}
-        onOpenArtefact={onOpenArtefact}
-        sessionId={sessionId}
-        agent={session.agent}
-        hasMoreOlder={hasMoreOlder}
-        loadingOlder={loadingOlder}
-        onLoadOlder={() => loadOlderRef.current()}
-      />
+      {isRemoteUnsynced ? (
+        <div className="inspector-empty" style={{ padding: "32px 28px", lineHeight: 1.6 }}>
+          <p style={{ margin: "0 0 8px" }}>
+            <strong>Transcript isn't on this device yet.</strong>
+          </p>
+          <p style={{ margin: 0, color: "var(--text-dim)" }}>
+            This session was started on another device. Use <em>Resume on this device</em> above to reassemble the transcript locally — once it lands, the conversation will show up here.
+          </p>
+        </div>
+      ) : (
+        <>
+          <Tabs
+            tab={tab}
+            setTab={setTab}
+            eventsCount={events?.length ?? 0}
+            hasMoreOlder={hasMoreOlder}
+            artefactsCount={artefacts ? new Set(artefacts.map((a) => a.artifact.id)).size : 0}
+            memoryCount={memory ? memory.written.length + memory.pulled.length : 0}
+          />
+          <TranscriptBody
+            tab={tab}
+            events={events}
+            artefacts={artefacts}
+            memory={memory}
+            memoryError={memoryError}
+            focusEventId={focusEventId}
+            initialSearchQuery={initialSearchQuery}
+            onSwitchTo={onSwitchTo}
+            onOpenArtefact={onOpenArtefact}
+            sessionId={sessionId}
+            agent={session.agent}
+            hasMoreOlder={hasMoreOlder}
+            loadingOlder={loadingOlder}
+            onLoadOlder={() => loadOlderRef.current()}
+          />
+        </>
+      )}
     </>
   );
 }
