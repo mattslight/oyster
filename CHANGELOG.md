@@ -4,6 +4,13 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.1-beta.5] - 2026-05-12
+
+### Added
+
+- **Cross-device session hand-off without forking.** Resuming a backed-up session on another device now continues the same conversation — the transcript timeline stays single, and ownership transfers cleanly to whichever device is currently writing. Catching up only fetches the new bytes instead of re-downloading the full transcript.
+- **Conflict detection on resume.** If a device has local edits that aren't in the cloud copy, Oyster blocks the resume and surfaces the conflict instead of silently overwriting your work.
+
 ## [0.8.1-beta.4] - 2026-05-12
 
 ### Fixed

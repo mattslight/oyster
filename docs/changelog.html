@@ -312,7 +312,7 @@
   </div>
 
   <nav class="version-pills" aria-label="Jump to version">
-      <a class="version-pill" href="#v-0-8-1-beta-4">0.8</a>
+      <a class="version-pill" href="#v-0-8-1-beta-5">0.8</a>
       <a class="version-pill" href="#v-0-7-1-beta-0">0.7</a>
       <a class="version-pill" href="#v-0-6-0">0.6</a>
       <a class="version-pill" href="#v-0-5-0">0.5</a>
@@ -324,6 +324,12 @@
   </nav>
 
   <main class="entries">
+<h2 id="v-0-8-1-beta-5"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.4...v0.8.1-beta.5" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.5</span></a><span class="release-date"> — 2026-05-12</span></h2>
+<h3>Added</h3>
+<ul>
+<li><strong>Cross-device session hand-off without forking.</strong> Resuming a backed-up session on another device now continues the same conversation — the transcript timeline stays single, and ownership transfers cleanly to whichever device is currently writing. Catching up only fetches the new bytes instead of re-downloading the full transcript.</li>
+<li><strong>Conflict detection on resume.</strong> If a device has local edits that aren&#39;t in the cloud copy, Oyster blocks the resume and surfaces the conflict instead of silently overwriting your work.</li>
+</ul>
 <h2 id="v-0-8-1-beta-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.3...v0.8.1-beta.4" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.4</span></a><span class="release-date"> — 2026-05-12</span></h2>
 <h3>Fixed</h3>
 <ul>
