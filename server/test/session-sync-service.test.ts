@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import Database from "better-sqlite3";
-import { createSessionSyncService } from "../src/session-sync-service.js";
+import { createSessionSyncService, LocalDivergedError } from "../src/session-sync-service.js";
 import { createProfileBindingService } from "../src/profile-binding-service.js";
 
 // Minimal DB harness: just the columns SessionSyncService reads from sessions
@@ -402,6 +402,8 @@ describe("SessionSyncService.reassembleSessionJsonl", () => {
     });
     const r = await svc.reassembleSessionJsonl("s-remote", targetPath);
     expect(r.totalBytes).toBe(c1.byteLength + c2.byteLength);
+    // No chunks fetched ⇒ chunkCount reports 0 (per ReassembleResult contract).
+    expect(r.chunkCount).toBe(0);
     expect(chunkFetches).toBe(0);
     // remote_sessions.jsonl_local_path is set even for no-op
     const row = db.prepare(
@@ -498,7 +500,7 @@ describe("SessionSyncService.reassembleSessionJsonl", () => {
       fetch: fetchSpy as unknown as typeof fetch,
     });
     await expect(svc.reassembleSessionJsonl("s-remote", targetPath))
-      .rejects.toThrow(/local_diverged/);
+      .rejects.toBeInstanceOf(LocalDivergedError);
     // Local file untouched
     const fs2 = require("node:fs");
     const after = fs2.readFileSync(targetPath) as Buffer;
@@ -539,7 +541,7 @@ describe("SessionSyncService.reassembleSessionJsonl", () => {
       fetch: fetchSpy as unknown as typeof fetch,
     });
     await expect(svc.reassembleSessionJsonl("s-remote", targetPath))
-      .rejects.toThrow(/local_diverged/);
+      .rejects.toBeInstanceOf(LocalDivergedError);
   });
 
   it("free user throws (pro-only)", async () => {

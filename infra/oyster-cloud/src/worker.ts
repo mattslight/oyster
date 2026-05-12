@@ -494,9 +494,18 @@ async function handleSessionsBytesChunkPut(
   const plaintextSha256Header = req.headers.get("x-plaintext-sha256");
   const generationHeader = req.headers.get("x-bytes-generation");
   // x-bytes-device-id is optional for backwards-compat with clients pre-PR-2.x.
-  // When present, the worker bumps synced_session_metadata.active_device_id
-  // on every accepted chunk so any reader can tell who's currently writing.
-  const deviceIdHeader = req.headers.get("x-bytes-device-id");
+  // When present and well-formed, the worker bumps synced_session_metadata
+  // .active_device_id on every accepted chunk so any reader can tell who's
+  // currently writing. Clients generate it via crypto.randomUUID() (canonical
+  // lowercase UUID), so we enforce that shape — anything else is silently
+  // ignored to keep this back-compat (a malformed header doesn't fail the
+  // chunk write, it just doesn't bump the column).
+  const rawDeviceIdHeader = req.headers.get("x-bytes-device-id");
+  const deviceIdHeader =
+    rawDeviceIdHeader &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(rawDeviceIdHeader)
+      ? rawDeviceIdHeader
+      : null;
 
   if (!startOffsetHeader || !endOffsetHeader || !plaintextSha256Header || !generationHeader) {
     return jsonError(400, "missing_chunk_headers");

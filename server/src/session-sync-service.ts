@@ -20,7 +20,7 @@
 
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { promises as fs } from "node:fs";
 import type Database from "better-sqlite3";
 import type { ProfileBindingService } from "./profile-binding-service.js";
@@ -51,7 +51,8 @@ export interface PushBytesResult {
 }
 
 export interface ReassembleResult {
-  /** Number of chunks fetched and concatenated. */
+  /** Number of chunks fetched and concatenated in this call. 0 on the no-op
+   *  branch (local already in sync), partial count on catch-up. */
   chunkCount: number;
   /** Total plaintext bytes written to disk (== manifest's final end_offset). */
   totalBytes: number;
@@ -59,6 +60,19 @@ export interface ReassembleResult {
   generation: number;
   /** Absolute path the jsonl was written to. */
   targetPath: string;
+}
+
+/** Thrown by reassembleSessionJsonl when the local jsonl can't be reconciled
+ *  with the cloud chunk chain (extra bytes past the chain, or mid-chunk
+ *  position from a prior crash). Callers should surface this as a 409 with a
+ *  structured `local_diverged` status so the UI can offer fork/discard.
+ *  Dedicated class so callers branch on `instanceof` instead of string-
+ *  matching the message. */
+export class LocalDivergedError extends Error {
+  readonly name = "LocalDivergedError";
+  constructor(message: string) {
+    super(message);
+  }
 }
 
 export interface SessionSyncService {
@@ -697,7 +711,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
         `[sessions] reassemble: session=${sessionId.slice(0, 8)} already up-to-date (${localSize} bytes)`,
       );
       return {
-        chunkCount: manifest.chunks.length,
+        chunkCount: 0,
         totalBytes: localSize,
         generation: manifest.bytes_generation,
         targetPath,
@@ -705,8 +719,8 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     }
 
     if (localSize > expectedTotal) {
-      throw new Error(
-        `local_diverged: local jsonl is ${localSize} bytes but cloud chain is ${expectedTotal}. ` +
+      throw new LocalDivergedError(
+        `local jsonl is ${localSize} bytes but cloud chain is ${expectedTotal}. ` +
         `This device has local-only edits past the cloud chunk chain. ` +
         `Resolve by discarding local or forking to a new session.`,
       );
@@ -717,8 +731,8 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     if (localSize > 0) {
       firstIdx = manifest.chunks.findIndex((c) => c.start_offset === localSize);
       if (firstIdx < 0) {
-        throw new Error(
-          `local_diverged: local jsonl is ${localSize} bytes but no manifest chunk starts at that offset. ` +
+        throw new LocalDivergedError(
+          `local jsonl is ${localSize} bytes but no manifest chunk starts at that offset. ` +
           `File is mid-chunk or contains bytes not present in any chunk.`,
         );
       }
@@ -734,7 +748,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     //     localSize so the file isn't left in a divergent state.
     const isFresh = firstIdx === 0;
     const writePath = isFresh ? `${targetPath}.partial` : targetPath;
-    await fs.mkdir(join(targetPath, ".."), { recursive: true }).catch(() => { /* exists */ });
+    await fs.mkdir(dirname(targetPath), { recursive: true }).catch(() => { /* exists */ });
     const fh = await fs.open(writePath, isFresh ? "w" : "r+");
     let writtenBytes = isFresh ? 0 : localSize;
     try {

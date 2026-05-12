@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { tryHandleSessionRoute } from "../src/routes/sessions.js";
+import { LocalDivergedError } from "../src/session-sync-service.js";
 
 // Fake req/res/ctx mirrors the shape in pin-route.test.ts.
 function fakeCtx(body: unknown = {}) {
@@ -68,10 +69,13 @@ function insertSource(db: Database.Database, id: string, path: string, spaceId =
   ).run(id, spaceId, path);
 }
 
-function stubSessionSync(behaviour: "success" | "throw" = "success") {
+function stubSessionSync(behaviour: "success" | "throw" | "diverged" = "success") {
   return {
     reassembleSessionJsonl: vi.fn(async (sessionId: string, targetPath: string) => {
       if (behaviour === "throw") throw new Error("simulated reassembly failure");
+      if (behaviour === "diverged") {
+        throw new LocalDivergedError("local jsonl is 99 bytes but cloud chain is 42");
+      }
       return { chunkCount: 1, totalBytes: 42, generation: 0, targetPath };
     }),
     // Unused but interface requires them.
@@ -247,6 +251,26 @@ describe("POST /api/sessions/:id/resume", () => {
       error: "reassemble_failed",
       message: "simulated reassembly failure",
     });
+  });
+
+  it("409 local_diverged when the service throws LocalDivergedError", async () => {
+    // Same setup as the generic 500 test, but the stub throws the dedicated
+    // class so the route branches into the structured response shape rather
+    // than the catch-all 500. Verifies instanceof-based dispatch.
+    const realDir = mkdtempSync(join(tmpdir(), "oyster-route-diverged-"));
+    insertRemote(db, { sessionId: "div-1", ownerId: "user-A", cwd: realDir, hasBytes: true });
+    insertSource(db, "src-1", realDir);
+    const sync = stubSessionSync("diverged");
+    const { ctx, captured } = fakeCtx({});
+    const req = { method: "POST" } as any;
+    await tryHandleSessionRoute(req, {} as any, "/api/sessions/div-1/resume",
+      ctx as any, baseDeps(db, { ownerId: "user-A", sessionSync: sync }));
+    expect(captured.status).toBe(409);
+    expect(captured.json).toMatchObject({
+      status: "local_diverged",
+      message: expect.stringContaining("local jsonl is 99 bytes"),
+    });
+    expect((captured.json as { localJsonlPath: string }).localJsonlPath).toMatch(/div-1\.jsonl$/);
   });
 });
 

@@ -17,6 +17,7 @@ import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
 import {
   encodeCwd,
+  LocalDivergedError,
   projectsRoot,
   type SessionSyncService,
 } from "../session-sync-service.js";
@@ -576,7 +577,7 @@ export async function tryHandleSessionRoute(
         // 3. Reassemble chunks into the encoded jsonl path Claude Code expects.
         // Three outcomes from the service:
         //   - success: jsonl is on disk at localJsonlPath (or already was).
-        //   - throw "local_diverged": this device has unsynced edits past
+        //   - throw LocalDivergedError: this device has unsynced edits past
         //     cloud's chunk chain. Return 409 with a structured status so
         //     the UI can surface "Local edits won't sync — fork or discard?".
         //   - any other throw: 500 reassemble_failed.
@@ -585,7 +586,7 @@ export async function tryHandleSessionRoute(
           await sessionSync.reassembleSessionJsonl(sessionId, localJsonlPath);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          if (message.includes("local_diverged")) {
+          if (err instanceof LocalDivergedError) {
             sendJson(
               { status: "local_diverged", localJsonlPath, message },
               409,
