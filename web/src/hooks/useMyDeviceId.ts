@@ -12,9 +12,16 @@ export interface DeviceIdentity {
 }
 
 // Shared in-flight promise so concurrent mounts (Home + SessionInspector
-// header etc.) reuse the same fetch rather than each firing its own. Reset
-// only on a hard 5xx — a 200 stays cached for the page lifetime, a 503
-// (device_identity not seeded yet) clears so the next caller can retry.
+// header etc.) reuse the same fetch rather than each firing its own.
+// Cache strategy:
+//   - 200 → stays cached for the page lifetime (identity never changes)
+//   - any non-2xx (503 not-seeded, 4xx forbidden, 5xx) → cache cleared so
+//     the next hook mount retries
+//   - thrown error (network, abort) → cache cleared, retry on next mount
+// The "retry on any failure" stance is intentional: a 503 is the
+// not-seeded race, but a 403 from the rejectIfNonLocalOrigin guard would
+// also benefit from a retry once the request comes from an expected
+// origin (e.g. after dev/prod URL swap).
 let pending: Promise<DeviceIdentity | null> | null = null;
 
 async function fetchIdentity(): Promise<DeviceIdentity | null> {

@@ -206,6 +206,25 @@
   margin: 6px 0;
   padding-left: 18px;
 }
+.resume-warning input {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.resume-warning-actions { display: flex; flex-direction: column; gap: 6px; }
+.resume-warning-actions details { font-size: 12px; }
+.resume-warning-actions summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
 .resume-pick li { margin: 4px 0; display: flex; gap: 8px; align-items: center; }
 .resume-diverged .resume-tech {
   font-size: 11px;

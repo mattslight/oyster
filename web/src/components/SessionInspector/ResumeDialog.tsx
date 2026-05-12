@@ -125,7 +125,9 @@ export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
         <ValidationPanel
           response={state.response}
           draftCwd={state.draftCwd}
-          onSubmit={(cwd) => runResume({ targetCwd: cwd, force: true })}
+          onDraftChange={(v) => setState((s) => ({ ...s, draftCwd: v }))}
+          onForce={(cwd) => runResume({ targetCwd: cwd, force: true })}
+          onRetry={(cwd) => runResume({ targetCwd: cwd })}
         />
       )}
 
@@ -203,12 +205,21 @@ function NeedsTargetPanel({
 }
 
 function ValidationPanel({
-  response, draftCwd, onSubmit,
+  response, draftCwd, onDraftChange, onForce, onRetry,
 }: {
   response: Extract<SessionResumeResponse, { status: "validation_warning" }>;
   draftCwd: string;
-  onSubmit: (cwd: string) => void;
+  onDraftChange: (v: string) => void;
+  /** Re-POST with force:true to bypass soft reasons. */
+  onForce: (cwd: string) => void;
+  /** Re-POST without force, after the user edited the path. */
+  onRetry: (cwd: string) => void;
 }) {
+  // Split the reasons. Hard ones (target_folder_missing, target_not_a_directory)
+  // can't be bypassed — the server returns validation_warning again on a force
+  // attempt. Show an editable input + "Try this folder" instead of the
+  // misleading force button so the user doesn't get trapped in a loop.
+  const hasHardReason = response.reasons.some(isHardReason);
   return (
     <div className="resume-panel resume-warning">
       <p>This folder doesn't quite match the original session:</p>
@@ -217,8 +228,51 @@ function ValidationPanel({
           <li key={r}>{humanReason(r)}</li>
         ))}
       </ul>
-      <p>You can resume here anyway — earlier turns will reference paths that don't exist on this machine, but Claude Code will continue from the conversation context.</p>
-      <button type="button" onClick={() => onSubmit(draftCwd.trim())}>Use this folder anyway</button>
+
+      {hasHardReason ? (
+        <>
+          <p>The folder needs to exist before Oyster can reassemble the transcript into it. Edit the path and try again:</p>
+          <input
+            type="text"
+            value={draftCwd}
+            placeholder="/path/to/project"
+            onChange={(e) => onDraftChange(e.target.value)}
+            spellCheck={false}
+            autoFocus
+          />
+          <button
+            type="button"
+            disabled={!draftCwd.trim()}
+            onClick={() => onRetry(draftCwd.trim())}
+          >
+            Try this folder
+          </button>
+        </>
+      ) : (
+        <>
+          <p>You can resume here anyway — earlier turns will reference paths that don't exist on this machine, but Claude Code will continue from the conversation context.</p>
+          <div className="resume-warning-actions">
+            <button type="button" onClick={() => onForce(draftCwd.trim())}>Use this folder anyway</button>
+            <details>
+              <summary>Or pick a different folder</summary>
+              <input
+                type="text"
+                value={draftCwd}
+                placeholder="/path/to/project"
+                onChange={(e) => onDraftChange(e.target.value)}
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                disabled={!draftCwd.trim()}
+                onClick={() => onRetry(draftCwd.trim())}
+              >
+                Try this folder instead
+              </button>
+            </details>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -262,13 +316,25 @@ function PickSourcePanel({
   );
 }
 
-// Map raw reason codes the route returns to human-readable text.
+// Reason codes used by validateOverrideTarget() in server/src/routes/sessions.ts.
+// HARD reasons can't be bypassed with force:true (the server returns
+// validation_warning again — force can't conjure a folder into existence);
+// SOFT reasons are advisory and force:true accepts them.
+const HARD_REASONS = new Set(["target_folder_missing", "target_not_a_directory"]);
+
+function isHardReason(code: string): boolean {
+  return HARD_REASONS.has(code);
+}
+
+// Map raw reason codes from the resume route to human-readable text.
+// Keep in sync with server/src/routes/sessions.ts:validateOverrideTarget.
 function humanReason(code: string): string {
   switch (code) {
-    case "folder_missing": return "Folder doesn't exist";
-    case "not_git_repo":   return "Folder isn't a git repository";
-    case "remote_mismatch": return "Git remote doesn't match the original";
-    case "repo_basename_differs": return "Folder name differs from the original";
+    case "target_folder_missing": return "Folder doesn't exist on this machine";
+    case "target_not_a_directory": return "That path isn't a folder";
+    case "not_a_git_repo": return "Folder isn't a git repository";
+    case "no_git_remote_origin": return "Folder has no `origin` remote configured";
+    case "repo_basename_differs": return "Folder name differs from the original session";
     default: return code;
   }
 }
