@@ -263,6 +263,10 @@ export class ClaudeCodeWatcher {
       space_id: resolved.spaceId,
       source_id: resolved.sourceId,
       cwd: meta.cwd,
+      // Ground truth for pushBytes: the actual on-disk path. Required
+      // for cross-device resumed sessions whose events still carry the
+      // origin device's cwd. See db.ts on the jsonl_path column.
+      jsonl_path: filePath,
       agent: "claude-code",
       title: effectiveTitle(meta),
       state,
@@ -652,6 +656,7 @@ export class ClaudeCodeWatcher {
           space_id: resolved.spaceId,
           source_id: resolved.sourceId,
           cwd: tracker.cwd,
+          jsonl_path: filePath,
           agent: "claude-code",
           title: effectiveTitle(tracker),
           state: "active",

@@ -28,7 +28,8 @@ function harness() {
       jsonl_synced_at       INTEGER,
       jsonl_snapshot_offset INTEGER NOT NULL DEFAULT 0,
       jsonl_chunk_count     INTEGER NOT NULL DEFAULT 0,
-      bytes_generation      INTEGER NOT NULL DEFAULT 0
+      bytes_generation      INTEGER NOT NULL DEFAULT 0,
+      jsonl_path            TEXT
     );
     CREATE TABLE profile_binding (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -791,6 +792,85 @@ describe("SessionSyncService.pushBytes", () => {
     });
     expect((await svc.pushBytes("s1")).uploaded).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("uses jsonl_path even when cwd is a foreign path (cross-device resume case)", async () => {
+    // Regression test for 0.8.1-beta.6 dogfooding bug: after Mac resumed a
+    // Windows session, every event in the jsonl still carried
+    // cwd: "C:\\Users\\matth", so the watcher couldn't recover the Mac cwd
+    // from events. The fix is to store the actual on-disk jsonl path and
+    // have pushBytes use it directly, ignoring sessions.cwd for file lookup.
+    const root = setupBytesEnv();
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    // The file lives at the local Mac-encoded path...
+    const realLocalDir = "-Users-me-Dev-oyster";
+    mkdirSync(join(root, realLocalDir), { recursive: true });
+    const jsonl = "{\"role\":\"user\",\"text\":\"hello from mac\"}\n";
+    const realJsonlPath = join(root, realLocalDir, "s1.jsonl");
+    writeFileSync(realJsonlPath, jsonl);
+    // ...but sessions.cwd holds the origin (Windows) cwd. encodeCwd of that
+    // would compute `/tmp/.../C--Users-matth/s1.jsonl`, which does not exist.
+    // The new jsonl_path column is the truth.
+    db.prepare(
+      `INSERT INTO sessions (id, agent, state, last_event_at, cwd, jsonl_path, cloud_owner_id)
+       VALUES ('s1', 'claude-code', 'active', datetime('now'),
+               'C:\\Users\\matth', ?, 'user-A')`,
+    ).run(realJsonlPath);
+
+    const calls: Array<{ url: string; chunkNumber: number; body: Uint8Array }> = [];
+    const fetchSpy = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.toString();
+      const m = u.match(/\/api\/sessions\/bytes\/([^/]+)\/chunk\/(\d+)$/);
+      if (m && init?.method === "PUT") {
+        const body = new Uint8Array(init.body as ArrayBuffer);
+        calls.push({ url: u, chunkNumber: Number(m[2]), body });
+        return new Response(JSON.stringify({ ok: true, chunk_number: 1, generation: 0 }), { status: 200 });
+      }
+      return new Response("not_found", { status: 404 });
+    });
+
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+
+    const r = await svc.pushBytes("s1");
+    expect(r.uploaded).toBe(1);
+    expect(calls).toHaveLength(1);
+    expect(new TextDecoder().decode(calls[0]!.body)).toBe(jsonl);
+  });
+
+  it("falls back to cwd-encoded path when jsonl_path is NULL (back-compat)", async () => {
+    // Rows that pre-date the jsonl_path column (or that the watcher hasn't
+    // re-touched yet) still resolve via the legacy `projectsRoot()/
+    // encodeCwd(cwd)/<id>.jsonl` computation.
+    const root = setupBytesEnv();
+    const { db, profileBinding } = harness();
+    profileBinding.bindToOwner("user-A");
+    const cwd = "/tmp/proj-legacy";
+    const encoded = cwd.replace(/[^A-Za-z0-9]/g, "-");
+    mkdirSync(join(root, encoded), { recursive: true });
+    writeFileSync(join(root, encoded, "s1.jsonl"), "legacy\n");
+    db.prepare(
+      `INSERT INTO sessions (id, agent, state, last_event_at, cwd, jsonl_path, cloud_owner_id)
+       VALUES ('s1', 'claude-code', 'active', datetime('now'), ?, NULL, 'user-A')`,
+    ).run(cwd);
+
+    const fetchSpy = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, chunk_number: 1, generation: 0 }), { status: 200 }),
+    );
+    const svc = createSessionSyncService({
+      db, profileBinding,
+      currentUser: () => ({ id: "user-A", email: "a@a", tier: "pro" }),
+      sessionToken: () => "tok",
+      workerBase: "https://example.com",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    expect((await svc.pushBytes("s1")).uploaded).toBe(1);
   });
 
   it("uploads one chunk for a small file under MAX_CHUNK_BYTES", async () => {

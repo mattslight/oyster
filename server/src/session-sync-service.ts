@@ -286,7 +286,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
   const inFlightBytes = new Map<string, Promise<PushBytesResult>>();
 
   const getBytesState = deps.db.prepare(
-    `SELECT cwd, jsonl_snapshot_offset, jsonl_chunk_count, bytes_generation, cloud_owner_id
+    `SELECT cwd, jsonl_path, jsonl_snapshot_offset, jsonl_chunk_count, bytes_generation, cloud_owner_id
        FROM sessions WHERE id = ? LIMIT 1`,
   );
   const advanceBytesState = deps.db.prepare(
@@ -327,6 +327,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
 
     const state = getBytesState.get(sessionId) as {
       cwd: string | null;
+      jsonl_path: string | null;
       jsonl_snapshot_offset: number;
       jsonl_chunk_count: number;
       bytes_generation: number;
@@ -334,12 +335,6 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
     } | undefined;
     if (!state) {
       console.warn(`[sessions] pushBytes: no session row for ${sessionId}`);
-      return empty;
-    }
-    if (!state.cwd) {
-      // Orphan session from before sessions.cwd was added, or a session
-      // whose watcher never captured cwd. Nothing to read from disk.
-      console.warn(`[sessions] pushBytes: session ${sessionId} has no cwd, skipping`);
       return empty;
     }
     // Owner check: the watcher hook only marks dirty when canRunCloudSync()
@@ -350,7 +345,20 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       return empty;
     }
 
-    const jsonlPath = join(projectsRoot(), encodeCwd(state.cwd), `${sessionId}.jsonl`);
+    // Prefer the watcher-recorded path. Cross-device resumed sessions have
+    // events that still carry the origin device's cwd (e.g. "C:\\Users\\matth"
+    // on a Mac-resumed Windows session), so encoding sessions.cwd back into
+    // a local path doesn't work. The watcher stores the real on-disk path
+    // on every upsert. Fall back to the encoded-cwd computation for rows
+    // that pre-date the jsonl_path column.
+    const jsonlPath = state.jsonl_path
+      ?? (state.cwd ? join(projectsRoot(), encodeCwd(state.cwd), `${sessionId}.jsonl`) : null);
+    if (!jsonlPath) {
+      // Orphan session from before sessions.cwd / jsonl_path columns; the
+      // watcher never captured a location. Nothing to read.
+      console.warn(`[sessions] pushBytes: session ${sessionId} has no jsonl_path or cwd, skipping`);
+      return empty;
+    }
     let stat: { size: number };
     try {
       const s = await fs.stat(jsonlPath);
