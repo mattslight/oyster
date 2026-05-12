@@ -1033,6 +1033,53 @@ httpServer.listen(port, "127.0.0.1", () => {
   // Sessions arc — start the claude-code log watcher (#251). Failures
   // (missing ~/.claude/projects, permission denied) shouldn't block the
   // server; the watcher logs and stays dormant.
+
+  // Debounce-with-max-wait for metadata push. The watcher fires
+  // emitSessionChanged on every jsonl event (assistant turn, tool call,
+  // etc.) — during a busy conversation that's many events per minute.
+  // Without coalescing, each event triggers its own pushPending → its own
+  // HTTP round-trip with one session in the payload
+  // (`[sessions] pushed: accepted=1` spam in logs).
+  //
+  // markDirty stays synchronous so durability is intact: any unpushed
+  // session_id keeps its sync_dirty_at marker and is drained by the next
+  // push or the next startup reconcile.
+  //
+  // Two timing knobs:
+  // - DEBOUNCE_MS (1 s): how long after the LAST event we wait before
+  //   firing. Coalesces a quick burst of events into a single push at the
+  //   tail of the burst.
+  // - MAX_WAIT_MS (5 s): hard cap on how long the first-event-in-burst
+  //   waits, no matter how many further events arrive. Without this, a
+  //   pure debounce can defer pushes arbitrarily during continuous
+  //   activity — bad for cross-device visibility during long sessions.
+  //
+  // Terminal-state pushBytes is unaffected — it fires immediately so a
+  // session ending lands its last bytes ASAP.
+  const SESSION_PUSH_DEBOUNCE_MS = 1000;
+  const SESSION_PUSH_MAX_WAIT_MS = 5000;
+  let sessionPushTimer: NodeJS.Timeout | null = null;
+  let sessionPushFirstScheduledAt: number | null = null;
+  function schedulePushPending(): void {
+    const now = Date.now();
+    if (sessionPushFirstScheduledAt === null) {
+      sessionPushFirstScheduledAt = now;
+    }
+    // Cap the actual sleep so the first-scheduled event fires within
+    // MAX_WAIT_MS even if events keep arriving. Math.max(0, ...) handles
+    // the "already past the cap" case (next-tick fire).
+    const elapsed = now - sessionPushFirstScheduledAt;
+    const delay = Math.max(0, Math.min(SESSION_PUSH_DEBOUNCE_MS, SESSION_PUSH_MAX_WAIT_MS - elapsed));
+    if (sessionPushTimer) clearTimeout(sessionPushTimer);
+    sessionPushTimer = setTimeout(() => {
+      sessionPushTimer = null;
+      sessionPushFirstScheduledAt = null;
+      sessionSync.pushPending().catch((err) => {
+        console.warn("[sessions] watcher-triggered pushPending failed:", err);
+      });
+    }, delay);
+  }
+
   const claudeCodeWatcher = new ClaudeCodeWatcher({
     sessionStore,
     spaceStore,
@@ -1040,9 +1087,9 @@ httpServer.listen(port, "127.0.0.1", () => {
     emitSessionChanged: (id) => {
       broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
       // Cross-device session sync (#322): every session-row change marks the
-      // row dirty for the current Pro owner, then fires a fire-and-forget
-      // metadata push + bytes push on terminal state. The in-flight guards
-      // inside SessionSyncService coalesce bursty updates into single passes.
+      // row dirty for the current Pro owner, then schedules a debounced
+      // metadata push. Bytes push on terminal state stays immediate so the
+      // last chunk lands ASAP.
       //
       // canRunCloudSync() (not a bare tier check): when the local profile is
       // bound to a different account, we MUST NOT call markDirty — it would
@@ -1052,9 +1099,7 @@ httpServer.listen(port, "127.0.0.1", () => {
       if (!canRunCloudSync()) return;
       const u = authService.getState().user!;
       sessionSync.markDirty(id, u.id);
-      sessionSync.pushPending().catch((err) => {
-        console.warn("[sessions] watcher-triggered pushPending failed:", err);
-      });
+      schedulePushPending();
       // Terminal-state hook: fire one final pushBytes when the session
       // transitions to done/disconnected so the tail of the jsonl makes it
       // to cloud even if it's under the snapshot-timer's 1 MB threshold.
