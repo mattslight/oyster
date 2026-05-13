@@ -1,12 +1,23 @@
 // Unit tests for the offline-log helpers. The user dogfooding behaviour:
 // "[memory] pull failed: TypeError: fetch failed ... ENOTFOUND cloud.oyster.to"
 // repeated every ~30s for hours after wifi disconnected.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   createOfflineLogger,
   formatSyncError,
   isOfflineLikeError,
 } from "../src/sync-log.js";
+
+describe("formatSyncError edge cases", () => {
+  it("treats only null/undefined as 'unknown error'; falsy primitives stringify normally", () => {
+    expect(formatSyncError(null)).toBe("unknown error");
+    expect(formatSyncError(undefined)).toBe("unknown error");
+    // throw 0 / throw false / throw "" are unusual but legal — preserve them.
+    expect(formatSyncError(0)).toBe("0");
+    expect(formatSyncError(false)).toBe("false");
+    expect(formatSyncError("")).toBe("");
+  });
+});
 
 describe("formatSyncError", () => {
   it("recognises ENOTFOUND (wifi off → DNS failure)", () => {
@@ -63,6 +74,11 @@ describe("createOfflineLogger", () => {
   const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   afterEach(() => {
     warnSpy.mockClear();
+  });
+  // Restore so a global spy doesn't leak into other test files and silently
+  // suppress their logs.
+  afterAll(() => {
+    warnSpy.mockRestore();
   });
 
   function offlineErr(code = "ENOTFOUND"): unknown {
@@ -122,5 +138,39 @@ describe("createOfflineLogger", () => {
     expect(warnSpy.mock.calls[0]![0]).toContain("cloud unreachable");
     expect(warnSpy.mock.calls[1]![0]).toBe("[test] failed:");
     expect(warnSpy.mock.calls[2]![0]).toContain("still offline (5 attempts)");
+  });
+
+  it("context arg disambiguates the first-occurrence line and non-offline errors", () => {
+    const log = createOfflineLogger("[test]");
+    log.failure(offlineErr(), "session=abc12345 chunk=2");
+    log.failure(new Error("real bug"), "session=abc12345 chunk=3");
+    // First occurrence includes context.
+    expect(warnSpy.mock.calls[0]![0]).toContain("session=abc12345 chunk=2");
+    expect(warnSpy.mock.calls[0]![0]).toContain("cloud unreachable");
+    // Non-offline error log also includes context.
+    expect(warnSpy.mock.calls[1]![0]).toContain("session=abc12345 chunk=3");
+    expect(warnSpy.mock.calls[1]![0]).toContain("failed:");
+  });
+
+  it("context is omitted from the heartbeat line (would be misleading across multiple resources)", () => {
+    const log = createOfflineLogger("[test]", { heartbeatEvery: 3 });
+    log.failure(offlineErr(), "session=aaa");
+    log.failure(offlineErr(), "session=bbb");
+    log.failure(offlineErr(), "session=ccc"); // heartbeat
+    expect(warnSpy.mock.calls[1]![0]).toContain("still offline (3 attempts)");
+    expect(warnSpy.mock.calls[1]![0]).not.toContain("session=");
+  });
+
+  it("invalid heartbeatEvery values (0, negative, NaN, Infinity) fall back to the default", () => {
+    // Without the clamp, modulo 0 is NaN (never true) → heartbeats silenced
+    // forever. Each of these should still produce a heartbeat at default 30.
+    for (const bad of [0, -5, NaN, Infinity]) {
+      warnSpy.mockClear();
+      const log = createOfflineLogger("[test]", { heartbeatEvery: bad });
+      for (let i = 0; i < 30; i++) log.failure(offlineErr());
+      // 1 first-failure log + 1 heartbeat at 30 = 2 calls
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy.mock.calls[1]![0]).toContain("still offline (30 attempts)");
+    }
   });
 });

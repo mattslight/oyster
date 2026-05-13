@@ -485,7 +485,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
             { method: "PUT", headers, body: chunkBody },
           );
         } catch (err) {
-          pushBytesLog.failure(err);
+          pushBytesLog.failure(err, `session=${sessionId.slice(0, 8)} chunk=${nextChunkNumber}`);
           break;
         }
 

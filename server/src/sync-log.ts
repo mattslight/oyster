@@ -35,7 +35,9 @@ const NETWORK_ERR_CODES = new Set([
  *  through to the full message (callers can still console.warn with the
  *  raw err object for a stack trace on real bugs). */
 export function formatSyncError(err: unknown): string {
-  if (!err) return "unknown error";
+  // Treat ONLY null/undefined as "missing" — `0`, `false`, `""` are valid
+  // throwables that should fall through to String(err) ("0", "false", "").
+  if (err == null) return "unknown error";
   const e = err as {
     code?: string;
     message?: string;
@@ -62,9 +64,12 @@ export interface OfflineLogger {
   /** Call on a sync failure. Logs the first occurrence with a concise
    *  summary, suppresses subsequent ones, prints a "still offline,
    *  attempt N" heartbeat every `heartbeatEvery` failures. Non-offline
-   *  errors are always logged (with `withStack`'s full err so debug
-   *  context isn't lost). */
-  failure(err: unknown): void;
+   *  errors are always logged in full so debug context isn't lost.
+   *  Pass `context` (e.g. `session=c90da198 chunk=2`) to disambiguate
+   *  per-resource call sites in the first-occurrence and non-offline
+   *  log lines. Heartbeats stay generic since by then context may
+   *  belong to several different resources. */
+  failure(err: unknown, context?: string): void;
   /** Call after a successful round-trip. Prints "back online" if this
    *  follows a failure streak; otherwise no-op. Resets the counter. */
   success(): void;
@@ -73,7 +78,9 @@ export interface OfflineLogger {
 interface OfflineLoggerOptions {
   /** Log a heartbeat every N consecutive failures. Defaults to 30 —
    *  with a ~30 s reconcile cadence, that's roughly one line per
-   *  15 minutes of continuous offline. */
+   *  15 minutes of continuous offline. Clamped to a positive integer;
+   *  invalid values (0, negative, NaN) fall back to the default rather
+   *  than silently suppressing heartbeats forever. */
   heartbeatEvery?: number;
 }
 
@@ -84,20 +91,27 @@ export function createOfflineLogger(
   prefix: string,
   options: OfflineLoggerOptions = {},
 ): OfflineLogger {
-  const heartbeatEvery = options.heartbeatEvery ?? 30;
+  const requested = options.heartbeatEvery;
+  // Accept any positive finite number; round to integer for the modulo.
+  // 0 / negative / NaN / undefined fall back to the 30-step default.
+  const heartbeatEvery =
+    typeof requested === "number" && Number.isFinite(requested) && requested >= 1
+      ? Math.floor(requested)
+      : 30;
   let consecutive = 0;
   return {
-    failure(err: unknown): void {
+    failure(err: unknown, context?: string): void {
+      const ctxSuffix = context ? ` ${context}` : "";
       if (!isOfflineLikeError(err)) {
         // Real error — log full so a stack/details survive. Don't touch
         // the consecutive counter so a transient cloud-side bug in the
         // middle of an offline streak doesn't reset our offline tracking.
-        console.warn(`${prefix} failed:`, err);
+        console.warn(`${prefix}${ctxSuffix} failed:`, err);
         return;
       }
       consecutive++;
       if (consecutive === 1) {
-        console.warn(`${prefix} ${formatSyncError(err)} (further offline retries suppressed)`);
+        console.warn(`${prefix}${ctxSuffix} ${formatSyncError(err)} (further offline retries suppressed)`);
       } else if (consecutive % heartbeatEvery === 0) {
         console.warn(`${prefix} still offline (${consecutive} attempts) — ${formatSyncError(err)}`);
       }
