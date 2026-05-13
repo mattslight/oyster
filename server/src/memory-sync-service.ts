@@ -9,6 +9,7 @@
 import type Database from "better-sqlite3";
 import type { SqliteFtsMemoryProvider } from "./memory-store.js";
 import type { ProfileBindingService } from "./profile-binding-service.js";
+import { createOfflineLogger } from "./sync-log.js";
 
 interface SyncUser { id: string; email: string; tier: string }
 
@@ -78,6 +79,10 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
   // (e.g. multiple onWrite triggers in quick succession) await the same
   // promise rather than racing.
   let inFlightPush: Promise<number> | null = null;
+  // Offline-aware loggers so a wifi-off laptop doesn't spam the terminal
+  // with full stack traces every reconcile cycle. One per call-site.
+  const pushLog = createOfflineLogger("[memory] pushPending");
+  const pullLog = createOfflineLogger("[memory] pull");
   let inFlightReconcile: Promise<{ pulled: number; pushed: number }> | null = null;
 
   async function doPushPending(): Promise<number> {
@@ -149,13 +154,14 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
             body: JSON.stringify({ events }),
           });
         } catch (err) {
-          console.warn("[memory] pushPending failed:", err);
+          pushLog.failure(err);
           return totalAccepted;
         }
         if (!res.ok) {
           console.warn(`[memory] pushPending non-ok ${res.status}`);
           return totalAccepted;
         }
+        pushLog.success();
         const body = await res.json().catch(() => null) as {
           accepted?: string[]; duplicates?: string[]; conflicts?: string[]; rejected?: string[];
         } | null;
@@ -235,13 +241,14 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
           headers: { Cookie: `oyster_session=${session.token}` },
         });
       } catch (err) {
-        console.warn("[memory] pull failed:", err);
+        pullLog.failure(err);
         return 0;
       }
       if (!res.ok) {
         console.warn(`[memory] pull non-ok ${res.status}`);
         return 0;
       }
+      pullLog.success();
       const body = await res.json().catch(() => null) as { events?: IncomingEvent[] } | null;
       const cloud = body?.events ?? [];
 
