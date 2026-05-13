@@ -24,6 +24,7 @@ import { join, dirname } from "node:path";
 import { promises as fs } from "node:fs";
 import type Database from "better-sqlite3";
 import type { ProfileBindingService } from "./profile-binding-service.js";
+import { createOfflineLogger } from "./sync-log.js";
 
 interface SyncUser { id: string; email: string; tier: string }
 
@@ -182,6 +183,12 @@ interface OutgoingSession {
 
 export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncService {
   let inFlightPush: Promise<number> | null = null;
+  // Offline-aware loggers so a wifi-off laptop doesn't spam the terminal
+  // with full stack traces every reconcile cycle. One per call-site so
+  // pull, push and bytes-push each track their own streak.
+  const pushLog = createOfflineLogger("[sessions] pushPending");
+  const pullLog = createOfflineLogger("[sessions] pull");
+  const pushBytesLog = createOfflineLogger("[sessions] pushBytes");
 
   const markDirtyStmt = deps.db.prepare(
     `UPDATE sessions
@@ -257,13 +264,14 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
           body: JSON.stringify({ sessions: stamped }),
         });
       } catch (err) {
-        console.warn("[sessions] pushPending failed:", err);
+        pushLog.failure(err);
         return totalAccepted;
       }
       if (!res.ok) {
         console.warn(`[sessions] pushPending non-ok ${res.status}`);
         return totalAccepted;
       }
+      pushLog.success();
       const body = await res.json().catch(() => null) as { accepted?: string[] } | null;
       const accepted = body?.accepted ?? [];
 
@@ -477,7 +485,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
             { method: "PUT", headers, body: chunkBody },
           );
         } catch (err) {
-          console.warn(`[sessions] pushBytes chunk ${nextChunkNumber} fetch failed for ${sessionId}:`, err);
+          pushBytesLog.failure(err);
           break;
         }
 
@@ -489,6 +497,7 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
           pushedBytes += sliceSize;
           advanceBytesState.run(offset + pushedBytes, chunkCount, Date.now(), sessionId);
           uploaded++;
+          pushBytesLog.success();
           continue;
         }
 
@@ -579,13 +588,14 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
         headers: { Cookie: `oyster_session=${session.token}` },
       });
     } catch (err) {
-      console.warn("[sessions] pull failed:", err);
+      pullLog.failure(err);
       return 0;
     }
     if (!res.ok) {
       console.warn(`[sessions] pull non-ok ${res.status}`);
       return 0;
     }
+    pullLog.success();
 
     type CloudSession = {
       session_id: string;

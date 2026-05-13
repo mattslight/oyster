@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Quieter terminal logs when offline.** When wifi goes out, sync used to log a 30-line stack trace every ~30 seconds for each background pull (memory + sessions). Now the first failure prints a single line — `cloud unreachable (ENOTFOUND)` — subsequent identical failures are suppressed, and a heartbeat appears roughly every 15 minutes if you're still offline. When wifi comes back, a single `back online` line confirms it. Real bugs (non-network errors) still surface their full trace.
+
 ### Added
 
 - **Active-writer signal on cross-device sessions.** When a session has been handed off — you resume a Mac session on Windows, or vice-versa — Home now shows a `Now active on MacBookPro` chip alongside the origin chip. It updates live as devices push new turns, so the demo "I picked this up over here" handoff is visible at a glance.
