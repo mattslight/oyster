@@ -286,7 +286,13 @@ export function createSessionSyncService(deps: SessionSyncDeps): SessionSyncServ
       tx();
       totalAccepted += accepted.length;
 
-      if (accepted.length > 0) {
+      // Log only multi-row pushes. Single-row pushes are the steady-state
+      // shape during a live conversation (one event lands, debounce fires
+      // ~1 s later with the dirty row, push succeeds) — a useful sign data
+      // is flowing during dev, but routine background noise in production.
+      // Boot drains and bursty tool-call sequences still log under
+      // BATCH_SIZE batching.
+      if (accepted.length > 1) {
         console.log(`[sessions] pushed: accepted=${accepted.length}`);
       }
       // If nothing was accepted, breaking avoids hot-looping on a server
