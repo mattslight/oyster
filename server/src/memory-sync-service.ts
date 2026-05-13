@@ -206,10 +206,13 @@ export function createMemorySyncService(deps: MemorySyncDeps): MemorySyncService
         markTxn();
         totalAccepted += accepted.length;
 
-        // Success log: only when something actually moved through this batch.
-        // Quiet in steady-state, visible when activity happens.
+        // Success log: only when more than one row moved (boot drains,
+        // bursts) — single-row pushes are routine background noise during
+        // a live session. Always log when there are conflicts/rejects
+        // since those need attention regardless of count.
         const moved = accepted.length + duplicates.length;
-        if (moved > 0) {
+        const noteworthy = conflicts.length > 0 || rejected.length > 0;
+        if (moved > 1 || noteworthy) {
           console.log(`[memory] pushed: accepted=${accepted.length} duplicates=${duplicates.length}${conflicts.length ? ` conflicts=${conflicts.length}` : ""}${rejected.length ? ` rejected=${rejected.length}` : ""}`);
         }
 

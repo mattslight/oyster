@@ -6,6 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **No more `accepted=1` log noise during a live conversation.** Single-row metadata pushes — which are the steady-state shape during normal conversation pacing — are now silent. Multi-row pushes (boot drains, bursty tool-call sequences) and any pushes with conflicts or rejected events still log so you can see real activity.
 - **Quieter terminal logs when offline.** When wifi goes out, sync used to log a 30-line stack trace every ~30 seconds for each background pull (memory + sessions). Now the first failure prints a single line — `cloud unreachable (ENOTFOUND)` — subsequent identical failures are suppressed, and a heartbeat appears roughly every 15 minutes if you're still offline. When wifi comes back, a single `back online` line confirms it. Real bugs (non-network errors) still surface their full trace.
 
 ### Added
