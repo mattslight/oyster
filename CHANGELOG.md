@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Boot banner stays readable on narrow terminals.** When the terminal isn't wide enough for the boxed banner, Oyster now drops the box and stacks the URLs on separate lines instead of letting the rails wrap and shred the layout.
+
 ## [0.8.2-beta.0] - 2026-05-14
 
 ### Added
