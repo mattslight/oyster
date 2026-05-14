@@ -1,8 +1,14 @@
-# Oyster OS — Design Document
+# Oyster — Design Document
 
 **Status:** Living document
-**Last updated:** 2026-04-18
+**Last updated:** 2026-05-14
 **Authors:** Matthew Slight, with architectural input from Bharat Mani Prem Sankar
+
+> **Current positioning:** Your AI. Your work. Anywhere, any device, any agent.
+>
+> Oyster keeps your AI work with you. Sync it, remember it, publish it, and bring whichever agent you use. It does not run your AI. It does not tie you to one.
+>
+> *Sections below dated 2026-04 or earlier describe the Sprint-2 "AI app workshop" framing and are retained as historical context. The current product is the workspace-for-agents pitch above.*
 
 ---
 

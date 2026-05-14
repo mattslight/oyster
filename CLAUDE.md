@@ -2,7 +2,11 @@
 
 ## What Oyster Is
 
-A prompt-controlled workspace OS. Users install it with `npm install -g oyster-os`, run `oyster`, and get a visual surface at `http://localhost:4444` where they organise files, projects, and artefacts — controlled from a chat bar and slash commands.
+**Your AI. Your work. Anywhere, any device, any agent.**
+
+Oyster keeps your AI work with you. It captures what your AI wrote and made, syncs it across your devices, and lets you publish any of it as a link. It does not run your AI. It does not tie you to one — bring whichever agent you use (Claude Code today; Cursor / Codex / OpenCode as they connect over MCP).
+
+Users install with `npm install -g oyster-os`, run `oyster`, and get a visual surface at `http://localhost:4444` where their agent's sessions, files, memories, and artefacts live.
 
 ## Architecture
 

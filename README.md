@@ -8,7 +8,9 @@
 
 ---
 
-**🦪 Every agent, one shared brain.** Oyster watches your AI sessions, captures the files they touched and the memories they wrote, and brings them all into one workspace — visible, searchable, persistent across every machine. Built on MCP.
+# 🦪 Your AI. Your work. Anywhere, any device, any agent.
+
+Oyster keeps your AI work with you. Sync it, remember it, publish it, and bring whichever agent you use. It does not run your AI. It does not tie you to one.
 
 ```bash
 # 1. Install

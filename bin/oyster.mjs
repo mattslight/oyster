@@ -66,7 +66,7 @@ if (cmd && !cmd.startsWith("-")) {
 
 function printHelp() {
   console.log(`
-  🦪 Oyster — prompt-controlled workspace OS
+  🦪 Oyster — Your AI. Your work. Anywhere, any device, any agent.
 
   Usage:
     oyster                            Start the server (default)
@@ -377,7 +377,8 @@ async function main() {
 
   // Check auth — if none, run login inline
   if (!hasEnvKey && !hasAuth()) {
-    console.log("\n  🦪 Welcome to Oyster\n");
+    console.log("\n  🦪 Welcome to Oyster");
+    console.log("  Your AI. Your work. Anywhere, any device, any agent.\n");
     console.log("  First, let's connect an AI provider.\n");
 
     const ok = await runLogin(opencodeBin);
