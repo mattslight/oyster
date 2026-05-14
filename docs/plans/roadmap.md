@@ -4,11 +4,13 @@
 >
 > **Anchor docs:**
 > - [`docs/requirements/oyster-cloud.md`](../requirements/oyster-cloud.md) — pinned user outcomes (R1–R7).
-> - [`docs/plans/archived/0.5.0-gap-matrix.md`](./archived/0.5.0-gap-matrix.md) — historical snapshot of where 0.5.0 stood against those outcomes (0.7.0 + 0.8.0 have since shipped).
+> - [`docs/research/yellow-pen-audit.md`](../research/yellow-pen-audit.md) — code-grounded audit of Sprint-2 vestiges still shipping (12 pens, internal + external). Informs Sprint 6 / 0.10.0.
+> - [`docs/research/category-map-2026-05.html`](../research/category-map-2026-05.html) — ~20-product landscape analysis; positions Oyster honestly in the workspace-for-agents category. Informs the *"Mission control for the AI era"* framing.
+> - [`docs/plans/archived/0.5.0-gap-matrix.md`](./archived/0.5.0-gap-matrix.md) — historical snapshot of where 0.5.0 stood against R1–R7 (0.7.0 + 0.8.0 have since shipped).
 
 ## Positioning
 
-The three layers of customer-facing copy. **All three are canonical** — every public surface uses one of these verbatim. Don't drift.
+The three layers of customer-facing copy. **All three are canonical** — these are the strings every public surface should use. Some surfaces may be catching up after a rewrite (e.g. PR #469 propagates the current Layer 2 across README / oyster.to / CLAUDE.md / MCP context). Drift bugs are tracked as code-fix work, not as roadmap items.
 
 ### Layer 1 — Hero line (10 words)
 
@@ -125,7 +127,9 @@ Each milestone from here delivers one or more requirements. Polish, refactors, a
 
 ## 0.10.0 — Surgery (the cleanup release)
 
-**Delivers:** Sprint 6 of the path to 1.0.0 ([#468](https://github.com/oyster-to/oyster/issues/468)). Cuts the Sprint-2 code paths still shipping inside the Sprint-5 box. Code-grounded audit lives on the [`report/yellow-pen-audit`](https://github.com/oyster-to/oyster/tree/report/yellow-pen-audit) branch.
+**Delivers:** Sprint 6 of the path to 1.0.0 ([#468](https://github.com/oyster-to/oyster/issues/468)). Cuts the Sprint-2 code paths still shipping inside the Sprint-5 box. Full audit at [`docs/research/yellow-pen-audit.md`](../research/yellow-pen-audit.md).
+
+**Why it's on the roadmap:** doesn't deliver an R directly, but covered by the decision principle's *"reduce the cost of serving one"* clause. Cutting the chat bar + bundled OpenCode makes **R4** (memory crossing agents) structurally honest — the surface no longer contradicts *"bring whichever agent."* Collapsing artefact kinds reduces **R7**'s sync surface area. Dropping the icon generator + zombie-horde removes ongoing cost (fal.ai bills, boot-time `~/Oyster/apps/` syncs) that serves no R.
 
 **Purpose:** make the *"Mission control for the AI era"* pitch honest at first install. The bundled OpenCode + in-app chat bar contradicts *"Bring whichever agents you prefer"*. Several other Sprint-2 surfaces (Ultra Hardcore PTY, AI-fixes-crashed-artefact, fal.ai icon generator, `local_process` runtime, `builtins/zombie-horde/`) describe an alternate "AI app workshop" product that no longer fits the framing.
 
@@ -147,6 +151,8 @@ Each milestone from here delivers one or more requirements. Polish, refactors, a
 ## 1.0.0 — Launch (the release that finishes the pivot)
 
 **Delivers:** Sprint 9 of the path to 1.0.0 ([#468](https://github.com/oyster-to/oyster/issues/468)). The distribution push + npm rename + final brand alignment.
+
+**Why it's on the roadmap:** launch readiness isn't an R-deliverable in itself, but it makes the cumulative R-work *reach users*. **R5** (publish & share) shipped quietly in 0.7.0 because the distribution channel hadn't been built; **R4** (cross-agent memory) shipped in 0.8.0 to the existing user base, not to new ones. 1.0.0 closes the gap between *"the requirements are satisfied in code"* and *"people who would benefit from them have heard of Oyster."*
 
 **Purpose:** capture the rebrand-and-positioning work in a marketable launch. Surgery has shipped (0.10.0), multi-agent watchers have shipped (0.9.0), memory primitives are in place (0.9.0). 1.0.0 is the launch.
 

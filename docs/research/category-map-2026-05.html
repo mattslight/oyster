@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The workspace-for-agents category map — May 2026 (Oyster in context)</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --ink: #1a1714;
+    --muted: #6b6259;
+    --line: #e8e1d5;
+    --line-strong: #d5cab8;
+    --oyster: #d97982;
+    --oyster-deep: #a4434c;
+    --claw: #c8421f;
+    --claw-deep: #8a2c12;
+    --tie: #8a8775;
+    --good: #4a7c59;
+    --warn: #b07a1f;
+    --code-bg: #f4efe6;
+    --danger: #c2453c;
+    --accent-blue: #4a6da3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16130f;
+      --paper: #1f1b16;
+      --ink: #f2ece1;
+      --muted: #a39a8d;
+      --line: #2e2820;
+      --line-strong: #3d3528;
+      --oyster: #f0a8b1;
+      --oyster-deep: #d97982;
+      --claw: #ec7858;
+      --claw-deep: #c8421f;
+      --tie: #b8b39e;
+      --good: #8bc097;
+      --warn: #e0b369;
+      --code-bg: #2a241c;
+      --danger: #e89189;
+      --accent-blue: #8da9d6;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .page { max-width: 1180px; margin: 0 auto; padding: 56px 32px 96px; }
+  header.cover { border-bottom: 1px solid var(--line); padding-bottom: 32px; margin-bottom: 40px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; color: var(--muted); font-weight: 600; }
+  h1 { font: 600 42px/1.1 ui-serif, "Iowan Old Style", "Charter", "Georgia", serif; letter-spacing: -0.01em; margin: 12px 0 16px; }
+  .deck { font-size: 18px; line-height: 1.55; color: var(--muted); max-width: 75ch; margin: 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: 16px 28px; margin-top: 24px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  h2 { font: 600 26px/1.2 ui-serif, "Iowan Old Style", "Charter", "Georgia", serif; letter-spacing: -0.01em; margin: 52px 0 18px; }
+  h3 { font: 600 18px/1.3 ui-sans-serif, system-ui, sans-serif; margin: 30px 0 10px; }
+  h4 { font: 600 15px/1.3 ui-sans-serif, system-ui, sans-serif; margin: 18px 0 6px; color: var(--ink); }
+  p { margin: 0 0 14px; }
+  a { color: var(--oyster-deep); text-decoration: none; border-bottom: 1px solid currentColor; }
+  a:hover { color: var(--ink); }
+  code, pre, kbd { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-bg); border-radius: 4px; }
+  code { padding: 1px 6px; }
+  pre { padding: 14px 16px; overflow-x: auto; border: 1px solid var(--line); background: var(--code-bg); border-radius: 6px; }
+  ul, ol { padding-left: 22px; margin: 0 0 16px; }
+  li { margin: 4px 0; }
+
+  .tldr { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--oyster); padding: 22px 26px; border-radius: 6px; margin: 0 0 36px; }
+  .tldr h2 { margin-top: 0; font-size: 18px; font-family: inherit; }
+  .tldr p:last-child { margin-bottom: 0; }
+
+  /* TOC */
+  nav.toc { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 16px 22px; margin: 0 0 36px; font-size: 14px; }
+  nav.toc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
+  nav.toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 32px; }
+  @media (max-width: 720px) { nav.toc ol { columns: 1; } }
+  nav.toc li { margin: 2px 0; break-inside: avoid; }
+  nav.toc a { color: var(--ink); border: none; }
+  nav.toc a:hover { color: var(--oyster-deep); }
+
+  /* Cards */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 18px 0 28px; }
+  @media (max-width: 720px) { .pair { grid-template-columns: 1fr; } }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 18px 22px; }
+  .card.oyster { border-top: 3px solid var(--oyster); }
+  .card.claw { border-top: 3px solid var(--claw); }
+  .card.blue { border-top: 3px solid var(--accent-blue); }
+  .card h3, .card h4 { margin-top: 0; }
+  .card .lede { font-size: 14px; color: var(--muted); margin-bottom: 12px; }
+  .card ul { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+
+  /* Product profile blocks */
+  .profile {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 14px 0;
+  }
+  .profile .head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .profile .name { font: 600 18px/1.2 ui-sans-serif, system-ui, sans-serif; }
+  .profile .stat { font-size: 12.5px; color: var(--muted); font-feature-settings: "tnum"; }
+  .profile .stat b { color: var(--ink); font-weight: 600; }
+  .profile .pitch { font-size: 14px; color: var(--muted); font-style: italic; margin: 4px 0 12px; }
+  .profile p, .profile ul { font-size: 14.5px; }
+  .profile .threat-level { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 9px; border-radius: 999px; margin-left: auto; }
+  .profile .threat-level.high { background: rgba(194,69,60,0.12); color: var(--danger); }
+  .profile .threat-level.medium { background: rgba(176,122,31,0.18); color: var(--warn); }
+  .profile .threat-level.low { background: rgba(74,124,89,0.15); color: var(--good); }
+  .profile .threat-level.context { background: rgba(138,135,117,0.18); color: var(--tie); }
+
+  /* The big matrix */
+  table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 18px 0 28px;
+  }
+  table.matrix th, table.matrix td {
+    text-align: center;
+    padding: 6px 7px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  table.matrix thead th {
+    background: var(--code-bg);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 10px 7px;
+    position: sticky;
+    top: 0;
+  }
+  table.matrix tbody tr:hover { background: rgba(217,121,130,0.05); }
+  table.matrix td.name { text-align: left; font-weight: 600; padding-left: 14px; white-space: normal; }
+  table.matrix td.name small { font-weight: 400; color: var(--muted); font-feature-settings: "tnum"; }
+  table.matrix td.stars { font-feature-settings: "tnum"; color: var(--muted); font-size: 11.5px; }
+  table.matrix .y { color: var(--good); font-weight: 700; }
+  table.matrix .n { color: var(--line-strong); }
+  table.matrix .p { color: var(--warn); }  /* partial */
+  table.matrix tbody tr.oyster td { background: rgba(217,121,130,0.08); }
+  @media (max-width: 720px) { table.matrix { font-size: 10.5px; } table.matrix th, table.matrix td { padding: 4px 5px; } }
+
+  /* Compare table (legacy 2-col) */
+  table.compare {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 24px;
+    font-size: 14px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  table.compare th, table.compare td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.compare thead th { background: var(--code-bg); font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  table.compare tbody tr:last-child td { border-bottom: 0; }
+  table.compare td:first-child { font-weight: 600; color: var(--ink); width: 24%; }
+
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.02em; text-transform: uppercase; margin-right: 6px; }
+  .pill.threat-high { background: rgba(194,69,60,0.15); color: var(--danger); }
+  .pill.threat-medium { background: rgba(176,122,31,0.18); color: var(--warn); }
+  .pill.threat-low { background: rgba(74,124,89,0.15); color: var(--good); }
+  .pill.context { background: rgba(138,135,117,0.18); color: var(--tie); }
+
+  .swotgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .swotgrid { grid-template-columns: 1fr; } }
+  .swot { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; }
+  .swot h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .swot.s { border-left: 3px solid var(--good); }
+  .swot.w { border-left: 3px solid var(--warn); }
+  .swot ul { padding-left: 18px; margin: 0; font-size: 14.5px; }
+
+  .secnum { display: inline-block; color: var(--muted); font-size: 14px; font-weight: 500; margin-right: 10px; font-feature-settings: "tnum"; }
+
+  footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  @media print { body { background: white; color: black; } .card, table.compare, table.matrix, .swot, .tldr, .profile { break-inside: avoid; } h2 { break-after: avoid; } }
+  blockquote { border-left: 3px solid var(--line-strong); margin: 16px 0; padding: 6px 18px; color: var(--muted); font-style: italic; }
+  .callout { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 16px 20px; margin: 18px 0; }
+  .callout strong { color: var(--ink); }
+  .callout.danger { border-left: 3px solid var(--danger); }
+  .callout.warn { border-left: 3px solid var(--warn); }
+  .callout.good { border-left: 3px solid var(--good); }
+  hr.rule { border: 0; height: 1px; background: var(--line); margin: 48px 0; }
+  .small-note { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .truth { background: rgba(74,124,89,0.08); border-left: 3px solid var(--good); padding: 12px 16px; margin: 14px 0; font-size: 14px; border-radius: 4px; }
+  .truth strong { color: var(--ink); }
+
+  /* Group header */
+  .grouphead {
+    margin: 32px 0 8px;
+    padding: 10px 14px;
+    background: var(--code-bg);
+    border-radius: 4px;
+    font-size: 12.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header class="cover">
+  <div class="eyebrow">Category map · Internal positioning report · v5 (multi-player)</div>
+  <h1>The workspace-for-agents category map</h1>
+  <p class="deck">Twenty-plus products are now circling the same idea: <em>a place that sits above your AI agents — sees what they do, remembers what they wrote, organises what they made.</em> Anthropic shipped half of it inside Claude Code itself last week. A 75k-star indie project pitches almost exactly what Oyster pitches. Two other repos already use the word &ldquo;OS&rdquo; in their names. This is the May 2026 picture, with Oyster placed honestly in it.</p>
+  <div class="meta">
+    <span><b>Author</b> Claude (Opus 4.7, for Matthew)</span>
+    <span><b>Date</b> 14 May 2026</span>
+    <span><b>Method</b> Codebases read where available; 20 repo metadata snapshots via <code>gh</code>; READMEs sampled; web search for category surveys.</span>
+    <span><b>Stance</b> Honest. No cheerleading. Star counts as of 2026-05-14.</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#tldr">TL;DR</a></li>
+    <li><a href="#what-category">What category are we even in?</a></li>
+    <li><a href="#matrix">The full competitive set — one matrix</a></li>
+    <li><a href="#profiles">Profiles, grouped by subset</a></li>
+    <li><a href="#lines">Where the meaningful lines are drawn</a></li>
+    <li><a href="#oyster-position">Oyster's position in the category</a></li>
+    <li><a href="#threats">The biggest threats to the umbrella claim</a></li>
+    <li><a href="#yellow-pens">The yellow pens, re-audited against the category</a></li>
+    <li><a href="#order">The order of operations</a></li>
+    <li><a href="#bottom">Bottom line</a></li>
+  </ol>
+</nav>
+
+<section id="tldr" class="tldr">
+  <h2>TL;DR</h2>
+  <p>There is no single product that does what Oyster aspires to do — &ldquo;every agent, one shared brain, on every device, with a workspace and publish/share.&rdquo; But there are now <strong>twenty-plus products doing one or two of the pieces</strong>, several with massive star counts, and one (<code>thedotmack/claude-mem</code>, 75.6k stars) pitching <em>literally</em> Oyster's tagline.</p>
+  <p>The category splits roughly into four overlapping subsets — <strong>multi-session managers</strong>, <strong>memory layers</strong>, <strong>workspace / chat platforms</strong>, and <strong>agent OSes / orchestrators</strong>. Most products sit cleanly in one. A few sit in two. <strong>None sit in all four.</strong> That &ldquo;all four&rdquo; is the umbrella position Oyster is claiming, and it is, today, defensible — but only if Oyster (a) closes the multi-agent-ingestion gap that <code>CCManager</code> and <code>Claude Squad</code> already have, (b) doesn't get drowned by name collision with two other &ldquo;OS&rdquo;-suffixed products (<code>OpenFang</code> 17.5k, <code>brobertsaz/claude-os</code> 287), and (c) ships the cross-device + memory + publish trio before anyone else thinks to bundle them.</p>
+  <p>The biggest single risk: <strong>claude-mem at 75.6k stars</strong>, pitching multi-agent memory injection with the same &ldquo;works with Claude Code, OpenClaw, Codex, Gemini, Hermes, Copilot, OpenCode + More&rdquo; multi-agent claim. Real verification of the codebase shows it is currently Claude-Code-first (the README leads with &ldquo;built for Claude Code&rdquo;) — but the marketing pitch and 75k-star scale mean Oyster is racing a much larger boat to the same harbour. The defensible reply isn't &ldquo;we also have memory&rdquo; — it's <strong>workspace + spaces + artefacts + publish + cross-device sync</strong>, none of which claude-mem ships. Add Cursor / Codex / OpenCode watchers fast.</p>
+  <p>The biggest single opportunity: the umbrella is empty. Twenty competitors each own one slice. Oyster can own the union — but only if it commits to it visibly and stops shipping the Sprint-2 product underneath the Sprint-5 box (see <a href="#order">§7</a>).</p>
+</section>
+
+<h2 id="what-category"><span class="secnum">01</span>What category are we even in?</h2>
+
+<p>Three overlapping observations, each one a category-defining design choice:</p>
+
+<ol>
+  <li><strong>The chat-log-as-UI is broken.</strong> If you run more than one Claude Code session, or use Claude Code <em>and</em> Cursor <em>and</em> Codex, you can't see what they're all doing without flipping between terminals. Products in this subset solve &ldquo;one screen for many sessions&rdquo;: <code>claude agents</code> (Anthropic, native), <code>Claude Squad</code>, <code>CCManager</code>, <code>Vibe Kanban</code>, <code>agent-deck</code>, <code>Conductor</code>, <code>OpenClaw OS</code>, the various dashboards. <strong>This is a commoditising category.</strong></li>
+  <li><strong>Models forget between sessions.</strong> Anything you tell the model on Tuesday is gone Wednesday morning. Products in this subset solve &ldquo;persistent memory across conversations&rdquo;: <code>claude-mem</code>, <code>brobertsaz/claude-os</code>, <code>mem0</code>, <code>Letta</code>, <code>Zep</code>/<code>Graphiti</code>, <code>Cognee</code>. <strong>This subset has both consumer products and infrastructure libraries — they don't compete head-on with each other.</strong></li>
+  <li><strong>Work needs a place to live.</strong> Artefacts the agent produced — notes, dashboards, decks, diagrams — need somewhere durable to sit between conversations. Products in this subset are the workspace itself: <code>Open WebUI</code>, <code>LobeChat</code>, <code>AnythingLLM</code> (with workspaces), <code>LibreChat</code> (with artifacts), <code>OpenClaw OS</code>, <code>vibeyard</code>. <strong>This subset is large, mature, and mostly chat-shaped.</strong></li>
+</ol>
+
+<p>A fourth, smaller subset is emerging:</p>
+
+<ol start="4">
+  <li><strong>Agent orchestration as &ldquo;an OS&rdquo;.</strong> A few products explicitly position themselves as an &ldquo;Agent OS&rdquo; — <code>OpenFang</code> (17.5k stars), <code>OpenAgents</code> (3.5k), <code>OpenClaw OS</code> (0.1k), <code>brobertsaz/claude-os</code> (0.3k). None of them mean the same thing by &ldquo;OS&rdquo; — three different products have decided that label fits — but the word is conspicuously crowded. This matters for Oyster's brand.</li>
+</ol>
+
+<div class="callout">
+  <strong>Oyster's design claim is the union of all four subsets.</strong> &ldquo;Every agent, one shared brain&rdquo; spans (1) multi-session and (2) memory. Spaces + artefacts + publish span (3) workspace. The free + Pro tier spine and cross-device sync structurally aim at (4) being &ldquo;the OS&rdquo; in the everyday sense — the thing that sits across all your machines and remembers everything. That union is empty today. It is also where you get burnt fastest if you don't pick which slice to ship best first.
+</div>
+
+<h2 id="matrix"><span class="secnum">02</span>The full competitive set — one matrix</h2>
+
+<p>Twenty-one products against thirteen capabilities. Anything that's plausibly in the conversation. ✓ = clearly shipped, ◐ = partial / claimed but limited, ✗ = absent. Star counts as of 2026-05-14 (via <code>gh api</code>).</p>
+
+<div style="overflow-x:auto">
+<table class="matrix">
+  <thead>
+    <tr>
+      <th>Product · stars · license</th>
+      <th>Multi-session UI</th>
+      <th>Multi-agent (not Claude only)</th>
+      <th>Memory primitive</th>
+      <th>Watches external agents</th>
+      <th>Spaces / projects</th>
+      <th>Artefacts (durable, typed)</th>
+      <th>Generative UI</th>
+      <th>Publish &amp; share</th>
+      <th>Cross-device sync</th>
+      <th>Browser UI</th>
+      <th>Mobile / PWA</th>
+      <th>Cron / sched.</th>
+      <th>MCP server (drives surface)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="oyster">
+      <td class="name">Oyster <small>· AGPL-3.0 · 0.8.1-beta.13</small></td>
+      <td class="y">✓</td><td class="p">◐ roadmap</td><td class="y">✓</td><td class="y">✓ Claude Code</td><td class="y">✓</td><td class="y">✓</td><td class="n">✗</td><td class="y">✓</td><td class="y">✓ Pro</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓ 29 tools</td>
+    </tr>
+    <tr>
+      <td class="name">Anthropic <code>claude agents</code> <small>· built-in · Claude Code 2.1.139</small></td>
+      <td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓ Claude Code (native)</td><td class="p">◐ by dir</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ terminal</td><td class="p">◐ via web</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">claude-mem <small>· Apache-2.0 · thedotmack</small></td>
+      <td class="stars">75,602</td><td class="p">◐ claimed</td><td class="y">✓</td><td class="p">◐ session hooks</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ CLI</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓ search tools</td>
+    </tr>
+    <tr>
+      <td class="name">Vibe Kanban <small>· Apache-2.0 · BloopAI · sunsetting</small></td>
+      <td class="stars">26,213</td><td class="y">✓</td><td class="n">✗</td><td class="y">✓ per task</td><td class="n">✗</td><td class="p">◐ projects</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ cloud (going)</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">Claude Squad <small>· AGPL-3.0 · smtg-ai</small></td>
+      <td class="stars">7,453</td><td class="y">✓</td><td class="y">✓ Claude/Codex/Gemini/Aider</td><td class="n">✗</td><td class="y">✓</td><td class="p">◐ worktrees</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ terminal</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">CCManager <small>· MIT · kbwo</small></td>
+      <td class="stars">1,099</td><td class="y">✓</td><td class="y">✓ 8 agents</td><td class="n">✗</td><td class="y">✓</td><td class="p">◐ projects</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ terminal</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">agent-deck <small>· MIT · asheshgoplani</small></td>
+      <td class="stars">2,401</td><td class="y">✓</td><td class="y">✓ Claude/Gemini/OpenCode/Codex</td><td class="n">✗</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ terminal</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">OpenClaw OS <small>· MIT · thesysdev</small></td>
+      <td class="stars">119</td><td class="y">✓ per gateway</td><td class="n">✗ OpenClaw only</td><td class="p">◐ via parent</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓ markdown</td><td class="y">✓ OpenUI Lang</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓</td><td class="y">✓ PWA</td><td class="y">✓</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">brobertsaz/claude-os <small>· MIT · 36+ skills</small></td>
+      <td class="stars">287</td><td class="n">✗</td><td class="n">✗ Claude Code only</td><td class="y">✓ KB-based</td><td class="p">◐ session insights</td><td class="p">◐ projects</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ local-first</td><td class="y">✓ frontend</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="name">Conductor <small>· MIT · rmindgh</small></td>
+      <td class="stars">4</td><td class="y">✓</td><td class="n">✗ Claude only</td><td class="n">✗</td><td class="y">✓ auto-approve</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ terminal</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">Claudia <small>· AGPL-3.0 · marcusbey</small></td>
+      <td class="stars">27</td><td class="y">✓</td><td class="n">✗ Claude only</td><td class="n">✗</td><td class="y">✓</td><td class="p">◐</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ GUI app</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">claude-control <small>· MIT · sverrirsig</small></td>
+      <td class="stars">116</td><td class="y">✓</td><td class="n">✗ Claude only</td><td class="n">✗</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗ macOS only</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">Open WebUI <small>· other · 2023 vintage</small></td>
+      <td class="stars">136,994</td><td class="n">✗</td><td class="n">✗ chat-shape</td><td class="p">◐ chat history</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ artifacts</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓</td><td class="y">✓</td><td class="p">◐</td><td class="n">✗</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="name">LobeChat <small>· other · lobehub · 2023</small></td>
+      <td class="stars">77,046</td><td class="n">✗</td><td class="n">✗ chat-shape</td><td class="p">◐</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ plugins</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ cloud</td><td class="y">✓</td><td class="y">✓ PWA</td><td class="n">✗</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="name">AnythingLLM <small>· MIT · Mintplex-Labs</small></td>
+      <td class="stars">60,016</td><td class="n">✗</td><td class="n">✗ chat-shape</td><td class="y">✓ doc KBs</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓ workspaces</td><td class="p">◐ artifacts</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓</td><td class="p">◐</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">LibreChat <small>· MIT · danny-avila</small></td>
+      <td class="stars">36,976</td><td class="n">✗</td><td class="n">✗ chat-shape</td><td class="p">◐</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓ React/HTML/Mermaid</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓</td><td class="p">◐</td><td class="n">✗</td><td class="y">✓ MCP</td>
+    </tr>
+    <tr>
+      <td class="name">OpenFang <small>· Apache-2.0 · &ldquo;Agent OS&rdquo;</small></td>
+      <td class="stars">17,508</td><td class="y">✓ channels</td><td class="y">✓ Anthropic/Gemini/OpenAI + 27 routes</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐</td><td class="p">◐</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">OpenAgents <small>· Apache-2.0 · networks</small></td>
+      <td class="stars">3,462</td><td class="y">✓</td><td class="y">✓ multi-runtime</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="name">mem0 <small>· Apache-2.0 · memory infra</small></td>
+      <td class="stars">55,658</td><td class="n">✗ library</td><td class="y">✓ provider-agnostic</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ cloud SaaS</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="y">✓ MCP server</td>
+    </tr>
+    <tr>
+      <td class="name">Letta (MemGPT) <small>· Apache-2.0 · agent runtime</small></td>
+      <td class="stars">22,704</td><td class="n">✗ library</td><td class="y">✓ provider-agnostic</td><td class="y">✓ tiered</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ cloud SaaS</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">Graphiti / Zep <small>· Apache-2.0 · temporal KG</small></td>
+      <td class="stars">26k/4.6k</td><td class="n">✗ library</td><td class="y">✓ provider-agnostic</td><td class="y">✓ temporal</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ cloud SaaS</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+    <tr>
+      <td class="name">Cognee <small>· Apache-2.0 · topoteretes</small></td>
+      <td class="stars">17,218</td><td class="n">✗ library</td><td class="y">✓ provider-agnostic</td><td class="y">✓ graph</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="p">◐ cloud SaaS</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p class="small-note">Notes: <em>Multi-session UI</em> = does the product itself show many sessions at once? <em>Multi-agent</em> = drives or watches more than just Claude Code. <em>Memory primitive</em> = first-class store with read/write API, not just chat history. <em>Watches external agents</em> = transparently sees sessions you started elsewhere. <em>Generative UI</em> = renders structured live components from model output. <em>MCP server</em> = the product is itself driveable by an external MCP client. Memory-infrastructure products (mem0/Letta/Graphiti/Cognee) are libraries that other apps embed; they don't ship a workspace UI of their own, but they could power one.</p>
+
+<div class="callout warn">
+  <strong>What jumps off the matrix.</strong> The columns where Oyster is the only ✓ today: <em>Spaces</em> (kind of — AnythingLLM has &ldquo;workspaces&rdquo; but they're chat-folders, not project nodes), <em>Cross-device sync</em>, and <em>Publish &amp; share</em>. Two more — <em>Watches external agents</em> and <em>MCP server driving the surface</em> — Oyster shares with a handful of others. The umbrella position lives in the overlap of those five columns; no other product holds three of them, let alone all five.
+</div>
+
+<h2 id="profiles"><span class="secnum">03</span>Profiles, grouped by subset</h2>
+
+<div class="grouphead">3.1 — Multi-session / agent managers (closest neighbours)</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Anthropic <code>claude agents</code> (agent view)</span>
+    <span class="stat">Built into Claude Code 2.1.139+ · research preview · May 2026</span>
+    <span class="threat-level high">High threat</span>
+  </div>
+  <p class="pitch">&ldquo;One screen for every Claude Code session you have running.&rdquo;</p>
+  <p>Native to Claude Code itself. Supervisor process keeps background sessions alive across terminal close. Per-session worktrees automatic, PR status dots, peek-and-reply, dispatch via <code>claude --bg</code> or <code>/bg</code>. <strong>Terminal-only.</strong> &ldquo;Sessions are local&rdquo; explicitly — no cross-device.</p>
+  <p><strong>What it kills for Oyster:</strong> the &ldquo;watch your Claude Code sessions in a browser&rdquo; framing as a headline. Anyone happy in a terminal and only using Claude Code is now sufficiently served.</p>
+  <p><strong>What it doesn't kill:</strong> cross-agent (Anthropic owns Claude only, structurally), memory across sessions, cross-device, browser UI, spaces, artefacts, publish — none of these are in <code>claude agents</code>.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">claude-mem <small>(<code>thedotmack/claude-mem</code>)</small></span>
+    <span class="stat"><b>75,602</b> stars · Apache-2.0 · created 2025-08-31 · v6.5.0 · pushed 2026-05-13</span>
+    <span class="threat-level high">High threat</span>
+  </div>
+  <p class="pitch">&ldquo;Persistent Context Across Sessions for Every Agent — Captures everything your agent does during sessions, compresses it with AI, and injects relevant context back into future sessions. Works with Claude Code, OpenClaw, Codex, Gemini, Hermes, Copilot, OpenCode + More.&rdquo;</p>
+  <p><strong>This is the closest single product to Oyster's pitch.</strong> 75.6k stars in 9 months. Apache-2.0. Active (pushed yesterday). The GitHub-description pitch is exactly Oyster's: every agent, persistent context, cross-session. README leads with &ldquo;Persistent memory compression system built for <em>Claude Code</em>&rdquo; — so the multi-agent claim is partly aspirational in the actual code, but the marketing surface and 75k-star scale mean Oyster is racing a much bigger boat to the same harbour. Auto-compresses session content with an LLM, stores in SQLite + Chroma, injects via Claude Code session-start hook.</p>
+  <p><strong>What it doesn't ship:</strong> workspace UI, spaces, artefacts, publish, cross-device sync, generative UI. <em>It is purely a memory plumbing layer.</em> Oyster's defensible reply isn't &ldquo;we have memory too&rdquo; — it's &ldquo;our memory lives <em>inside</em> a workspace, with spaces, artefacts, publish, and sync.&rdquo;</p>
+  <p><strong>Brand-name note:</strong> &ldquo;<em>built for</em> Claude Code&rdquo; in the README + 75k stars means the term &ldquo;Claude memory&rdquo; is going to keep pointing at this product, not Oyster, for the foreseeable future.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Claude Squad <small>(<code>smtg-ai/claude-squad</code>)</small></span>
+    <span class="stat"><b>7,453</b> stars · AGPL-3.0 · created 2025-03 · pushed 2026-03-28</span>
+    <span class="threat-level medium">Medium threat</span>
+  </div>
+  <p class="pitch">&ldquo;Manage multiple AI terminal agents like Claude Code, Codex, OpenCode, and Amp.&rdquo;</p>
+  <p>Terminal app on top of tmux + git worktrees. Same scope as <code>claude agents</code> but multi-agent (Claude Code, Codex, Gemini, Aider). Yolo / auto-accept mode. Each task gets isolated worktree. Same AGPL licence as Oyster. <strong>This is Oyster's roadmap #298 already shipping, in a terminal.</strong></p>
+  <p><strong>What it doesn't ship:</strong> memory, workspace, spaces, artefacts, publish, cross-device, browser UI. The terminal-only constraint is real — Claude Squad's audience is the dotfile-pinning power-user crowd. Oyster competes for the browser-native audience.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">CCManager <small>(<code>kbwo/ccmanager</code>)</small></span>
+    <span class="stat"><b>1,099</b> stars · MIT · created 2025-06 · pushed 2026-05-13</span>
+    <span class="threat-level medium">Medium threat</span>
+  </div>
+  <p class="pitch">&ldquo;Coding Agent Session Manager for Claude Code / Gemini CLI / Codex CLI / Cursor Agent / Copilot CLI / Cline CLI / OpenCode / Kimi CLI.&rdquo;</p>
+  <p><strong>Eight agents in one terminal.</strong> No tmux dependency (vs Claude Squad). Real-time session status (busy / waiting / idle). Worktree-based isolation. Multi-project. Auto-approve experimental. <strong>This is what Oyster's 0.9.0 multi-agent ingestion has to compete with — and CCManager has it shipping today.</strong></p>
+  <p><strong>What it doesn't ship:</strong> browser UI, memory, artefacts, publish, cross-device, spaces above agent. Still terminal-only. But the &ldquo;every agent&rdquo; claim — which Oyster wants to be famous for — already has a working terminal-native product behind it.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Vibe Kanban <small>(<code>BloopAI/vibe-kanban</code>)</small></span>
+    <span class="stat"><b>26,213</b> stars · Apache-2.0 · <em>company shut down · OSS continues</em></span>
+    <span class="threat-level context">Context (cautionary)</span>
+  </div>
+  <p class="pitch">&ldquo;Get 10X more out of Claude Code, Codex or any coding agent.&rdquo;</p>
+  <p>Kanban board for AI agents. Each agent works in its own workspace (branch + terminal + dev server). Cloud + remote access. <strong>Bloop (the company) shut down in April 2026.</strong> Per their farewell post: &ldquo;thousands of software engineers use Vibe Kanban every day to ship more with coding agents, but the vast majority are free users and the company couldn't find a business model.&rdquo; The project survives as community-maintained OSS; cloud features sunset after 30 days, transitioning to fully local.</p>
+  <p><strong>The strategic lesson for Oyster:</strong> 26k stars and thousands of daily-active users wasn't enough to monetise. This is the most direct data point in the category about &ldquo;is this monetisable?&rdquo; and the answer was no for Bloop. Worth understanding why: free users couldn't be converted, the value was thin on top of free coding-agent CLIs. Oyster's Pro tier (cross-device sync, durability, publish caps) targets a different paywall — &ldquo;your data follows you,&rdquo; not &ldquo;your agents are organised.&rdquo; That's a stronger paywall, but only if R1/R3/R4/R7 are actually shipped and verifiable.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">agent-deck <small>(<code>asheshgoplani/agent-deck</code>)</small></span>
+    <span class="stat"><b>2,401</b> stars · MIT · created 2025-12 · pushed 2026-05-14</span>
+    <span class="threat-level low">Low threat</span>
+  </div>
+  <p>One TUI for Claude, Gemini, OpenCode, Codex, and more. Same shape as Claude Squad / CCManager; smaller, MIT, newer.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">OpenClaw OS <small>(<code>thesysdev/openclaw-os</code>)</small></span>
+    <span class="stat"><b>119</b> stars · MIT · created 2026-03-27</span>
+    <span class="threat-level low">Low threat (different scope)</span>
+  </div>
+  <p>Workspace plugin for OpenClaw — the 371k-star personal AI assistant. Two-surface generative-UI runtime: <em>inline UI</em> (openui-lang in chat replies) and <em>Apps</em> (durable, reactive, with <code>Query</code>/<code>Mutation</code>/<code>$state</code>, exec/read/SQLite from the runtime, cron-driven data scripts, version history, restore). Built on Thesys's MIT-licensed <a href="https://github.com/thesysdev/openui">OpenUI</a> (5.4k stars), which Oyster could embed.</p>
+  <p><strong>What's distinctive:</strong> the strongest generative-UI primitive in the open-source AI tooling ecosystem. PWA + push. Lint loop + skill-gate enforcing the DSL.</p>
+  <p><strong>Strategic relevance to Oyster:</strong> not a direct competitor (different user base, lives inside OpenClaw). The relevant move is to <em>borrow</em> openui-lang as a future-state artefact renderer — see <a href="#order">§7</a>.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Smaller dashboards &amp; tools</span>
+    <span class="stat">Various · mostly &lt;1k stars</span>
+    <span class="threat-level low">Low individually</span>
+  </div>
+  <p><code>Conductor</code> (rmindgh, 4★), <code>Claudia</code> (marcusbey, 27★, GUI app), <code>claude-control</code> (sverrirsig, 116★, macOS), <code>seunggabi/claude-dashboard</code> (30★, k9s-style TUI), <code>Stargx/claude-code-dashboard</code> (9★), <code>Tpain166/claude-dashboard</code> (2★), <code>amahpour/claude-code-command-center</code> (4★), <code>vibeyard</code> (1k★, &ldquo;IDE built for AI coding agents&rdquo;).</p>
+  <p>Each is small alone. <strong>Collectively they signal the category is saturating fast.</strong> The pattern is consistent: every two weeks another developer ships a Claude Code dashboard. The mid-tier of this list (1k–10k stars) is the &ldquo;watching Claude Code sessions&rdquo; commodity layer Anthropic has now started absorbing natively.</p>
+</div>
+
+<div class="grouphead">3.2 — Memory layers</div>
+
+<p>Split into <strong>consumer products</strong> (drop-in for Claude Code) and <strong>infrastructure libraries</strong> (build memory into your own agent).</p>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">brobertsaz/claude-os</span>
+    <span class="stat"><b>287</b> stars · MIT · created 2025-10 · v2.5 · live at thebob.dev/claude-os</span>
+    <span class="threat-level medium">Medium threat (name + memory)</span>
+  </div>
+  <p class="pitch">&ldquo;Give Your AI a Memory — Claude Code that actually remembers you.&rdquo;</p>
+  <p>Python + TypeScript. Natural-language memory (<em>&ldquo;remember this…&rdquo;</em>), cross-KB search via MCP, tree-sitter indexing (10k files in 30s), 36+ community skills via Smithery, knowledge lifecycle (dedupe / consolidate / archive / health), real-time Kanban board, jobs dashboard, 100% local with Ollama.</p>
+  <p><strong>Why it matters:</strong> the literal brand-name collision. Two products called &ldquo;Claude OS&rdquo; / &ldquo;Oyster OS&rdquo; in the same adjacent space, neither bare-noun. Google for &ldquo;Claude OS&rdquo; today lands here. Drop the &ldquo;OS&rdquo; in Oyster's brand — see <a href="#order">§7</a>.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">mem0 <small>(<code>mem0ai/mem0</code>)</small></span>
+    <span class="stat"><b>55,658</b> stars · Apache-2.0 · 2023 vintage</span>
+    <span class="threat-level context">Context (infrastructure)</span>
+  </div>
+  <p class="pitch">&ldquo;Universal memory layer for AI Agents.&rdquo;</p>
+  <p>Provider-agnostic memory library + cloud SaaS. Four-scope memory model (user_id / agent_id / run_id / app_id). MCP server for Claude Code integration. <strong>Anyone building memory in their AI app probably uses mem0 (or Letta, Zep, Cognee).</strong> Oyster's home-grown FTS5 memory store competes with this at the infrastructure level — and the gap will widen as mem0 keeps shipping benchmarks and personalisation features.</p>
+  <p><strong>Strategic implication:</strong> Oyster's R2 semantic recall (0.9.0 roadmap) needs to either (a) embed mem0 / Letta / Cognee under the hood, or (b) ship a credible home-grown alternative. The R&amp;D cost of (b) is high; the integration cost of (a) is low. The roadmap doc doesn't yet name which.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Letta <small>(formerly MemGPT, <code>letta-ai/letta</code>)</small></span>
+    <span class="stat"><b>22,704</b> stars · Apache-2.0 · 2023 vintage</span>
+    <span class="threat-level context">Context (infrastructure)</span>
+  </div>
+  <p>&ldquo;Platform for stateful agents.&rdquo; Agent runtime built around tiered memory — agents actively manage their own memory, decide what to archive, rewrite their system prompts based on past interactions. Strongest for long-horizon agents that run for days.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Zep / Graphiti <small>(<code>getzep/zep</code>, <code>getzep/graphiti</code>)</small></span>
+    <span class="stat"><b>4,566</b> / <b>26,042</b> stars · Apache-2.0</span>
+    <span class="threat-level context">Context (infrastructure)</span>
+  </div>
+  <p>Real-time temporal knowledge graphs for AI agents. Stores facts with timestamps and relationships — &ldquo;I used to live in London, moved to Tokyo&rdquo; is understood as a state change. Strongest for memory with temporal queries.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Cognee <small>(<code>topoteretes/cognee</code>)</small></span>
+    <span class="stat"><b>17,218</b> stars · Apache-2.0</span>
+    <span class="threat-level context">Context (infrastructure)</span>
+  </div>
+  <p>&ldquo;Memory control plane for AI Agents in 6 lines of code.&rdquo; Graph-based cross-session persistence. Strongest for deep knowledge retrieval and unstructured-document ingestion.</p>
+</div>
+
+<div class="grouphead">3.3 — Workspace / chat platforms (the surface)</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Open WebUI <small>(<code>open-webui/open-webui</code>)</small></span>
+    <span class="stat"><b>136,994</b> stars · 2023 vintage · self-hosted</span>
+    <span class="threat-level context">Context (different shape)</span>
+  </div>
+  <p>The dominant self-hosted chat UI. Chat-first. Multi-provider. MCP support. <strong>Not a workspace in Oyster's sense</strong> — it doesn't have spaces, artefacts as first-class, or external-agent watching. But it owns the &ldquo;self-hosted Claude UI&rdquo; mindshare and would be the first thing many users would compare Oyster to if Oyster's chat bar stays prominent.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">LobeChat <small>(<code>lobehub/lobe-chat</code>)</small></span>
+    <span class="stat"><b>77,046</b> stars · 2023 vintage</span>
+    <span class="threat-level context">Context (different shape)</span>
+  </div>
+  <p>&ldquo;Ultimate space for work and life — find, build, collaborate with agents.&rdquo; Most aggressive &ldquo;agentic workspace&rdquo; pitch among the chat platforms. PWA. Plugin marketplace. Still chat-shape underneath.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">AnythingLLM <small>(<code>Mintplex-Labs/anything-llm</code>)</small></span>
+    <span class="stat"><b>60,016</b> stars · MIT</span>
+    <span class="threat-level low">Low–medium threat</span>
+  </div>
+  <p>Owns the term &ldquo;workspace&rdquo; in the self-hosted AI chat world. Workspaces are isolated environments each with their own documents, model config, and conversation history. <strong>The closest to Oyster's &ldquo;Spaces&rdquo; concept.</strong> Documents-plus-chat is the primary interaction; the agent doesn't <em>watch</em> anything external, doesn't <em>publish</em>, doesn't <em>sync across devices</em>.</p>
+  <p><strong>Implication for Oyster:</strong> the word &ldquo;workspaces&rdquo; means &ldquo;chat folders with documents&rdquo; to 60k people. Oyster's Spaces should be positioned distinctly — they're <em>projects</em>, with attached repos, attributed sessions, watched agents, and synced state. Not chat folders.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">LibreChat <small>(<code>danny-avila/LibreChat</code>)</small></span>
+    <span class="stat"><b>36,976</b> stars · MIT</span>
+    <span class="threat-level low">Low threat</span>
+  </div>
+  <p>Multi-provider chat. Strong MCP integration. <strong>Has &ldquo;Code Artifacts&rdquo;</strong> — renders React, raw HTML, Mermaid in browser. That's the closest analogue in the chat-platform world to OpenClaw OS's inline-UI surface and Oyster's HTML artefact tiles. The pattern is converging.</p>
+</div>
+
+<div class="grouphead">3.4 — Agent OS / orchestration</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">OpenFang <small>(<code>RightNow-AI/openfang</code>)</small></span>
+    <span class="stat"><b>17,508</b> stars · Apache-2.0 · created 2026-02-24</span>
+    <span class="threat-level medium">Medium threat (brand-name)</span>
+  </div>
+  <p class="pitch">&ldquo;Open-source Agent Operating System.&rdquo;</p>
+  <p>17.5k stars in three months. Self-describes as an &ldquo;Agent OS.&rdquo; Three native drivers (Anthropic, Gemini, OpenAI-compatible) routing to 27 providers, with intelligent routing including task complexity scoring, automatic fallback, and cost tracking. <strong>This is the third product using &ldquo;OS&rdquo; in the same neighbourhood</strong> (Oyster OS, brobertsaz/claude-os, OpenFang). The term is now thoroughly diluted.</p>
+  <p><strong>Implication for Oyster:</strong> the longer Oyster keeps &ldquo;OS&rdquo; in the brand, the more it gets averaged-out with OpenFang's routing-layer + brobertsaz's memory-tool. None of them mean the same thing by &ldquo;OS&rdquo; — which is exactly the problem.</p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">OpenAgents <small>(<code>openagents-org/openagents</code>)</small></span>
+    <span class="stat"><b>3,462</b> stars · Apache-2.0</span>
+    <span class="threat-level low">Low threat</span>
+  </div>
+  <p>&ldquo;AI Agent Networks for Open Collaboration.&rdquo; Interactive terminal dashboard (<code>agn</code>) for installing runtimes, configuring API keys, connecting to workspaces, running agents as background daemons. More infrastructural than user-facing.</p>
+</div>
+
+<div class="grouphead">3.5 — The supporting cast (consumed by, not competing with)</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Coding agents themselves</span>
+    <span class="stat">Stars combined: ~1M+</span>
+    <span class="threat-level context">Context (consumers of the surface)</span>
+  </div>
+  <p>The agents whose sessions Oyster wants to watch and whose memory it wants to be the umbrella of:</p>
+  <ul>
+    <li><strong>Cline</strong> (61.7k stars, Apache-2.0) — autonomous coding agent, IDE extension, SDK, CLI</li>
+    <li><strong>Aider</strong> (44.8k, Apache-2.0) — AI pair programming in the terminal</li>
+    <li><strong>Continue</strong> (33.2k, Apache-2.0) — source-controlled AI checks</li>
+    <li><strong>Cursor</strong> (closed source, anysphere/cursor) — the dominant IDE</li>
+    <li><strong>Claude Code, Codex CLI, Gemini CLI, Copilot CLI, OpenCode, Kimi CLI</strong> — official vendor CLIs</li>
+  </ul>
+  <p>Each of these emits JSONL transcripts to disk; each is plausibly &ldquo;watchable&rdquo; by Oyster the same way Claude Code already is. <strong>Watching this set is what the &ldquo;every agent&rdquo; claim actually means in code.</strong></p>
+</div>
+
+<div class="profile">
+  <div class="head">
+    <span class="name">Token-usage / monitoring micro-tools</span>
+    <span class="stat">ccusage 14k, claude-usage 1.5k, CCSeva 0.8k</span>
+    <span class="threat-level context">Context (adjacent niches)</span>
+  </div>
+  <p>Track tokens, costs, session billing windows. Different problem from Oyster, but they share installers and audience.</p>
+</div>
+
+<h2 id="lines"><span class="secnum">04</span>Where the meaningful lines are drawn</h2>
+
+<p>After looking at all twenty-one products, the meaningful axes aren't &ldquo;feature X vs feature Y&rdquo; — they are three structural decisions each product has already made:</p>
+
+<h3>Line 1: who runs the agent loop?</h3>
+<ul>
+  <li><strong>The user's existing CLI</strong> — Claude Squad, CCManager, agent-deck, Conductor, vibe-kanban, brobertsaz/claude-os, claude-mem, Anthropic's own agent view. None of these bundle a chat with their own model. They wrap the user's existing agent.</li>
+  <li><strong>The product itself, embedded</strong> — Oyster (today, with bundled OpenCode), OpenClaw OS (defers to OpenClaw), Open WebUI / LobeChat / AnythingLLM / LibreChat (bring-your-own model, but the chat UI is theirs).</li>
+</ul>
+<p><strong>The category is migrating to &ldquo;don't bundle an agent.&rdquo;</strong> The user has Claude Code / Cursor / Codex installed already; they don't need a competing chat surface. This is the single strongest argument for the §7 surgery (drop the chat bar + OpenCode).</p>
+
+<h3>Line 2: terminal or browser?</h3>
+<ul>
+  <li><strong>Terminal-first</strong> — Claude Squad, CCManager, agent-deck, Conductor, Claude agents, Aider, the various dashboards.</li>
+  <li><strong>Browser-first</strong> — Oyster, vibe-kanban (cloud + local), Open WebUI, LobeChat, AnythingLLM, LibreChat, OpenClaw OS, brobertsaz/claude-os (with frontend), OpenFang.</li>
+</ul>
+<p>This is the cleanest audience split. Terminal-native devs use Claude Squad. Browser-native devs use AnythingLLM / Open WebUI. Oyster is browser-first and that's fine; the question is what's <em>distinctive</em> about Oyster vs the 200k+ stars of self-hosted chat UIs. Answer: spaces, watching external agents, cross-device, publish. <strong>None of those are in any browser-first competitor.</strong></p>
+
+<h3>Line 3: single agent or many?</h3>
+<ul>
+  <li><strong>Claude-Code-only</strong> — Anthropic agent view, brobertsaz/claude-os, Conductor, Claudia, claude-control, claude-dashboard variants.</li>
+  <li><strong>OpenClaw-only</strong> — OpenClaw OS.</li>
+  <li><strong>Many agents</strong> — Claude Squad (Claude/Codex/Gemini/Aider), CCManager (8 agents), agent-deck (Claude/Gemini/OpenCode/Codex), claude-mem (multi-agent claimed), OpenFang (multi-provider routing).</li>
+</ul>
+<p><strong>This is the line where Oyster currently sits in the wrong column.</strong> Oyster's tagline says &ldquo;every agent&rdquo; but ships only Claude Code watching today. CCManager, Claude Squad, and agent-deck have the multi-agent claim shipping in a terminal already. <strong>0.9.0's Cursor/Codex/OpenCode watchers (issue #298) are now load-bearing for Oyster's tagline, not nice-to-have.</strong></p>
+
+<div class="callout warn">
+  <strong>The three lines together describe Oyster's lane:</strong> &ldquo;don't run the agent, browser surface, every agent.&rdquo; Plus the three columns Oyster owns alone in the matrix (spaces, cross-device, publish). That's six structural commitments — a sharp, defensible position. <em>If</em> Oyster ships them and stops doing things that contradict them.
+</div>
+
+<h2 id="oyster-position"><span class="secnum">05</span>Oyster's position in the category</h2>
+
+<p>Three things are true at once, and they all need to be held in the same sentence:</p>
+
+<h3>What Oyster already does that nobody else does</h3>
+<ul>
+  <li><strong>Cross-device sync of agent state.</strong> Spaces (shipped 0.7.1), memory (shipped 0.8.0), sessions (shipping 0.8.1-beta). No other product in the matrix has this. Vibe Kanban had cloud; that's gone. mem0 / Letta / Cognee have cloud SaaS but it's library infrastructure, not user-facing sync.</li>
+  <li><strong>Publish &amp; share artefacts as URLs with three access modes.</strong> <code>share.oyster.to/p/&lt;token&gt;</code>, origin-isolated, password / open / sign-in-required. Nobody else has this primitive at the consumer level.</li>
+  <li><strong>Spaces (projects with attached repos and attributed sessions).</strong> AnythingLLM has &ldquo;workspaces,&rdquo; but they're chat folders. Oyster's Spaces are project nodes with linked folders, attributed sessions, repo-aware scans. Closest analogue is none of the chat platforms; closer to Linear or GitHub's project sense.</li>
+  <li><strong>MCP-driven workspace where any external agent can read/write the surface.</strong> 29 MCP tools. LibreChat consumes MCP servers; Oyster <em>is</em> an MCP server.</li>
+</ul>
+
+<h3>What Oyster does that someone else also does</h3>
+<ul>
+  <li><strong>Watching Claude Code sessions</strong> — now also done by Anthropic <code>claude agents</code> (native, terminal), Claude Squad (multi-agent, terminal), CCManager (multi-agent, terminal). Browser-only is Oyster's differentiator here, plus the integration with spaces/memory/artefacts.</li>
+  <li><strong>Memory across sessions</strong> — done by claude-mem (75k), brobertsaz/claude-os, mem0, Letta, Zep, Cognee. Oyster's is FTS5-backed with traceable provenance (R6); cross-device shipped 0.8.0.</li>
+  <li><strong>Markdown artefacts</strong> — done by OpenClaw OS, LibreChat's artifacts, basically every chat platform now.</li>
+  <li><strong>Free / Pro tier model</strong> — most products are pure OSS with no monetisation; Vibe Kanban tried, failed. Oyster is one of the few with a clear paywall (sync + publish caps).</li>
+</ul>
+
+<h3>What Oyster does that probably needs to stop</h3>
+<ul>
+  <li><strong>Bundles its own AI engine (OpenCode subprocess).</strong> Nobody else in the multi-session category does this anymore. The category has moved to &ldquo;wrap the user's CLI.&rdquo; See <a href="#order">§7</a>.</li>
+  <li><strong>Lists 7 named artefact kinds (notes, app, deck, wireframe, table, map, diagram).</strong> Signals &ldquo;we generate slides / wireframes / maps&rdquo; — competing with Keynote / Figma / Mapbox by accident.</li>
+  <li><strong>Has &ldquo;OS&rdquo; in the brand</strong> — when brobertsaz/claude-os (287★) and OpenFang (17.5k★) both claim the term, and neither means the same thing.</li>
+</ul>
+
+<h2 id="threats"><span class="secnum">06</span>The biggest threats to the umbrella claim</h2>
+
+<p>Ranked by urgency. Each has a specific defence.</p>
+
+<table class="compare">
+  <thead><tr><th>Threat</th><th>Why it bites</th><th>The defence</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>claude-mem grows past Oyster on memory</strong><br><span class="pill threat-high">High</span></td>
+      <td>75.6k stars and the literal &ldquo;Persistent Context Across Sessions for Every Agent&rdquo; pitch. If they ship Cursor / Codex watching for real (not just claimed), they take the memory wedge for the multi-agent case.</td>
+      <td>Don't compete on memory alone. Memory is a feature inside Oyster's workspace, not the product. Ship Cursor / Codex watching <em>and</em> R2 semantic recall — both, before claude-mem extends from Claude Code into real multi-agent ground.</td>
+    </tr>
+    <tr>
+      <td><strong>CCManager / Claude Squad commoditise multi-agent watching</strong><br><span class="pill threat-high">High</span></td>
+      <td>The &ldquo;every agent&rdquo; tagline already has working products behind it in the terminal world. If a developer's threshold for switching is &ldquo;one screen for all my agents,&rdquo; they don't need Oyster — CCManager is one command away.</td>
+      <td>Oyster has to do something CCManager <em>can't</em>. The browser UI alone isn't enough. The combination — browser + memory + spaces + cross-device — is. Prioritise the 0.9.0 multi-agent watchers (#298) and pitch them as part of the workspace, not as session-management.</td>
+    </tr>
+    <tr>
+      <td><strong>&ldquo;OS&rdquo; brand collision (OpenFang 17.5k + brobertsaz 287)</strong><br><span class="pill threat-medium">Medium</span></td>
+      <td>Three products in adjacent categories all use &ldquo;OS.&rdquo; Two are larger / older. Search engines and writers will conflate. Oyster loses the SEO race for &ldquo;Claude OS&rdquo; / &ldquo;AI agent OS&rdquo; before it gets started.</td>
+      <td>Drop &ldquo;OS&rdquo; from public copy. Keep <code>oyster-os</code> as the npm package (back-compat); brand is &ldquo;Oyster.&rdquo; GitHub org <code>oyster.to</code> / URL slug <code>oyster-to</code>. See <a href="#order">§7</a> step 10.</td>
+    </tr>
+    <tr>
+      <td><strong>Anthropic ships memory or cross-device into Claude Code itself</strong><br><span class="pill threat-medium">Medium · structural</span></td>
+      <td>Anthropic already absorbed session-management with <code>claude agents</code>. If they add a managed memory layer to Claude Code (likely, given session memory is already partially in their docs) and a cross-device story (much harder), they could absorb more of Oyster.</td>
+      <td>Anthropic can only own the Claude-only case. The multi-agent + cross-vendor story is structurally not theirs. Ship Cursor / Codex / Cline watching prominently — that's the layer Anthropic structurally cannot replicate.</td>
+    </tr>
+    <tr>
+      <td><strong>The Vibe Kanban monetisation lesson</strong><br><span class="pill threat-medium">Medium · existential</span></td>
+      <td>26k stars and thousands of DAU wasn't enough to monetise. Bloop shut down. Free coding-agent CLIs were &ldquo;good enough.&rdquo; If Oyster's Pro tier doesn't have unique value above &ldquo;watch your agents,&rdquo; the same trap applies.</td>
+      <td>Oyster's Pro tier already targets a stronger paywall — &ldquo;your data follows you across machines&rdquo; (R1, R3, R4, R7). This works only if those requirements are shipped and verifiable end-to-end. The 0.9.0 roadmap is right; ship it.</td>
+    </tr>
+    <tr>
+      <td><strong>mem0 / Letta / Cognee become the dominant memory infrastructure</strong><br><span class="pill threat-low">Low · architectural</span></td>
+      <td>Memory infrastructure is converging. If every product that ships memory ends up wrapping mem0 (just like every product that ships an LLM ends up wrapping OpenAI / Anthropic), Oyster's home-grown FTS5 memory becomes legacy.</td>
+      <td>Embed mem0 / Letta / Cognee for R2 semantic recall in 0.9.0, instead of building from scratch. Oyster's value isn't the memory implementation; it's the memory <em>inside the workspace</em>. Trade implementation work for integration work.</td>
+    </tr>
+    <tr>
+      <td><strong>The Sprint-2 product still ships inside the Sprint-5 box</strong><br><span class="pill threat-high">High · internal</span></td>
+      <td>An internal code-grounded audit (worktree <code>report/yellow-pen-audit</code>) found seven code paths keeping an older &ldquo;AI app workshop&rdquo; product alive — bundled OpenCode (304 lines), fal.ai icon generator running per <code>create_artifact</code> at $0.003/call, zombie-game demo in every <code>~/Oyster/apps/</code>, Ultra Hardcore PTY mode, AI-fixes-crashed-artefact. New users get both products on top of each other.</td>
+      <td>The §7 surgery. The keystone is the chat bar + OpenCode — removing those collapses five of the seven yellow pens.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="yellow-pens"><span class="secnum">07</span>The yellow pens, re-audited against the category</h2>
+
+<p>A separate internal audit (the &ldquo;yellow pen report,&rdquo; worktree <code>report/yellow-pen-audit</code>, 2026-05-14) identified seven Sprint-2 code paths still shipping inside the Sprint-5 box. That audit was code-grounded but internally focused — every pen was an inconsistency between Oyster's stated product and the bits on disk. The category map in <a href="#matrix">§02</a> adds a second lens: <strong>how Oyster reads to a user who has the rest of the category in their head.</strong> Each of the original seven sharpens. Five new pens emerge that weren't visible from inside the repo.</p>
+
+<h3>7.1 — The original seven, against the category</h3>
+
+<table class="compare">
+  <thead><tr><th>Original pen (internal)</th><th>Category-context sharpening (external)</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>1. Bundled OpenCode subprocess</strong> — 304 lines in <code>opencode-manager.ts</code> plus events + orphan sweep. Contradicts &ldquo;Bring any AI.&rdquo;</td>
+      <td>The entire multi-session subset has moved past this. Anthropic <code>claude agents</code>, Claude Squad (7.5k★), CCManager (1.1k★), agent-deck (2.4k★), claude-mem (75.6k★) — <strong>none bundle a model.</strong> Oyster is one of the only stragglers. The category has decided.</td>
+    </tr>
+    <tr>
+      <td><strong>2. Chat bar as primary control plane</strong> — every artefact write, memory write, publish flows through <code>ChatBar</code> → OpenCode → MCP.</td>
+      <td>When the chat bar is prominent, Oyster reads as a <em>worse Open WebUI</em>. Open WebUI 137k★ + LobeChat 77k★ + AnythingLLM 60k★ + LibreChat 37k★ = <strong>311,000 stars Oyster will never out-build in the self-hosted-chat category.</strong> The chat bar puts Oyster in a category it can't win.</td>
+    </tr>
+    <tr>
+      <td><strong>3. Ultra Hardcore PTY mode</strong> — &ldquo;Game on&rdquo; modal, 126-line <code>pty-manager.ts</code>. &ldquo;Talking directly to the engine.&rdquo;</td>
+      <td><strong>Wrong stack for the wrong audience.</strong> Terminal power-users already have Claude Squad / CCManager / agent-deck. Shipping a terminal feature inside a browser product is the audience-level equivalent of 10 Sharpies plus a yellow highlighter.</td>
+    </tr>
+    <tr>
+      <td><strong>4. AI-fixes-crashed-artefacts</strong> — <code>handleFixError</code> spawns a chat to patch the source.</td>
+      <td><strong>No product in the watch-your-agents category fixes the agent's code.</strong> That's Claude Code / Cursor / Codex's job. The flow only makes sense in the Sprint-2 frame where Oyster generated the artefact.</td>
+    </tr>
+    <tr>
+      <td><strong>5. fal.ai icon generator</strong> — 263 lines, ~$0.003/artefact billed to a key in <code>server/.env</code>.</td>
+      <td><strong>Zero competitors in the multi-session category generate visual things.</strong> Icon generation puts Oyster in &ldquo;AI generates pretty things&rdquo; — a smaller, separate category — rather than &ldquo;workspace for agents.&rdquo;</td>
+    </tr>
+    <tr>
+      <td><strong>6. <code>local_process</code> runtime</strong> — 169 lines partially-broken; MCP can't register it; existing tiles hand-SQL'd.</td>
+      <td>Closer to <code>vibeyard</code> / Vibe Kanban &ldquo;run the agent's code in a workspace&rdquo; than to the watching-and-remembering subset Oyster claims to be in. <strong>Wrong category entirely.</strong></td>
+    </tr>
+    <tr>
+      <td><strong>7. <code>builtins/zombie-horde/</code></strong> — full HTML browser game, re-synced into every <code>~/Oyster/apps/</code> on boot.</td>
+      <td>Literal yellow pen. Even more obvious in a category survey — no other &ldquo;workspace for agents&rdquo; product ships a demo game.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>7.2 — Five new yellow pens, only visible from outside</h3>
+
+<div class="callout">
+  <p style="margin:0 0 8px"><strong>8. Home-grown memory implementation, when the category has converged on mem0 / Letta / Graphiti / Cognee.</strong></p>
+  <p style="margin:0; font-size:14.5px"><code>server/src/memory-store.ts</code> is FTS5-backed memory that reimplements what mem0 (55,658★), Letta (22,704★), Graphiti (26,042★), and Cognee (17,218★) have already shipped — with provider-agnostic APIs, MCP integrations, and SaaS clouds. Oyster's defensible claim is <em>memory inside a workspace</em>, not &ldquo;best memory implementation.&rdquo; <strong>Every engineering hour on memory R&amp;D is one fewer hour on Cursor watchers, cross-device sessions, or publish polish.</strong> The fix isn't to rip out <code>memory-store</code> — it's to wrap one of the four under the hood for R2 semantic recall (already on the 0.9.0 roadmap as #321) and stop building competitive home-grown embeddings.</p>
+</div>
+
+<div class="callout">
+  <p style="margin:0 0 8px"><strong>9. &ldquo;Spaces&rdquo; terminology collides with AnythingLLM (60,016 stars).</strong></p>
+  <p style="margin:0; font-size:14.5px">Sixty thousand AnythingLLM users have been trained that &ldquo;workspaces&rdquo; means <em>chat folders with documents</em>. Oyster's Spaces mean something different — project nodes with attached repos, attributed sessions, repo-aware scans. A new user importing the AnythingLLM mental model into Oyster gets the wrong picture. The fix isn't to rename — &ldquo;Spaces&rdquo; is fine — it's <strong>one sentence of marketing copy on the pricing page and README clarifying that Oyster's Spaces are projects, not chat folders.</strong></p>
+</div>
+
+<div class="callout">
+  <p style="margin:0 0 8px"><strong>10. &ldquo;Bring any AI&rdquo; on the pricing page, when only Claude Code is watched.</strong></p>
+  <p style="margin:0; font-size:14.5px">The marketing claim is multi-agent. The code is single-agent. The category benchmarks — CCManager (8 agents shipping), Claude Squad (4+ shipping), agent-deck (4+ shipping) — all already deliver what Oyster's pricing copy promises. This makes the copy <em>aspirational</em> in a way that loses credibility on first user comparison. <strong>Issue #298 (Cursor / Codex / Cline watchers) isn't a roadmap nice-to-have; it's the line between honest and aspirational marketing.</strong></p>
+</div>
+
+<div class="callout">
+  <p style="margin:0 0 8px"><strong>11. &ldquo;Watches your Claude Code sessions&rdquo; as headline copy, when Anthropic ships it natively.</strong></p>
+  <p style="margin:0; font-size:14.5px">Not a code pen — a marketing pen. Every screenshot, install screen, and blog post leading with Claude-Code-watching is implicitly competing with Anthropic's own <code>claude agents</code>. They have more resources, deeper integration, and own the platform. <strong>Demote Claude-Code-watching from a headline feature to a sub-feature.</strong> Lead with the things Anthropic structurally cannot ship: cross-agent (every CLI), cross-device (browser-native, multi-machine), publish-and-share, memory-integrated. Claude-Code-watching is a feature, not the pitch.</p>
+</div>
+
+<div class="callout">
+  <p style="margin:0 0 8px"><strong>12. &ldquo;OS&rdquo; in the brand, when OpenFang (17,508★) and brobertsaz/claude-os (287★) own the term in adjacent categories.</strong></p>
+  <p style="margin:0; font-size:14.5px">Three products with &ldquo;OS&rdquo; in the same neighbourhood, none meaning the same thing. The longer Oyster keeps the suffix, the more averaging-out happens in search engines and writers' minds. Originally a Sutherland-style name-level pen; category context upgrades it to an SEO + brand-confusion problem — see the <a href="#threats">§06 threat table</a> and <a href="#order">§08 step 11</a>.</p>
+</div>
+
+<h3>7.3 — The compound effect, sharpened</h3>
+
+<p>The original audit said: <em>&ldquo;Together the seven yellow pens describe a coherent alternate product — Oyster is an AI-driven app workshop.&rdquo;</em> The category map adds the second half of that sentence:</p>
+
+<blockquote>…and that alternate product is competing in the wrong category, against larger players, with weaker differentiation.</blockquote>
+
+<ul>
+  <li><strong>Sprint-2 Oyster</strong> (AI app workshop) competes with <code>vibeyard</code>, Vibe Kanban, Cline (61.7k★), Aider (44.8k★), Cursor in the &ldquo;AI builds your app&rdquo; space. Oyster loses — those products are orders of magnitude bigger and more focused.</li>
+  <li><strong>Sprint-5 Oyster</strong> (the shared brain above your agents) competes with nobody for the full umbrella claim. Every competitor owns one slice; the umbrella is empty.</li>
+</ul>
+
+<div class="callout danger">
+  <strong>The Sprint-2 yellow pens aren't just legacy code — they're an active drag, pulling Oyster into a category it can't win, away from a category that's empty.</strong>
+</div>
+
+<h3>7.4 — The keystone, with category lens</h3>
+
+<p>Move #1 (cut the chat bar + bundled OpenCode) was already load-bearing internally. The category context makes it category-defining. One cable, four positionings clarified at once:</p>
+
+<ul>
+  <li>Removes Oyster from the <strong>&ldquo;self-hosted chat UI&rdquo;</strong> category (311k stars Oyster will never out-build).</li>
+  <li>Removes Oyster from the <strong>&ldquo;AI generates your apps&rdquo;</strong> category (the entire Sprint-2 alternate-product framing collapses).</li>
+  <li>Lands Oyster cleanly in <strong>&ldquo;workspace for your existing agents&rdquo;</strong> — where the umbrella is empty.</li>
+  <li>Resolves the <strong>&ldquo;Bring any AI&rdquo;</strong> pricing-copy contradiction at the source.</li>
+</ul>
+
+<p>This is why <a href="#order">§08 step 1</a> is non-negotiable. Every subsequent step gets easier the moment this one lands.</p>
+
+<h3>7.5 — The Morita test, re-applied</h3>
+
+<blockquote>If the Sony Walkman will play but will not record, everybody can understand what it's for.</blockquote>
+
+<p>Translating to category-clarity terms:</p>
+
+<div class="truth">
+  <strong>If Oyster organises but does not chat, everybody can understand what it's for.</strong>
+</div>
+
+<p>The chat bar isn't just a yellow pen. It is the <em>symbol</em> of the Sprint-2 category Oyster is trying to leave. The moment it's gone, the brand promise becomes legible on first install: <em>here is a workspace that watches my agents, remembers their work, and syncs across my machines. It does not run them. I run them.</em></p>
+
+<p>That is a sentence the category map says nobody else is offering today. It is the umbrella position, articulated in fifteen words. <strong>Every yellow pen still in the box is one more word the user has to ignore before they can hear it.</strong></p>
+
+<h2 id="order"><span class="secnum">08</span>The order of operations</h2>
+
+<p>Same recommendation as v4, with the category context sharpening the priorities. Surgery first, primitives second, rebrand third — all together as the 1.0.0 release.</p>
+
+<ol>
+  <li><strong>Cut the chat bar + OpenCode.</strong> The keystone. Five of the seven Sprint-2 yellow pens collapse with this one move. <strong>The category has moved to &ldquo;wrap the user's CLI&rdquo;</strong> — Oyster shipping its own agent is now an outlier.</li>
+  <li><strong>Replace it with a command bar.</strong> Keep <code>/s</code>, <code>/o</code>, <code>#</code>, <code>Cmd+K</code>, <code>/p</code>, <code>/u</code>. Route natural-language requests to the user's connected MCP agent (Claude Code, Cursor). First-run is a wizard, not a conversation.</li>
+  <li><strong>Delete <code>pty-manager.ts</code>, the Ultra Hardcore modal, <code>icon-generator.ts</code>, <code>handleFixError</code>, <code>process-manager.ts</code>.</strong></li>
+  <li><strong>Delete <code>builtins/zombie-horde/</code>.</strong> Re-audit other built-ins against R1–R7.</li>
+  <li><strong>Collapse 7 artefact kinds to 3</strong> — <code>notes</code>, <code>app</code>, <code>diagram</code>. Absorb the rest into <code>notes</code>. The agent can emit any HTML it needs.</li>
+  <li><strong>Ship Cursor / Codex / OpenCode watchers (issue #298).</strong> <span class="pill threat-high">Promoted</span> This is no longer 0.9.0-nice-to-have. It's load-bearing for the &ldquo;every agent&rdquo; tagline. CCManager and Claude Squad have it shipping today in a terminal; Oyster's window for being the browser-native multi-agent watcher is open and won't stay open forever.</li>
+  <li><strong>Evaluate embedding mem0 / Letta / Cognee for R2 semantic recall</strong> instead of rolling home-grown. <span class="pill threat-medium">New</span> The memory-infrastructure category is converging; integration cost is low, R&amp;D cost of building competitive embeddings is high.</li>
+  <li><strong>Archive the Sprint-2 sections of <code>docs/plans/archived/oyster-os-design.md</code>.</strong></li>
+  <li><strong>Pin one tagline everywhere.</strong> <em>&ldquo;Every agent, one shared brain. Sync · Memory · Publish.&rdquo;</em></li>
+  <li><strong>Adopt openui-lang</strong> (or an equivalent) as the next-generation <code>app</code> artefact renderer. Lands into a clean foundation.</li>
+  <li><strong>Rebrand.</strong> Drop &ldquo;OS&rdquo; from public copy. Lead with <code>curl -fsSL oyster.to/install | sh</code>. GitHub org <code>oyster.to</code> / URL slug <code>oyster-to</code>. Scope npm packages under <code>@oyster-to/*</code>. <span class="pill threat-medium">Urgent</span> The &ldquo;OS&rdquo; SEO race has multiple competing products already; staying named &ldquo;Oyster OS&rdquo; is a bet that you can outrun OpenFang (17.5k★) and brobertsaz/claude-os (287★) in that namespace. You can't.</li>
+</ol>
+
+<div class="truth">
+  <strong>1.0.0 is still the right home for all of it.</strong> Surgery, multi-agent ingestion, memory embedding, primitive adoption, and rebrand bundled as one &ldquo;we finished the pivot&rdquo; release. The cleanest possible product, shipping into a noisy category with a clear position. The roadmap discipline is already in place — every milestone is justified against R1–R7. The codebase just needs to be told it's allowed to lose the limbs that no longer hang off the spine.
+</div>
+
+<h2 id="bottom"><span class="secnum">09</span>Bottom line</h2>
+
+<p>The workspace-for-agents category in May 2026 has roughly twenty serious players. Most own one slice. Three of them — Anthropic <code>claude agents</code>, Claude Squad, CCManager — own multi-session management. Five of them — claude-mem, brobertsaz/claude-os, mem0, Letta, Cognee — own memory. Four — Open WebUI, LobeChat, AnythingLLM, LibreChat — own self-hosted chat surfaces. Two — OpenFang, OpenAgents — claim to be &ldquo;Agent OS&rdquo;es of varying scopes. One — OpenClaw OS — owns generative-UI rendering for one ecosystem.</p>
+
+<p><strong>Oyster's claim is the union.</strong> Sit above all the agents, remember everything they did, organise by project, sync across devices, publish any of it. No competitor today holds three of those columns together; nobody holds four. That union is where the unique value lives and where the defensible moat is.</p>
+
+<p>The hardest truth: <strong>the union doesn't ship for free.</strong> Oyster has to be best-in-class at <em>five</em> things that other products are individually focused on. Better than CCManager at multi-agent watching, better than claude-mem at cross-session memory, better than AnythingLLM at workspaces, better than LibreChat at artifacts-as-URLs, better than no-one-else at cross-device sync. That's the cost of the umbrella.</p>
+
+<p>The compensating truth: <strong>nobody else is even trying.</strong> The umbrella is empty. Twenty competitors below, each owning their slice, none reaching upward. Oyster's defensible move is to commit to the umbrella visibly — drop the bundled agent, drop the OS suffix, ship the multi-agent watchers, integrate the memory infrastructure, keep shipping cross-device sync — and let each single-purpose product be very good at their slice while Oyster is the only thing tying them all together.</p>
+
+<p>If forced to commit to one sentence: <strong>the umbrella is the moat. Build the umbrella, not another slice.</strong></p>
+
+<hr class="rule">
+
+<footer>
+  <p><strong>Sources verified.</strong> All star counts and metadata fetched via <code>gh api</code> on 2026-05-14.</p>
+  <ul style="margin-top:8px">
+    <li><strong>Codebases read end-to-end:</strong> Oyster (private, <code>~/Dev/oyster-os</code> — README, CHANGELOG.md 634 lines, roadmap.md, oyster-cloud.md, mcp-server.ts 944 lines, memory-store.ts), OpenClaw OS (cloned to <code>~/Dev/openclaw-os-readonly</code> — README, AGENTS.md, claw-plugin/src/index.ts 1342 lines, openclaw.plugin.json, both skill/prompt files).</li>
+    <li><strong>READMEs sampled:</strong> claude-mem, CCManager, Claude Squad, brobertsaz/claude-os. Tagline citations are verbatim from each repo.</li>
+    <li><strong>Stars / licence / dates:</strong> <a href="https://github.com/thedotmack/claude-mem">claude-mem</a> (75.6k), <a href="https://github.com/BloopAI/vibe-kanban">Vibe Kanban</a> (26.2k), <a href="https://github.com/smtg-ai/claude-squad">Claude Squad</a> (7.5k), <a href="https://github.com/kbwo/ccmanager">CCManager</a> (1.1k), <a href="https://github.com/asheshgoplani/agent-deck">agent-deck</a> (2.4k), <a href="https://github.com/RightNow-AI/openfang">OpenFang</a> (17.5k), <a href="https://github.com/openagents-org/openagents">OpenAgents</a> (3.5k), <a href="https://github.com/Mintplex-Labs/anything-llm">AnythingLLM</a> (60.0k), <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (37.0k), <a href="https://github.com/open-webui/open-webui">Open WebUI</a> (137.0k), <a href="https://github.com/lobehub/lobe-chat">LobeChat</a> (77.0k), <a href="https://github.com/mem0ai/mem0">mem0</a> (55.7k), <a href="https://github.com/letta-ai/letta">Letta</a> (22.7k), <a href="https://github.com/getzep/graphiti">Graphiti</a> (26.0k), <a href="https://github.com/topoteretes/cognee">Cognee</a> (17.2k), <a href="https://github.com/brobertsaz/claude-os">brobertsaz/claude-os</a> (287), <a href="https://github.com/thesysdev/openclaw-os">OpenClaw OS</a> (119).</li>
+    <li><strong>External:</strong> <a href="https://code.claude.com/docs/en/agents">Claude Code agent view docs</a>, <a href="https://www.vibekanban.com/blog/shutdown">Vibe Kanban shutdown announcement</a>, <a href="https://openclaw.ai">openclaw.ai</a>, <a href="https://docs.openclaw.ai/web/control-ui">docs.openclaw.ai</a>.</li>
+  </ul>
+  <p style="margin-top:16px">This is a snapshot at 14 May 2026. Star counts churn fast; treat any number within ±5% as approximate. Several products are weeks old and the matrix will need refreshing within 2–3 months as the category continues to crystallise.</p>
+  <p style="margin-top:8px">v1 → v5 evolution log: v1 (memory-only sketch of OpenClaw OS) → v2 (code-grounded comparison) → v3 (added the yellow-pen audit framing) → v4 (folded in <code>claude agents</code> and brobertsaz/claude-os as &ldquo;two more entrants&rdquo;) → <strong>v5 (this version — re-architected as a 20-player category map; the OpenClaw OS framing is now one product profile among many).</strong></p>
+</footer>
+
+</main>
+</body>
+</html>
