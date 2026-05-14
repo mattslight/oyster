@@ -4,9 +4,11 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.2-beta.0] - 2026-05-14
+
 ### Changed
 
-- **Sharper positioning across every surface.** Hero copy on README, oyster.to, the install banner, and the MCP context now reads *"Mission control for the AI era."* The supporting copy is explicit: Oyster does not run your AI, and it does not tie you to one — bring whichever agent you use. *"OS"* is dropped from public-facing copy.
+- **Sharper positioning across every surface.** Hero copy on README, oyster.to, the install banner, and the MCP context now reads *"Mission control for your agents."* The supporting line explicitly names what Oyster does — organised + synced + ready to share across devices + memory + publishing built in — and tells you to use whichever agents you prefer. The MCP context keeps the explicit *"does not run your AI"* negation so connecting agents tell the user this when asked. *"OS"* is dropped from public-facing copy. README hero banner and oyster.to social-preview card regenerated to match.
 - **No more `accepted=1` log noise during a live conversation.** Single-row metadata pushes — which are the steady-state shape during normal conversation pacing — are now silent. Multi-row pushes (boot drains, bursty tool-call sequences) and any pushes with conflicts or rejected events still log so you can see real activity.
 - **Quieter terminal logs when offline.** When wifi goes out, sync used to log a 30-line stack trace every ~30 seconds for each background pull (memory + sessions). Now the first failure prints a single line — `cloud unreachable (ENOTFOUND)` — subsequent identical failures are suppressed, and a heartbeat appears roughly every 15 minutes if you're still offline. When wifi comes back, a single `back online` line confirms it. Real bugs (non-network errors) still surface their full trace.
 
@@ -22,6 +24,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **Attaching a folder no longer freezes the UI.** Clicking *Attach folder* used to appear to hang for many seconds on larger folders — the server's synchronous filesystem walk monopolised the event loop before the 201 response could flush, so the *Attach* button stayed disabled and only a page reload recovered it. The scan now defers to the next tick after the response is queued, and yields periodically during the artifact-write loop, so the response returns in milliseconds and tiles surface via SSE as the scan runs in the background. Per-mutation HTTP timeout on the client also tightened (default 15s) so a genuinely dead socket recovers cleanly instead of leaving the UI stuck.
 - **Clicking a cross-device session opens its inspector instead of erroring.** Previously the inspector failed with "Session no longer available" for any session that originated on another device, because the session-detail lookup only checked locally-discovered sessions. The lookup now falls back to the cross-device cache, and the inspector renders a friendly "Resume to view transcript" notice while the transcript hasn't been reassembled locally yet. The chip's tooltip also explains why a session shows "Other device" (its origin hasn't pushed its label yet).
 
 ## [0.8.1-beta.5] - 2026-05-12
