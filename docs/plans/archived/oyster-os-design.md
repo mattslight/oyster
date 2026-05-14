@@ -1,3 +1,7 @@
+> **ARCHIVED 2026-05-14.** Pre-rebrand 2026-04 design framing. Superseded by [`docs/plans/roadmap.md`](../roadmap.md) (positioning + sprint plan) and [`docs/requirements/oyster-cloud.md`](../../requirements/oyster-cloud.md) (R1–R7 outcomes). Useful as history of how the product was first thought through; not canonical for any current architecture decision. The Artifact Contract / Manifest schema sections may still be approximately accurate but should be cross-checked against current code before treating as reference.
+
+---
+
 # Oyster — Design Document
 
 **Status:** Living document

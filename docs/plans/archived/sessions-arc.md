@@ -1,3 +1,7 @@
+> **ARCHIVED 2026-05-14.** 0.5.0 design doc — the session-watching work shipped (see [`CHANGELOG.md`](../../../CHANGELOG.md) → 0.5.0). Historical record of how Oyster's "see your agent at work" feature was designed; not canonical for any current decision.
+
+---
+
 # Sessions Arc — 0.5.0 Design
 
 **Status:** active · **Milestone:** [0.5.0](https://github.com/mattslight/oyster/milestone/2) · **Tickets:** [#250–#257](https://github.com/mattslight/oyster/milestone/2)

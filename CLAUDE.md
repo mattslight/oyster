@@ -1,5 +1,7 @@
 # Oyster — Working Context
 
+> **Canonical positioning + roadmap:** [`docs/plans/roadmap.md`](docs/plans/roadmap.md). Start there before designing anything — it pins both *what Oyster is* (Layer 1/2/3 copy) and *what's next* (milestones).
+
 ## What Oyster Is
 
 **Mission control for the AI era.**

@@ -1,10 +1,46 @@
-# Oyster roadmap (2026-05 onwards; last edit 2026-05-09)
+# Oyster roadmap (2026-05 onwards; last edit 2026-05-14)
 
-> **Status:** canonical. Each milestone is an epic that delivers one or more requirements from [`docs/requirements/oyster-cloud.md`](../requirements/oyster-cloud.md). If a ticket isn't on the path to making a requirement true, it doesn't belong on a milestone — it gets deferred or shipped opportunistically.
+> **Status:** canonical. The single source of truth for both **what Oyster is** (positioning) and **what's next** (the spine + milestones). Each milestone is an epic that delivers one or more requirements from [`docs/requirements/oyster-cloud.md`](../requirements/oyster-cloud.md). If a ticket isn't on the path to making a requirement true, it doesn't belong on a milestone — it gets deferred or shipped opportunistically.
 >
 > **Anchor docs:**
 > - [`docs/requirements/oyster-cloud.md`](../requirements/oyster-cloud.md) — pinned user outcomes (R1–R7).
-> - [`docs/plans/0.5.0-gap-matrix.md`](./0.5.0-gap-matrix.md) — snapshot of where 0.5.0 stands against those outcomes.
+> - [`docs/plans/archived/0.5.0-gap-matrix.md`](./archived/0.5.0-gap-matrix.md) — historical snapshot of where 0.5.0 stood against those outcomes (0.7.0 + 0.8.0 have since shipped).
+
+## Positioning
+
+The three layers of customer-facing copy. **All three are canonical** — every public surface uses one of these verbatim. Don't drift.
+
+### Layer 1 — Hero line (10 words)
+
+> **Mission control for the AI era.**
+
+Goes wherever there is **one short prominent piece of copy**: README hero, `oyster.to` `<h1>` and `<title>`, CLI welcome banner, social-preview card hero text, GitHub repo "About" panel.
+
+### Layer 2 — Descriptive paragraph (3 short sentences)
+
+> **Oyster sits on top of your agents and keeps track of your AI work wherever you are. Sync, memory and publish all baked in. Bring whichever agents you prefer and swap out at any time.**
+
+Goes in **sub-decks and longer descriptions**: README sub-deck under the hero, `oyster.to` hero subtitle, `CLAUDE.md` opening paragraph, `server/src/mcp-server.ts` MCP context (third-person variant), install-screen / first-run wizard.
+
+### Layer 3 — One-liner (~12 words)
+
+> **Oyster keeps your AI work synced, remembered and publishable across devices and agents.**
+
+Goes wherever a **single descriptive sentence with no commas-of-list** is needed: `package.json` description, GitHub repo description, npm card preview, Twitter / Discord / Reddit bios, awesome-* list entries, meta-description tags.
+
+### Layer 4 — Pricing-page triad
+
+`Sync · Memory · Publish` is the canonical feature triad. Appears **exactly once**, on [`docs/pricing.html`](../pricing.html), as the Pro tier promise. **Layers 1–3 do not repeat this triad** — they describe the *promise* of those features in plain language.
+
+### Internal shorthand (do not put in customer-facing copy)
+
+The positioning emerged from a **cassette-deck analogy** — Oyster is the deck; the agents are the cassettes. Any deck, any cassette, swap freely. The cross-agent freedom is the unique value: every direct competitor today fills in *one slice below* Oyster (memory only, or session-management only, or generative UI only). The umbrella position is empty. *Mission control for the AI era* claims it. The analogy is shorthand for strategic conversations; public copy stays direct.
+
+### Decision history
+
+- 2026-05-14 — Layer 1 settled on *"Mission control for the AI era."* (PR #463 → #469).
+- 2026-05-14 — Layer 2 v1 *"Oyster keeps your AI work with you…"* superseded by v2 *"Oyster sits on top of your agents…"* (PR #469). v2 trades the explicit *"does not run your AI"* negation for the implicit *"sits on top of"* framing; the explicit negation is preserved in the MCP context where agent clients still benefit from it.
+- 2026-05-14 — Pre-rebrand "Oyster OS" naming dropped from public copy. Repo migrated to `github.com/oyster-to/oyster`. NPM rename to `@oyster-to/oyster` tracked in #464 for 1.0.0.
 
 ## The spine
 
@@ -86,6 +122,44 @@ Each milestone from here delivers one or more requirements. Polish, refactors, a
 - **R7 across-time** (#323) — `artifact_versions` table (or git-backed), snapshot-on-write, history view, diff between versions, revert. Local-first is acceptable; the across-time axis is independent of cross-device.
 - **R7 across-device** (#324) — bidirectional artefact-byte sync with a defined conflict policy (LWW + version history is the leading candidate). The compound R7 scenario from the requirements doc passes end-to-end.
 - **Multi-agent ingestion** (#298) — beyond MCP memory: native session ingestion for Cursor, Codex, OpenCode and beyond. Folds in #177 (closed).
+
+## 0.10.0 — Surgery (the cleanup release)
+
+**Delivers:** Sprint 6 of the path to 1.0.0 ([#468](https://github.com/oyster-to/oyster/issues/468)). Cuts the Sprint-2 code paths still shipping inside the Sprint-5 box. Code-grounded audit lives on the [`report/yellow-pen-audit`](https://github.com/oyster-to/oyster/tree/report/yellow-pen-audit) branch.
+
+**Purpose:** make the *"Mission control for the AI era"* pitch honest at first install. The bundled OpenCode + in-app chat bar contradicts *"Bring whichever agents you prefer"*. Several other Sprint-2 surfaces (Ultra Hardcore PTY, AI-fixes-crashed-artefact, fal.ai icon generator, `local_process` runtime, `builtins/zombie-horde/`) describe an alternate "AI app workshop" product that no longer fits the framing.
+
+**Ships:**
+
+- **Cut the chat bar + bundled OpenCode** ([#465](https://github.com/oyster-to/oyster/issues/465)) — the keystone. Removes ~480 lines of subprocess supervision. Replaces the chat bar with a command bar that routes natural-language requests to the user's connected MCP agent. Five of the seven yellow pens collapse with this one move.
+- **Delete `pty-manager.ts` user-facing entry points** — keep the PTY mux as a private module (post-1.0.0 reuse for [#470](https://github.com/oyster-to/oyster/issues/470)'s peek-and-attach view).
+- **Delete `handleFixError`, `icon-generator.ts`, `process-manager.ts`.** Sprint-2 vestiges, no current caller.
+- **Delete `builtins/zombie-horde/`.** Re-audit other builtins against R1–R7.
+- **Collapse 7 artefact kinds → 3** (`notes`, `app`, `diagram`).
+- **First-run wizard for "connect your agent"** — replaces the deleted `opencode providers login` flow.
+- **Pricing-page Pro-tier strap decision** ([#467](https://github.com/oyster-to/oyster/issues/467)) — small follow-up, lands with the cleanup.
+
+**Out of scope (in this milestone):**
+- Multi-agent watchers (#298) — that's 0.9.0
+- Memory backend hot-swap — that's 0.9.0
+- NPM rename (#464) — that's 1.0.0
+
+## 1.0.0 — Launch (the release that finishes the pivot)
+
+**Delivers:** Sprint 9 of the path to 1.0.0 ([#468](https://github.com/oyster-to/oyster/issues/468)). The distribution push + npm rename + final brand alignment.
+
+**Purpose:** capture the rebrand-and-positioning work in a marketable launch. Surgery has shipped (0.10.0), multi-agent watchers have shipped (0.9.0), memory primitives are in place (0.9.0). 1.0.0 is the launch.
+
+**Ships:**
+
+- **NPM rename** to `@oyster-to/oyster` with dual-publish + deprecation of `oyster-os` ([#464](https://github.com/oyster-to/oyster/issues/464)).
+- **Awesome-list submissions** — awesome-claude-code, awesome-mcp-servers, awesome-selfhosted, awesome-ai-agents (tracked in [#466](https://github.com/oyster-to/oyster/issues/466)).
+- **Trendshift + Smithery** registration.
+- **GitHub repo Settings** — About blurb, topics, social preview upload, website field.
+- **Social bios** — Discord, Twitter, Reddit aligned to Layer 1 / Layer 3.
+- **Show HN + Product Hunt** submissions.
+
+Tracked end-to-end by epic [#468](https://github.com/oyster-to/oyster/issues/468).
 
 ## What's deferred (off-milestone, project-board priority Low)
 
