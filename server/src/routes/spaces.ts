@@ -86,12 +86,17 @@ export async function tryHandleSpaceRoute(
       // moved orphan rows from `(NULL, NULL)` to `(space, source)` and the
       // hook only otherwise refreshes when the watcher fires.
       broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-      // Trigger an initial scan in the background so artefacts surface via
-      // SSE — same UX as /api/spaces/:id/sources POST.
-      spaceService.scanSpace(space.id).catch((err) => {
-        console.warn("[from-path] scan failed:", err instanceof Error ? err.message : err);
-      });
       sendJson(space, 201);
+      // Defer the initial scan to the next tick so the 201 above flushes
+      // before scanSpace's synchronous fs walk + sqlite work starts. Without
+      // this, big folders block the event loop long enough that the response
+      // can't reach the client until the scan finishes — the UI sees the
+      // attach as a hang. Artefacts still surface via SSE as the scan runs.
+      setImmediate(() => {
+        spaceService.scanSpace(space.id).catch((err) => {
+          console.warn("[from-path] scan failed:", err instanceof Error ? err.message : err);
+        });
+      });
     } catch (err) {
       sendError(err);
     }
@@ -135,13 +140,14 @@ export async function tryHandleSpaceRoute(
         // immediately rather than waiting for the next watcher tick.
         // Mirrors the from-path route.
         broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-        // Fire scan but don't block the response — tiles surface via SSE
-        // as the watcher / scanner picks them up. A long scan would
-        // otherwise hang the Folders UI for many seconds on a big repo.
-        spaceService.scanSpace(spaceId).catch((err) => {
-          console.warn("[attach-source] scan failed:", err instanceof Error ? err.message : err);
-        });
         sendJson(source, 201);
+        // Defer to next tick so the 201 flushes before scanSpace's
+        // synchronous fs walk starts (see /from-path comment).
+        setImmediate(() => {
+          spaceService.scanSpace(spaceId).catch((err) => {
+            console.warn("[attach-source] scan failed:", err instanceof Error ? err.message : err);
+          });
+        });
       } catch (err) {
         sendError(err);
       }

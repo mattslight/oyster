@@ -372,6 +372,11 @@ export class SpaceService {
           c.sourceRef = `${slug}/${c.sourceRef}`;
           this.upsertCandidate(spaceId, source.id, c, result);
         }
+        // Yield between sources so SSE pushes, other API calls, and the
+        // watcher can interleave instead of starving until the whole scan
+        // finishes. The per-file walk itself is still synchronous — making
+        // it async is the next refactor.
+        await new Promise<void>((r) => setImmediate(r));
       }
       this.spaceStore.update(spaceId, {
         scan_status: "complete",

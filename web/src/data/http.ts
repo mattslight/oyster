@@ -14,21 +14,61 @@ export class ApiError extends Error {
 }
 
 // Default timeout for mutation calls (POST/PATCH/DELETE). The local server's
-// add-source / scan flow can take a couple of seconds on a big repo, but a
-// minute is way over any healthy ceiling — if we hit this, something has
-// stalled and the UI needs to recover rather than locking out future attempts.
-const DEFAULT_MUTATION_TIMEOUT_MS = 30_000;
+// add-source / scan flow is sub-second now that scanSpace is deferred to a
+// later tick (routes/spaces.ts + space-service.ts) — 5s is a comfortable
+// ceiling for any legitimate mutation. Hitting it means the socket is dead
+// or the server is genuinely stuck, and the UI should recover rather than
+// locking out future attempts.
+const DEFAULT_MUTATION_TIMEOUT_MS = 5_000;
 
-// Compose a caller-supplied AbortSignal with a timer. Returns the signal to
-// pass to fetch + a cleanup that clears the timer (call on settle).
-function signalWithTimeout(signal: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; clear: () => void } {
+interface MutateOpts {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+// Wrap a fetch-driven mutation with an AbortController-backed timeout and
+// caller-signal composition. Centralises:
+//   - timer setup + cleanup,
+//   - caller `abort` listener registration AND cleanup (no leak — see below),
+//   - TimeoutError → ApiError mapping (so the UI sees a friendly message).
+//
+// Leak note: the previous version added a `{ once: true }` listener to the
+// caller's signal and never removed it on settle. For a long-lived caller
+// signal that drives many short requests (e.g. a component-lifetime
+// AbortController), every completed call accumulated a dead listener until
+// the outer signal aborted or was GC'd. The `finally` here explicitly
+// removes the listener, killing the slow leak.
+async function runWithTimeout<T>(opts: MutateOpts, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS;
   const ctrl = new AbortController();
-  if (signal) {
-    if (signal.aborted) ctrl.abort(signal.reason);
-    else signal.addEventListener("abort", () => ctrl.abort(signal.reason), { once: true });
+  let onCallerAbort: (() => void) | null = null;
+  const caller = opts.signal;
+
+  if (caller) {
+    if (caller.aborted) {
+      ctrl.abort(caller.reason);
+    } else {
+      onCallerAbort = () => ctrl.abort(caller.reason);
+      caller.addEventListener("abort", onCallerAbort);
+    }
   }
-  const timer = setTimeout(() => ctrl.abort(new DOMException(`Request timed out after ${timeoutMs}ms`, "TimeoutError")), timeoutMs);
-  return { signal: ctrl.signal, clear: () => clearTimeout(timer) };
+
+  const timer = setTimeout(
+    () => ctrl.abort(new DOMException(`Request timed out after ${timeoutMs}ms`, "TimeoutError")),
+    timeoutMs,
+  );
+
+  try {
+    return await run(ctrl.signal);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new ApiError(0, `Request timed out after ${timeoutMs}ms — server may be busy or unreachable.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (onCallerAbort && caller) caller.removeEventListener("abort", onCallerAbort);
+  }
 }
 
 async function decodeError(res: Response): Promise<ApiError> {
@@ -49,35 +89,26 @@ export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> 
 export async function postJson<T>(
   url: string,
   body?: unknown,
-  opts?: { signal?: AbortSignal; timeoutMs?: number },
+  opts?: MutateOpts,
 ): Promise<T> {
-  const { signal, clear } = signalWithTimeout(opts?.signal, opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS);
-  const init: RequestInit = { method: "POST", signal };
-  if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
-    init.body = JSON.stringify(body);
-  }
-  try {
+  return runWithTimeout(opts ?? {}, async (signal) => {
+    const init: RequestInit = { method: "POST", signal };
+    if (body !== undefined) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = JSON.stringify(body);
+    }
     const res = await fetch(url, init);
     if (!res.ok) throw await decodeError(res);
     return await res.json() as T;
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new ApiError(0, `Request timed out (${opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS}ms) — server may be busy or unreachable.`);
-    }
-    throw err;
-  } finally {
-    clear();
-  }
+  });
 }
 
 export async function patchJson<T>(
   url: string,
   body: unknown,
-  opts?: { signal?: AbortSignal; timeoutMs?: number },
+  opts?: MutateOpts,
 ): Promise<T> {
-  const { signal, clear } = signalWithTimeout(opts?.signal, opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS);
-  try {
+  return runWithTimeout(opts ?? {}, async (signal) => {
     const res = await fetch(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -86,14 +117,7 @@ export async function patchJson<T>(
     });
     if (!res.ok) throw await decodeError(res);
     return await res.json() as T;
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new ApiError(0, `Request timed out (${opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS}ms) — server may be busy or unreachable.`);
-    }
-    throw err;
-  } finally {
-    clear();
-  }
+  });
 }
 
 /** POST whose response body the caller doesn't need (e.g. archive/restore
@@ -102,25 +126,17 @@ export async function patchJson<T>(
 export async function postEmpty(
   url: string,
   body?: unknown,
-  opts?: { signal?: AbortSignal; timeoutMs?: number },
+  opts?: MutateOpts,
 ): Promise<void> {
-  const { signal, clear } = signalWithTimeout(opts?.signal, opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS);
-  const init: RequestInit = { method: "POST", signal };
-  if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
-    init.body = JSON.stringify(body);
-  }
-  try {
+  return runWithTimeout(opts ?? {}, async (signal) => {
+    const init: RequestInit = { method: "POST", signal };
+    if (body !== undefined) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = JSON.stringify(body);
+    }
     const res = await fetch(url, init);
     if (!res.ok) throw await decodeError(res);
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new ApiError(0, `Request timed out (${opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS}ms) — server may be busy or unreachable.`);
-    }
-    throw err;
-  } finally {
-    clear();
-  }
+  });
 }
 
 /** DELETE, optionally with a JSON body (deleteSpace passes folderName).
@@ -128,23 +144,15 @@ export async function postEmpty(
 export async function del(
   url: string,
   body?: unknown,
-  opts?: { signal?: AbortSignal; timeoutMs?: number },
+  opts?: MutateOpts,
 ): Promise<void> {
-  const { signal, clear } = signalWithTimeout(opts?.signal, opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS);
-  const init: RequestInit = { method: "DELETE", signal };
-  if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
-    init.body = JSON.stringify(body);
-  }
-  try {
+  return runWithTimeout(opts ?? {}, async (signal) => {
+    const init: RequestInit = { method: "DELETE", signal };
+    if (body !== undefined) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = JSON.stringify(body);
+    }
     const res = await fetch(url, init);
     if (!res.ok) throw await decodeError(res);
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new ApiError(0, `Request timed out (${opts?.timeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS}ms) — server may be busy or unreachable.`);
-    }
-    throw err;
-  } finally {
-    clear();
-  }
+  });
 }
