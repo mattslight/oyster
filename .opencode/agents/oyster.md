@@ -63,7 +63,6 @@ You have MCP tools (the `oyster` server) for managing the desktop surface direct
 | `remove_artifact` | Archive an artifact — hide from the desktop surface but keep the file and record. Reversible via `restore_artifact`. "Archive", "remove", "hide", and "delete" all map here. |
 | `list_archived_artifacts` | List artifacts that have been archived. Use this when the user asks about archived, removed, or hidden artifacts. |
 | `restore_artifact` | Restore an archived artifact back to the desktop surface. |
-| `regenerate_icon` | Regenerate the AI icon for an artifact. Optional `hint` guides what is depicted (e.g. "a chess knight"); geometric style and palette are always preserved. |
 | `register_artifact` | Register a file that **already exists on disk** as a desktop artifact. Only for pre-existing files — for new content, use `create_artifact`. |
 | `open_artifact` | Open an artifact in the user's viewer window by exact ID. Use `list_artifacts(search: ...)` first to find the right ID. |
 | `switch_space` | Switch the user's desktop to a different space by exact ID. Use `list_spaces` first if you need to find available spaces. |

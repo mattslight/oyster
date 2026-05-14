@@ -11,14 +11,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } fr
 import { join, resolve, sep } from "node:path";
 import type { SessionStore } from "../session-store.js";
 import type { ArtifactService } from "../artifact-service.js";
-import type { IconGenerator } from "../icon-generator.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
 
 export interface ArtifactRouteDeps {
   artifactService: ArtifactService;
   sessionStore: SessionStore;
-  iconGenerator: IconGenerator;
   /** Mutable Set populated by reveal_artifact (MCP). Drained by
    *  GET /api/artifacts so the surface highlights the artefact once
    *  and then forgets. */
@@ -47,7 +45,7 @@ export async function tryHandleArtifactRoute(
 ): Promise<boolean> {
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
   const {
-    artifactService, sessionStore, iconGenerator, pendingReveals,
+    artifactService, sessionStore, pendingReveals,
     clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR, publishService,
   } = deps;
 
@@ -220,107 +218,6 @@ export async function tryHandleArtifactRoute(
     } catch (err) {
       sendError(err);
     }
-    return true;
-  }
-
-  // POST /api/artifacts/:id/icon/regenerate — trigger a fresh AI icon for
-  // an artifact. Mirrors the MCP `regenerate_icon` tool so the UI can offer
-  // a right-click "Regenerate icon" action without going through chat.
-  //
-  // Builtins: their id is `gen:<folder>` and they have no DB row. The
-  // service-layer lookup would miss them; handle directly from APPS_DIR.
-  // Overwriting the icon.png there persists across restarts (bootstrap is
-  // add-only) — next `npm install -g oyster-os` upgrade would reset it,
-  // which is acceptable.
-  const iconRegenMatch = url.match(/^\/api\/artifacts\/([^/]+)\/icon\/regenerate$/);
-  if (iconRegenMatch && req.method === "POST") {
-    if (rejectIfNonLocalOrigin()) return true;
-    const id = safeDecode(iconRegenMatch[1]);
-    if (id === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
-
-    let label: string | undefined;
-    let artifactKind: string | undefined;
-    let artifactDir: string | undefined;
-
-    if (id.startsWith("gen:")) {
-      // Builtin or unreconciled generated artifact — look up by walking the
-      // same candidate roots the scanner walks: APPS_DIR for installed /
-      // builtin bundles, plus each SPACES_DIR/<space>/ for space-scoped
-      // generated ones (matches scanExistingArtifacts' coverage).
-      const folderId = id.slice("gen:".length);
-      // Strict whitelist — stops traversal via URL-encoded "../", backslashes,
-      // etc. before it hits the filesystem. Mirrors the validation on
-      // /api/plugins/:id/uninstall; keep the two in sync.
-      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(folderId)) {
-        sendJson({ error: `Invalid artifact id '${id}'` }, 400); return true;
-      }
-      const candidateDirs: string[] = [join(APPS_DIR, folderId)];
-      try {
-        for (const spaceName of readdirSync(SPACES_DIR)) {
-          const spaceDir = join(SPACES_DIR, spaceName);
-          try {
-            if (!statSync(spaceDir).isDirectory()) continue;
-          } catch { continue; }
-          candidateDirs.push(join(spaceDir, folderId));
-        }
-      } catch { /* SPACES_DIR missing on a fresh install */ }
-
-      // Defence in depth: even with the whitelist above, verify every
-      // candidate is actually inside OYSTER_HOME via resolve()+sep before
-      // reading it. Normalises path segments (handles any accidental `..`
-      // that slipped past the allowlist, double slashes, etc.) — does NOT
-      // follow symlinks; realpathSync would be needed for that, and is
-      // filed as future hardening since the allowlist already bars the
-      // usual traversal vectors.
-      const rootPath = resolve(OYSTER_HOME);
-      const resolvedDir = candidateDirs.find((d) => {
-        const r = resolve(d);
-        if (r !== rootPath && !r.startsWith(rootPath + sep)) return false;
-        return existsSync(join(d, "manifest.json"));
-      });
-      if (!resolvedDir) {
-        sendJson({ error: `Artifact "${id}" not found` }, 404); return true;
-      }
-      try {
-        const manifest = JSON.parse(readFileSync(join(resolvedDir, "manifest.json"), "utf8"));
-        label = manifest.name;
-        artifactKind = manifest.type;
-        artifactDir = resolvedDir;
-      } catch (err) {
-        sendJson({ error: `Failed to read manifest for "${id}": ${(err as Error).message}` }, 500); return true;
-      }
-    } else {
-      const artifact = await artifactService.getArtifactById(id);
-      if (!artifact) { sendJson({ error: `Artifact "${id}" not found` }, 404); return true; }
-      const sourcePath = artifactService.getDocFile(id);
-      if (!sourcePath) { sendJson({ error: "Icon regeneration is only supported for static file artifacts" }, 400); return true; }
-      // Only write the icon into a bundle root when the source is laid out
-      // as a manifest-based bundle (source file lives under a `src/` dir).
-      // For single-file artifacts (a loose .md / .html) the "natural dir" is
-      // the containing folder — which might hold many artifacts — so the
-      // regenerated icon would overwrite a shared icon.png. Route those to
-      // the per-artifact dedicated dir at OYSTER_HOME/icons/<id>/ instead;
-      // ArtifactService.resolveIcon checks that path first.
-      //
-      // Containment must use resolve() + sep-terminated prefix — a raw
-      // startsWith(OYSTER_HOME) would match "/.../OysterX/..." too.
-      const srcIdx = sourcePath.lastIndexOf(`${sep}src${sep}`);
-      const bundleRoot = srcIdx !== -1 ? resolve(sourcePath.slice(0, srcIdx)) : null;
-      const rootPath = resolve(OYSTER_HOME);
-      const isManifestBundle = bundleRoot !== null
-        && (bundleRoot === rootPath || bundleRoot.startsWith(rootPath + sep));
-      artifactDir = isManifestBundle ? sourcePath.slice(0, srcIdx) : join(OYSTER_HOME, "icons", id);
-      label = artifact.label;
-      artifactKind = artifact.artifactKind;
-    }
-
-    mkdirSync(artifactDir!, { recursive: true });
-    const queued = iconGenerator.forceEnqueue(id, label!, artifactKind!, artifactDir!);
-    if (!queued) {
-      sendJson({ error: "Icon generation is disabled on this install (FAL_KEY not configured)" }, 503);
-      return true;
-    }
-    sendJson({ status: "queued", id, label });
     return true;
   }
 

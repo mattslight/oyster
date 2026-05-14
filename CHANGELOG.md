@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Removed
+
+- **No more AI-generated artefact icons.** New artefacts now use the built-in kind glyph (notes, app, diagram, etc.) instead of a fal.ai-generated image. Existing icons stay in place; `FAL_KEY` is no longer needed.
+
 ### Fixed
 
 - **Boot banner stays readable on narrow terminals.** When the terminal isn't wide enough for the boxed banner, Oyster now drops the box and stacks the URLs on separate lines instead of letting the rails wrap and shred the layout.

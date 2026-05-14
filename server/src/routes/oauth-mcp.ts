@@ -21,7 +21,6 @@ import {
 } from "../mcp-client-tracker.js";
 import type { ArtifactStore } from "../artifact-store.js";
 import type { ArtifactService } from "../artifact-service.js";
-import type { IconGenerator } from "../icon-generator.js";
 import type { SpaceService } from "../space-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { SessionStore, SessionAgent } from "../session-store.js";
@@ -35,7 +34,6 @@ export interface OAuthMcpRouteDeps {
   port: number;
   store: ArtifactStore;
   artifactService: ArtifactService;
-  iconGenerator: IconGenerator;
   spaceService: SpaceService;
   memoryProvider: MemoryProvider;
   sessionStore: SessionStore;
@@ -56,7 +54,7 @@ export async function tryHandleOAuthMcpRoute(
 ): Promise<boolean> {
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
   const {
-    port, store, artifactService, iconGenerator, spaceService,
+    port, store, artifactService, spaceService,
     memoryProvider, sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir, getNativeSourcePath,
   } = deps;
@@ -172,7 +170,6 @@ export async function tryHandleOAuthMcpRoute(
       publishService: deps.publishService,
       userlandDir,
       getNativeSourcePath,
-      iconGenerator,
       spaceService,
       memoryProvider,
       sessionStore,

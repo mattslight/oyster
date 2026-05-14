@@ -1,11 +1,10 @@
-import { existsSync, readFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { extname, dirname, join, resolve, basename } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { extname, join, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
-import type { IconGenerator } from "./icon-generator.js";
 import type { SpaceService } from "./space-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
@@ -121,7 +120,6 @@ interface McpDeps {
    * it to route new content into the correct sub-tree.
    */
   getNativeSourcePath: (spaceId: string) => string;
-  iconGenerator: IconGenerator;
   spaceService: SpaceService;
   memoryProvider: MemoryProvider;
   sessionStore: SessionStore;
@@ -775,43 +773,6 @@ export function createMcpServer(deps: McpDeps): McpServer {
         payload: { spaceId: space.id },
       });
       return `Switched to "${space.displayName}"`;
-    },
-  );
-
-  // ── regenerate_icon ──
-
-  tool(
-    "regenerate_icon",
-    "Regenerate the AI-generated icon for an artifact. Uses the same geometric low-poly style as all Oyster icons. Optionally accepts a composition hint to guide what is depicted — the style (colours, geometry, palette) is always preserved.",
-    {
-      id: z.string().describe("Artifact ID"),
-      hint: z.string().optional().describe("Optional composition hint — describe what to depict (e.g. 'a chess knight piece', 'a rising bar chart'). Style is fixed; this only guides the subject matter."),
-    },
-    async ({ id, hint }) => {
-      const artifact = await deps.service.getArtifactById(id);
-      if (!artifact) throw new Error(`Artifact "${id}" not found`);
-
-      const sourcePath = deps.service.getDocFile(id);
-      if (!sourcePath) throw new Error(`Artifact "${id}" has no file source — icon regeneration is only supported for static file artifacts`);
-
-      // Derive artifact directory: if source is inside a src/ subdir, go up one level
-      const srcIdx = sourcePath.lastIndexOf("/src/");
-      const naturalDir = srcIdx !== -1 ? sourcePath.slice(0, srcIdx) : dirname(sourcePath);
-
-      // For artifacts outside userland (e.g. external repos), store the icon in userland/icons/<id>
-      const artifactDir = naturalDir.startsWith(deps.userlandDir)
-        ? naturalDir
-        : join(deps.userlandDir, "icons", id);
-
-      if (!artifactDir.startsWith(deps.userlandDir)) {
-        throw new Error("Artifact is outside userland — cannot regenerate icon");
-      }
-
-      mkdirSync(artifactDir, { recursive: true });
-      const queued = deps.iconGenerator.forceEnqueue(id, artifact.label, artifact.artifactKind, artifactDir, hint);
-      if (!queued) throw new Error("Icon generation is disabled (FAL_KEY not configured)");
-
-      return { status: "queued", id, label: artifact.label, hint: hint ?? null };
     },
   );
 

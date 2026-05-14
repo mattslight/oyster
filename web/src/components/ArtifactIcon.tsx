@@ -96,18 +96,16 @@ export function ArtifactIcon({ artifact, index, onClick, onStop, onContextMenu, 
   const [iconFailed, setIconFailed] = useState(false);
   const iconRetryCountRef = useRef(0);
 
-  // Clear on URL change OR iconStatus transition (e.g. regenerate → ready),
-  // and reset the retry budget for the new icon lifecycle.
+  // Clear on URL change OR iconStatus transition, and reset the retry
+  // budget for the new icon lifecycle.
   useEffect(() => {
     iconRetryCountRef.current = 0;
     setIconFailed(false);
   }, [artifact.icon, artifact.iconStatus]);
 
-  // Auto-retry after a short delay so a transient 404 (e.g. during
-  // regenerate_icon, where the old file is unlinked before the new one
-  // is written) recovers without requiring a full URL change. Bounded so
-  // a permanently-missing icon can't spin in an infinite retry loop
-  // burning network requests.
+  // Auto-retry after a short delay so a transient 404 recovers without
+  // requiring a full URL change. Bounded so a permanently-missing icon
+  // can't spin in an infinite retry loop burning network requests.
   const MAX_ICON_RETRIES = 3;
   useEffect(() => {
     if (!iconFailed || !artifact.icon) return;

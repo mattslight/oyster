@@ -42,10 +42,6 @@ export async function uninstallPlugin(id: string): Promise<void> {
   return postEmpty(`/api/plugins/${encodeURIComponent(id)}/uninstall`);
 }
 
-export async function regenerateIcon(id: string): Promise<void> {
-  return postEmpty(`/api/artifacts/${encodeURIComponent(id)}/icon/regenerate`);
-}
-
 export async function pinArtifact(id: string): Promise<{ id: string; pinnedAt: number }> {
   return postJson<{ id: string; pinnedAt: number }>(`/api/artifacts/${encodeURIComponent(id)}/pin`);
 }

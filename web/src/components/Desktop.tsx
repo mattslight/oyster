@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Archive } from "lucide-react";
 import type { Artifact } from "../data/artifacts-api";
-import { archiveArtifact, archiveGroup, pinArtifact, regenerateIcon, renameGroup, restoreArtifact, uninstallPlugin, unpinArtifact, updateArtifact } from "../data/artifacts-api";
+import { archiveArtifact, archiveGroup, pinArtifact, renameGroup, restoreArtifact, uninstallPlugin, unpinArtifact, updateArtifact } from "../data/artifacts-api";
 import { unpublishArtifact, unpublishCloudShare, updateCloudShare } from "../data/publish-api";
 import { ArtifactIcon } from "./ArtifactIcon";
 import { ConfirmModal } from "./ConfirmModal";
@@ -119,11 +119,6 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
         catch (err) { onRefresh?.(); setAlertState({ open: true, title: "Uninstall failed", body: (err as Error).message }); }
       },
     });
-  }
-  async function handleRegenerateIcon(artifact: Artifact) {
-    setArtifactCtx(null);
-    try { await regenerateIcon(artifact.id); onRefresh?.(); }
-    catch (err) { setAlertState({ open: true, title: "Regenerate icon failed", body: (err as Error).message }); }
   }
   async function handleRestoreArtifact(artifact: Artifact) {
     setArtifactCtx(null);
@@ -347,11 +342,15 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
               </button>
             </>
           ) : artifactCtx.artifact.builtin ? (
-            <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
+            <button
+              className="space-ctx-item"
+              onClick={() => setArtifactCtx(null)}
+            >
+              Close
+            </button>
           ) : (
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
-              <button className="space-ctx-item" onClick={() => handleRegenerateIcon(artifactCtx.artifact)}>Regenerate icon</button>
               {!isArchivedView && artifactCtx.artifact.status !== "generating" && (
                 artifactCtx.artifact.pinnedAt != null ? (
                   <button
