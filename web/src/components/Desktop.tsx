@@ -341,7 +341,14 @@ export function Desktop({ space, spaces, artifacts, isHero, onArtifactClick, onA
                 Unpublish
               </button>
             </>
-          ) : artifactCtx.artifact.builtin ? null : (
+          ) : artifactCtx.artifact.builtin ? (
+            <button
+              className="space-ctx-item"
+              onClick={() => setArtifactCtx(null)}
+            >
+              Close
+            </button>
+          ) : (
             <>
               <button className="space-ctx-item" onClick={() => handleRenameArtifact(artifactCtx.artifact)}>Rename</button>
               {!isArchivedView && artifactCtx.artifact.status !== "generating" && (
