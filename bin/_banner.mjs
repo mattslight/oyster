@@ -89,7 +89,7 @@ function twoToneAscii(line, fill, shadow, reset) {
 // to the top line so a new user always sees what to give their AI.
 export function getTips() {
   return [
-    `Your AI. Your work. Anywhere, any device, any agent.`,
+    `Mission control for the AI era.`,
     `Bring whichever agent you use — Oyster doesn't run it, doesn't tie you to one.`,
     `Ask "what did we decide about pricing?" — Oyster finds it across every session.`,
     `Right-click any artefact → publish a public oyster.to/p/ link.`,

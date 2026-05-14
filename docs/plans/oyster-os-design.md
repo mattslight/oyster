@@ -4,7 +4,7 @@
 **Last updated:** 2026-05-14
 **Authors:** Matthew Slight, with architectural input from Bharat Mani Prem Sankar
 
-> **Current positioning:** Your AI. Your work. Anywhere, any device, any agent.
+> **Current positioning:** Mission control for the AI era.
 >
 > Oyster keeps your AI work with you. Sync it, remember it, publish it, and bring whichever agent you use. It does not run your AI. It does not tie you to one.
 >

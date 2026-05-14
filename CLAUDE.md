@@ -2,7 +2,7 @@
 
 ## What Oyster Is
 
-**Your AI. Your work. Anywhere, any device, any agent.**
+**Mission control for the AI era.**
 
 Oyster keeps your AI work with you. It captures what your AI wrote and made, syncs it across your devices, and lets you publish any of it as a link. It does not run your AI. It does not tie you to one — bring whichever agent you use (Claude Code today; Cursor / Codex / OpenCode as they connect over MCP).
 
