@@ -362,7 +362,15 @@ export class SpaceService {
         }
         const slug = folderSlug(folderPath);
         const gitignore = loadGitignore(folderPath);
+        // Yield before the heavy work so SSE pushes, other API calls,
+        // and the watcher can interleave before walk() starts. This is
+        // load-bearing for the single-source case (the common path when
+        // a user attaches one folder): without it, the inner work below
+        // monopolises the event loop until walk + upsertCandidate finish.
+        await new Promise<void>((r) => setImmediate(r));
+
         const candidates = this.walk(folderPath, 0, folderPath, gitignore);
+        let processed = 0;
         for (const c of candidates) {
           // Namespace sourceRef with the folder's basename — reduces (but does
           // not eliminate) collisions when a space has multiple paths. Two
@@ -371,6 +379,14 @@ export class SpaceService {
           // prefix only so existing pre-#208 rows still match.
           c.sourceRef = `${slug}/${c.sourceRef}`;
           this.upsertCandidate(spaceId, source.id, c, result);
+          // Yield every 50 candidates so a long upsert loop doesn't freeze
+          // SSE pushes and other API handlers. walk() itself is still
+          // synchronous — making the fs traversal async is the next
+          // refactor; for now this addresses the more common slowness
+          // (the DB-write loop scaling with discovered file count).
+          if (++processed % 50 === 0) {
+            await new Promise<void>((r) => setImmediate(r));
+          }
         }
       }
       this.spaceStore.update(spaceId, {
