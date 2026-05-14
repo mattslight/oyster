@@ -6,26 +6,23 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [0.8.2-beta.0] - 2026-05-14
 
-### Changed
-
-- **Sharper positioning across every surface.** Hero copy on README, oyster.to, the install banner, and the MCP context now reads *"Mission control for your agents."* The supporting line explicitly names what Oyster does — organised + synced + ready to share across devices + memory + publishing built in — and tells you to use whichever agents you prefer. The MCP context keeps the explicit *"does not run your AI"* negation so connecting agents tell the user this when asked. *"OS"* is dropped from public-facing copy. README hero banner and oyster.to social-preview card regenerated to match.
-- **No more `accepted=1` log noise during a live conversation.** Single-row metadata pushes — which are the steady-state shape during normal conversation pacing — are now silent. Multi-row pushes (boot drains, bursty tool-call sequences) and any pushes with conflicts or rejected events still log so you can see real activity.
-- **Quieter terminal logs when offline.** When wifi goes out, sync used to log a 30-line stack trace every ~30 seconds for each background pull (memory + sessions). Now the first failure prints a single line — `cloud unreachable (ENOTFOUND)` — subsequent identical failures are suppressed, and a heartbeat appears roughly every 15 minutes if you're still offline. When wifi comes back, a single `back online` line confirms it. Real bugs (non-network errors) still surface their full trace.
-
 ### Added
 
-- **Active-writer signal on cross-device sessions.** When a session has been handed off — you resume a Mac session on Windows, or vice-versa — Home now shows a `Now active on MacBookPro` chip alongside the origin chip. It updates live as devices push new turns, so the demo "I picked this up over here" handoff is visible at a glance.
+- **Active-writer chip on cross-device sessions.** When a session is handed off to another device, Home shows a `Now active on <device>` chip alongside the origin chip; it updates live as new turns arrive.
 
 ### Changed
 
-- **Empty cross-device sessions hidden from Home.** Aborted `claude` invocations (where the user opened a transcript but never had a real conversation) used to clutter the list as "(no title yet)" entries. Those are filtered out now. Sessions with real content always show, regardless of title. (Heuristic-based for the moment; the durable fix lands in a follow-up.)
-- **Device labels backfill automatically on upgrade.** Devices that backed up sessions before the label-sync change won't have a friendly name in cloud yet. On first boot of this release each device marks its own sessions for re-push, so the labels show up everywhere within a few minutes — no manual action required.
-- **Session metadata sync is quieter under load.** During a busy conversation, every new turn was sending its own one-row push to the cloud — dozens of HTTP round-trips per minute, all with a single session in the payload. Pushes are now coalesced: one round-trip after a ~1-second quiet window, and at most one every ~5 seconds during sustained activity. No data is lost. Transcript bytes still push on terminal state immediately.
+- **New positioning across every surface.** Hero copy now reads *"Mission control for your agents."* with a supporting line about keeping your AI work organised, synced and ready to share across devices. *"OS"* is dropped from public copy; README and oyster.to social previews regenerated.
+- **Session metadata sync coalesces under load.** Pushes now batch on a ~1-second debounce with a 5-second cap during sustained activity; transcript bytes still push immediately on terminal state.
+- **Quieter terminal logs when offline.** First failure prints a single `cloud unreachable` line; subsequent identical failures are suppressed with a 15-minute heartbeat. A `back online` line confirms recovery. Non-network errors still surface their full trace.
+- **Quieter session-sync logs during conversations.** Single-row metadata pushes are now silent; multi-row pushes and any with conflicts or rejects still log.
+- **Empty cross-device sessions hidden from Home.** Aborted `claude` invocations without real content no longer clutter the list.
+- **Device labels backfill on upgrade.** First boot re-pushes your sessions with their friendly device name; labels show up everywhere within a few minutes.
 
 ### Fixed
 
-- **Attaching a folder no longer freezes the UI.** Clicking *Attach folder* used to appear to hang for many seconds on larger folders — the server's synchronous filesystem walk monopolised the event loop before the 201 response could flush, so the *Attach* button stayed disabled and only a page reload recovered it. The scan now defers to the next tick after the response is queued, and yields periodically during the artifact-write loop, so the response returns in milliseconds and tiles surface via SSE as the scan runs in the background. Per-mutation HTTP timeout on the client also tightened (default 15s) so a genuinely dead socket recovers cleanly instead of leaving the UI stuck.
-- **Clicking a cross-device session opens its inspector instead of erroring.** Previously the inspector failed with "Session no longer available" for any session that originated on another device, because the session-detail lookup only checked locally-discovered sessions. The lookup now falls back to the cross-device cache, and the inspector renders a friendly "Resume to view transcript" notice while the transcript hasn't been reassembled locally yet. The chip's tooltip also explains why a session shows "Other device" (its origin hasn't pushed its label yet).
+- **Attaching a folder no longer freezes the UI.** Big folders used to hang the *Attach* button until a page reload; the scan now runs in the background so the response returns immediately and tiles surface via SSE as they're found. Mutation requests also time out after 15s rather than waiting indefinitely.
+- **Cross-device sessions open their inspector instead of erroring.** Sessions originating on another device now load via the cross-device cache; the inspector shows a *"Resume to view transcript"* notice until the transcript is reassembled locally.
 
 ## [0.8.1-beta.5] - 2026-05-12
 
