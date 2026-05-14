@@ -155,9 +155,9 @@ function buildContext(userlandDir: string): string {
 Oyster is the workspace your AI agent works in. It captures what your AI wrote
 and made, syncs it across the user's devices, and lets them publish any of it
 as a link. **It does not run the user's AI. It does not tie them to one.**
-The user brings whichever agent they use — you (Claude Code), or Cursor,
-Codex, OpenCode, or any other MCP-aware agent. Oyster watches the work and
-keeps it.
+The user brings whichever agent they use — Claude Code, Cursor, Codex,
+OpenCode, or any other MCP-aware agent (including you, whichever agent you are).
+Oyster watches the work and keeps it.
 
 It is NOT a chat interface or a file browser — it is a workspace surface where
 artifacts (interactive documents, apps, diagrams, etc.) live alongside the
@@ -369,7 +369,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   tool(
     "get_context",
-    "Get a description of Oyster OS — what it is, how it works, and how to use these tools effectively. Call this first if you are unfamiliar with Oyster.",
+    "Get a description of Oyster — what it is, how it works, and how to use these tools effectively. Call this first if you are unfamiliar with Oyster.",
     {},
     async () => buildContext(deps.userlandDir),
   );
