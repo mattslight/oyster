@@ -4,13 +4,32 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-05-14
+
+UI polish, sharper positioning, quieter background sync, and the first wave of Sprint-2 surgery. Headline changes from the 0.8.2-beta cycle plus a couple of final tweaks:
+
+### Added
+
+- **Active-writer chip on cross-device sessions.** When a session is handed off to another device, Home shows a `Now active on <device>` chip alongside the origin chip; it updates live as new turns arrive.
+
+### Changed
+
+- **New positioning across every surface.** Hero copy now reads *"Mission control for your agents."* with a supporting line about keeping your AI work organised, synced and ready to share across devices. *"OS"* is dropped from public copy; README and oyster.to social previews regenerated.
+- **Session metadata sync coalesces under load.** Pushes now batch on a ~1-second debounce with a 5-second cap during sustained activity; transcript bytes still push immediately on terminal state.
+- **Quieter terminal logs when offline.** First failure prints a single `cloud unreachable` line; subsequent identical failures are suppressed with a 15-minute heartbeat. A `back online` line confirms recovery. Non-network errors still surface their full trace.
+- **Quieter session-sync logs during conversations.** Single-row metadata pushes are now silent; multi-row pushes and any with conflicts or rejects still log.
+- **Empty cross-device sessions hidden from Home.** Aborted `claude` invocations without real content no longer clutter the list.
+- **Device labels backfill on upgrade.** First boot re-pushes your sessions with their friendly device name; labels show up everywhere within a few minutes.
+
 ### Removed
 
 - **No more AI-generated artefact icons.** New artefacts now use the built-in kind glyph (notes, app, diagram, etc.) instead of a fal.ai-generated image. Existing icons stay in place; `FAL_KEY` is no longer needed.
 
 ### Fixed
 
-- **Boot banner stays readable on narrow terminals.** When the terminal isn't wide enough for the boxed banner, Oyster now drops the box and stacks the URLs on separate lines instead of letting the rails wrap and shred the layout.
+- **Attaching a folder no longer freezes the UI.** Big folders used to hang the *Attach* button until a page reload; the scan now runs in the background so the response returns immediately and tiles surface via SSE as they're found. Mutation requests also time out after 15s rather than waiting indefinitely.
+- **Cross-device sessions open their inspector instead of erroring.** Sessions originating on another device now load via the cross-device cache; the inspector shows a *"Resume to view transcript"* notice until the transcript is reassembled locally.
+- **Boot banner stays readable on narrow terminals.** When the terminal isn't wide enough for the boxed banner, Oyster now drops the box and stacks the URLs on separate lines instead of letting the rails wrap.
 
 ## [0.8.2-beta.0] - 2026-05-14
 
