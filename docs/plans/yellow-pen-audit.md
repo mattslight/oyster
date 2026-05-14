@@ -39,7 +39,7 @@ Then there's everything else still on disk.
 
 For context, I previously called out:
 
-1. **Eight artefact kinds** (`app`, `deck`, `notes`, `diagram`, `wireframe`, `table`, `map`) — `deck`/`wireframe`/`map`/`table` are Sprint-2 vestiges with no current generation pipeline visible in the changelog.
+1. **Seven artefact kinds** (`app`, `deck`, `notes`, `diagram`, `wireframe`, `table`, `map`) — `deck`/`wireframe`/`map`/`table` are Sprint-2 vestiges with no current generation pipeline visible in the changelog.
 2. **Design doc rot** — `docs/plans/oyster-os-design.md` was last edited 2026-04-18 and still describes "Agents on the Surface" and Telegram/WhatsApp ingestion as future vision.
 3. **Five competing taglines** across CLAUDE.md, README, design doc, pricing page, and the hero copy.
 4. **"Workspace OS"** in the package name when the actual product is a workspace *companion* to agents.
@@ -105,7 +105,7 @@ The pitch becomes legible the moment the surface stops simultaneously pitching i
 | 2 | **Remove the Ultra Hardcore terminal path** and `pty-manager.ts`. | Removes the "talking directly to the engine" hero copy that contradicts the workspace-companion framing. |
 | 3 | **Retire `handleFixError` + `icon-generator.ts`.** | Stops signalling "we generate apps for you"; removes a fal.ai bill the user never asked for. |
 | 4 | **Delete `builtins/zombie-horde/`.** Re-evaluate the other five built-ins against R1–R7. `where-are-my-files` earns its place; `quick-start` and `connect-your-ai` probably do; `the-worlds-your-oyster` and `import-from-ai` are worth a second look. | A new user opening `~/Oyster/apps/` no longer sees a zombie game in their productivity tool. |
-| 5 | **Collapse the eight artefact kinds** to what users + connected agents actually produce in 2026: `notes`, `app`, `diagram`. Absorb the rest into `notes`. | Removes the visual menu that implies Oyster generates decks/wireframes/maps/tables. |
+| 5 | **Collapse the seven artefact kinds** to what users + connected agents actually produce in 2026: `notes`, `app`, `diagram`. Absorb the rest into `notes`. | Removes the visual menu that implies Oyster generates decks/wireframes/maps/tables. |
 | 6 | **Archive the Sprint-2 sections of `oyster-os-design.md`** (Agents on Surface, Telegram/WhatsApp, Tier-2 vite runtime). | Aligns the design doc with the roadmap doc. |
 | 7 | **Pin one sentence everywhere.** README + CLAUDE.md + boot banner + design doc top all read: *"Every agent, one shared brain. Sync · Memory · Publish."* | The five-tagline ambiguity collapses. |
 
