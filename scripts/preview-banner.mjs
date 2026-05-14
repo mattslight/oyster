@@ -21,6 +21,13 @@ if (args[0] === "--fonts" || args[0] === "-f") {
     console.log(`--- font: ${name} ---`);
     printHeroBox(url, 0, { logo: LOGO_FONTS[name], version });
   }
+} else if (args[0] === "--narrow" || args[0] === "-n") {
+  const widths = [120, 100, 80, 60, 40];
+  console.log(`\nRendering banner at ${widths.length} simulated terminal widths:\n`);
+  for (const cols of widths) {
+    console.log(`--- cols = ${cols} ---`);
+    printHeroBox(url, 1, { version, columns: cols });
+  }
 } else {
   const tips = getTips();
   console.log(`\nRendering ${tips.length} tip variants:\n`);

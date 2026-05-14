@@ -106,6 +106,8 @@ export function getTips() {
 // `options.version` (e.g. "0.8.0-beta.2") renders a faint `vX.Y.Z` flush
 // to the bottom-right of the ASCII block — quietly visible without
 // crowding the rest of the banner.
+// `options.columns` lets the preview script simulate terminal widths;
+// production reads `process.stdout.columns` instead.
 export function printHeroBox(url, tipIndex, options = {}) {
   const logo = options.logo || DEFAULT_LOGO;
   const version = options.version;
@@ -129,6 +131,15 @@ export function printHeroBox(url, tipIndex, options = {}) {
   const allTipsMaxVis = Math.max(...tips.map((t) => stripAnsi(t).length));
   const maxVis = Math.max(stripAnsi(topLine).length, artLineLen, allTipsMaxVis);
   const innerWidth = maxVis + 4; // 2 cells breathing room on each side
+
+  // Total render width is `innerWidth + 4`: 2 leading cells, `╭`, the rule,
+  // and `╮`. If the terminal is narrower the box rails wrap and the banner
+  // collapses into stacked `│` columns — fall back to a no-box layout.
+  const cols = options.columns ?? process.stdout.columns ?? 80;
+  if (cols < innerWidth + 4) {
+    printCompactBanner(url, tip, { version, logo: options.logo }, cols);
+    return;
+  }
 
   // Tip is centred (no anchor emoji) so it reads as a quiet inscription
   // rather than a third equal-weight item under the actionable top line.
@@ -174,5 +185,48 @@ export function printHeroBox(url, tipIndex, options = {}) {
     out.push(`  ${M}│${R}  ${line}${" ".repeat(rightPad)}${M}│${R}`);
   }
   out.push(`  ${M}╰${hr}╯${R}\n`);
+  console.log(out.join("\n"));
+}
+
+// Narrow-terminal fallback: no box rails (they wrap and shred the layout),
+// the smallest logo that fits, URLs stacked one-per-line so they don't
+// wrap mid-string. Keeps the same colour vocabulary as the boxed form.
+function printCompactBanner(url, tip, options, cols) {
+  const version = options.version;
+  const requested = options.logo || DEFAULT_LOGO;
+  const requestedWidth = Math.max(...requested.map((l) => l.length));
+  // Try the caller's logo first, then `small` as a fallback, else plain text.
+  // The `+ 4` accounts for 2 leading cells and a couple of cells of right
+  // breathing room so the logo isn't flush against the terminal edge.
+  const logo = requestedWidth + 4 <= cols
+    ? requested
+    : LOGO_FONTS.small[0].length + 4 <= cols
+      ? LOGO_FONTS.small
+      : null;
+
+  const out = [``];
+  if (logo) {
+    const lw = Math.max(...logo.map((l) => l.length));
+    const padded = logo.map((l) => l + " ".repeat(lw - l.length));
+    const hasShadow = padded.some((l) => l.includes("█"));
+    for (const line of padded) {
+      const coloured = hasShadow ? twoToneAscii(line, M, MD, R) : `${M}${line}${R}`;
+      out.push(`  ${coloured}`);
+    }
+    if (version) {
+      const vText = `v${version}`;
+      const pad = Math.max(0, lw - vText.length);
+      out.push(`  ${" ".repeat(pad)}${D}${vText}${R}`);
+    }
+  } else {
+    out.push(`  ${M}Oyster${R}${version ? `  ${D}v${version}${R}` : ""}`);
+  }
+  out.push(``);
+  out.push(`  👉  Open: ${C}${url}${R}`);
+  out.push(`  🤖  MCP server: ${C}${url}/mcp/${R}`);
+  out.push(`      ${D}(give this to your AI)${R}`);
+  out.push(``);
+  out.push(`  ${T}${tip}${R}`);
+  out.push(``);
   console.log(out.join("\n"));
 }
