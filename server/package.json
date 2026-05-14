@@ -13,19 +13,19 @@
     "@fal-ai/client": "^1.10.1",
     "@lydell/node-pty": "^1.2.0-beta.12",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^12.10.0",
     "chokidar": "^4.0.3",
     "ignore": "^7.0.5",
     "marked": "^18.0.3",
-    "opencode-ai": "^1.14.41",
-    "ws": "^8.20.0"
+    "opencode-ai": "^1.14.50",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.6.2",
+    "@types/node": "^25.7.0",
     "@types/ws": "^8.18.0",
     "tsx": "^4.19.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.6"
   }
 }
