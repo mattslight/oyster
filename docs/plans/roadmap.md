@@ -18,7 +18,7 @@ The three layers of customer-facing copy. **All three are canonical** — these 
 
 Goes wherever there is **one short prominent piece of copy**: README hero, `oyster.to` `<h1>` and `<title>`, CLI welcome banner, social-preview card hero text, GitHub repo "About" panel.
 
-### Layer 2 — Descriptive paragraph (3 short sentences)
+### Layer 2 — Descriptive paragraph (2 short sentences)
 
 > **Oyster keeps your AI work organised, synced and ready to share across devices, with memory and publishing built in. Use whichever agents you prefer and switch anytime.**
 

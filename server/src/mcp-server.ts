@@ -156,8 +156,8 @@ Oyster keeps the user's AI work organised, synced and ready to share across
 devices, with memory and publishing built in. The user brings whichever
 agents they prefer — Claude Code, Cursor, Codex, OpenCode, or any other
 MCP-aware agent (including you, whichever agent you are) — and switches
-anytime. **Oyster does not run the user's AI; it keeps the work their
-agents make.**
+anytime. **Oyster does not run the user's AI;
+it keeps the work their agents make.**
 
 It is NOT a chat interface or a file browser — it is a workspace surface where
 artifacts (interactive documents, apps, diagrams, etc.) live alongside the
