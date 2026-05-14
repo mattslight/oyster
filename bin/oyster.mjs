@@ -66,7 +66,7 @@ if (cmd && !cmd.startsWith("-")) {
 
 function printHelp() {
   console.log(`
-  🦪 Oyster — Mission control for the AI era.
+  🦪 Oyster — Mission control for your agents.
 
   Usage:
     oyster                            Start the server (default)
@@ -378,7 +378,7 @@ async function main() {
   // Check auth — if none, run login inline
   if (!hasEnvKey && !hasAuth()) {
     console.log("\n  🦪 Welcome to Oyster");
-    console.log("  Mission control for the AI era.\n");
+    console.log("  Mission control for your agents.\n");
     console.log("  First, let's connect an AI provider.\n");
 
     const ok = await runLogin(opencodeBin);

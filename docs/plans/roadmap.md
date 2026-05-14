@@ -5,7 +5,7 @@
 > **Anchor docs:**
 > - [`docs/requirements/oyster-cloud.md`](../requirements/oyster-cloud.md) — pinned user outcomes (R1–R7).
 > - [`docs/research/yellow-pen-audit.md`](../research/yellow-pen-audit.md) — code-grounded audit of Sprint-2 vestiges still shipping (12 pens, internal + external). Informs Sprint 6 / 0.10.0.
-> - [`docs/research/category-map-2026-05.html`](../research/category-map-2026-05.html) — ~20-product landscape analysis; positions Oyster honestly in the workspace-for-agents category. Informs the *"Mission control for the AI era"* framing.
+> - [`docs/research/category-map-2026-05.html`](../research/category-map-2026-05.html) — ~20-product landscape analysis; positions Oyster honestly in the workspace-for-agents category. Informs the *"Mission control for your agents"* framing.
 > - [`docs/plans/archived/0.5.0-gap-matrix.md`](./archived/0.5.0-gap-matrix.md) — historical snapshot of where 0.5.0 stood against R1–R7 (0.7.0 + 0.8.0 have since shipped).
 
 ## Positioning
@@ -14,13 +14,13 @@ The three layers of customer-facing copy. **All three are canonical** — these 
 
 ### Layer 1 — Hero line (10 words)
 
-> **Mission control for the AI era.**
+> **Mission control for your agents.**
 
 Goes wherever there is **one short prominent piece of copy**: README hero, `oyster.to` `<h1>` and `<title>`, CLI welcome banner, social-preview card hero text, GitHub repo "About" panel.
 
 ### Layer 2 — Descriptive paragraph (3 short sentences)
 
-> **Oyster sits on top of your agents and keeps track of your AI work wherever you are. Sync, memory and publish all baked in. Bring whichever agents you prefer and swap out at any time.**
+> **Oyster keeps your AI work organised, synced and ready to share across devices, with memory and publishing built in. Use whichever agents you prefer and switch anytime.**
 
 Goes in **sub-decks and longer descriptions**: README sub-deck under the hero, `oyster.to` hero subtitle, `CLAUDE.md` opening paragraph, `server/src/mcp-server.ts` MCP context (third-person variant), install-screen / first-run wizard.
 
@@ -36,13 +36,14 @@ Goes wherever a **single descriptive sentence with no commas-of-list** is needed
 
 ### Internal shorthand (do not put in customer-facing copy)
 
-The positioning emerged from a **cassette-deck analogy** — Oyster is the deck; the agents are the cassettes. Any deck, any cassette, swap freely. The cross-agent freedom is the unique value: every direct competitor today fills in *one slice below* Oyster (memory only, or session-management only, or generative UI only). The umbrella position is empty. *Mission control for the AI era* claims it. The analogy is shorthand for strategic conversations; public copy stays direct.
+The positioning emerged from a **cassette-deck analogy** — Oyster is the deck; the agents are the cassettes. Any deck, any cassette, swap freely. The cross-agent freedom is the unique value: every direct competitor today fills in *one slice below* Oyster (memory only, or session-management only, or generative UI only). The umbrella position is empty. *Mission control for your agents* claims it. The analogy is shorthand for strategic conversations; public copy stays direct.
 
 ### Decision history
 
 - 2026-05-14 — Layer 1 settled on *"Mission control for the AI era."* (PR #463 → #469).
 - 2026-05-14 — Layer 2 v1 *"Oyster keeps your AI work with you…"* superseded by v2 *"Oyster sits on top of your agents…"* (PR #469). v2 trades the explicit *"does not run your AI"* negation for the implicit *"sits on top of"* framing; the explicit negation is preserved in the MCP context where agent clients still benefit from it.
 - 2026-05-14 — Pre-rebrand "Oyster OS" naming dropped from public copy. Repo migrated to `github.com/oyster-to/oyster`. NPM rename to `@oyster-to/oyster` tracked in #464 for 1.0.0.
+- 2026-05-14 (revision) — Layer 1 retightened to *"Mission control for your agents."* — drops industry-era framing in favour of the agents the user actually has on their machine. Layer 2 rewritten to *"Oyster keeps your AI work organised, synced and ready to share across devices, with memory and publishing built in. Use whichever agents you prefer and switch anytime."* — flips the spine from *what Oyster IS to your agents* to *what Oyster DOES for you*, and explicitly names organised + synced + share + memory + publishing (previously *"all three baked in"*). MCP context retains the explicit *"does not run your AI"* negation.
 
 ## The spine
 
@@ -131,7 +132,7 @@ Each milestone from here delivers one or more requirements. Polish, refactors, a
 
 **Why it's on the roadmap:** doesn't deliver an R directly, but covered by the decision principle's *"reduce the cost of serving one"* clause. Cutting the chat bar + bundled OpenCode makes **R4** (memory crossing agents) structurally honest — the surface no longer contradicts *"bring whichever agent."* Collapsing artefact kinds reduces **R7**'s sync surface area. Dropping the icon generator + zombie-horde removes ongoing cost (fal.ai bills, boot-time `~/Oyster/apps/` syncs) that serves no R.
 
-**Purpose:** make the *"Mission control for the AI era"* pitch honest at first install. The bundled OpenCode + in-app chat bar contradicts *"Bring whichever agents you prefer"*. Several other Sprint-2 surfaces (Ultra Hardcore PTY, AI-fixes-crashed-artefact, fal.ai icon generator, `local_process` runtime, `builtins/zombie-horde/`) describe an alternate "AI app workshop" product that no longer fits the framing.
+**Purpose:** make the *"Mission control for your agents"* pitch honest at first install. The bundled OpenCode + in-app chat bar contradicts *"Use whichever agents you prefer"*. Several other Sprint-2 surfaces (Ultra Hardcore PTY, AI-fixes-crashed-artefact, fal.ai icon generator, `local_process` runtime, `builtins/zombie-horde/`) describe an alternate "AI app workshop" product that no longer fits the framing.
 
 **Ships:**
 
