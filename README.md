@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/hero-banner.png" alt="Oyster — Mission control for your agents." /></p>
 
-[![Release](https://img.shields.io/github/v/release/mattslight/oyster?color=7c6bff)](https://github.com/mattslight/oyster/releases)
+[![Release](https://img.shields.io/github/v/release/oyster-to/oyster?color=7c6bff)](https://github.com/oyster-to/oyster/releases)
 [![npm](https://img.shields.io/npm/v/oyster-os?color=7c6bff)](https://www.npmjs.com/package/oyster-os)
 [![Downloads](https://img.shields.io/npm/dm/oyster-os?color=7c6bff)](https://www.npmjs.com/package/oyster-os)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-7c6bff)]()
@@ -125,7 +125,7 @@ Oyster is early, but focused contributions are welcome.
 ### Development
 
 ```bash
-git clone https://github.com/mattslight/oyster.git
+git clone https://github.com/oyster-to/oyster.git
 cd oyster
 cd web && npm install && cd ../server && npm install && cd ..
 npm run dev
