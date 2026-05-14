@@ -10,7 +10,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fal-ai/client": "^1.10.1",
     "@lydell/node-pty": "^1.2.0-beta.12",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",

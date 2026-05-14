@@ -4,7 +4,6 @@ import {
   registerGeneratedArtifact,
   updateGeneratedArtifact,
 } from "./process-manager.js";
-import { IconGenerator } from "./icon-generator.js";
 import { debug, debugEnabled } from "./debug.js";
 
 // ── Artifact detection ──
@@ -113,7 +112,6 @@ function detectExistingIcon(artifactDir: string): { icon: string; iconStatus: "r
 function registerArtifactFromManifest(
   manifest: ArtifactManifest,
   artifactDir: string,
-  iconGenerator: IconGenerator,
   generating = false,
 ) {
   const id = `gen:${manifest.id}`;
@@ -163,11 +161,10 @@ function registerArtifactFromManifest(
       createdAt: manifest.created_at,
       ...detectExistingIcon(artifactDir),
     }, entrypointPath, builtin, plugin);
-    iconGenerator.enqueue(id, manifest.name, manifest.type, artifactDir);
   }
 }
 
-export function handleFileEdited(rawPath: string, artifactsDir: string, iconGenerator: IconGenerator) {
+export function handleFileEdited(rawPath: string, artifactsDir: string) {
   // Resolve relative paths against userland. Must use isAbsolute to catch
   // Windows drive-letter paths (C:\...) — startsWith("/") would miss them,
   // causing userlandDir to be prepended and artifactId to become "C:".
@@ -209,7 +206,7 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
     const manifest = tryReadManifest(artifactDir);
     if (manifest) {
       if (debugEnabled) debug("watcher", "manifest found → register", { manifestName: manifest.name, manifestType: manifest.type, artifactDir });
-      registerArtifactFromManifest(manifest, artifactDir, iconGenerator, true);
+      registerArtifactFromManifest(manifest, artifactDir, true);
       return;
     }
 
@@ -247,7 +244,6 @@ export function handleFileEdited(rawPath: string, artifactsDir: string, iconGene
 // Scan userland subdirectories for existing artifacts on startup
 export function scanExistingArtifacts(
   artifactsDir: string,
-  iconGenerator: IconGenerator,
   opts: { manifestOnly?: boolean } = {},
 ) {
   if (existsSync(artifactsDir)) {
@@ -263,7 +259,7 @@ export function scanExistingArtifacts(
         // Try manifest first
         const manifest = tryReadManifest(artifactDir);
         if (manifest) {
-          registerArtifactFromManifest(manifest, artifactDir, iconGenerator);
+          registerArtifactFromManifest(manifest, artifactDir);
           continue;
         }
 
@@ -322,7 +318,6 @@ export function scanExistingArtifacts(
                 createdAt: new Date().toISOString(),
                 ...detectExistingIcon(artifactDir),
               }, foundFile);
-              iconGenerator.enqueue(id, name, type, artifactDir);
             }
           }
         } catch {}
@@ -333,7 +328,6 @@ export function scanExistingArtifacts(
 
 // Start the quiescence timer that transitions artifacts from "generating" to "ready"
 export function startGenerationTimer(
-  iconGenerator: IconGenerator,
   onReady?: (id: string, filePath: string, builtin: boolean) => void,
 ) {
   setInterval(() => {
@@ -367,7 +361,6 @@ export function startGenerationTimer(
         : `/artifacts/${dirName}/src/index.html`;
 
       updateGeneratedArtifact(id, { status: "ready", label: name, artifactKind: toArtifactKind(type), url: servePath }, entrypoint);
-      iconGenerator.enqueue(id, name, type, info.dir);
       console.log(`[artifact-detect] ready: ${name}`);
       onReady?.(id, entrypoint, info.builtin);
     }

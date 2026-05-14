@@ -22,7 +22,6 @@ import { ArtifactService } from "./artifact-service.js";
 import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
 import { slugify } from "./utils.js";
-import { IconGenerator } from "./icon-generator.js";
 import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
@@ -629,14 +628,13 @@ if (authService.getState().user) {
 
 // ── Initialize subsystems ──
 
-const iconGenerator = new IconGenerator(updateGeneratedArtifact);
 const pendingReveals = new Set<string>();
 
 // PTY shell is lazy-spawned on first WebSocket connection (i.e. when the
 // user opens the terminal window). Spawning eagerly here doubled boot time
 // because two opencode-ai processes competed for CPU during init. See #385.
 
-bootMark("subsystems init done (artifactService, spaceService, authService, publishService, iconGenerator)");
+bootMark("subsystems init done (artifactService, spaceService, authService, publishService)");
 
 // OpenCode spawn is deferred until after port resolution (see below)
 // Scan every location where app bundles can live after #207:
@@ -645,7 +643,7 @@ bootMark("subsystems init done (artifactService, spaceService, authService, publ
 //   OYSTER_HOME            — anything still at the root (legacy / newly-generated
 //                            before the agent's CWD gets re-pointed in a follow-up)
 bootTime("scanExistingArtifacts (apps + spaces + home)", () => {
-  scanExistingArtifacts(APPS_DIR, iconGenerator);
+  scanExistingArtifacts(APPS_DIR);
   if (existsSync(SPACES_DIR)) {
     for (const spaceEntry of readdirSync(SPACES_DIR)) {
       const spaceDir = join(SPACES_DIR, spaceEntry);
@@ -655,11 +653,11 @@ bootTime("scanExistingArtifacts (apps + spaces + home)", () => {
         // The fallback scan would misregister each subfolder as a bogus
         // gen:<folder> bundle; only manifest-based AI-generated apps
         // should be picked up here.
-        if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, iconGenerator, { manifestOnly: true });
+        if (statSync(spaceDir).isDirectory()) scanExistingArtifacts(spaceDir, { manifestOnly: true });
       } catch { /* skip unreadable */ }
     }
   }
-  scanExistingArtifacts(ARTIFACTS_DIR, iconGenerator);
+  scanExistingArtifacts(ARTIFACTS_DIR);
 });
 
 // Reconcile non-builtin ready gen: artifacts into DB (idempotent — dedupes by canonical path).
@@ -674,13 +672,13 @@ bootTime("reconcileGeneratedArtifacts", () => {
   }
 });
 
-startGenerationTimer(iconGenerator, (id, filePath, builtin) => {
+startGenerationTimer((id, filePath, builtin) => {
   if (!builtin) {
     const entry = getGeneratedArtifactEntries().find(e => e.id === id);
     if (entry) artifactService.reconcileGeneratedArtifact(entry, filePath, USERLAND_DIR);
   }
 });
-startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR, iconGenerator));
+startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR));
 
 process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); process.exit(0); });
 process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); process.exit(0); });
@@ -747,7 +745,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
 
   // /api/artifacts/*, /api/groups/*, /api/plugins/:id/uninstall.
   if (await tryHandleArtifactRoute(req, res, url, ctx, {
-    artifactService, sessionStore, iconGenerator, pendingReveals,
+    artifactService, sessionStore, pendingReveals,
     clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR, publishService,
   })) return;
 
@@ -789,7 +787,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // and the OAuth discovery + redirect URLs must advertise the real port.
   if (await tryHandleOAuthMcpRoute(req, res, url, ctx, {
     port,
-    store, artifactService, iconGenerator, spaceService, memoryProvider,
+    store, artifactService, spaceService, memoryProvider,
     sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,

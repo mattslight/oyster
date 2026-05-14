@@ -45,7 +45,6 @@
     "url": "https://github.com/oyster-to/oyster.git"
   },
   "dependencies": {
-    "@fal-ai/client": "^1.10.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
