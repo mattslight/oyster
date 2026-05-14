@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oyster — the yellow pens still in the box</title>
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --surface: #ffffff;
+    --ink: #1c1c22;
+    --ink-soft: #4a4a55;
+    --ink-faint: #76767f;
+    --rule: #e8e6df;
+    --accent: #7c6bff;
+    --accent-soft: #f3f1ff;
+    --warn: #b35a00;
+    --warn-soft: #fff4e6;
+    --code-bg: #f4f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15151a;
+      --surface: #1c1c22;
+      --ink: #ebe9e2;
+      --ink-soft: #b6b4ad;
+      --ink-faint: #82827c;
+      --rule: #2c2c33;
+      --accent: #a094ff;
+      --accent-soft: #221f3a;
+      --warn: #e8a468;
+      --warn-soft: #2a1e10;
+      --code-bg: #25252c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    font-size: 18px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 64px 28px 96px;
+  }
+  header.lead {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 36px;
+    line-height: 1.15;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+    font-weight: 700;
+  }
+  .deck {
+    color: var(--ink-soft);
+    font-size: 19px;
+    font-style: italic;
+    margin: 0;
+  }
+  blockquote.epigraph {
+    border-left: 3px solid var(--accent);
+    margin: 32px 0;
+    padding: 4px 0 4px 20px;
+    color: var(--ink-soft);
+    font-style: italic;
+    font-size: 17px;
+  }
+  blockquote.epigraph cite {
+    display: block;
+    margin-top: 8px;
+    font-size: 14px;
+    color: var(--ink-faint);
+    font-style: normal;
+  }
+  h2 {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 22px;
+    margin: 56px 0 16px;
+    letter-spacing: -0.005em;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  h3 {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 17px;
+    margin: 36px 0 8px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  p { margin: 14px 0; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+  a:hover { border-bottom-color: var(--accent); }
+  ul, ol { padding-left: 22px; margin: 12px 0; }
+  li { margin: 6px 0; }
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    font-weight: 600;
+    color: var(--ink-soft);
+    border-bottom: 2px solid var(--rule);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  tr:last-child td { border-bottom: none; }
+  .num-col { width: 36px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  hr {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 48px 0;
+  }
+  .callout {
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    padding: 16px 20px;
+    margin: 28px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 17px;
+  }
+  .callout strong { color: var(--warn); }
+  .pen {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 16px 0;
+  }
+  .pen-num {
+    display: inline-block;
+    width: 26px;
+    height: 26px;
+    line-height: 26px;
+    text-align: center;
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+  .pen-title {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 17px;
+    display: inline;
+  }
+  .pen p { margin: 8px 0 0; font-size: 16px; line-height: 1.55; }
+  .quote-inline {
+    font-style: italic;
+    color: var(--ink-soft);
+    border-left: 2px solid var(--rule);
+    padding-left: 14px;
+    margin: 14px 0;
+    font-size: 16px;
+  }
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+    color: var(--ink-faint);
+  }
+  footer p { margin: 4px 0; }
+  .toc {
+    background: var(--accent-soft);
+    border-radius: 8px;
+    padding: 16px 22px;
+    margin: 28px 0 36px;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+  }
+  .toc-title {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .toc ol { margin: 0; padding-left: 22px; }
+  .toc li { margin: 2px 0; }
+  .toc a { color: var(--ink); border-bottom: none; }
+  .toc a:hover { color: var(--accent); }
+  .pill {
+    display: inline-block;
+    background: var(--code-bg);
+    color: var(--ink-soft);
+    border-radius: 99px;
+    padding: 2px 10px;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="lead">
+  <div class="eyebrow">Strategic Audit · 2026-05-14</div>
+  <h1>The yellow pens still in the box</h1>
+  <p class="deck">A code-grounded audit of Oyster against the "Sync · Memory · Publish" pitch.</p>
+</header>
+
+<blockquote class="epigraph">
+  If the Sony Walkman will play but will not record, everybody can understand what it's for.
+  <cite>— Akio Morita, paraphrased</cite>
+</blockquote>
+
+<p>The pricing page at <code>oyster.to/pricing</code> makes a clean three-noun promise. The roadmap in <code>docs/plans/roadmap.md</code> is disciplined to a degree that's rare — every milestone since 0.6.0 is justified against <code>R1–R7</code> with a hard rule: <em>if it isn't on the path to making a requirement true, it doesn't belong on a milestone.</em> The product story has converged. <strong>The codebase hasn't.</strong> Most of the Sprint-2 product is still shipping inside the Sprint-5 box — hidden underneath, but reachable. This report names what's on disk today and ranks the yellow pens by structural cost.</p>
+
+<div class="toc">
+  <div class="toc-title">Contents</div>
+  <ol>
+    <li><a href="#method">Method</a></li>
+    <li><a href="#today">What Oyster actually ships today</a></li>
+    <li><a href="#previous">The yellow pens I named in the first pass</a></li>
+    <li><a href="#big">The big one: the Sprint-2 product is still inside the box</a></li>
+    <li><a href="#morita">The Morita test, re-applied</a></li>
+    <li><a href="#moves">Concrete moves, ranked by impact</a></li>
+    <li><a href="#not">What this audit explicitly isn't</a></li>
+  </ol>
+</div>
+
+<h2 id="method">Method</h2>
+<p>Walked the full git history (<code>3a03035</code> → <code>3af72dd</code>, roughly 3,000 commits), read the canonical roadmap, the R1–R7 requirements doc, the 0.5.0 gap matrix, the archived <code>sync-direction.md</code>, the launch-readiness doc, and the live <code>docs/pricing.html</code>. Then verified every claim against the actual code under <code>server/src/</code>, <code>web/src/</code>, <code>builtins/</code>, <code>infra/</code>, and <code>bin/</code>. File:line references throughout.</p>
+
+<h2 id="today">What Oyster actually ships today <span class="pill">0.8.1-beta.13</span></h2>
+<p>Stripping the marketing, the <em>implemented surface</em> is:</p>
+
+<table>
+  <thead>
+    <tr><th>Layer</th><th>Status</th><th>Where</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>MCP server at <code>/mcp/</code></td><td>Live · ~35 tools</td><td><code>server/src/mcp-server.ts</code></td></tr>
+    <tr><td>Claude Code session watcher</td><td>Live · only watcher</td><td><code>server/src/watchers/claude-code.ts</code></td></tr>
+    <tr><td>Memory store + cross-device sync</td><td>Live · Pro · 0.8.0</td><td><code>memory-store.ts</code> · <code>memory-sync-service.ts</code></td></tr>
+    <tr><td>Spaces + cross-device sync</td><td>Live · Pro · 0.7.1</td><td><code>space-store.ts</code> · <code>space-sync-service.ts</code></td></tr>
+    <tr><td>Session metadata + chunked-delta byte sync</td><td>Live · Pro · 0.8.1-beta</td><td><code>session-sync-service.ts</code></td></tr>
+    <tr><td>Publish &amp; share</td><td>Live · origin-isolated · 0.7.0</td><td><code>publish-service.ts</code> · <code>infra/oyster-publish</code></td></tr>
+    <tr><td>Auth (OAuth GitHub primary, magic-link fallback)</td><td>Live · 0.7.0</td><td><code>auth-service.ts</code> · <code>infra/auth-worker</code></td></tr>
+    <tr><td>Home feed (spaces · sessions · artefacts · memories)</td><td>Live</td><td><code>web/src/components/Home/</code></td></tr>
+  </tbody>
+</table>
+<p>Those eight rows are the product as advertised. They cleanly serve the pricing promise.</p>
+<p>Then there's everything else still on disk.</p>
+
+<h2 id="previous">The yellow pens I named in the first pass</h2>
+<ol>
+  <li><strong>Eight artefact kinds</strong> (<code>app</code>, <code>deck</code>, <code>notes</code>, <code>diagram</code>, <code>wireframe</code>, <code>table</code>, <code>map</code>) — <code>deck</code>/<code>wireframe</code>/<code>map</code>/<code>table</code> are Sprint-2 vestiges with no current generation pipeline visible in the changelog.</li>
+  <li><strong>Design doc rot</strong> — <code>oyster-os-design.md</code> still describes "Agents on the Surface" and Telegram/WhatsApp ingestion as future vision.</li>
+  <li><strong>Five competing taglines</strong> across CLAUDE.md, README, design doc, pricing page, and hero copy.</li>
+  <li><strong>"Workspace OS"</strong> in the package name when the actual product is a workspace <em>companion</em> to agents.</li>
+</ol>
+<p>Those are real. They're also surface-level — documentation and labels.</p>
+
+<div class="callout">
+<strong>What I missed runs deeper.</strong> It's structural, and most of it lives in code that gets compiled and shipped on every release.
+</div>
+
+<h2 id="big">The big one: the Sprint-2 product is still inside the box</h2>
+
+<p>The original Oyster — "a surface where AI generates apps and decks as typed icons" — was never deleted when the product pivoted to "the shared brain above your agents." It was laid down underneath. A new user installing today gets <em>both products</em>, and the cracks between them are visible in the UI.</p>
+
+<h3>Seven surfaces of the same yellow pen</h3>
+
+<div class="pen">
+  <span class="pen-num">1</span><span class="pen-title">Bundled AI agent.</span>
+  <p>The pricing page lists <em>"Bring any AI"</em> as a free-tier feature. Oyster also bundles its own. <code>server/src/opencode-manager.ts</code> is 304 lines of subprocess supervision; <code>opencode-events.ts</code> (63) and <code>opencode-orphan-sweep.ts</code> (115) exist <em>because</em> the embedded engine was leaking processes badly enough to warrant a launch-readiness milestone (#191). The bin script (<code>bin/oyster.mjs</code>) calls <code>opencode providers login</code> on first run — Oyster's first install screen is a setup wizard for someone else's product.</p>
+</div>
+
+<div class="pen">
+  <span class="pen-num">2</span><span class="pen-title">In-app chat bar as primary control plane.</span>
+  <p><code>web/src/App.tsx:602</code> mounts <code>&lt;ChatBar&gt;</code> unconditionally. Every artefact creation, memory write, and publish action still flows: user → ChatBar → OpenCode → MCP → server (chat proxy at <code>index.ts:849–911</code>). The product <em>says</em> "your existing agent connects via MCP at <code>/mcp/</code>"; the product also <em>runs</em> a different agent and routes its own surface actions through it.</p>
+</div>
+
+<div class="pen">
+  <span class="pen-num">3</span><span class="pen-title">"Ultra Hardcore" terminal gate.</span>
+  <p><code>App.tsx:543–566</code> renders a modal whose copy reads, verbatim:</p>
+  <p class="quote-inline">"This opens the shell. You're talking directly to the engine — no guardrails, no undo, full control."</p>
+  <p>Confirm button: <strong>"Game on."</strong> Triggered by a terminal icon in the chat bar (<code>ChatBar.tsx:632</code>). The window it opens is a real PTY via <code>pty-manager.ts</code> (126 lines). None of this appears in the changelog after 0.4.x and none of it is on the roadmap. It is a fully functional, lazy-loaded second product accessible by clicking a button in the main UI.</p>
+</div>
+
+<div class="pen">
+  <span class="pen-num">4</span><span class="pen-title">AI-fixes-crashed-artefacts.</span>
+  <p><code>App.tsx:402–422</code>'s <code>handleFixError</code>: when an artefact iframe throws, the user can hand the stack trace to Oyster's bundled chat, which spawns a fresh session and asks the AI to patch the source file. This is the "AI debugger" flow from commit <code>e449288</code> ("Oyster is debugging"). It only makes sense in a world where Oyster generates the apps in the first place. In the current story — "we sit above your agents" — there is nothing to fix; the user's own Claude Code wrote the artefact.</p>
+</div>
+
+<div class="pen">
+  <span class="pen-num">5</span><span class="pen-title">fal.ai icon generator.</span>
+  <p><code>server/src/icon-generator.ts</code> (263 lines, imported at <code>index.ts:25</code>) calls GPT to write a prompt and fal.ai Flux Schnell to render a PNG, per artefact. It runs on every <code>create_artifact</code>. The product story has nothing to do with making pretty icons — but the code path still bills ~$0.003 per icon to a key in <code>server/.env</code> on every AI-generated artefact. It signals to a new user that the product is <em>about</em> generating visual outputs.</p>
+</div>
+
+<div class="pen">
+  <span class="pen-num">6</span><span class="pen-title">App process manager + <code>local_process</code> runtime.</span>
+  <p><code>server/src/process-manager.ts</code> (169 lines) spawns and supervises external dev servers. <code>App.tsx:337–354</code> is the click handler that calls <code>startApp()</code> and opens the app in a popup. Per your own memory note <code>project_mcp_runtime_gap.md</code>: <em>"MCP can't register local_process apps; scanner sets no port; existing tiles were hand-SQL'd."</em> So the code path is <em>partially-broken legacy</em> that the current MCP surface can't even target — but the UI still ships the click handler.</p>
+</div>
+
+<div class="pen">
+  <span class="pen-num">7</span><span class="pen-title"><code>builtins/zombie-horde/</code>.</span>
+  <p>A complete HTML browser game (full CSS theme with <code>--acid</code>, <code>--ember</code>, <code>--glow</code>) shipped as a built-in app and copied into every user's <code>~/Oyster/apps/</code> on every boot (<code>index.ts</code> ~224–231: <em>"Always re-sync from <code>builtins/</code> source"</em>). Created 2026-03-14, Sprint-2 demo, never removed. <strong>This is the literal yellow pen</strong> — a zombie game in a productivity tool's box.</p>
+</div>
+
+<h3>Why these seven are one pen, not seven</h3>
+<p>Each alone could be excused — <em>"the terminal is power-user", "the icon generator is cheap", "zombie-horde is harmless cruft."</em> Together they describe a coherent alternate product:</p>
+
+<blockquote class="epigraph">
+Oyster is an AI-driven app workshop. You chat with our agent, it generates apps with custom icons, you can <code>local_process</code>-run them, if they crash the AI debugs them, and a shell-into-the-engine mode is one button away. Also there's a demo zombie game in the box.
+</blockquote>
+
+<p>That product is fine. It's just <strong>not the product the roadmap, requirements doc, and pricing page describe.</strong> A new user installing today gets both shipped on top of each other, with no signal about which is "the real one." That is exactly the 10-Sharpies-plus-one-yellow problem — except scaled to seven yellow pens in the box, with a label that lists three colours.</p>
+
+<h2 id="morita">The Morita test, re-applied</h2>
+<p>Morita pulled the record button off the Walkman not because it didn't work but because <em>its presence in the picture confused what the product was for.</em> The seven surfaces above are Oyster's record button. Removing them would not weaken the pricing promise — it would <em>finally make the pricing promise true on first install</em>:</p>
+<ul>
+  <li><strong>Sync</strong> — unchanged (works).</li>
+  <li><strong>Memory</strong> — unchanged (works).</li>
+  <li><strong>Publish</strong> — unchanged (works).</li>
+  <li><strong>Bring any AI</strong> — finally honest; no bundled chat, no embedded engine, no <code>opencode providers login</code> on first run.</li>
+</ul>
+<p>The pitch becomes legible the moment the surface stops simultaneously pitching itself.</p>
+
+<h2 id="moves">Concrete moves, ranked by impact</h2>
+
+<table>
+  <thead>
+    <tr><th class="num-col">#</th><th>Move</th><th>What it unlocks</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="num-col">1</td>
+      <td><strong>Retire the in-app chat bar + bundled OpenCode.</strong> Move surface actions (<code>/s</code>, <code>/o</code>, <code>/p</code>, <code>/u</code>) into Cmd+K. The user's own connected agent is the agent.</td>
+      <td>Removes ~480 lines of OpenCode supervision; kills the #191 orphan class; deletes the contradiction with <em>"Bring any AI"</em>; speeds boot further.</td>
+    </tr>
+    <tr>
+      <td class="num-col">2</td>
+      <td><strong>Remove the Ultra Hardcore terminal path</strong> and <code>pty-manager.ts</code>.</td>
+      <td>Removes the "talking directly to the engine" hero copy that contradicts the workspace-companion framing.</td>
+    </tr>
+    <tr>
+      <td class="num-col">3</td>
+      <td><strong>Retire <code>handleFixError</code> + <code>icon-generator.ts</code>.</strong></td>
+      <td>Stops signalling "we generate apps for you"; removes a fal.ai bill the user never asked for.</td>
+    </tr>
+    <tr>
+      <td class="num-col">4</td>
+      <td><strong>Delete <code>builtins/zombie-horde/</code>.</strong> Re-evaluate the other five built-ins against R1–R7.</td>
+      <td><code>where-are-my-files</code> earns its place; <code>quick-start</code> and <code>connect-your-ai</code> probably do. A new user opening <code>~/Oyster/apps/</code> no longer sees a zombie game in their productivity tool.</td>
+    </tr>
+    <tr>
+      <td class="num-col">5</td>
+      <td><strong>Collapse the eight artefact kinds</strong> to <code>notes</code>, <code>app</code>, <code>diagram</code>. Absorb the rest into <code>notes</code>.</td>
+      <td>Removes the visual menu that implies Oyster generates decks/wireframes/maps/tables.</td>
+    </tr>
+    <tr>
+      <td class="num-col">6</td>
+      <td><strong>Archive the Sprint-2 sections of <code>oyster-os-design.md</code></strong> (Agents on Surface, Telegram/WhatsApp, Tier-2 vite runtime).</td>
+      <td>Aligns the design doc with the roadmap doc.</td>
+    </tr>
+    <tr>
+      <td class="num-col">7</td>
+      <td><strong>Pin one sentence everywhere.</strong> README + CLAUDE.md + boot banner + design doc top all read: <em>"Every agent, one shared brain. Sync · Memory · Publish."</em></td>
+      <td>The five-tagline ambiguity collapses.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Move #1 is the load-bearing one. The other six get easier the moment it's done, because they're all surfaces of the same Sprint-2 product. The chat bar is the thing keeping the alternate product alive in the user's read.</p>
+
+<h2 id="not">What this audit explicitly isn't</h2>
+<p>This is not a quality review. The shipped sync engine is impressive — the chunked-delta + AAD-bound encryption in <code>session-sync-service.ts</code> is the kind of thing most "memory tools" never bother with. The roadmap discipline is rare. R5's origin-isolated share viewer at <code>share.oyster.to</code> is the right architecture. None of those are pens of any colour.</p>
+<p>The audit is about <strong>one thing</strong>: the gap between <em>the product as described</em> and <em>the product as compiled</em>. The roadmap doc has already done the hardest piece — there is a clean spine. The codebase just hasn't been told it's allowed to lose the limbs that no longer hang off it.</p>
+
+<footer>
+  <p>Audit by: main session</p>
+  <p>Worktree: <code>~/Dev/oyster-os.worktrees/yellow-pen-report</code> · branch <code>report/yellow-pen-audit</code></p>
+  <p>Code state: <code>3af72dd</code> (0.8.1-beta.13) · Date: 2026-05-14</p>
+</footer>
+
+</div>
+</body>
+</html>
