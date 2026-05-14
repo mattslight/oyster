@@ -10,7 +10,7 @@
 
 # 🦪 Mission control for the AI era.
 
-Oyster keeps your AI work with you. Sync it, remember it, publish it, and bring whichever agent you use. It does not run your AI. It does not tie you to one.
+Oyster sits on top of your agents and keeps track of your AI work wherever you are. Sync, memory and publish all baked in. Bring whichever agents you prefer and swap out at any time.
 
 ```bash
 # 1. Install

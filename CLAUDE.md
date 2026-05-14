@@ -4,7 +4,7 @@
 
 **Mission control for the AI era.**
 
-Oyster keeps your AI work with you. It captures what your AI wrote and made, syncs it across your devices, and lets you publish any of it as a link. It does not run your AI. It does not tie you to one — bring whichever agent you use (Claude Code today; Cursor / Codex / OpenCode as they connect over MCP).
+Oyster sits on top of your agents and keeps track of your AI work wherever you are. Sync, memory and publish all baked in. Bring whichever agents you prefer and swap out at any time (Claude Code today; Cursor / Codex / OpenCode as their watchers ship over MCP).
 
 Users install with `npm install -g oyster-os`, run `oyster`, and get a visual surface at `http://localhost:4444` where their agent's sessions, files, memories, and artefacts live.
 

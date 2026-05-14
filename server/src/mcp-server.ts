@@ -152,12 +152,12 @@ function buildContext(userlandDir: string): string {
   return `
 # Oyster
 
-Oyster is the workspace your AI agent works in. It captures what your AI wrote
-and made, syncs it across the user's devices, and lets them publish any of it
-as a link. **It does not run the user's AI. It does not tie them to one.**
-The user brings whichever agent they use — Claude Code, Cursor, Codex,
-OpenCode, or any other MCP-aware agent (including you, whichever agent you are).
-Oyster watches the work and keeps it.
+Oyster sits on top of the user's agents and keeps track of their AI work
+wherever they are. Sync, memory and publish all baked in. The user brings
+whichever agents they prefer — Claude Code, Cursor, Codex, OpenCode, or any
+other MCP-aware agent (including you, whichever agent you are) — and swaps
+out at any time. **Oyster does not run the user's AI; it keeps the work
+their agents make.**
 
 It is NOT a chat interface or a file browser — it is a workspace surface where
 artifacts (interactive documents, apps, diagrams, etc.) live alongside the
