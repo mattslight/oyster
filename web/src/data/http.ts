@@ -13,13 +13,17 @@ export class ApiError extends Error {
   }
 }
 
-// Default timeout for mutation calls (POST/PATCH/DELETE). The local server's
-// add-source / scan flow is sub-second now that scanSpace is deferred to a
-// later tick (routes/spaces.ts + space-service.ts) — 5s is a comfortable
-// ceiling for any legitimate mutation. Hitting it means the socket is dead
-// or the server is genuinely stuck, and the UI should recover rather than
-// locking out future attempts.
-const DEFAULT_MUTATION_TIMEOUT_MS = 5_000;
+// Default timeout for mutation calls (POST/PATCH/DELETE). 15s is a safe
+// global ceiling — long enough for legitimate slow paths (archiveGroup
+// rewriting many artifacts, convertFolderToSpace re-attribution,
+// createMemory with embedding/dedupe on a slower machine or larger
+// workspace) without being so tight that a request that actually
+// completed server-side gets reported as a failure to the user.
+// Call sites with known sub-second budgets can pass a tighter
+// `timeoutMs` override; call sites that legitimately need longer can
+// pass a higher one. Hitting the default ceiling should be rare and
+// indicate a dead socket or genuinely stuck server.
+const DEFAULT_MUTATION_TIMEOUT_MS = 15_000;
 
 interface MutateOpts {
   signal?: AbortSignal;
