@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/hero-banner.png" alt="Oyster — Mission control for the AI era." /></p>
+<p align="center"><img src="docs/hero-banner.png" alt="Oyster — Mission control for your agents." /></p>
 
 [![Release](https://img.shields.io/github/v/release/mattslight/oyster?color=7c6bff)](https://github.com/mattslight/oyster/releases)
 [![npm](https://img.shields.io/npm/v/oyster-os?color=7c6bff)](https://www.npmjs.com/package/oyster-os)
@@ -8,9 +8,9 @@
 
 ---
 
-# 🦪 Mission control for the AI era.
+# 🦪 Mission control for your agents.
 
-Oyster sits on top of your agents and keeps track of your AI work wherever you are. Sync, memory and publish all baked in. Bring whichever agents you prefer and swap out at any time.
+Oyster keeps your AI work organised, synced and ready to share across devices, with memory and publishing built in. Use whichever agents you prefer and switch anytime.
 
 ```bash
 # 1. Install

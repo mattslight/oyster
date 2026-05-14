@@ -4,9 +4,9 @@
 
 ## What Oyster Is
 
-**Mission control for the AI era.**
+**Mission control for your agents.**
 
-Oyster sits on top of your agents and keeps track of your AI work wherever you are. Sync, memory and publish all baked in. Bring whichever agents you prefer and swap out at any time (Claude Code today; Cursor / Codex / OpenCode watchers next — issue #298).
+Oyster keeps your AI work organised, synced and ready to share across devices, with memory and publishing built in. Use whichever agents you prefer and switch anytime.
 
 Users install with `npm install -g oyster-os`, run `oyster`, and get a visual surface at `http://localhost:4444` where their agent's sessions, files, memories, and artefacts live.
 
