@@ -1,3 +1,7 @@
+> **ARCHIVED 2026-05-14.** Exploratory 2026-04 plugin/app design. Sprint 6 (#465 — surgery) removes the surfaces it assumes: the chat bar, the `local_process` runtime, and `builtins/zombie-horde/`. Re-open only if Tier 2 / Tier 3 plugin support becomes a real product priority post-1.0.0.
+
+---
+
 # Oyster Plugin & App System — Design Notes
 
 > **Status (2026-04):** Exploratory design. Tier 1 install flow (manual drop-in) works today via the existing artifact detector. Tiers 2 and 3 are future work. The `builtins/` apps (zombie-horde, quick-start, etc.) are effectively first-party plugins with `builtin: true`. Third-party plugins live in their own repos — **the Oyster monorepo does not contain example plugins.**

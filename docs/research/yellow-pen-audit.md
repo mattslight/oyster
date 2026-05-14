@@ -84,6 +84,26 @@ That product is fine. It's just **not the product the roadmap, requirements doc,
 
 ---
 
+## Part 2 — External pens (visible only from category context)
+
+The seven pens above are internal contradictions visible from inside the codebase. A separate exercise in [`docs/research/category-map-2026-05.html`](./category-map-2026-05.html) (§7.2) mapped Oyster against ~20 adjacent products and surfaced five **external** pens — things that read fine from inside the repo but become problems when you see Oyster on the same page as `claude-mem`, `Claude Squad`, `mem0`, `OpenFang`, etc. Each is resolved by an existing workstream; recorded here so the inventory is complete.
+
+| # | External pen | Where it's resolved |
+|---|---|---|
+| **8** | **Home-grown memory implementation** when the category has converged on `mem0` (55.7k★), `Letta` (22.7k★), `Graphiti` (26.0k★), `Cognee` (17.2k★). `server/src/memory-store.ts` reimplements what these have already shipped — provider-agnostic APIs, MCP integrations, SaaS clouds. Defensible claim is *memory inside a workspace*, not "best memory implementation." | Sprint 8 / 0.9.0 — evaluate embedding one for R2 semantic recall (#321), keep the interface hot-swappable. |
+| **9** | **"Spaces" terminology collides with AnythingLLM** (60.0k★) — 60k users associate *"workspaces"* with *"chat folders with documents."* Oyster's Spaces are different (project nodes, repo-backed, attributed sessions). | No code action — one sentence of marketing copy on the pricing page and README clarifying Oyster's Spaces are *projects*, not *chat folders*. |
+| **10** | **"Bring any AI" on the pricing page** when only Claude Code is watched. The marketing claim is multi-agent; the code is single-agent. Category benchmarks (`CCManager` — 8 agents, `Claude Squad` — 4+, `agent-deck` — 4+) all ship what Oyster's copy promises. | Sprint 7 / 0.9.0 — issue #298 (Cursor / Codex / OpenCode watchers). Not a roadmap nice-to-have; it's the line between honest and aspirational. |
+| **11** | **"Watches your Claude Code sessions" as headline copy** when Anthropic ships it natively (`claude agents` research preview, Claude Code v2.1.139+). Implicitly competes with Anthropic, who has more resources, deeper integration. | Resolved by PR #463 / #469 — new positioning *"Mission control for the AI era"* + Layer 2 leads with *"sits on top of your agents"* instead of *"watches Claude Code."* Claude-Code-watching demoted to a feature, not the pitch. |
+| **12** | **"OS" in the brand**, when `OpenFang` (17.5k★) and `brobertsaz/claude-os` (287★) own the term in adjacent categories — three products with "OS" in the same neighbourhood, none meaning the same thing. SEO + brand-confusion problem. | Resolved by PR #463 — dropped from public copy. Continued by #464 (npm rename to `@oyster-to/oyster`) for 1.0.0. |
+
+### Compound observation
+
+The seven internal pens describe a coherent **alternate product** (the AI app workshop). The five external pens describe Oyster being placed against a **crowded category** with stronger single-purpose competitors at every slice. Together they confirm the strategic move: cut the internal pens (Sprint 6 / 0.10.0), ship the multi-agent proof points (Sprint 7 / 0.9.0), and rebrand cleanly (PR #463, #464, 1.0.0). When all of that lands, Oyster's umbrella position — *sit above the agents, keep the work* — becomes genuinely defensible.
+
+For the full category map (~20 products, feature matrix, threat analysis, strategic recommendations), see [`category-map-2026-05.html`](./category-map-2026-05.html).
+
+---
+
 ## The Morita test, re-applied
 
 Morita pulled the record button off the Walkman not because it didn't work but because *its presence in the picture confused what the product was for.* The seven surfaces above are Oyster's record button. Removing them would not weaken the pricing promise — it would *finally make the pricing promise true on first install*:
