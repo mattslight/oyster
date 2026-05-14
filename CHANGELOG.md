@@ -6,6 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **Sharper positioning across every surface.** Hero copy on README, oyster.to, the install banner, and the MCP context now reads *"Mission control for the AI era."* The supporting copy is explicit: Oyster does not run your AI, and it does not tie you to one — bring whichever agent you use. *"OS"* is dropped from public-facing copy.
 - **No more `accepted=1` log noise during a live conversation.** Single-row metadata pushes — which are the steady-state shape during normal conversation pacing — are now silent. Multi-row pushes (boot drains, bursty tool-call sequences) and any pushes with conflicts or rejected events still log so you can see real activity.
 - **Quieter terminal logs when offline.** When wifi goes out, sync used to log a 30-line stack trace every ~30 seconds for each background pull (memory + sessions). Now the first failure prints a single line — `cloud unreachable (ENOTFOUND)` — subsequent identical failures are suppressed, and a heartbeat appears roughly every 15 minutes if you're still offline. When wifi comes back, a single `back online` line confirms it. Real bugs (non-network errors) still surface their full trace.
 

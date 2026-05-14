@@ -6,7 +6,7 @@
 
 Oyster becomes a reader and visualiser of agent sessions. Today, when a user runs `claude`, `opencode`, or `codex` in a terminal, that session is invisible to Oyster — the work happens, files change, memories accumulate, and Oyster has no idea any of it occurred. The 0.5.0 arc closes that gap.
 
-The hypothesis: a workspace OS that *passively observes* what your agents are doing across projects becomes the place you go to see your day, find things, and resume context — not a replacement for the agents themselves, but the surface that makes them legible.
+The hypothesis: a workspace that *passively observes* what your agents are doing across projects becomes the place you go to see your day, find things, and resume context — not a replacement for the agents themselves, but the surface that makes them legible.
 
 The user story: I open Oyster and see "2 sessions running, 1 waiting on me in kps, blunderfixer disconnected 14 minutes ago". I click into a session and see what claude-code has been doing in tokinvest while I was at lunch. I see which artefacts it touched, which memories it pulled, which it wrote.
 

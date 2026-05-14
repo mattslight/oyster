@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/hero-banner.png" alt="Oyster — From prompt to workspace" /></p>
+<p align="center"><img src="docs/hero-banner.png" alt="Oyster — Mission control for the AI era." /></p>
 
 [![Release](https://img.shields.io/github/v/release/mattslight/oyster?color=7c6bff)](https://github.com/mattslight/oyster/releases)
 [![npm](https://img.shields.io/npm/v/oyster-os?color=7c6bff)](https://www.npmjs.com/package/oyster-os)
@@ -8,7 +8,9 @@
 
 ---
 
-**🦪 Every agent, one shared brain.** Oyster watches your AI sessions, captures the files they touched and the memories they wrote, and brings them all into one workspace — visible, searchable, persistent across every machine. Built on MCP.
+# 🦪 Mission control for the AI era.
+
+Oyster keeps your AI work with you. Sync it, remember it, publish it, and bring whichever agent you use. It does not run your AI. It does not tie you to one.
 
 ```bash
 # 1. Install
