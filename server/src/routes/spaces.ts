@@ -8,7 +8,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "../space-service.js";
-import { existsSync, statSync } from "node:fs";
+import type { ProjectService } from "../project-service.js";
 import type { UiCommand } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
@@ -16,6 +16,7 @@ import { slugify } from "../utils.js";
 
 export interface SpaceRouteDeps {
   spaceService: SpaceService;
+  projectService: ProjectService;
   /** Broadcasts SSE so connected clients refetch — used after lifecycle
    *  changes that re-attribute sessions (DELETE space cascades; from-path
    *  re-claims orphan sessions whose cwd matches). */
@@ -30,7 +31,7 @@ export async function tryHandleSpaceRoute(
   deps: SpaceRouteDeps,
 ): Promise<boolean> {
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
-  const { spaceService, broadcastUiEvent } = deps;
+  const { spaceService, projectService, broadcastUiEvent } = deps;
 
   // GET /api/spaces — list all spaces
   if (url === "/api/spaces" && req.method === "GET") {
@@ -68,10 +69,8 @@ export async function tryHandleSpaceRoute(
   }
 
   // POST /api/spaces/from-path — one-shot "promote folder to space": create
-  // a new space named after the folder, attach the path as its sole source,
-  // and re-attribute orphan sessions whose cwd matches. Local-origin gated +
-  // size-capped — accepts a filesystem path so it inherits the same
-  // hardening as /api/spaces/:id/sources POST.
+  // a new space named after the folder, create a project for the path
+  // (writing .oyster/id), and claim orphan sessions whose cwd matches.
   if (url === "/api/spaces/from-path" && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
     try {
@@ -82,22 +81,16 @@ export async function tryHandleSpaceRoute(
         sendJson({ error: "path is required" }, 400);
         return true;
       }
-      const { space } = spaceService.createSpaceFromPath({ path, name });
-      // Tell connected clients to refetch sessions — the backfill just
-      // moved orphan rows from `(NULL, NULL)` to `(space, source)` and the
-      // hook only otherwise refreshes when the watcher fires.
+      const space = spaceService.createSpace({ name: name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? "Untitled" });
+      try {
+        projectService.attachFolder({ spaceId: space.id, path });
+      } catch (err) {
+        // Roll back the empty space on attach failure.
+        try { spaceService.deleteSpace(space.id); } catch { /* best-effort */ }
+        throw err;
+      }
       broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
       sendJson(space, 201);
-      // Defer the initial scan to the next tick so the 201 above flushes
-      // before scanSpace's synchronous fs walk + sqlite work starts. Without
-      // this, big folders block the event loop long enough that the response
-      // can't reach the client until the scan finishes — the UI sees the
-      // attach as a hang. Artefacts still surface via SSE as the scan runs.
-      setImmediate(() => {
-        spaceService.scanSpace(space.id).catch((err) => {
-          console.warn("[from-path] scan failed:", err instanceof Error ? err.message : err);
-        });
-      });
     } catch (err) {
       sendError(err);
     }

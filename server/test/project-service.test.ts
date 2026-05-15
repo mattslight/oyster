@@ -5,7 +5,7 @@
 // Folder paths are *advisory cache* in `project_paths`, never authority.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
@@ -174,5 +174,65 @@ describe("ProjectService.updateProject", () => {
   it("rejects an empty name", () => {
     const p = service.createProject({ spaceId: "work", name: "Old" });
     expect(() => service.updateProject(p.id, { name: "  " })).toThrow();
+  });
+});
+
+describe("ProjectService.attachFolder", () => {
+  let dir: string;
+  let db: Database.Database;
+  let service: ProjectService;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-ps-attach-"));
+    db = initDb(dir);
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('work', 'Work', '#000', 'none')`);
+    service = new ProjectService(db);
+  });
+  afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  it("creates a project named after the folder basename, writes .oyster/id, and claims orphans", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-target-"));
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd) VALUES ('s1', 'claude-code', 'done', ?)").run(folder);
+
+    const { project, claimed } = service.attachFolder({ spaceId: "work", path: folder });
+
+    expect(project.spaceId).toBe("work");
+    expect(project.name).toBe(folder.split("/").filter(Boolean).pop());
+    expect(claimed).toBe(1);
+
+    // .oyster/id was written with the project's UUID.
+    const written = readFileSync(join(folder, ".oyster", "id"), "utf8").trim();
+    expect(written).toBe(project.id);
+
+    // Orphan session claimed.
+    const row = db.prepare("SELECT project_id, space_id FROM sessions WHERE id = 's1'").get() as { project_id: string; space_id: string };
+    expect(row.project_id).toBe(project.id);
+    expect(row.space_id).toBe("work");
+
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("accepts an explicit name and uses it instead of the basename", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-named-"));
+    const { project } = service.attachFolder({ spaceId: "work", path: folder, name: "Custom Name" });
+    expect(project.name).toBe("Custom Name");
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("respects an existing .oyster/id (adopts the existing project id rather than creating a duplicate)", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-existing-"));
+    // Pre-existing project with marker on disk.
+    const existing = service.createProject({ spaceId: "work", name: "Pre" });
+    mkdirSync(join(folder, ".oyster"));
+    writeFileSync(join(folder, ".oyster", "id"), existing.id);
+
+    const { project, claimed } = service.attachFolder({ spaceId: "work", path: folder });
+
+    expect(project.id).toBe(existing.id);
+    expect(claimed).toBe(0);
+    // Did not create a second project row.
+    expect(service.listForSpace("work")).toHaveLength(1);
+
+    rmSync(folder, { recursive: true, force: true });
   });
 });

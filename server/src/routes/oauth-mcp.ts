@@ -35,6 +35,7 @@ export interface OAuthMcpRouteDeps {
   store: ArtifactStore;
   artifactService: ArtifactService;
   spaceService: SpaceService;
+  projectService: import("../project-service.js").ProjectService;
   sessionService: import("../session-service.js").SessionService;
   memoryProvider: MemoryProvider;
   sessionStore: SessionStore;
@@ -55,7 +56,7 @@ export async function tryHandleOAuthMcpRoute(
 ): Promise<boolean> {
   const { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin } = ctx;
   const {
-    port, store, artifactService, spaceService, sessionService,
+    port, store, artifactService, spaceService, projectService, sessionService,
     memoryProvider, sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir, getNativeSourcePath,
   } = deps;
@@ -172,6 +173,7 @@ export async function tryHandleOAuthMcpRoute(
       userlandDir,
       getNativeSourcePath,
       spaceService,
+      projectService,
       sessionService,
       memoryProvider,
       sessionStore,

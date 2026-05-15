@@ -122,6 +122,7 @@ interface McpDeps {
    */
   getNativeSourcePath: (spaceId: string) => string;
   spaceService: SpaceService;
+  projectService: import("./project-service.js").ProjectService;
   sessionService: SessionService;
   memoryProvider: MemoryProvider;
   sessionStore: SessionStore;
@@ -416,32 +417,17 @@ export function createMcpServer(deps: McpDeps): McpServer {
         }
       }
 
-      const pathReports: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }> = [];
+      const pathReports: Array<{ path: string; status: "attached" | "failed"; error?: string }> = [];
       for (const p of resolvedPaths) {
         try {
-          deps.spaceService.addSource(space.id, p);
-          // `attached` covers newly added sources, restored-from-soft-delete
-          // sources, AND already-active sources for the same space (addSource
-          // is idempotent in those cases).
+          deps.projectService.attachFolder({ spaceId: space.id, path: p });
           pathReports.push({ path: p, status: "attached" });
         } catch (err) {
-          const msg = (err as Error).message;
-          // `addSource` only throws for paths that don't exist on disk OR
-          // paths already claimed by a DIFFERENT space (the conflict guard).
-          // The latter means THIS space still has no folders for that path,
-          // so we must not count it as attached for the scan-guard below.
-          const ownedElsewhere = /already attached/i.test(msg);
-          pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
+          pathReports.push({ path: p, status: "failed", error: (err as Error).message });
         }
       }
 
-      // Only scan when at least one path actually attached to THIS space.
-      // If every path failed (missing on disk, owned by another space),
-      // scanSpace would throw \"no folders\" and the agent would see a
-      // confusing scan error on top of per-path errors already in `paths`.
-      const anyAttached = pathReports.some((r) => r.status === "attached");
-      const scanResult = anyAttached ? await deps.spaceService.scanSpace(space.id) : null;
-      return { space_id: space.id, created, paths: pathReports, scan_summary: scanResult };
+      return { space_id: space.id, created, paths: pathReports };
     },
   );
 

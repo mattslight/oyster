@@ -6,6 +6,8 @@
 // identity.
 
 import type Database from "better-sqlite3";
+import { basename } from "node:path";
+import { readOysterId, writeOysterId } from "./oyster-id.js";
 
 export interface Project {
   id: string;
@@ -52,6 +54,32 @@ export class ProjectService {
       )
       .run({ projectId: args.projectId, spaceId: project.space_id, cwd: args.cwd });
     return { claimed: Number(info.changes) };
+  }
+
+  // Idempotent attach: given a folder path, either adopt the project the
+  // folder already declares via .oyster/id (if its row exists), or create
+  // a new project + write .oyster/id with the new UUID. Then sweep up any
+  // orphan sessions at that cwd. This is what `addSource` did pre-rewrite,
+  // minus the source row.
+  attachFolder(args: { spaceId: string; path: string; name?: string }): { project: Project; claimed: number } {
+    const existing = readOysterId(args.path);
+    let project: Project;
+    if (existing.status === "valid") {
+      const row = this.db
+        .prepare("SELECT id, space_id, name, created_at FROM projects WHERE id = ? AND removed_at IS NULL")
+        .get(existing.id) as ProjectRow | undefined;
+      if (row) {
+        project = rowToProject(row);
+      } else {
+        project = this.createProject({ spaceId: args.spaceId, name: args.name ?? basename(args.path) });
+        writeOysterId(args.path, project.id);
+      }
+    } else {
+      project = this.createProject({ spaceId: args.spaceId, name: args.name ?? basename(args.path) });
+      writeOysterId(args.path, project.id);
+    }
+    const { claimed } = this.claimOrphan({ cwd: args.path, projectId: project.id });
+    return { project, claimed };
   }
 
   createProject(args: { spaceId: string; name: string }): Project {

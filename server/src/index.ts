@@ -792,13 +792,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // /api/spaces/* — collapsed from the legacy spaces-routes.ts and the
   // inline /api/spaces/:id/sources* + /api/spaces/from-path handlers.
   if (await tryHandleSpaceRoute(req, res, url, ctx, {
-    spaceService, broadcastUiEvent,
+    spaceService, projectService, broadcastUiEvent,
   })) return;
 
   // /api/setup/apply — fans the user's confirmed SetupProposal out to
-  // onboard_space. Triggered by the SetupProposalPanel's Apply button.
+  // createSpace + attachFolder. Triggered by the SetupProposalPanel's Apply button.
   if (await tryHandleSetupRoute(req, res, url, ctx, {
-    spaceService, broadcastUiEvent,
+    spaceService, projectService, broadcastUiEvent,
   })) return;
 
   // /api/memories
@@ -827,7 +827,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // and the OAuth discovery + redirect URLs must advertise the real port.
   if (await tryHandleOAuthMcpRoute(req, res, url, ctx, {
     port,
-    store, artifactService, spaceService, sessionService, memoryProvider,
+    store, artifactService, spaceService, projectService, sessionService, memoryProvider,
     sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,
