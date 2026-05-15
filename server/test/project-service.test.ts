@@ -235,4 +235,28 @@ describe("ProjectService.attachFolder", () => {
 
     rmSync(folder, { recursive: true, force: true });
   });
+
+  it("re-attaching a folder whose project was soft-deleted undeletes it (preserves existing session bindings)", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-undelete-"));
+    // Project exists, marker exists, sessions point at it. Then the user
+    // deletes the tile (soft-delete) but `.oyster/id` on disk still names
+    // the deleted project. Re-attaching must adopt the SAME id so the
+    // historical session bindings still resolve.
+    const existing = service.createProject({ spaceId: "work", name: "Pre" });
+    mkdirSync(join(folder, ".oyster"));
+    writeFileSync(join(folder, ".oyster", "id"), existing.id);
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd, project_id) VALUES ('s1', 'claude-code', 'done', ?, ?)").run(folder, existing.id);
+    service.deleteProject(existing.id);
+
+    const { project } = service.attachFolder({ spaceId: "work", path: folder });
+
+    expect(project.id).toBe(existing.id);
+    // Project is alive again — listForSpace returns it.
+    expect(service.listForSpace("work").map((p) => p.id)).toContain(existing.id);
+    // The historical session row still resolves to a live project.
+    const sessionRow = db.prepare("SELECT project_id FROM sessions WHERE id = 's1'").get() as { project_id: string };
+    expect(sessionRow.project_id).toBe(existing.id);
+
+    rmSync(folder, { recursive: true, force: true });
+  });
 });

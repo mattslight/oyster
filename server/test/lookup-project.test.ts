@@ -54,4 +54,37 @@ describe("lookupProject", () => {
       .all(A_UUID) as Array<{ path: string }>;
     expect(paths.map((p) => p.path)).toEqual([cwd]);
   });
+
+  it("falls back to project_paths cache when .oyster/id is missing — self-heals by rewriting the file", () => {
+    // Scenario: project + cache row exist (set up by an earlier attach); the
+    // user deletes .oyster/ on disk. New sessions in this cwd would orphan
+    // unless we use the cache to recover the binding. Recovery also rewrites
+    // the marker so the next read goes through the happy path.
+    db.prepare("INSERT INTO projects (id, space_id, name) VALUES (?, ?, ?)").run(A_UUID, "work", "Proj");
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(A_UUID, cwd);
+
+    expect(lookupProject(db, cwd)).toEqual({ projectId: A_UUID, spaceId: "work" });
+
+    // Self-heal: file written back.
+    const idPath = join(cwd, ".oyster", "id");
+    const written = require("node:fs").readFileSync(idPath, "utf8").trim();
+    expect(written).toBe(A_UUID);
+  });
+
+  it("does not adopt from cache when multiple projects claim the same path (ambiguous)", () => {
+    const B_UUID = "99999999-aaaa-bbbb-cccc-dddddddddddd";
+    db.prepare("INSERT INTO projects (id, space_id, name) VALUES (?, ?, ?)").run(A_UUID, "work", "ProjA");
+    db.prepare("INSERT INTO projects (id, space_id, name) VALUES (?, ?, ?)").run(B_UUID, "work", "ProjB");
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(A_UUID, cwd);
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(B_UUID, cwd);
+
+    expect(lookupProject(db, cwd)).toEqual({ projectId: null, spaceId: null });
+  });
+
+  it("does not adopt from cache when the cached project is soft-deleted", () => {
+    db.prepare("INSERT INTO projects (id, space_id, name, removed_at) VALUES (?, ?, ?, datetime('now'))").run(A_UUID, "work", "Proj");
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(A_UUID, cwd);
+
+    expect(lookupProject(db, cwd)).toEqual({ projectId: null, spaceId: null });
+  });
 });

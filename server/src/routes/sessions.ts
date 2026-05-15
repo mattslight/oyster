@@ -396,11 +396,8 @@ export async function tryHandleSessionRoute(
     }
   }
 
-  // PATCH /api/sessions/:id — reassign a session to a different source or
-  // back to auto-binding. The whole "cwd is evidence, not authority" model
-  // lives here: setting source_id flips the row to manual; setting
-  // assignment_mode: 'auto' triggers an atomic recompute via longest-prefix
-  // lookup on the row's cwd.
+  // PATCH /api/sessions/:id — bind a session to a project (or clear the
+  // binding with project_id: null). space_id is derived from the project.
   {
     const m = url.match(/^\/api\/sessions\/([^/]+)$/);
     if (m && req.method === "PATCH") {

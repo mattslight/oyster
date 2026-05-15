@@ -22,9 +22,7 @@ function fakeCtx(body: unknown = {}) {
 }
 
 // Build the minimum schema the route reads from. remote_sessions is the
-// star; sources is needed for candidate resolution; sessions is needed by
-// the existing GET /api/sessions logic (irrelevant for resume but the
-// shared route handler touches it).
+// star; device_identity is read for the active-device chip.
 function makeDb(): Database.Database {
   const db = new Database(":memory:");
   db.exec(`
@@ -44,12 +42,6 @@ function makeDb(): Database.Database {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       device_id TEXT NOT NULL,
       label TEXT NOT NULL
-    );
-    CREATE TABLE sources (
-      id TEXT PRIMARY KEY, space_id TEXT NOT NULL, type TEXT NOT NULL,
-      path TEXT NOT NULL, label TEXT,
-      added_at TEXT NOT NULL DEFAULT (datetime('now')),
-      removed_at TEXT, portable_id TEXT
     );
   `);
   return db;

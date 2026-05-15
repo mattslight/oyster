@@ -65,10 +65,18 @@ export class ProjectService {
     const existing = readOysterId(args.path);
     let project: Project;
     if (existing.status === "valid") {
+      // Look up without the removed_at filter — a soft-deleted project still
+      // owns its historical session/artefact bindings (project_id FKs are
+      // intact, just hidden from listForSpace). Re-attach must undelete and
+      // adopt the same id rather than minting a new one, which would orphan
+      // those rows permanently.
       const row = this.db
-        .prepare("SELECT id, space_id, name, created_at FROM projects WHERE id = ? AND removed_at IS NULL")
-        .get(existing.id) as ProjectRow | undefined;
+        .prepare("SELECT id, space_id, name, created_at, removed_at FROM projects WHERE id = ?")
+        .get(existing.id) as (ProjectRow & { removed_at: string | null }) | undefined;
       if (row) {
+        if (row.removed_at) {
+          this.db.prepare("UPDATE projects SET removed_at = NULL WHERE id = ?").run(row.id);
+        }
         project = rowToProject(row);
       } else {
         project = this.createProject({ spaceId: args.spaceId, name: args.name ?? basename(args.path) });
