@@ -1,6 +1,8 @@
-// Folder attach form. Extracted from Home/index.tsx.
+// Manual folder-to-project form. Creates a project named after the folder's
+// basename in the chosen space, then claims any orphan sessions whose cwd
+// already matches the folder. Extracted from Home/index.tsx.
 import { useState } from "react";
-import { addSpaceSource } from "../../data/spaces-api";
+import { createProject, claimOrphan } from "../../data/projects-api";
 
 export function AttachFolderForm({
   spaceId, onAttached, onCancel,
@@ -19,7 +21,10 @@ export function AttachFolderForm({
     setSubmitting(true);
     setError(null);
     try {
-      await addSpaceSource(spaceId, path.trim());
+      const folder = path.trim();
+      const leaf = folder.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || folder;
+      const project = await createProject(spaceId, leaf);
+      await claimOrphan(project.id, folder);
       onAttached();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

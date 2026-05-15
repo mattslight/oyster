@@ -27,7 +27,7 @@ import { MemoryCard } from "./MemoryCard";
 import { VaultInfo } from "./VaultInfo";
 import { homeRelative, renderPipCounts, stateColor } from "./utils";
 import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./types";
-import { addSpaceSource } from "../../data/spaces-api";
+import { createProject, claimOrphan } from "../../data/projects-api";
 import { deleteMemory, type Memory } from "../../data/memories-api";
 import { ApiError } from "../../data/http";
 import "./Home.css";
@@ -1328,7 +1328,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               if (promotingCwd) throw new Error("Another attach is already in progress");
               setPromotingCwd(cwd);
               try {
-                await addSpaceSource(spaceId, cwd);
+                // New identity model: create a project in the chosen space,
+                // then claim every session whose cwd matches into it. Name
+                // defaults to the folder's basename — users can rename later
+                // via the project tile. Folder is associated lazily by the
+                // watcher once it sees a session under that cwd (and writes
+                // `.oyster/id` if the directory exists).
+                const leaf = cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || cwd;
+                const project = await createProject(spaceId, leaf);
+                await claimOrphan(project.id, cwd);
               } finally {
                 setPromotingCwd(null);
               }
