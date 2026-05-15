@@ -14,6 +14,7 @@ import {
   type ArtifactKind,
 } from "./process-manager.js";
 import Database from "better-sqlite3";
+import { acquireLock, AlreadyRunningError, releaseLock, setLockPort } from "./single-instance-lock.js";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
 import { SqliteSessionStore } from "./session-store.js";
@@ -117,9 +118,10 @@ const WORKSPACE = process.env.OYSTER_WORKSPACE || PACKAGE_ROOT;
 const PROJECT_ROOT = PACKAGE_ROOT;
 // ── Oyster userland layout (#207) ──
 //
-//   OYSTER_HOME — the user's Oyster workspace root.
-//     Installed → ~/Oyster/            (visible; migrated from ~/.oyster/userland/)
-//     Dev       → ./userland/          (unchanged; feature-branch dev writes here)
+//   OYSTER_HOME — the user's Oyster workspace root. Always `~/Oyster/`
+//     unless `OYSTER_USERLAND` overrides (e.g. an isolated worktree).
+//     Dev mode and the installed package share one workspace by design —
+//     `single-instance-lock` makes a second concurrent server impossible.
 //   DB_DIR      — oyster.db, memory.db. At OYSTER_HOME/db/.
 //   APPS_DIR    — installed app bundles (builtins + community). At OYSTER_HOME/apps/.
 //   SPACES_DIR  — one folder per user space. At OYSTER_HOME/spaces/.
@@ -129,7 +131,7 @@ const PROJECT_ROOT = PACKAGE_ROOT;
 // opencode-ai's own config (opencode.json, .opencode/) stays at OYSTER_HOME
 // root because opencode discovers it via CWD walk-up; moving it would
 // require a spawn-flag change out of scope for this PR.
-const OYSTER_HOME = process.env.OYSTER_USERLAND || (isInstalledPackage ? join(homedir(), "Oyster") : join(PACKAGE_ROOT, "userland"));
+const OYSTER_HOME = process.env.OYSTER_USERLAND || join(homedir(), "Oyster");
 const DB_DIR = join(OYSTER_HOME, "db");
 const CONFIG_DIR = join(OYSTER_HOME, "config");
 const APPS_DIR = join(OYSTER_HOME, "apps");
@@ -238,6 +240,19 @@ bootTime("runStartupBackup", () => runStartupBackup(OYSTER_HOME));
 setImportStatePath(OYSTER_HOME);
 
 bootTime("bootstrapUserland", () => bootstrapUserland());
+
+// ── Single-instance lock ──
+// Refuse to start if another Oyster server already owns this workspace.
+// Stale locks (recorded pid is dead) are reclaimed automatically.
+try {
+  acquireLock(OYSTER_HOME);
+} catch (err) {
+  if (err instanceof AlreadyRunningError) {
+    console.error(`\n${err.message}\n`);
+    process.exit(1);
+  }
+  throw err;
+}
 
 // ── Clean environment (no OpenAI key leak to subprocesses) ──
 
@@ -684,8 +699,8 @@ startGenerationTimer((id, filePath, builtin) => {
 });
 startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR));
 
-process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); process.exit(0); });
-process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); process.exit(0); });
+process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); releaseLock(OYSTER_HOME); process.exit(0); });
+process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); releaseLock(OYSTER_HOME); process.exit(0); });
 process.on("uncaughtException", (err) => {
   console.error(`[oyster] uncaught exception: ${err.message}`);
   markShuttingDown();
@@ -972,6 +987,7 @@ function findPort(preferred: number, maxAttempts = 10): Promise<number> {
 }
 
 const port = await bootTimeAsync("findPort", () => findPort(PREFERRED_PORT));
+setLockPort(OYSTER_HOME, port);
 
 // Write OpenCode config with the actual port so MCP URL is always correct.
 // ?internal=1 lets the /mcp handler distinguish OpenCode's own traffic from
