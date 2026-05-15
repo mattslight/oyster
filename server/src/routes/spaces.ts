@@ -8,7 +8,6 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "../space-service.js";
-import { SourcePathConflictError } from "../space-service.js";
 import { existsSync, statSync } from "node:fs";
 import type { UiCommand } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
