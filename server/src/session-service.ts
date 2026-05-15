@@ -14,6 +14,10 @@ import type { SpaceStore } from "./space-store.js";
 
 export interface MoveSessionInput {
   session_id: string;
+  /** A project id binds this session to that project (space_id is derived
+   *  from the project row); `null` clears the project binding and leaves
+   *  the session in the space vault. */
+  project_id?: string | null;
   /** A source id pins this session there; `null` sends it to the space's
    *  vault; `undefined` means "don't change the source binding". */
   source_id?: string | null;
@@ -33,6 +37,10 @@ export class SessionNotFoundError extends Error {
 
 export class SourceNotFoundError extends Error {
   constructor(id: string) { super(`Source "${id}" not found`); }
+}
+
+export class ProjectNotFoundError extends Error {
+  constructor(id: string) { super(`Project "${id}" not found`); }
 }
 
 /** Thrown when a move request doesn't specify anything to change, or
@@ -68,6 +76,25 @@ export class SessionService {
   moveSession(input: MoveSessionInput): SessionRow {
     const row = this.sessionStore.getById(input.session_id);
     if (!row) throw new SessionNotFoundError(input.session_id);
+
+    // Branch 0: project_id specified → bind to project (space derived from
+    // the project row) or clear (project_id: null, space kept). This is the
+    // surface that supersedes source_id once the UI/MCP are swapped over.
+    if (input.project_id !== undefined) {
+      if (input.project_id === null) {
+        this.sessionStore.updateSession(input.session_id, { project_id: null });
+        return this.sessionStore.getById(input.session_id)!;
+      }
+      const project = this.db
+        .prepare("SELECT id, space_id FROM projects WHERE id = ? AND removed_at IS NULL")
+        .get(input.project_id) as { id: string; space_id: string } | undefined;
+      if (!project) throw new ProjectNotFoundError(input.project_id);
+      this.sessionStore.updateSession(input.session_id, {
+        project_id: project.id,
+        space_id: project.space_id,
+      });
+      return this.sessionStore.getById(input.session_id)!;
+    }
 
     // Branch 1: assignment_mode: 'auto' with no source override → recompute.
     // The recompute derives both space_id and source_id from the row's

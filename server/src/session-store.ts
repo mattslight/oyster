@@ -352,7 +352,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   private static readonly UPDATABLE_SESSION_COLUMNS = new Set([
-    "space_id", "source_id", "cwd", "title", "state", "ended_at", "model", "last_event_at", "assignment_mode",
+    "space_id", "source_id", "project_id", "cwd", "title", "state", "ended_at", "model", "last_event_at", "assignment_mode",
   ]);
 
   updateSession(

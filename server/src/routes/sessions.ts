@@ -15,7 +15,7 @@ import type { SqliteSpaceStore } from "../space-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
-import { SessionService, SessionNotFoundError, SourceNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
+import { SessionService, SessionNotFoundError, SourceNotFoundError, ProjectNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
 import type { UiCommand } from "../../../shared/types.js";
 import {
   encodeCwd,
@@ -490,7 +490,17 @@ export async function tryHandleSessionRoute(
       const id = m[1]!;
       try {
         const body = await readJsonBody();
-        const input: { session_id: string; source_id?: string | null; space_id?: string; assignment_mode?: "auto" | "manual" } = { session_id: id };
+        const input: { session_id: string; project_id?: string | null; source_id?: string | null; space_id?: string; assignment_mode?: "auto" | "manual" } = { session_id: id };
+        if ("project_id" in body) {
+          if (body.project_id === null) {
+            input.project_id = null;
+          } else if (typeof body.project_id === "string" && body.project_id.trim().length > 0) {
+            input.project_id = body.project_id.trim();
+          } else {
+            sendJson({ error: "project_id must be a non-empty string or null" }, 400);
+            return true;
+          }
+        }
         if ("source_id" in body) {
           if (body.source_id === null) {
             input.source_id = null;
@@ -529,6 +539,7 @@ export async function tryHandleSessionRoute(
           spaceId: updated.space_id,
           sourceId: updated.source_id ?? null,
           sourceLabel,
+          projectId: updated.project_id ?? null,
           cwd: updated.cwd,
           agent: updated.agent,
           title: updated.title,
@@ -546,7 +557,7 @@ export async function tryHandleSessionRoute(
           activeDeviceLabel: null,
         });
       } catch (err) {
-        if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError) {
+        if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError || err instanceof ProjectNotFoundError) {
           sendJson({ error: err.message }, 404);
           return true;
         }

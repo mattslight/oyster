@@ -272,3 +272,75 @@ describe("SessionService.resetSessionToAuto (and the assignment_mode:'auto' bran
     expect(updated.assignment_mode).toBe("auto");
   });
 });
+
+// New project-shaped moveSession surface. Once these go green and the UI
+// + MCP are swapped over, the source_id / assignment_mode / space_id
+// branches above can be deleted along with their tests.
+
+function seedProject(db: Database.Database, id: string, spaceId: string, name: string) {
+  db.prepare(
+    `INSERT INTO projects (id, space_id, name) VALUES (?, ?, ?)`,
+  ).run(id, spaceId, name);
+}
+
+describe("SessionService.moveSession with project_id", () => {
+  let env: ReturnType<typeof makeEnv>;
+  beforeEach(() => { env = makeEnv(); });
+  afterEach(() => { env.cleanup(); });
+
+  it("project_id: '<id>' → binds, derives space_id from project", () => {
+    seedSpace(env.db, "sp1");
+    seedProject(env.db, "p1", "sp1", "Proj");
+    seedSession(env.db, { id: "s" });
+
+    const updated = env.service.moveSession({ session_id: "s", project_id: "p1" });
+    expect(updated.project_id).toBe("p1");
+    expect(updated.space_id).toBe("sp1");
+  });
+
+  it("project_id: null → clears project, keeps space_id", () => {
+    seedSpace(env.db, "sp1");
+    seedProject(env.db, "p1", "sp1", "Proj");
+    seedSession(env.db, { id: "s", space_id: "sp1" });
+    env.db.prepare("UPDATE sessions SET project_id = 'p1' WHERE id = 's'").run();
+
+    const updated = env.service.moveSession({ session_id: "s", project_id: null });
+    expect(updated.project_id).toBeNull();
+    expect(updated.space_id).toBe("sp1");
+  });
+
+  it("cross-space move via project_id: derives space from the new project", () => {
+    seedSpace(env.db, "sp1");
+    seedSpace(env.db, "sp2");
+    seedProject(env.db, "p1", "sp1", "P1");
+    seedProject(env.db, "p2", "sp2", "P2");
+    seedSession(env.db, { id: "s", space_id: "sp1" });
+    env.db.prepare("UPDATE sessions SET project_id = 'p1' WHERE id = 's'").run();
+
+    const updated = env.service.moveSession({ session_id: "s", project_id: "p2" });
+    expect(updated.project_id).toBe("p2");
+    expect(updated.space_id).toBe("sp2");
+  });
+
+  it("404s on unknown project", () => {
+    seedSession(env.db, { id: "s" });
+    expect(() => env.service.moveSession({ session_id: "s", project_id: "nope" }))
+      .toThrow(/Project/);
+  });
+
+  it("404s on soft-deleted project", () => {
+    seedSpace(env.db, "sp1");
+    seedProject(env.db, "p1", "sp1", "Proj");
+    env.db.prepare("UPDATE projects SET removed_at = datetime('now') WHERE id = 'p1'").run();
+    seedSession(env.db, { id: "s" });
+    expect(() => env.service.moveSession({ session_id: "s", project_id: "p1" }))
+      .toThrow(/Project/);
+  });
+
+  it("404s on unknown session", () => {
+    seedSpace(env.db, "sp1");
+    seedProject(env.db, "p1", "sp1", "Proj");
+    expect(() => env.service.moveSession({ session_id: "nope", project_id: "p1" }))
+      .toThrow(SessionNotFoundError);
+  });
+});
