@@ -63,7 +63,7 @@ const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g
 // We post-process both the raw-bracket form and the link-rendered form.
 const releases = [];
 
-const REPO_URL = "https://github.com/mattslight/oyster";
+const REPO_URL = "https://github.com/oyster-to/oyster";
 const H2_VERSION_RE =
   /<h2[^>]*>(?:<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>|\[([^\]]+)\])(?:\s*-\s*([^<]+?))?<\/h2>/g;
 // What counts as a real git-tag version. The `0.0.x` prototype heading

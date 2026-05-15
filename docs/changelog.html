@@ -325,7 +325,7 @@
   </nav>
 
   <main class="entries">
-<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.2...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
+<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.2...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Move a session to a different folder, or back to &quot;let Oyster decide&quot;.</strong> When a session ran in the wrong folder or a folder gets renamed, you can now reassign it instead of being stuck with the original binding. Available to agents via the new <code>move_session</code> and <code>set_source_path</code> MCP tools, with the UI affordances landing alongside.</li>
@@ -337,11 +337,16 @@
 <li><strong>Sessions bind to the most specific matching folder.</strong> Attaching <code>~/Repo</code> then later <code>~/Repo/web</code> now moves sessions that ran in <code>~/Repo/web</code> over to the more specific source automatically. Manually-pinned sessions are immune.</li>
 <li><strong>Attaching a folder no longer requires it to exist on disk.</strong> The orphan-tile attach flow used to throw when the folder had been renamed since the sessions ran. Attach succeeds; the tile renders with the amber <em>Path missing</em> chip; the longest-prefix heuristic claims the matching sessions.</li>
 </ul>
+<h3>Removed</h3>
+<ul>
+<li><strong>Sprint-2 demo builtins out.</strong> <em>Zombie Horde</em> (a browser game) and <em>The World&#39;s Your Oyster</em> (a positioning deck that contradicted the current framing) no longer ship in fresh installs. Existing installs keep their copies in <code>~/Oyster/apps/</code> — archive them from the surface if you don&#39;t want them.</li>
+</ul>
 <h3>Fixed</h3>
 <ul>
+<li><strong>Home&#39;s table view now matches the icon view for published artefacts.</strong> Cloud-only published rows previously hid the artefact&#39;s real space behind a literal <em>&quot;Cloud&quot;</em> label and showed no published-status chip. The table now shows the underlying space (e.g. <em>tokinvest</em>) and renders the same <em>On cloud</em> / <em>Published</em> chip next to the title that the icon view shows below it — both views speak the same visual language.</li>
 <li><strong>Sessions no longer get stuck pointing at a detached folder.</strong> Previously, removing a folder left sessions silently linked to a deleted source; they now correctly fall back to the space vault.</li>
 </ul>
-<h2 id="v-0-8-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.2-beta.0...v0.8.2" rel="noopener noreferrer"><span class="release-version">0.8.2</span></a><span class="release-date"> — 2026-05-14</span></h2>
+<h2 id="v-0-8-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.2-beta.0...v0.8.2" rel="noopener noreferrer"><span class="release-version">0.8.2</span></a><span class="release-date"> — 2026-05-14</span></h2>
 <p>UI polish, sharper positioning, quieter background sync, and the first wave of Sprint-2 surgery. Headline changes from the 0.8.2-beta cycle plus a couple of final tweaks:</p>
 <h3>Added</h3>
 <ul>
@@ -366,7 +371,7 @@
 <li><strong>Cross-device sessions open their inspector instead of erroring.</strong> Sessions originating on another device now load via the cross-device cache; the inspector shows a <em>&quot;Resume to view transcript&quot;</em> notice until the transcript is reassembled locally.</li>
 <li><strong>Boot banner stays readable on narrow terminals.</strong> When the terminal isn&#39;t wide enough for the boxed banner, Oyster now drops the box and stacks the URLs on separate lines instead of letting the rails wrap.</li>
 </ul>
-<h2 id="v-0-8-2-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.5...v0.8.2-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.2-beta.0</span></a><span class="release-date"> — 2026-05-14</span></h2>
+<h2 id="v-0-8-2-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.5...v0.8.2-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.2-beta.0</span></a><span class="release-date"> — 2026-05-14</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Active-writer chip on cross-device sessions.</strong> When a session is handed off to another device, Home shows a <code>Now active on &lt;device&gt;</code> chip alongside the origin chip; it updates live as new turns arrive.</li>
@@ -385,40 +390,40 @@
 <li><strong>Attaching a folder no longer freezes the UI.</strong> Big folders used to hang the <em>Attach</em> button until a page reload; the scan now runs in the background so the response returns immediately and tiles surface via SSE as they&#39;re found. Mutation requests also time out after 15s rather than waiting indefinitely.</li>
 <li><strong>Cross-device sessions open their inspector instead of erroring.</strong> Sessions originating on another device now load via the cross-device cache; the inspector shows a <em>&quot;Resume to view transcript&quot;</em> notice until the transcript is reassembled locally.</li>
 </ul>
-<h2 id="v-0-8-1-beta-5"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.4...v0.8.1-beta.5" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.5</span></a><span class="release-date"> — 2026-05-12</span></h2>
+<h2 id="v-0-8-1-beta-5"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.4...v0.8.1-beta.5" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.5</span></a><span class="release-date"> — 2026-05-12</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Cross-device session hand-off without forking.</strong> Resuming a backed-up session on another device now continues the same conversation — the transcript timeline stays single, and ownership transfers cleanly to whichever device is currently writing. Catching up only fetches the new bytes instead of re-downloading the full transcript.</li>
 <li><strong>Conflict detection on resume.</strong> If a device has local edits that aren&#39;t in the cloud copy, Oyster blocks the resume and surfaces the conflict instead of silently overwriting your work.</li>
 </ul>
-<h2 id="v-0-8-1-beta-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.3...v0.8.1-beta.4" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.4</span></a><span class="release-date"> — 2026-05-12</span></h2>
+<h2 id="v-0-8-1-beta-4"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.3...v0.8.1-beta.4" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.4</span></a><span class="release-date"> — 2026-05-12</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Cross-device session list no longer self-mirrors.</strong> A first-boot edge case after the device-tagging fix in 0.8.1-beta.3 caused your own sessions to appear briefly in your own cross-device cache. The cache now stays a faithful &quot;other devices only&quot; view, and any leftover ghost rows from earlier installs are cleaned up automatically on next start.</li>
 </ul>
-<h2 id="v-0-8-1-beta-3"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.2...v0.8.1-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.3</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-3"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.2...v0.8.1-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.3</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Chat replies stream again, and the boot console is quiet.</strong> A recent AI-engine update silently broke the live event stream, which made assistant replies fail to render and flooded the terminal with reconnect messages. Both are working again.</li>
 <li><strong>Cross-device session list refreshes automatically.</strong> Sessions you back up on one Pro device now appear on your other devices within seconds, without needing to sign out and back in.</li>
 <li><strong>Sessions remember which device they came from.</strong> Each backed-up session is now tagged with the device that uploaded it, so a future &quot;Resume on this device&quot; experience can show &quot;from MacBook Pro&quot; rather than just an unlabeled card. Sessions backed up before this release are re-tagged automatically the next time Oyster starts.</li>
 </ul>
-<h2 id="v-0-8-1-beta-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.1...v0.8.1-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.2</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.1...v0.8.1-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.2</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Pick up sessions on your other devices (preview).</strong> Sessions backed up on one Pro device now appear in the API as cross-device entries on your other devices. A new local endpoint reassembles a chosen session&#39;s encrypted transcript onto disk so you can run <code>claude --resume &lt;id&gt;</code> on a second machine. The UI surface arrives in the next release.</li>
 </ul>
-<h2 id="v-0-8-1-beta-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.0...v0.8.1-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.1</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.0...v0.8.1-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.1</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Conversation backup uploads reliably from the first session.</strong> Older transcripts discovered at startup are now backed up in the same boot rather than waiting for the next sync tick.</li>
 </ul>
-<h2 id="v-0-8-1-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0...v0.8.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.0</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0...v0.8.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.0</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Conversation backup for Pro users.</strong> Claude Code session transcripts now stream to your Oyster cloud as encrypted delta chunks. Each chunk is sealed with a key derived per user, so transcripts stay private to your account. Cross-device resume — picking up a session on your other machine — comes in a follow-up release.</li>
 </ul>
-<h2 id="v-0-8-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.3...v0.8.0" rel="noopener noreferrer"><span class="release-version">0.8.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.3...v0.8.0" rel="noopener noreferrer"><span class="release-version">0.8.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <p>Memories follow you across Pro devices. Headline changes from the 0.8.0-beta cycle:</p>
 <h3>Added</h3>
 <ul>
@@ -435,12 +440,12 @@
 <li><strong>Memory timestamps now respect your timezone.</strong> &quot;Created&quot; times in the Memories panel previously read as up to several hours off when running outside UTC; they now reflect the actual moment a memory was written.</li>
 <li><strong>Memories panel updates live again.</strong> Writing a memory in chat, or having one arrive from another device, now refreshes the panel automatically — previously only window focus or the manual refresh button surfaced changes.</li>
 </ul>
-<h2 id="v-0-8-0-beta-3"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.2...v0.8.0-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.3</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-3"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.2...v0.8.0-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.3</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Version stamp on the boot banner.</strong> A faint <code>vX.Y.Z</code> now sits below the bottom-right of the Oyster logo at startup — quick visual confirmation of which version is running.</li>
 </ul>
-<h2 id="v-0-8-0-beta-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.1...v0.8.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.2</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.1...v0.8.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.2</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Refresh button on the Memories panel.</strong> Click ↻ to pull cross-device updates immediately, with a brief &quot;Synced&quot; / &quot;Pulled N updates&quot; status flash. Useful when you&#39;ve just made a change on another device and don&#39;t want to wait.</li>
@@ -449,74 +454,74 @@
 <ul>
 <li><strong>Memory sync feels instant when you switch back to a device.</strong> Focusing the Oyster window, returning to the Memories panel, or coming back online now triggers a pull within seconds — no need to wait for the 30-second poll.</li>
 </ul>
-<h2 id="v-0-8-0-beta-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.0...v0.8.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.1</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.0...v0.8.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.1</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Changed</h3>
 <ul>
 <li><strong>Cross-device memory updates appear within ~30 seconds</strong> without requiring a restart. Previously, a running device only checked for new memories from your other devices on sign-in or app launch.</li>
 </ul>
-<h2 id="v-0-8-0-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.7.1-beta.0...v0.8.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.7.1-beta.0...v0.8.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Memories follow you across Pro devices.</strong> Anything you remember on one Pro device shows up on every other Pro device signed into the same account. Forgetting and deletion propagate too. Only memories created while signed into your bound Pro profile sync — pre-existing local memories and anything created on a free account stay local.</li>
 </ul>
-<h2 id="v-0-7-1-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.7.0...v0.7.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.7.1-beta.0</span></a><span class="release-date"> — 2026-05-08</span></h2>
+<h2 id="v-0-7-1-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.7.0...v0.7.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.7.1-beta.0</span></a><span class="release-date"> — 2026-05-08</span></h2>
 <h3>Changed</h3>
 <ul>
 <li><strong>Spaces now sync across signed-in devices.</strong> Pro users see the same set of spaces — name, hierarchy, summary — on every device they sign into. Published artefacts on a fresh device resolve to their real space instead of a generic &quot;Cloud&quot; bucket.</li>
 <li><strong>Boot banner refreshed.</strong> New Oyster logo on launch, plus a single rotating tip per boot — recall, publish, scan, pin, slash commands, MCP setup, and the changelog link cycle through.</li>
 </ul>
-<h2 id="v-0-7-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.6.0...v0.7.0" rel="noopener noreferrer"><span class="release-version">0.7.0</span></a><span class="release-date"> — 2026-05-05</span></h2>
+<h2 id="v-0-7-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.6.0...v0.7.0" rel="noopener noreferrer"><span class="release-version">0.7.0</span></a><span class="release-date"> — 2026-05-05</span></h2>
 <p>Identity and the open web — sign in, publish artefacts, share them anywhere.</p>
 <h3>Added</h3>
 <ul>
-<li><strong>Sign in to Oyster.</strong> Free account in three clicks. Continue with GitHub, or magic-link via email as a fallback. (<a href="https://github.com/mattslight/oyster/issues/295" rel="noopener noreferrer">#295</a>, <a href="https://github.com/mattslight/oyster/issues/340" rel="noopener noreferrer">#340</a>)</li>
-<li><strong>Publish artefacts.</strong> Right-click an artefact, hit Share in the file viewer, or type <code>/p</code> in the chat bar. Open, password, and sign-in-required modes. Published tiles get a copy-link chip and a QR toggle for mobile. (<a href="https://github.com/mattslight/oyster/issues/317" rel="noopener noreferrer">#317</a>)</li>
-<li><strong>Public viewer.</strong> Visiting a share URL renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, inline images. Password links unlock once for 24 hours per browser. (<a href="https://github.com/mattslight/oyster/issues/316" rel="noopener noreferrer">#316</a>)</li>
-<li><strong>Filter Home to published artefacts.</strong> A <code>published</code> pill in the Artefacts header narrows the grid to currently-live shares. (<a href="https://github.com/mattslight/oyster/issues/374" rel="noopener noreferrer">#374</a>)</li>
-<li><strong>Unpublish from the chat bar.</strong> <code>/u &lt;artefact&gt;</code> retires a live share in one keystroke. (<a href="https://github.com/mattslight/oyster/issues/388" rel="noopener noreferrer">#388</a>)</li>
-<li><strong>Pin artefacts.</strong> Right-click for Pin / Unpin; pinned items sort above the rest with a gold corner. New <code>pinned</code> filter chip on Home. (<a href="https://github.com/mattslight/oyster/issues/387" rel="noopener noreferrer">#387</a>)</li>
-<li><strong>Delete a memory.</strong> Hover any row in the Memories list for a trash icon. (<a href="https://github.com/mattslight/oyster/issues/398" rel="noopener noreferrer">#398</a>)</li>
+<li><strong>Sign in to Oyster.</strong> Free account in three clicks. Continue with GitHub, or magic-link via email as a fallback. (<a href="https://github.com/oyster-to/oyster/issues/295" rel="noopener noreferrer">#295</a>, <a href="https://github.com/oyster-to/oyster/issues/340" rel="noopener noreferrer">#340</a>)</li>
+<li><strong>Publish artefacts.</strong> Right-click an artefact, hit Share in the file viewer, or type <code>/p</code> in the chat bar. Open, password, and sign-in-required modes. Published tiles get a copy-link chip and a QR toggle for mobile. (<a href="https://github.com/oyster-to/oyster/issues/317" rel="noopener noreferrer">#317</a>)</li>
+<li><strong>Public viewer.</strong> Visiting a share URL renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, inline images. Password links unlock once for 24 hours per browser. (<a href="https://github.com/oyster-to/oyster/issues/316" rel="noopener noreferrer">#316</a>)</li>
+<li><strong>Filter Home to published artefacts.</strong> A <code>published</code> pill in the Artefacts header narrows the grid to currently-live shares. (<a href="https://github.com/oyster-to/oyster/issues/374" rel="noopener noreferrer">#374</a>)</li>
+<li><strong>Unpublish from the chat bar.</strong> <code>/u &lt;artefact&gt;</code> retires a live share in one keystroke. (<a href="https://github.com/oyster-to/oyster/issues/388" rel="noopener noreferrer">#388</a>)</li>
+<li><strong>Pin artefacts.</strong> Right-click for Pin / Unpin; pinned items sort above the rest with a gold corner. New <code>pinned</code> filter chip on Home. (<a href="https://github.com/oyster-to/oyster/issues/387" rel="noopener noreferrer">#387</a>)</li>
+<li><strong>Delete a memory.</strong> Hover any row in the Memories list for a trash icon. (<a href="https://github.com/oyster-to/oyster/issues/398" rel="noopener noreferrer">#398</a>)</li>
 </ul>
 <h3>Changed</h3>
 <ul>
 <li><strong>Password-protected shares are a Pro feature.</strong> Free accounts get open and sign-in-required links; the Password option shows a Pro pill linking to <a href="https://oyster.to/pricing" rel="noopener noreferrer">oyster.to/pricing</a>. Existing password publications keep working until unpublished.</li>
-<li><strong>Published shares live on <code>share.oyster.to</code>.</strong> Untrusted content runs on its own origin so it can&#39;t reach the main app&#39;s session; sandboxed apps regain real <code>localStorage</code>. Existing <code>oyster.to/p/...</code> links redirect. (<a href="https://github.com/mattslight/oyster/issues/397" rel="noopener noreferrer">#397</a>)</li>
+<li><strong>Published shares live on <code>share.oyster.to</code>.</strong> Untrusted content runs on its own origin so it can&#39;t reach the main app&#39;s session; sandboxed apps regain real <code>localStorage</code>. Existing <code>oyster.to/p/...</code> links redirect. (<a href="https://github.com/oyster-to/oyster/issues/397" rel="noopener noreferrer">#397</a>)</li>
 <li><strong>&quot;Set up Oyster&quot; is a panel, not a wall of text.</strong> After scanning your dev folder, the agent surfaces a structured proposal — drag chips between suggested spaces, rename, untick what you don&#39;t want, then Create.</li>
 <li><strong>Setup is a checklist.</strong> One required step (set up your spaces), three optional. The dock pill stops nagging once the required step is done.</li>
-<li><strong>Repo scanner respects <code>.gitignore</code>.</strong> Folders and files matched by a project&#39;s <code>.gitignore</code> are excluded from scan results. (<a href="https://github.com/mattslight/oyster/issues/281" rel="noopener noreferrer">#281</a>)</li>
-<li><strong>Home sections cap their preview.</strong> Sessions and Artefacts each show ten with a <code>Show more</code> toggle in both icon and table views. (<a href="https://github.com/mattslight/oyster/issues/389" rel="noopener noreferrer">#389</a>)</li>
+<li><strong>Repo scanner respects <code>.gitignore</code>.</strong> Folders and files matched by a project&#39;s <code>.gitignore</code> are excluded from scan results. (<a href="https://github.com/oyster-to/oyster/issues/281" rel="noopener noreferrer">#281</a>)</li>
+<li><strong>Home sections cap their preview.</strong> Sessions and Artefacts each show ten with a <code>Show more</code> toggle in both icon and table views. (<a href="https://github.com/oyster-to/oyster/issues/389" rel="noopener noreferrer">#389</a>)</li>
 </ul>
 <h3>Fixed</h3>
 <ul>
-<li><strong>Faster startup.</strong> Chat is usable in ~1.5s on cold boot, down from ~14s. (<a href="https://github.com/mattslight/oyster/issues/385" rel="noopener noreferrer">#385</a>)</li>
+<li><strong>Faster startup.</strong> Chat is usable in ~1.5s on cold boot, down from ~14s. (<a href="https://github.com/oyster-to/oyster/issues/385" rel="noopener noreferrer">#385</a>)</li>
 <li><strong>Sign-in re-syncs your published artefacts.</strong> Fresh device or after a workspace reset, the cloud is the source of truth. Publications without a local copy surface as <code>On cloud</code> tiles you can manage from any signed-in device.</li>
 <li><strong>Existing publications self-heal their label and space.</strong> Older shares populate proper context on next sign-in instead of forcing a re-publish.</li>
 <li><strong>Right-click works on the artefacts list view.</strong> Pin, Publish settings, Unpublish, and Publish… now appear in a context menu in list view too.</li>
 <li><strong>Published apps and wireframes no longer load blank.</strong> The viewer forces <code>text/html</code> for app, deck, wireframe, table, and map kinds.</li>
 <li><strong>Google Fonts loads in published apps.</strong> The iframe CSP now allows <code>fonts.googleapis.com</code> and <code>fonts.gstatic.com</code>.</li>
 </ul>
-<h2 id="v-0-6-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.5.0...v0.6.0" rel="noopener noreferrer"><span class="release-version">0.6.0</span></a><span class="release-date"> — 2026-05-02</span></h2>
+<h2 id="v-0-6-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.5.0...v0.6.0" rel="noopener noreferrer"><span class="release-version">0.6.0</span></a><span class="release-date"> — 2026-05-02</span></h2>
 <p>Trustworthy recall — every memory traceable, every conversation searchable.</p>
 <h3>Added</h3>
 <ul>
-<li><strong>Find within a session.</strong> Cmd+F in the session inspector opens an in-place search bar; ↑/↓ steps through matches with the current one scrolled into view. (<a href="https://github.com/mattslight/oyster/issues/332" rel="noopener noreferrer">#332</a>)</li>
-<li><strong>Spotlight searches transcripts.</strong> Cmd+K now matches past conversation turns alongside artefacts; click through to open the source session at that turn. (<a href="https://github.com/mattslight/oyster/issues/329" rel="noopener noreferrer">#329</a>)</li>
-<li><strong>Verbatim transcript recall.</strong> Agents can search your past conversations directly, not just the memory layer. Same-device for now; cross-device lands with cloud transcripts in 0.8.0. (<a href="https://github.com/mattslight/oyster/issues/311" rel="noopener noreferrer">#311</a>)</li>
-<li><strong>Memory tab on the session inspector.</strong> Shows what each session wrote and pulled; click any entry to jump to its source session. The Home memories list grows the same affordance. (<a href="https://github.com/mattslight/oyster/issues/310" rel="noopener noreferrer">#310</a>)</li>
+<li><strong>Find within a session.</strong> Cmd+F in the session inspector opens an in-place search bar; ↑/↓ steps through matches with the current one scrolled into view. (<a href="https://github.com/oyster-to/oyster/issues/332" rel="noopener noreferrer">#332</a>)</li>
+<li><strong>Spotlight searches transcripts.</strong> Cmd+K now matches past conversation turns alongside artefacts; click through to open the source session at that turn. (<a href="https://github.com/oyster-to/oyster/issues/329" rel="noopener noreferrer">#329</a>)</li>
+<li><strong>Verbatim transcript recall.</strong> Agents can search your past conversations directly, not just the memory layer. Same-device for now; cross-device lands with cloud transcripts in 0.8.0. (<a href="https://github.com/oyster-to/oyster/issues/311" rel="noopener noreferrer">#311</a>)</li>
+<li><strong>Memory tab on the session inspector.</strong> Shows what each session wrote and pulled; click any entry to jump to its source session. The Home memories list grows the same affordance. (<a href="https://github.com/oyster-to/oyster/issues/310" rel="noopener noreferrer">#310</a>)</li>
 <li><strong>Floating scroll-to-bottom arrow</strong> in the session inspector — snaps back to the tail and re-arms auto-tail.</li>
 </ul>
-<h2 id="v-0-5-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...v0.5.0" rel="noopener noreferrer"><span class="release-version">0.5.0</span></a><span class="release-date"> — 2026-05-01</span></h2>
+<h2 id="v-0-5-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.5.0-beta.2...v0.5.0" rel="noopener noreferrer"><span class="release-version">0.5.0</span></a><span class="release-date"> — 2026-05-01</span></h2>
 <p>Identical to <code>0.5.0-beta.2</code>. Headline changes from the beta cycle:</p>
 <ul>
-<li><strong>Oyster sees your Claude Code sessions.</strong> Run <code>claude</code> in any folder mapped to a space and Oyster picks it up — title, file edits, and live state, with no MCP wiring. (<a href="https://github.com/mattslight/oyster/issues/251" rel="noopener noreferrer">#251</a>)</li>
-<li><strong>Session inspector.</strong> Click a session for the live transcript, touched artefacts, and a <em>Copy resume command</em> — and process-aware state means no spurious red on long thinking turns. (<a href="https://github.com/mattslight/oyster/issues/253" rel="noopener noreferrer">#253</a>, <a href="https://github.com/mattslight/oyster/issues/274" rel="noopener noreferrer">#274</a>, <a href="https://github.com/mattslight/oyster/issues/275" rel="noopener noreferrer">#275</a>)</li>
-<li><strong>Home is a sectioned feed.</strong> Spaces · Sessions · Artefacts · Memories replace the spatial desktop as the default surface; chips filter inline and live-update as agents work. (<a href="https://github.com/mattslight/oyster/issues/252" rel="noopener noreferrer">#252</a>, <a href="https://github.com/mattslight/oyster/issues/254" rel="noopener noreferrer">#254</a>, <a href="https://github.com/mattslight/oyster/issues/280" rel="noopener noreferrer">#280</a>)</li>
-<li><strong>Project tiles on every space.</strong> Scope a space to one linked folder, promote an Elsewhere folder into its own space in one click, and removing the only folder cleanly deletes the space. (<a href="https://github.com/mattslight/oyster/issues/266" rel="noopener noreferrer">#266</a>, <a href="https://github.com/mattslight/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
+<li><strong>Oyster sees your Claude Code sessions.</strong> Run <code>claude</code> in any folder mapped to a space and Oyster picks it up — title, file edits, and live state, with no MCP wiring. (<a href="https://github.com/oyster-to/oyster/issues/251" rel="noopener noreferrer">#251</a>)</li>
+<li><strong>Session inspector.</strong> Click a session for the live transcript, touched artefacts, and a <em>Copy resume command</em> — and process-aware state means no spurious red on long thinking turns. (<a href="https://github.com/oyster-to/oyster/issues/253" rel="noopener noreferrer">#253</a>, <a href="https://github.com/oyster-to/oyster/issues/274" rel="noopener noreferrer">#274</a>, <a href="https://github.com/oyster-to/oyster/issues/275" rel="noopener noreferrer">#275</a>)</li>
+<li><strong>Home is a sectioned feed.</strong> Spaces · Sessions · Artefacts · Memories replace the spatial desktop as the default surface; chips filter inline and live-update as agents work. (<a href="https://github.com/oyster-to/oyster/issues/252" rel="noopener noreferrer">#252</a>, <a href="https://github.com/oyster-to/oyster/issues/254" rel="noopener noreferrer">#254</a>, <a href="https://github.com/oyster-to/oyster/issues/280" rel="noopener noreferrer">#280</a>)</li>
+<li><strong>Project tiles on every space.</strong> Scope a space to one linked folder, promote an Elsewhere folder into its own space in one click, and removing the only folder cleanly deletes the space. (<a href="https://github.com/oyster-to/oyster/issues/266" rel="noopener noreferrer">#266</a>, <a href="https://github.com/oyster-to/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
 <li><strong>Oyster Pro foundations.</strong> Coming-soon page with local vault inventory and waitlist signup at <a href="https://oyster.to/pricing" rel="noopener noreferrer">oyster.to/pricing</a>.</li>
-<li><strong>Local-only endpoints refuse non-loopback callers.</strong> Closes a same-WiFi gap where a non-browser client could pull local APIs. (<a href="https://github.com/mattslight/oyster/issues/289" rel="noopener noreferrer">#289</a>)</li>
+<li><strong>Local-only endpoints refuse non-loopback callers.</strong> Closes a same-WiFi gap where a non-browser client could pull local APIs. (<a href="https://github.com/oyster-to/oyster/issues/289" rel="noopener noreferrer">#289</a>)</li>
 </ul>
 <p>See <code>0.5.0-beta.0</code> through <code>0.5.0-beta.2</code> below for per-beta detail.</p>
-<h2 id="v-0-5-0-beta-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.2</span></a><span class="release-date"> — 2026-05-01</span></h2>
+<h2 id="v-0-5-0-beta-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.2</span></a><span class="release-date"> — 2026-05-01</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Pro waitlist signup.</strong> <em>Join the waitlist</em> on the pricing page captures your email and sends a confirmation.</li>
@@ -526,44 +531,44 @@
 <li><strong>Sessions default to &quot;all&quot; + table view</strong> so fresh installs don&#39;t look empty when no Claude session is live. Existing icon-view preferences are preserved.</li>
 <li><strong>Pricing page hero</strong> restructured into Free promise + Oyster Pro add-on, framing Pro as the optional thing.</li>
 </ul>
-<h2 id="v-0-5-0-beta-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.1</span></a><span class="release-date"> — 2026-05-01</span></h2>
+<h2 id="v-0-5-0-beta-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.1</span></a><span class="release-date"> — 2026-05-01</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Oyster Pro coming-soon page.</strong> Shield-icon pill in the breadcrumb opens a page naming what&#39;s about to ship — Sync · Memory · Publish — and inventories your local workspace. CTA links to a public pricing page at <a href="https://oyster.to/pricing" rel="noopener noreferrer">oyster.to/pricing</a>.</li>
-<li><strong>Session inspector.</strong> Click a session for the live transcript, touched artefacts, and a <em>Copy resume command</em> button. Disconnected sessions show a last-heartbeat banner. (<a href="https://github.com/mattslight/oyster/issues/253" rel="noopener noreferrer">#253</a>)</li>
-<li><strong>Scroll up to load older transcript turns.</strong> 1000-turn window with a <code>1000+</code> badge; older turns prepend in place, scroll position pinned. (<a href="https://github.com/mattslight/oyster/issues/274" rel="noopener noreferrer">#274</a>)</li>
-<li><strong>Memories on Home.</strong> Agents&#39; <code>remember</code> notes show alongside Sessions and Artefacts, scoped by space pills. (<a href="https://github.com/mattslight/oyster/issues/254" rel="noopener noreferrer">#254</a>)</li>
-<li><strong>Project tiles on every space.</strong> Scope to one linked folder, attach folders inline, scratchpad tile for native artefacts. (<a href="https://github.com/mattslight/oyster/issues/266" rel="noopener noreferrer">#266</a>)</li>
-<li><strong>Filter and collapse Artefacts on Home.</strong> Defaults to ~3 rows; chips split <em>mine</em> / <em>from agents</em> / <em>linked</em>. (<a href="https://github.com/mattslight/oyster/issues/280" rel="noopener noreferrer">#280</a>)</li>
-<li><strong>Promote an Elsewhere folder to its own space — one click.</strong> Sessions whose cwd matches re-attribute to the new space. (<a href="https://github.com/mattslight/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
+<li><strong>Session inspector.</strong> Click a session for the live transcript, touched artefacts, and a <em>Copy resume command</em> button. Disconnected sessions show a last-heartbeat banner. (<a href="https://github.com/oyster-to/oyster/issues/253" rel="noopener noreferrer">#253</a>)</li>
+<li><strong>Scroll up to load older transcript turns.</strong> 1000-turn window with a <code>1000+</code> badge; older turns prepend in place, scroll position pinned. (<a href="https://github.com/oyster-to/oyster/issues/274" rel="noopener noreferrer">#274</a>)</li>
+<li><strong>Memories on Home.</strong> Agents&#39; <code>remember</code> notes show alongside Sessions and Artefacts, scoped by space pills. (<a href="https://github.com/oyster-to/oyster/issues/254" rel="noopener noreferrer">#254</a>)</li>
+<li><strong>Project tiles on every space.</strong> Scope to one linked folder, attach folders inline, scratchpad tile for native artefacts. (<a href="https://github.com/oyster-to/oyster/issues/266" rel="noopener noreferrer">#266</a>)</li>
+<li><strong>Filter and collapse Artefacts on Home.</strong> Defaults to ~3 rows; chips split <em>mine</em> / <em>from agents</em> / <em>linked</em>. (<a href="https://github.com/oyster-to/oyster/issues/280" rel="noopener noreferrer">#280</a>)</li>
+<li><strong>Promote an Elsewhere folder to its own space — one click.</strong> Sessions whose cwd matches re-attribute to the new space. (<a href="https://github.com/oyster-to/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
 <li><strong>Right-click a space pill for Rename · Delete.</strong> Delete itemises affected sessions, artefacts, and memories before confirming.</li>
 </ul>
 <h3>Changed</h3>
 <ul>
 <li><strong>Process-aware session states.</strong> Active / waiting / disconnected / done, derived from running <code>claude</code> processes — no more spurious red on long thinking turns.</li>
-<li><strong>Removing the only folder from a space deletes the space.</strong> Detach no longer leaves empty-shell spaces behind; sessions return to Elsewhere. (<a href="https://github.com/mattslight/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
+<li><strong>Removing the only folder from a space deletes the space.</strong> Detach no longer leaves empty-shell spaces behind; sessions return to Elsewhere. (<a href="https://github.com/oyster-to/oyster/issues/285" rel="noopener noreferrer">#285</a>)</li>
 <li><strong>Empty-shell space surfaces a delete affordance</strong> — the &quot;no folders attached&quot; banner now ends with <code>…or delete it.</code></li>
 </ul>
 <h3>Fixed</h3>
 <ul>
-<li><strong>Older sessions show their transcripts.</strong> Sessions whose <code>claude</code> process finished before Oyster started watching now backfill on the next boot scan. (<a href="https://github.com/mattslight/oyster/issues/275" rel="noopener noreferrer">#275</a>)</li>
+<li><strong>Older sessions show their transcripts.</strong> Sessions whose <code>claude</code> process finished before Oyster started watching now backfill on the next boot scan. (<a href="https://github.com/oyster-to/oyster/issues/275" rel="noopener noreferrer">#275</a>)</li>
 </ul>
 <h3>Security</h3>
 <ul>
-<li><strong>Local-only endpoints refuse non-loopback callers.</strong> Server binds to <code>127.0.0.1</code> and rejects no-Origin requests from non-loopback addresses. (<a href="https://github.com/mattslight/oyster/issues/289" rel="noopener noreferrer">#289</a>)</li>
+<li><strong>Local-only endpoints refuse non-loopback callers.</strong> Server binds to <code>127.0.0.1</code> and rejects no-Origin requests from non-loopback addresses. (<a href="https://github.com/oyster-to/oyster/issues/289" rel="noopener noreferrer">#289</a>)</li>
 </ul>
-<h2 id="v-0-5-0-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.0</span></a><span class="release-date"> — 2026-04-28</span></h2>
+<h2 id="v-0-5-0-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0...v0.5.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.5.0-beta.0</span></a><span class="release-date"> — 2026-04-28</span></h2>
 <h3>Added</h3>
 <ul>
-<li><strong>Oyster sees your <code>claude</code> sessions.</strong> Run <code>claude</code> in any folder mapped to a space and Oyster picks the session up automatically — no MCP wiring. Title from your first prompt, file edits attributed to tiles, sessions in unregistered folders land as orphans. (<a href="https://github.com/mattslight/oyster/issues/251" rel="noopener noreferrer">#251</a>)</li>
-<li><strong>Home is now a sectioned feed.</strong> Spaces · Sessions · Artefacts replace the spatial desktop as the default surface, scoped together by the chat-bar pills. State chips filter sessions inline; the list updates live. (<a href="https://github.com/mattslight/oyster/issues/252" rel="noopener noreferrer">#252</a>)</li>
+<li><strong>Oyster sees your <code>claude</code> sessions.</strong> Run <code>claude</code> in any folder mapped to a space and Oyster picks the session up automatically — no MCP wiring. Title from your first prompt, file edits attributed to tiles, sessions in unregistered folders land as orphans. (<a href="https://github.com/oyster-to/oyster/issues/251" rel="noopener noreferrer">#251</a>)</li>
+<li><strong>Home is now a sectioned feed.</strong> Spaces · Sessions · Artefacts replace the spatial desktop as the default surface, scoped together by the chat-bar pills. State chips filter sessions inline; the list updates live. (<a href="https://github.com/oyster-to/oyster/issues/252" rel="noopener noreferrer">#252</a>)</li>
 </ul>
-<h2 id="v-0-4-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.8...v0.4.0" rel="noopener noreferrer"><span class="release-version">0.4.0</span></a><span class="release-date"> — 2026-04-28</span></h2>
+<h2 id="v-0-4-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.8...v0.4.0" rel="noopener noreferrer"><span class="release-version">0.4.0</span></a><span class="release-date"> — 2026-04-28</span></h2>
 <p>The 0.4.0 line is now stable. Code is identical to <code>0.4.0-beta.8</code>. Headline changes from the beta cycle:</p>
 <ul>
-<li><strong>Agent-led setup.</strong> Connect your AI, ask <em>&quot;Set up Oyster&quot;</em>, and your agent audits your filesystem and proposes spaces. Works through Claude Code, Cursor, Windsurf, VS Code, or Oyster&#39;s own chat bar. (<a href="https://github.com/mattslight/oyster/issues/184" rel="noopener noreferrer">#184</a>, <a href="https://github.com/mattslight/oyster/pull/195" rel="noopener noreferrer">#195</a>)</li>
-<li><strong>Visible workspace at <code>~/Oyster/</code></strong> with typed sub-folders — <code>db/</code>, <code>apps/</code>, <code>spaces/</code>, <code>backups/</code>. Browsable outside Oyster. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
-<li><strong>Linked folders are first-class.</strong> Attach external folders to a space; detach removes their tiles cleanly; reattach restores them. The ↗ glyph and <em>Where do my files live?</em> tile make it obvious which tiles you own vs which are windows into folders elsewhere on disk. (<a href="https://github.com/mattslight/oyster/issues/208" rel="noopener noreferrer">#208</a>, <a href="https://github.com/mattslight/oyster/issues/220" rel="noopener noreferrer">#220</a>)</li>
+<li><strong>Agent-led setup.</strong> Connect your AI, ask <em>&quot;Set up Oyster&quot;</em>, and your agent audits your filesystem and proposes spaces. Works through Claude Code, Cursor, Windsurf, VS Code, or Oyster&#39;s own chat bar. (<a href="https://github.com/oyster-to/oyster/issues/184" rel="noopener noreferrer">#184</a>, <a href="https://github.com/oyster-to/oyster/pull/195" rel="noopener noreferrer">#195</a>)</li>
+<li><strong>Visible workspace at <code>~/Oyster/</code></strong> with typed sub-folders — <code>db/</code>, <code>apps/</code>, <code>spaces/</code>, <code>backups/</code>. Browsable outside Oyster. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>Linked folders are first-class.</strong> Attach external folders to a space; detach removes their tiles cleanly; reattach restores them. The ↗ glyph and <em>Where do my files live?</em> tile make it obvious which tiles you own vs which are windows into folders elsewhere on disk. (<a href="https://github.com/oyster-to/oyster/issues/208" rel="noopener noreferrer">#208</a>, <a href="https://github.com/oyster-to/oyster/issues/220" rel="noopener noreferrer">#220</a>)</li>
 <li><strong>Cloud-AI memory import.</strong> Bring context across from another AI by pasting Oyster&#39;s export prompt — spaces, summaries, and memories seed in one pass.</li>
 <li><strong>Logical-only spaces.</strong> Create a conceptual space first; attach folders later or keep it folder-less.</li>
 <li><strong>HTML-styled documents render as designed</strong> (invoices, decks, letters), no longer forced through the dark markdown wrapper.</li>
@@ -571,28 +576,28 @@
 <li><strong>Better AI error surfacing.</strong> Provider failures (expired key, rate limit, outage) raise a banner with the reason and reconnect command instead of staying silent.</li>
 </ul>
 <p>See <code>0.4.0-beta.0</code> through <code>0.4.0-beta.8</code> below for per-beta detail.</p>
-<h2 id="v-0-4-0-beta-8"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.7...v0.4.0-beta.8" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.8</span></a><span class="release-date"> — 2026-04-28</span></h2>
+<h2 id="v-0-4-0-beta-8"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.7...v0.4.0-beta.8" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.8</span></a><span class="release-date"> — 2026-04-28</span></h2>
 <h3>Fixed</h3>
 <ul>
-<li><strong>First-run hero tagline no longer overlays the chat output.</strong> Clicking the <em>Set up Oyster</em> prompt pill (instead of typing into the input) used to send the message without focusing the chat, so the <em>&quot;Welcome to your surface.&quot;</em> tagline stayed on screen and floated over the streaming reply. The tagline now hides as soon as any chat message exists. (<a href="https://github.com/mattslight/oyster/pull/235" rel="noopener noreferrer">#235</a>)</li>
-<li><strong>Space pickers now show your renamed name.</strong> The <code>#</code> and <code>/s</code> autocompletes used to label every space by its slug (<code>sample-dashboard</code>), so renaming <em>Sample Dashboard</em> → <em>Project X</em> still showed <code>sample-dashboard</code> in the picker. They now show the display name; the slug appears as a secondary hint. (<a href="https://github.com/mattslight/oyster/pull/236" rel="noopener noreferrer">#236</a>)</li>
+<li><strong>First-run hero tagline no longer overlays the chat output.</strong> Clicking the <em>Set up Oyster</em> prompt pill (instead of typing into the input) used to send the message without focusing the chat, so the <em>&quot;Welcome to your surface.&quot;</em> tagline stayed on screen and floated over the streaming reply. The tagline now hides as soon as any chat message exists. (<a href="https://github.com/oyster-to/oyster/pull/235" rel="noopener noreferrer">#235</a>)</li>
+<li><strong>Space pickers now show your renamed name.</strong> The <code>#</code> and <code>/s</code> autocompletes used to label every space by its slug (<code>sample-dashboard</code>), so renaming <em>Sample Dashboard</em> → <em>Project X</em> still showed <code>sample-dashboard</code> in the picker. They now show the display name; the slug appears as a secondary hint. (<a href="https://github.com/oyster-to/oyster/pull/236" rel="noopener noreferrer">#236</a>)</li>
 </ul>
-<h2 id="v-0-4-0-beta-7"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.6...v0.4.0-beta.7" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.7</span></a><span class="release-date"> — 2026-04-25</span></h2>
+<h2 id="v-0-4-0-beta-7"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.6...v0.4.0-beta.7" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.7</span></a><span class="release-date"> — 2026-04-25</span></h2>
 <h3>Changed</h3>
 <ul>
-<li><strong>&quot;Where do my files live?&quot; tile is more useful at a glance.</strong> Adopts the Quick Start visual language, leads with the resolved path of your Oyster home, and shows a small preview of the chain-link marker so you can see what a linked tile looks like — not just be told. (<a href="https://github.com/mattslight/oyster/pull/222" rel="noopener noreferrer">#222</a>)</li>
+<li><strong>&quot;Where do my files live?&quot; tile is more useful at a glance.</strong> Adopts the Quick Start visual language, leads with the resolved path of your Oyster home, and shows a small preview of the chain-link marker so you can see what a linked tile looks like — not just be told. (<a href="https://github.com/oyster-to/oyster/pull/222" rel="noopener noreferrer">#222</a>)</li>
 </ul>
-<h2 id="v-0-4-0-beta-6"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.5...v0.4.0-beta.6" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.6</span></a><span class="release-date"> — 2026-04-25</span></h2>
+<h2 id="v-0-4-0-beta-6"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.5...v0.4.0-beta.6" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.6</span></a><span class="release-date"> — 2026-04-25</span></h2>
 <h3>Changed</h3>
 <ul>
-<li><strong>Linked tiles now carry a small chain-link marker</strong> (bottom-left of the icon) so you can tell at a glance which tiles are windows into folders elsewhere on disk vs. native to your Oyster workspace. Hover the marker for the source folder name. The &quot;Where are my files?&quot; tile is now <strong>&quot;Where do my files live?&quot;</strong> and explains the two homes — Oyster-managed workspace, and linked folders you own. (<a href="https://github.com/mattslight/oyster/issues/220" rel="noopener noreferrer">#220</a>)</li>
+<li><strong>Linked tiles now carry a small chain-link marker</strong> (bottom-left of the icon) so you can tell at a glance which tiles are windows into folders elsewhere on disk vs. native to your Oyster workspace. Hover the marker for the source folder name. The &quot;Where are my files?&quot; tile is now <strong>&quot;Where do my files live?&quot;</strong> and explains the two homes — Oyster-managed workspace, and linked folders you own. (<a href="https://github.com/oyster-to/oyster/issues/220" rel="noopener noreferrer">#220</a>)</li>
 </ul>
-<h2 id="v-0-4-0-beta-5"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.4...v0.4.0-beta.5" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.5</span></a><span class="release-date"> — 2026-04-25</span></h2>
+<h2 id="v-0-4-0-beta-5"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.4...v0.4.0-beta.5" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.5</span></a><span class="release-date"> — 2026-04-25</span></h2>
 <h3>Changed</h3>
 <ul>
 <li><strong>Linked folders are now first-class.</strong> Detaching a folder from a space cleanly removes its tiles (no more orphans), and reattaching the same folder restores them. Sets up cleaner provenance and detach UI later.</li>
 </ul>
-<h2 id="v-0-4-0-beta-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.3...v0.4.0-beta.4" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.4</span></a><span class="release-date"> — 2026-04-25</span></h2>
+<h2 id="v-0-4-0-beta-4"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.3...v0.4.0-beta.4" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.4</span></a><span class="release-date"> — 2026-04-25</span></h2>
 <h3>Changed</h3>
 <ul>
 <li><strong>Startup banner is now a coloured box</strong> so the &quot;Open Oyster&quot; URL and starter prompts don&#39;t get lost in the logs.</li>
@@ -601,7 +606,7 @@
 <ul>
 <li><strong>Setup dock no longer skips &quot;Connect your AI&quot;</strong> after the chat bar creates your first space.</li>
 </ul>
-<h2 id="v-0-4-0-beta-3"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.2...v0.4.0-beta.3" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.3</span></a><span class="release-date"> — 2026-04-24</span></h2>
+<h2 id="v-0-4-0-beta-3"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.2...v0.4.0-beta.3" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.3</span></a><span class="release-date"> — 2026-04-24</span></h2>
 <h3>Changed</h3>
 <ul>
 <li><strong>Clearer first-run hero.</strong> <em>&quot;Welcome to your surface. Ask: <code>Set up Oyster</code>&quot;</em> — tap the prompt pill to send it, or type your own.</li>
@@ -610,36 +615,36 @@
 <ul>
 <li><strong>Windows polish.</strong> Cleaner startup (no more alarming error messages in the terminal), thin dark scrollbars on artifacts and setup dialogs to match Mac, and the built-in terminal now recognises Oyster as an AI agent option.</li>
 </ul>
-<h2 id="v-0-4-0-beta-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.1...v0.4.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.2</span></a><span class="release-date"> — 2026-04-24</span></h2>
+<h2 id="v-0-4-0-beta-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.1...v0.4.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.2</span></a><span class="release-date"> — 2026-04-24</span></h2>
 <h3>Fixed</h3>
 <ul>
-<li><strong><code>oyster install &lt;id&gt;</code> now works.</strong> The CLI was writing to the pre-0.4 hidden workspace path while the server scans the new <code>~/Oyster/apps/</code> — so installs silently landed where nothing looked. Community plugins now install and appear on the surface after a restart. (<a href="https://github.com/mattslight/oyster/pull/212" rel="noopener noreferrer">#212</a>)</li>
+<li><strong><code>oyster install &lt;id&gt;</code> now works.</strong> The CLI was writing to the pre-0.4 hidden workspace path while the server scans the new <code>~/Oyster/apps/</code> — so installs silently landed where nothing looked. Community plugins now install and appear on the surface after a restart. (<a href="https://github.com/oyster-to/oyster/pull/212" rel="noopener noreferrer">#212</a>)</li>
 </ul>
-<h2 id="v-0-4-0-beta-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.4.0-beta.0...v0.4.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.1</span></a><span class="release-date"> — 2026-04-24</span></h2>
+<h2 id="v-0-4-0-beta-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.4.0-beta.0...v0.4.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.1</span></a><span class="release-date"> — 2026-04-24</span></h2>
 <h3>Added</h3>
 <ul>
-<li><strong>&quot;Where are my files?&quot; tile.</strong> Shows your live workspace paths, not a generic doc. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
-<li><strong>Archive shortcut</strong> — icon bottom-left opens the archived view. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
-<li><strong>Right-click → Regenerate icon</strong> on any tile, including builtins. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
-<li><strong>Agent can list and restore archived artifacts.</strong> Previously it couldn&#39;t see them. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>&quot;Where are my files?&quot; tile.</strong> Shows your live workspace paths, not a generic doc. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>Archive shortcut</strong> — icon bottom-left opens the archived view. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>Right-click → Regenerate icon</strong> on any tile, including builtins. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>Agent can list and restore archived artifacts.</strong> Previously it couldn&#39;t see them. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
 </ul>
 <h3>Changed</h3>
 <ul>
-<li><strong>Workspace moves to <code>~/Oyster/</code></strong> (from hidden <code>~/.oyster/userland/</code>). Visible in Finder / Explorer, with clear sub-folders: <code>db/</code>, <code>apps/</code>, <code>spaces/&lt;project&gt;/</code>, <code>backups/</code>. Your content is browsable outside Oyster. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
-<li><strong>Styled confirm / rename dialogs</strong> replace the default browser prompts for uninstall, archive, and folder rename. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
-<li><strong>&quot;Import from AI&quot; → &quot;Import Memories&quot;</strong> — same tile, clearer name. (<a href="https://github.com/mattslight/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>Workspace moves to <code>~/Oyster/</code></strong> (from hidden <code>~/.oyster/userland/</code>). Visible in Finder / Explorer, with clear sub-folders: <code>db/</code>, <code>apps/</code>, <code>spaces/&lt;project&gt;/</code>, <code>backups/</code>. Your content is browsable outside Oyster. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>Styled confirm / rename dialogs</strong> replace the default browser prompts for uninstall, archive, and folder rename. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
+<li><strong>&quot;Import from AI&quot; → &quot;Import Memories&quot;</strong> — same tile, clearer name. (<a href="https://github.com/oyster-to/oyster/issues/207" rel="noopener noreferrer">#207</a>)</li>
 </ul>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Your AI can now create HTML-styled documents (invoices, receipts, letters).</strong> Agents can save artifacts as HTML so they render on the surface the way they were designed — white paper, printable layout. Previously every agent-created notes artifact was forced into markdown and shown through the dark markdown wrapper, so pages meant for white paper looked wrong.</li>
-<li><strong>Silent AI failures now surface.</strong> When your AI provider rejects a message (expired key, rate limit, provider outage) Oyster shows a banner with the reason and, for auth failures, the exact command to reconnect — instead of the chat bar staying mute. (<a href="https://github.com/mattslight/oyster/issues/201" rel="noopener noreferrer">#201</a>)</li>
-<li><strong>AI engine no longer piles up after crashes or force-quits.</strong> Previous Oyster sessions that died without a clean shutdown used to leave their AI engine subprocess running forever, and across days of use these could stack up and fill your swap. Oyster now reaps any orphaned engines on startup, and uses OS-level process groups so a graceful shutdown kills the whole engine tree in one go. (<a href="https://github.com/mattslight/oyster/issues/191" rel="noopener noreferrer">#191</a>)</li>
-<li><strong>Silent &quot;thinking…&quot; hang when no AI provider is configured.</strong> Some AI-engine failures only surfaced in the server log and never reached the chat — messages would sit on &quot;thinking…&quot; forever. Oyster now catches those and raises them into the same banner as other AI errors, so you always get a reason and a next step. (<a href="https://github.com/mattslight/oyster/issues/203" rel="noopener noreferrer">#203</a>)</li>
+<li><strong>Silent AI failures now surface.</strong> When your AI provider rejects a message (expired key, rate limit, provider outage) Oyster shows a banner with the reason and, for auth failures, the exact command to reconnect — instead of the chat bar staying mute. (<a href="https://github.com/oyster-to/oyster/issues/201" rel="noopener noreferrer">#201</a>)</li>
+<li><strong>AI engine no longer piles up after crashes or force-quits.</strong> Previous Oyster sessions that died without a clean shutdown used to leave their AI engine subprocess running forever, and across days of use these could stack up and fill your swap. Oyster now reaps any orphaned engines on startup, and uses OS-level process groups so a graceful shutdown kills the whole engine tree in one go. (<a href="https://github.com/oyster-to/oyster/issues/191" rel="noopener noreferrer">#191</a>)</li>
+<li><strong>Silent &quot;thinking…&quot; hang when no AI provider is configured.</strong> Some AI-engine failures only surfaced in the server log and never reached the chat — messages would sit on &quot;thinking…&quot; forever. Oyster now catches those and raises them into the same banner as other AI errors, so you always get a reason and a next step. (<a href="https://github.com/oyster-to/oyster/issues/203" rel="noopener noreferrer">#203</a>)</li>
 </ul>
-<h2 id="v-0-4-0-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.8...v0.4.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.0</span></a><span class="release-date"> — 2026-04-23</span></h2>
+<h2 id="v-0-4-0-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.8...v0.4.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.4.0-beta.0</span></a><span class="release-date"> — 2026-04-23</span></h2>
 <h3>Added</h3>
 <ul>
-<li><strong>Onboarding pill.</strong> A persistent setup companion in the top-right of a fresh Oyster walks you through three steps: connect your AI agent, ask it to set things up, and optionally import memories from another AI. Progress tracks automatically as you go. (<a href="https://github.com/mattslight/oyster/issues/184" rel="noopener noreferrer">#184</a>)</li>
+<li><strong>Onboarding pill.</strong> A persistent setup companion in the top-right of a fresh Oyster walks you through three steps: connect your AI agent, ask it to set things up, and optionally import memories from another AI. Progress tracks automatically as you go. (<a href="https://github.com/oyster-to/oyster/issues/184" rel="noopener noreferrer">#184</a>)</li>
 <li><strong>Agent-led discovery.</strong> Connect Claude Code, Cursor, Windsurf, VS Code — or use Oyster&#39;s own chat bar — and ask <em>&quot;set up Oyster for me.&quot;</em> Your agent audits your filesystem, proposes a set of spaces in chat, and creates them once you confirm.</li>
 <li><strong>Cloud-AI import.</strong> Bring your context across from another AI: copy Oyster&#39;s import prompt into ChatGPT or Claude, paste the response back into Oyster&#39;s chat, and your spaces, summaries, and memories are seeded in one pass.</li>
 <li><strong>Logical-only spaces.</strong> Spaces no longer need a folder on disk. Create a conceptual space (&quot;Work&quot;, &quot;Reading&quot;) first; attach folders later, or keep it purely for memories and artifacts.</li>
@@ -648,7 +653,7 @@
 <ul>
 <li><strong>Safer imports.</strong> When Oyster asks another AI to export your context, it now explicitly tells that AI to leave out credentials and third-party personal details — so a raw export can&#39;t leak context you wouldn&#39;t want on your desktop.</li>
 <li><strong>Clearer first-run copy.</strong> The hero bar leads with <em>&quot;Tell your agent to set up Oyster&quot;</em>, and the connect-your-AI builtin leads with what you get (an agent driving your workspace) rather than protocol terminology.</li>
-<li><strong>Drag-and-drop onboarding retired for this release.</strong> Onboarding now goes through your agent; post-onboarding drag-drop to add folders later will return in a future release (<a href="https://github.com/mattslight/oyster/issues/190" rel="noopener noreferrer">#190</a>).</li>
+<li><strong>Drag-and-drop onboarding retired for this release.</strong> Onboarding now goes through your agent; post-onboarding drag-drop to add folders later will return in a future release (<a href="https://github.com/oyster-to/oyster/issues/190" rel="noopener noreferrer">#190</a>).</li>
 </ul>
 <h3>Fixed</h3>
 <ul>
@@ -657,13 +662,13 @@
 <li><strong>Escape closes the onboarding popover</strong> (consistent with other overlays).</li>
 <li><strong>Cross-origin hardening</strong> on local API endpoints that surface connected-agent activity.</li>
 </ul>
-<h2 id="v-0-3-8"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.7...v0.3.8" rel="noopener noreferrer"><span class="release-version">0.3.8</span></a><span class="release-date"> — 2026-04-21</span></h2>
+<h2 id="v-0-3-8"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.7...v0.3.8" rel="noopener noreferrer"><span class="release-version">0.3.8</span></a><span class="release-date"> — 2026-04-21</span></h2>
 <h3>Fixed</h3>
 <ul>
-<li>Stopped overriding OpenCode&#39;s own model selection with a hardcoded <code>anthropic/claude-sonnet-4-20250514</code> string, which broke users authed with OpenAI / Google / other providers (<code>ProviderModelNotFoundError</code> → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via <code>opencode providers login</code> or env vars. (<a href="https://github.com/mattslight/oyster/issues/174" rel="noopener noreferrer">#174</a>)</li>
-<li>Claude Code MCP install command now uses <code>--scope user</code> so the Oyster MCP follows the user across every project instead of being pinned to the directory they happened to run <code>claude mcp add</code> from. Updated in README, landing page, <code>oyster.to/mcp</code>, the in-app &quot;Connect your AI&quot; builtin, and the CLI startup banner. (<a href="https://github.com/mattslight/oyster/issues/175" rel="noopener noreferrer">#175</a>)</li>
+<li>Stopped overriding OpenCode&#39;s own model selection with a hardcoded <code>anthropic/claude-sonnet-4-20250514</code> string, which broke users authed with OpenAI / Google / other providers (<code>ProviderModelNotFoundError</code> → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via <code>opencode providers login</code> or env vars. (<a href="https://github.com/oyster-to/oyster/issues/174" rel="noopener noreferrer">#174</a>)</li>
+<li>Claude Code MCP install command now uses <code>--scope user</code> so the Oyster MCP follows the user across every project instead of being pinned to the directory they happened to run <code>claude mcp add</code> from. Updated in README, landing page, <code>oyster.to/mcp</code>, the in-app &quot;Connect your AI&quot; builtin, and the CLI startup banner. (<a href="https://github.com/oyster-to/oyster/issues/175" rel="noopener noreferrer">#175</a>)</li>
 </ul>
-<h2 id="v-0-3-7"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.6...v0.3.7" rel="noopener noreferrer"><span class="release-version">0.3.7</span></a><span class="release-date"> — 2026-04-20</span></h2>
+<h2 id="v-0-3-7"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.6...v0.3.7" rel="noopener noreferrer"><span class="release-version">0.3.7</span></a><span class="release-date"> — 2026-04-20</span></h2>
 <h3>Added</h3>
 <ul>
 <li><code>OYSTER_DEBUG</code> artifact-lifecycle logging (<code>OYSTER_DEBUG=1 oyster</code> or <code>OYSTER_DEBUG=artifact oyster</code>) — opt-in structured traces across MCP tool entry, OpenCode file events, watcher decisions, service layer, and reconciliation. No output when unset.</li>
@@ -673,13 +678,13 @@
 <li>MCP <code>create_artifact</code> and <code>register_artifact</code> handlers now <code>await</code> the async service calls. Previously the tool response serialised as <code>{}</code> and the agent received no artifact id, triggering recovery paths that could duplicate rows.</li>
 <li><code>docs/changelog.html</code> auto-regenerates on pushes to <code>main</code> that touch <code>CHANGELOG.md</code> or the build script — <code>oyster.to/changelog</code> no longer lags between releases.</li>
 </ul>
-<h2 id="v-0-3-6"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.5...v0.3.6" rel="noopener noreferrer"><span class="release-version">0.3.6</span></a><span class="release-date"> — 2026-04-19</span></h2>
+<h2 id="v-0-3-6"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.5...v0.3.6" rel="noopener noreferrer"><span class="release-version">0.3.6</span></a><span class="release-date"> — 2026-04-19</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li>Windows: artifact appeared as <code>C:</code> and hung in <code>generating</code> forever. Watcher now uses <code>path.isAbsolute()</code> instead of a POSIX-only <code>startsWith(&quot;/&quot;)</code> check.</li>
 <li>Windows: dark-theme scrollbar styling on the chat panel (thin <code>::-webkit-scrollbar</code> + Firefox <code>scrollbar-color</code>) — macOS unchanged.</li>
 </ul>
-<h2 id="v-0-3-5"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.4...v0.3.5" rel="noopener noreferrer"><span class="release-version">0.3.5</span></a><span class="release-date"> — 2026-04-19</span></h2>
+<h2 id="v-0-3-5"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.4...v0.3.5" rel="noopener noreferrer"><span class="release-version">0.3.5</span></a><span class="release-date"> — 2026-04-19</span></h2>
 <h3>Added</h3>
 <ul>
 <li>Right-click menu on desktop artifact tiles — Rename (inline), Archive (soft-delete), Uninstall for plugins, read-only label for builtins.</li>
@@ -708,7 +713,7 @@
 <li>Artifact endpoints (reads and mutations) locked to localhost origins — prevents cross-origin sites from enumerating or mutating the local surface.</li>
 <li>JSON body size capped at 64 KB on mutation routes.</li>
 </ul>
-<h2 id="v-0-3-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.3...v0.3.4" rel="noopener noreferrer"><span class="release-version">0.3.4</span></a><span class="release-date"> — 2026-04-19</span></h2>
+<h2 id="v-0-3-4"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.3...v0.3.4" rel="noopener noreferrer"><span class="release-version">0.3.4</span></a><span class="release-date"> — 2026-04-19</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li>Stale tile icons cleared after <code>oyster uninstall &lt;id&gt;</code>.</li>
@@ -724,11 +729,11 @@
 <li>Release workflow actions bumped for Node 24.</li>
 <li>Dep bumps: <code>marked</code> 17 → 18; <code>@types/node</code> 22 → 25; web/server/root minor+patch groups.</li>
 </ul>
-<h2 id="v-0-3-3"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.2...v0.3.3" rel="noopener noreferrer"><span class="release-version">0.3.3</span></a><span class="release-date"> — 2026-04-18</span></h2>
+<h2 id="v-0-3-3"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.2...v0.3.3" rel="noopener noreferrer"><span class="release-version">0.3.3</span></a><span class="release-date"> — 2026-04-18</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Plugins — Tier 2 installer.</strong> <code>oyster install &lt;id&gt;</code>, <code>oyster uninstall &lt;id&gt;</code>, <code>oyster list</code> install community plugins by id.</li>
-<li><code>oyster install &lt;id&gt;</code> resolves the repo from the <code>mattslight/oyster-community-plugins</code> registry.</li>
+<li><code>oyster install &lt;id&gt;</code> resolves the repo from the <code>oyster-to/oyster-community-plugins</code> registry.</li>
 <li>New <code>/plugins</code> catalog page on oyster.to with copy-install buttons, strict input validation, and a CDN fallback.</li>
 <li>Plugin system design doc.</li>
 </ul>
@@ -737,7 +742,7 @@
 <li>README and <code>CLAUDE.md</code> updated to match shipped v1 — port 4444, 19 MCP tools, FTS5 memory.</li>
 <li><code>/plugins</code> page polish: hairline borders dropped, only purposeful ones kept.</li>
 </ul>
-<h2 id="v-0-3-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.1...v0.3.2" rel="noopener noreferrer"><span class="release-version">0.3.2</span></a><span class="release-date"> — 2026-04-18</span></h2>
+<h2 id="v-0-3-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.1...v0.3.2" rel="noopener noreferrer"><span class="release-version">0.3.2</span></a><span class="release-date"> — 2026-04-18</span></h2>
 <h3>Added</h3>
 <ul>
 <li><code>--version</code> / <code>-v</code> flag on the <code>oyster</code> CLI.</li>
@@ -750,7 +755,7 @@
 <ul>
 <li>Local discovery validation PoC script.</li>
 </ul>
-<h2 id="v-0-3-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.2.4...v0.3.1" rel="noopener noreferrer"><span class="release-version">0.3.1</span></a><span class="release-date"> — 2026-04-17</span></h2>
+<h2 id="v-0-3-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.2.4...v0.3.1" rel="noopener noreferrer"><span class="release-version">0.3.1</span></a><span class="release-date"> — 2026-04-17</span></h2>
 <p>First stable release of the 0.3 line. Bundles everything shipped across the 0.3.0 beta cycle (no stable 0.3.0 tag).</p>
 <h3>Added</h3>
 <ul>
@@ -786,7 +791,7 @@
 <li>Connection banner says &quot;oyster&quot; (was &quot;npm run dev&quot;).</li>
 <li>Helpful error when import paste yields nothing.</li>
 </ul>
-<h2 id="v-0-2-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.1.21...v0.2.4" rel="noopener noreferrer"><span class="release-version">0.2.4</span></a><span class="release-date"> — 2026-04-15</span></h2>
+<h2 id="v-0-2-4"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.1.21...v0.2.4" rel="noopener noreferrer"><span class="release-version">0.2.4</span></a><span class="release-date"> — 2026-04-15</span></h2>
 <h3>Added</h3>
 <ul>
 <li>Release scripts: <code>release:minor</code>, <code>release:beta</code>, <code>release:promote</code> (later simplified to <code>release</code> and <code>release:beta</code>).</li>
@@ -798,7 +803,7 @@
 <li>Import wizard UI polish — prompt copy hint, paste area, consistent CTAs.</li>
 <li>Native <code>select</code> replaced with a custom dark-themed dropdown.</li>
 </ul>
-<h2 id="v-0-1-21"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.1.17...v0.1.21" rel="noopener noreferrer"><span class="release-version">0.1.21</span></a><span class="release-date"> — 2026-04-14</span></h2>
+<h2 id="v-0-1-21"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.1.17...v0.1.21" rel="noopener noreferrer"><span class="release-version">0.1.21</span></a><span class="release-date"> — 2026-04-14</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Auto-backup.</strong> Userland auto-backed up on every startup to <code>~/oyster-backups/auto/</code>.<ul>
@@ -821,7 +826,7 @@
 <li>Mobile: terminal mockup no longer overflows on small screens.</li>
 <li>&quot;Bring Your Own AI&quot; capitalisation and naming consistency.</li>
 </ul>
-<h2 id="v-0-1-17"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.1.10...v0.1.17" rel="noopener noreferrer"><span class="release-version">0.1.17</span></a><span class="release-date"> — 2026-04-13</span></h2>
+<h2 id="v-0-1-17"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.1.10...v0.1.17" rel="noopener noreferrer"><span class="release-version">0.1.17</span></a><span class="release-date"> — 2026-04-13</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Drop-to-import.</strong> Drop a folder anywhere on the surface to import projects. Full-page drop zone, Grainient speeds up on drag, icons and chat dim to focus attention, wizard skips straight to scanning.</li>
@@ -846,7 +851,7 @@
 <li>Agent sessions use the <code>oyster</code> agent (was defaulting to <code>build</code>).</li>
 <li>Port resilience: OpenCode config written dynamically with actual server port; OpenCode spawned after server listens (fixes MCP connection race); Vite proxy reads <code>OYSTER_PORT</code> env var.</li>
 </ul>
-<h2 id="v-0-1-10"><a class="release-version-link" href="https://github.com/mattslight/oyster/releases/tag/v0.1.10" rel="noopener noreferrer"><span class="release-version">0.1.10</span></a><span class="release-date"> — 2026-04-12</span></h2>
+<h2 id="v-0-1-10"><a class="release-version-link" href="https://github.com/oyster-to/oyster/releases/tag/v0.1.10" rel="noopener noreferrer"><span class="release-version">0.1.10</span></a><span class="release-date"> — 2026-04-12</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Multi-folder spaces + broader scanner.</strong><ul>
