@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -93,12 +93,6 @@ function insertRemote(
   );
 }
 
-function insertSource(db: Database.Database, id: string, path: string, spaceId = "space-1") {
-  db.prepare(
-    `INSERT INTO sources (id, space_id, type, path, label) VALUES (?, ?, 'local_folder', ?, NULL)`,
-  ).run(id, spaceId, path);
-}
-
 function stubSessionSync(behaviour: "success" | "throw" | "diverged" = "success") {
   return {
     reassembleSessionJsonl: vi.fn(async (sessionId: string, targetPath: string) => {
@@ -185,30 +179,15 @@ describe("POST /api/sessions/:id/resume", () => {
     });
   });
 
-  it("pick_source when multiple sources match", async () => {
-    insertRemote(db, { sessionId: "s1", ownerId: "user-A", cwd: "/orig/proj", hasBytes: true });
-    insertSource(db, "src-1", "/local/a/proj");
-    insertSource(db, "src-2", "/local/b/proj");
-    const { ctx, captured } = fakeCtx({});
-    const req = { method: "POST" } as any;
-    await tryHandleSessionRoute(req, {} as any, "/api/sessions/s1/resume",
-      ctx as any, baseDeps(db, { ownerId: "user-A" }));
-    expect(captured.status).toBe(200);
-    expect(captured.json).toMatchObject({ status: "pick_source" });
-    const body = captured.json as { status: string; candidates: Array<{ path: string }> };
-    expect(body.candidates.map((c) => c.path).sort()).toEqual(["/local/a/proj", "/local/b/proj"]);
-  });
-
-  it("happy path: auto-resolve via single matching source, calls reassemble, returns command", async () => {
-    // Set up: source whose basename matches the remote cwd's basename.
-    const localProj = join(projectsRootDir, "..", "auto-resolve-proj");
-    mkdirSync(localProj, { recursive: true });
-    // Remote cwd ends in "auto-resolve-proj" too → basename match wins.
+  it("happy path: targetCwd + force:true, calls reassemble, returns command", async () => {
+    // Post sources→projects: the client always supplies targetCwd; the
+    // server no longer guesses via local sources. force:true bypasses the
+    // not_a_git_repo warning on the throwaway dir.
+    const localProj = mkdtempSync(join(tmpdir(), "oyster-route-happy-"));
     insertRemote(db, { sessionId: "abc-123", ownerId: "user-A", cwd: "/orig/auto-resolve-proj", hasBytes: true });
-    insertSource(db, "src-1", localProj);
 
     const sync = stubSessionSync("success");
-    const { ctx, captured } = fakeCtx({});
+    const { ctx, captured } = fakeCtx({ targetCwd: localProj, force: true });
     const req = { method: "POST" } as any;
     await tryHandleSessionRoute(req, {} as any, "/api/sessions/abc-123/resume",
       ctx as any, baseDeps(db, { ownerId: "user-A", sessionSync: sync }));
@@ -266,13 +245,12 @@ describe("POST /api/sessions/:id/resume", () => {
   });
 
   it("500 reassemble_failed when the service throws", async () => {
-    // Use auto-resolve with a single matching source so we get past validation
-    // to the actual reassemble call.
+    // targetCwd + force:true bypasses validation so we reach the
+    // reassemble call (which the stub throws from).
     const realDir = mkdtempSync(join(tmpdir(), "oyster-route-throws-"));
     insertRemote(db, { sessionId: "abc-123", ownerId: "user-A", cwd: realDir, hasBytes: true });
-    insertSource(db, "src-1", realDir);
     const sync = stubSessionSync("throw");
-    const { ctx, captured } = fakeCtx({});
+    const { ctx, captured } = fakeCtx({ targetCwd: realDir, force: true });
     const req = { method: "POST" } as any;
     await tryHandleSessionRoute(req, {} as any, "/api/sessions/abc-123/resume",
       ctx as any, baseDeps(db, { ownerId: "user-A", sessionSync: sync }));
@@ -284,14 +262,13 @@ describe("POST /api/sessions/:id/resume", () => {
   });
 
   it("409 local_diverged when the service throws LocalDivergedError", async () => {
-    // Same setup as the generic 500 test, but the stub throws the dedicated
+    // Same shape as the generic 500 test, but the stub throws the dedicated
     // class so the route branches into the structured response shape rather
     // than the catch-all 500. Verifies instanceof-based dispatch.
     const realDir = mkdtempSync(join(tmpdir(), "oyster-route-diverged-"));
     insertRemote(db, { sessionId: "div-1", ownerId: "user-A", cwd: realDir, hasBytes: true });
-    insertSource(db, "src-1", realDir);
     const sync = stubSessionSync("diverged");
-    const { ctx, captured } = fakeCtx({});
+    const { ctx, captured } = fakeCtx({ targetCwd: realDir, force: true });
     const req = { method: "POST" } as any;
     await tryHandleSessionRoute(req, {} as any, "/api/sessions/div-1/resume",
       ctx as any, baseDeps(db, { ownerId: "user-A", sessionSync: sync }));
