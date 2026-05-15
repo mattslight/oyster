@@ -45,6 +45,10 @@ function seedRawRows(dbPath: string) {
   db.prepare("INSERT INTO sources (id, space_id, type, path) VALUES ('trail', 'sp', 'local_folder', '/Users/me/proj/')").run();
   // Already-canonical row — must be left untouched (idempotent).
   db.prepare("INSERT INTO sources (id, space_id, type, path) VALUES ('clean', 'sp', 'local_folder', '/Users/me/clean')").run();
+  // Windows drive root — must not be stripped to `C:` (invalid path).
+  db.prepare(`INSERT INTO sources (id, space_id, type, path) VALUES ('drive', 'sp', 'local_folder', 'C:\\')`).run();
+  // POSIX root — must stay `/`, not be flattened to '' by the trim.
+  db.prepare("INSERT INTO sources (id, space_id, type, path) VALUES ('root', 'sp', 'local_folder', '/')").run();
   db.close();
 }
 
@@ -65,6 +69,10 @@ describe("initDb canonical-form migration", () => {
     expect(byId.win).toBe("C:/Users/matt/repo");
     expect(byId.trail).toBe("/Users/me/proj");
     expect(byId.clean).toBe("/Users/me/clean");
+    // Drive root preserved (Copilot review).
+    expect(byId.drive).toBe("C:/");
+    // POSIX root preserved.
+    expect(byId.root).toBe("/");
 
     // Idempotent: a second initDb on the same file must not change rows.
     db.close();

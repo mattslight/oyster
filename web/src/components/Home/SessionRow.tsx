@@ -45,7 +45,10 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
   // Lazy-load the available sources each time the menu opens for a space
   // we haven't loaded yet (or whose spaceId has changed). Scoped to the
   // session's current space — same-space moves are the common case;
-  // cross-space moves go through MCP for now.
+  // cross-space moves go through MCP for now. Cancellation: the effect
+  // wires an AbortController into fetchSpaceSources and an `ignore` flag
+  // guards the state setters so we don't write back into a row that's
+  // been unmounted (or whose spaceId changed mid-flight).
   useEffect(() => {
     if (!menuOpen || sourcesLoading) return;
     if (sourcesCache && sourcesCache.spaceId === session.spaceId) return;
@@ -54,11 +57,17 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
       return;
     }
     const targetSpaceId = session.spaceId;
+    const ctrl = new AbortController();
+    let ignore = false;
     setSourcesLoading(true);
-    fetchSpaceSources(targetSpaceId)
-      .then((sources) => setSourcesCache({ spaceId: targetSpaceId, sources }))
-      .catch(() => { /* leave cache null so the next open retries */ })
-      .finally(() => setSourcesLoading(false));
+    fetchSpaceSources(targetSpaceId, ctrl.signal)
+      .then((sources) => { if (!ignore) setSourcesCache({ spaceId: targetSpaceId, sources }); })
+      .catch(() => { /* aborted or failed — leave cache null so the next open retries */ })
+      .finally(() => { if (!ignore) setSourcesLoading(false); });
+    return () => {
+      ignore = true;
+      ctrl.abort();
+    };
   }, [menuOpen, sourcesCache, sourcesLoading, session.spaceId]);
 
   // Reset the cache when the menu closes so a fresh open always sees the

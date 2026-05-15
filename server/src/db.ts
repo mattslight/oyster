@@ -477,18 +477,34 @@ export function initDb(userlandDir: string): Database.Database {
   // (that would require a JS-side loop with realpath calls per row and
   // wouldn't work for missing paths) — separator + trim is enough to fix
   // the cross-platform case that motivated this.
+  //
+  // Drive-root guard: a path of `C:\` after the `\` → `/` replace becomes
+  // `C:/`. A naive `rtrim(..., '/')` would strip that final slash and leave
+  // `C:`, which is an invalid path. The CASE preserves the slash when the
+  // result looks like a drive root.
+  const canonicalisePath = `CASE
+    WHEN replace($col, '\\', '/') = '/' THEN '/'
+    WHEN length(replace($col, '\\', '/')) = 3
+         AND substr(replace($col, '\\', '/'), 2, 2) = ':/'
+      THEN replace($col, '\\', '/')
+    ELSE rtrim(replace($col, '\\', '/'), '/')
+  END`;
   db.exec(`
     UPDATE sources
-       SET path = rtrim(replace(path, '\\', '/'), '/')
+       SET path = ${canonicalisePath.replace(/\$col/g, "path")}
      WHERE path LIKE '%\\%'
-        OR (length(path) > 1 AND substr(path, length(path), 1) = '/');
+        OR (length(path) > 1
+            AND substr(path, length(path), 1) = '/'
+            AND NOT (length(path) = 3 AND substr(path, 2, 2) = ':/'));
   `);
   db.exec(`
     UPDATE sessions
-       SET cwd = rtrim(replace(cwd, '\\', '/'), '/')
+       SET cwd = ${canonicalisePath.replace(/\$col/g, "cwd")}
      WHERE cwd IS NOT NULL
        AND (cwd LIKE '%\\%'
-            OR (length(cwd) > 1 AND substr(cwd, length(cwd), 1) = '/'));
+            OR (length(cwd) > 1
+                AND substr(cwd, length(cwd), 1) = '/'
+                AND NOT (length(cwd) = 3 AND substr(cwd, 2, 2) = ':/')));
   `);
 
   // Cloud session sync (#322). Seven columns drive the cross-device sync:

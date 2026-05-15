@@ -21,6 +21,12 @@ import { isAbsolute, resolve } from "node:path";
 // canonicalised to `C:/Users/foo/bar`. The watcher runs incoming
 // `tracker.cwd` through this same helper before persisting to
 // `sessions.cwd`, so the comparison stays consistent on both sides.
+// Windows drive-letter pattern (`C:/`, `D:\`, etc.). After forward-slash
+// normalisation these end up as `C:/` — the trailing slash IS the root,
+// not a separator we should trim. Used both in the live helper and in the
+// db.ts canonical-form migration.
+const DRIVE_ROOT_RE = /^[A-Za-z]:[/\\]?$/;
+
 export function normaliseSourcePath(raw: string): string {
   if (typeof raw !== "string" || raw.length === 0) {
     throw new Error("Path must be a non-empty string");
@@ -30,6 +36,14 @@ export function normaliseSourcePath(raw: string): string {
     : raw === "~"
       ? homedir()
       : raw;
+  // Reject relative inputs up-front. `resolve()` would otherwise turn
+  // `foo/bar` into `<cwd>/foo/bar` and the absolute-check after realpath
+  // would never fire, silently masking a caller bug. The drive-letter
+  // regex covers Windows paths whose isAbsolute classification depends on
+  // platform-specific `path` defaults.
+  if (!isAbsolute(expanded) && !/^[A-Za-z]:[/\\]/.test(expanded)) {
+    throw new Error(`Path must be absolute: ${raw}`);
+  }
   const abs = resolve(expanded);
   let canonical: string;
   try {
@@ -37,13 +51,14 @@ export function normaliseSourcePath(raw: string): string {
   } catch {
     canonical = abs;
   }
-  // Forward-slash everything so the LIKE-prefix SQL works on Windows too.
+  // Forward-slash everything so the substr-based prefix SQL works on
+  // Windows too.
   canonical = canonical.replace(/\\/g, "/");
-  if (canonical.length > 1 && canonical.endsWith("/")) {
+  // Strip trailing `/`, except when the result IS the root — `/` (posix
+  // root) and `C:/` (Windows drive root) must keep their terminator,
+  // otherwise the path becomes invalid (`C:` is not a directory).
+  if (canonical.length > 1 && canonical.endsWith("/") && !DRIVE_ROOT_RE.test(canonical)) {
     canonical = canonical.slice(0, -1);
-  }
-  if (!isAbsolute(canonical) && !/^[A-Za-z]:\//.test(canonical)) {
-    throw new Error(`Path must be absolute: ${raw}`);
   }
   return canonical;
 }
