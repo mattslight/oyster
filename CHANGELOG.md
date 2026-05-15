@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Removed
+
+- **Sprint-2 demo builtins out.** *Zombie Horde* (a browser game) and *The World's Your Oyster* (a positioning deck that contradicted the current framing) no longer ship in fresh installs. Existing installs keep their copies in `~/Oyster/apps/` — archive them from the surface if you don't want them.
+
 ## [0.8.2] - 2026-05-14
 
 UI polish, sharper positioning, quieter background sync, and the first wave of Sprint-2 surgery. Headline changes from the 0.8.2-beta cycle plus a couple of final tweaks:

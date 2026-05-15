@@ -76,11 +76,6 @@ function inferType(filePath: string): ArtifactKind {
   return "app";
 }
 
-// Filenames can't contain apostrophes, so override display names here
-const NAME_OVERRIDES: Record<string, string> = {
-  "the-worlds-your-oyster": "The World's Your Oyster",
-};
-
 export function inferName(filePath: string): string {
   const base = basename(filePath) || "untitled";
   const stem = base.replace(/\.[^.]+$/, "");
@@ -88,13 +83,11 @@ export function inferName(filePath: string): string {
   // For index.html files, use the parent directory name instead
   if (stem.toLowerCase() === "index") {
     const parentDir = basename(dirname(filePath)) || "untitled";
-    if (NAME_OVERRIDES[parentDir]) return NAME_OVERRIDES[parentDir];
     return parentDir
       .replace(/[-_]/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
-  if (NAME_OVERRIDES[stem]) return NAME_OVERRIDES[stem];
   return stem
     .replace(/[-_]/g, " ")         // dashes/underscores to spaces
     .replace(/\b\w/g, (c) => c.toUpperCase()); // title case

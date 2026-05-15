@@ -312,6 +312,7 @@
   </div>
 
   <nav class="version-pills" aria-label="Jump to version">
+      <a class="version-pill" href="#v-unreleased">Unreleased</a>
       <a class="version-pill" href="#v-0-8-2">0.8</a>
       <a class="version-pill" href="#v-0-7-1-beta-0">0.7</a>
       <a class="version-pill" href="#v-0-6-0">0.6</a>
@@ -324,7 +325,12 @@
   </nav>
 
   <main class="entries">
-<h2 id="v-0-8-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.2-beta.0...v0.8.2" rel="noopener noreferrer"><span class="release-version">0.8.2</span></a><span class="release-date"> — 2026-05-14</span></h2>
+<h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.2...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
+<h3>Removed</h3>
+<ul>
+<li><strong>Sprint-2 demo builtins out.</strong> <em>Zombie Horde</em> (a browser game) and <em>The World&#39;s Your Oyster</em> (a positioning deck that contradicted the current framing) no longer ship in fresh installs. Existing installs keep their copies in <code>~/Oyster/apps/</code> — archive them from the surface if you don&#39;t want them.</li>
+</ul>
+<h2 id="v-0-8-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.2-beta.0...v0.8.2" rel="noopener noreferrer"><span class="release-version">0.8.2</span></a><span class="release-date"> — 2026-05-14</span></h2>
 <p>UI polish, sharper positioning, quieter background sync, and the first wave of Sprint-2 surgery. Headline changes from the 0.8.2-beta cycle plus a couple of final tweaks:</p>
 <h3>Added</h3>
 <ul>
@@ -349,7 +355,7 @@
 <li><strong>Cross-device sessions open their inspector instead of erroring.</strong> Sessions originating on another device now load via the cross-device cache; the inspector shows a <em>&quot;Resume to view transcript&quot;</em> notice until the transcript is reassembled locally.</li>
 <li><strong>Boot banner stays readable on narrow terminals.</strong> When the terminal isn&#39;t wide enough for the boxed banner, Oyster now drops the box and stacks the URLs on separate lines instead of letting the rails wrap.</li>
 </ul>
-<h2 id="v-0-8-2-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.5...v0.8.2-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.2-beta.0</span></a><span class="release-date"> — 2026-05-14</span></h2>
+<h2 id="v-0-8-2-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.5...v0.8.2-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.2-beta.0</span></a><span class="release-date"> — 2026-05-14</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Active-writer chip on cross-device sessions.</strong> When a session is handed off to another device, Home shows a <code>Now active on &lt;device&gt;</code> chip alongside the origin chip; it updates live as new turns arrive.</li>
@@ -368,40 +374,40 @@
 <li><strong>Attaching a folder no longer freezes the UI.</strong> Big folders used to hang the <em>Attach</em> button until a page reload; the scan now runs in the background so the response returns immediately and tiles surface via SSE as they&#39;re found. Mutation requests also time out after 15s rather than waiting indefinitely.</li>
 <li><strong>Cross-device sessions open their inspector instead of erroring.</strong> Sessions originating on another device now load via the cross-device cache; the inspector shows a <em>&quot;Resume to view transcript&quot;</em> notice until the transcript is reassembled locally.</li>
 </ul>
-<h2 id="v-0-8-1-beta-5"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.4...v0.8.1-beta.5" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.5</span></a><span class="release-date"> — 2026-05-12</span></h2>
+<h2 id="v-0-8-1-beta-5"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.4...v0.8.1-beta.5" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.5</span></a><span class="release-date"> — 2026-05-12</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Cross-device session hand-off without forking.</strong> Resuming a backed-up session on another device now continues the same conversation — the transcript timeline stays single, and ownership transfers cleanly to whichever device is currently writing. Catching up only fetches the new bytes instead of re-downloading the full transcript.</li>
 <li><strong>Conflict detection on resume.</strong> If a device has local edits that aren&#39;t in the cloud copy, Oyster blocks the resume and surfaces the conflict instead of silently overwriting your work.</li>
 </ul>
-<h2 id="v-0-8-1-beta-4"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.3...v0.8.1-beta.4" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.4</span></a><span class="release-date"> — 2026-05-12</span></h2>
+<h2 id="v-0-8-1-beta-4"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.3...v0.8.1-beta.4" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.4</span></a><span class="release-date"> — 2026-05-12</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Cross-device session list no longer self-mirrors.</strong> A first-boot edge case after the device-tagging fix in 0.8.1-beta.3 caused your own sessions to appear briefly in your own cross-device cache. The cache now stays a faithful &quot;other devices only&quot; view, and any leftover ghost rows from earlier installs are cleaned up automatically on next start.</li>
 </ul>
-<h2 id="v-0-8-1-beta-3"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.2...v0.8.1-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.3</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-3"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.2...v0.8.1-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.3</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Chat replies stream again, and the boot console is quiet.</strong> A recent AI-engine update silently broke the live event stream, which made assistant replies fail to render and flooded the terminal with reconnect messages. Both are working again.</li>
 <li><strong>Cross-device session list refreshes automatically.</strong> Sessions you back up on one Pro device now appear on your other devices within seconds, without needing to sign out and back in.</li>
 <li><strong>Sessions remember which device they came from.</strong> Each backed-up session is now tagged with the device that uploaded it, so a future &quot;Resume on this device&quot; experience can show &quot;from MacBook Pro&quot; rather than just an unlabeled card. Sessions backed up before this release are re-tagged automatically the next time Oyster starts.</li>
 </ul>
-<h2 id="v-0-8-1-beta-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.1...v0.8.1-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.2</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.1...v0.8.1-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.2</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Pick up sessions on your other devices (preview).</strong> Sessions backed up on one Pro device now appear in the API as cross-device entries on your other devices. A new local endpoint reassembles a chosen session&#39;s encrypted transcript onto disk so you can run <code>claude --resume &lt;id&gt;</code> on a second machine. The UI surface arrives in the next release.</li>
 </ul>
-<h2 id="v-0-8-1-beta-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.1-beta.0...v0.8.1-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.1</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.1-beta.0...v0.8.1-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.1</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Conversation backup uploads reliably from the first session.</strong> Older transcripts discovered at startup are now backed up in the same boot rather than waiting for the next sync tick.</li>
 </ul>
-<h2 id="v-0-8-1-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0...v0.8.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.0</span></a><span class="release-date"> — 2026-05-11</span></h2>
+<h2 id="v-0-8-1-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0...v0.8.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.1-beta.0</span></a><span class="release-date"> — 2026-05-11</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Conversation backup for Pro users.</strong> Claude Code session transcripts now stream to your Oyster cloud as encrypted delta chunks. Each chunk is sealed with a key derived per user, so transcripts stay private to your account. Cross-device resume — picking up a session on your other machine — comes in a follow-up release.</li>
 </ul>
-<h2 id="v-0-8-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.3...v0.8.0" rel="noopener noreferrer"><span class="release-version">0.8.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.3...v0.8.0" rel="noopener noreferrer"><span class="release-version">0.8.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <p>Memories follow you across Pro devices. Headline changes from the 0.8.0-beta cycle:</p>
 <h3>Added</h3>
 <ul>
@@ -418,12 +424,12 @@
 <li><strong>Memory timestamps now respect your timezone.</strong> &quot;Created&quot; times in the Memories panel previously read as up to several hours off when running outside UTC; they now reflect the actual moment a memory was written.</li>
 <li><strong>Memories panel updates live again.</strong> Writing a memory in chat, or having one arrive from another device, now refreshes the panel automatically — previously only window focus or the manual refresh button surfaced changes.</li>
 </ul>
-<h2 id="v-0-8-0-beta-3"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.2...v0.8.0-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.3</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-3"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.2...v0.8.0-beta.3" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.3</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Version stamp on the boot banner.</strong> A faint <code>vX.Y.Z</code> now sits below the bottom-right of the Oyster logo at startup — quick visual confirmation of which version is running.</li>
 </ul>
-<h2 id="v-0-8-0-beta-2"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.1...v0.8.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.2</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-2"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.1...v0.8.0-beta.2" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.2</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Refresh button on the Memories panel.</strong> Click ↻ to pull cross-device updates immediately, with a brief &quot;Synced&quot; / &quot;Pulled N updates&quot; status flash. Useful when you&#39;ve just made a change on another device and don&#39;t want to wait.</li>
@@ -432,17 +438,17 @@
 <ul>
 <li><strong>Memory sync feels instant when you switch back to a device.</strong> Focusing the Oyster window, returning to the Memories panel, or coming back online now triggers a pull within seconds — no need to wait for the 30-second poll.</li>
 </ul>
-<h2 id="v-0-8-0-beta-1"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.8.0-beta.0...v0.8.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.1</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.8.0-beta.0...v0.8.0-beta.1" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.1</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Changed</h3>
 <ul>
 <li><strong>Cross-device memory updates appear within ~30 seconds</strong> without requiring a restart. Previously, a running device only checked for new memories from your other devices on sign-in or app launch.</li>
 </ul>
-<h2 id="v-0-8-0-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.7.1-beta.0...v0.8.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
+<h2 id="v-0-8-0-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.7.1-beta.0...v0.8.0-beta.0" rel="noopener noreferrer"><span class="release-version">0.8.0-beta.0</span></a><span class="release-date"> — 2026-05-09</span></h2>
 <h3>Added</h3>
 <ul>
 <li><strong>Memories follow you across Pro devices.</strong> Anything you remember on one Pro device shows up on every other Pro device signed into the same account. Forgetting and deletion propagate too. Only memories created while signed into your bound Pro profile sync — pre-existing local memories and anything created on a free account stay local.</li>
 </ul>
-<h2 id="v-0-7-1-beta-0"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.7.0...v0.7.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.7.1-beta.0</span></a><span class="release-date"> — 2026-05-08</span></h2>
+<h2 id="v-0-7-1-beta-0"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.7.0...v0.7.1-beta.0" rel="noopener noreferrer"><span class="release-version">0.7.1-beta.0</span></a><span class="release-date"> — 2026-05-08</span></h2>
 <h3>Changed</h3>
 <ul>
 <li><strong>Spaces now sync across signed-in devices.</strong> Pro users see the same set of spaces — name, hierarchy, summary — on every device they sign into. Published artefacts on a fresh device resolve to their real space instead of a generic &quot;Cloud&quot; bucket.</li>
@@ -640,13 +646,13 @@
 <li><strong>Escape closes the onboarding popover</strong> (consistent with other overlays).</li>
 <li><strong>Cross-origin hardening</strong> on local API endpoints that surface connected-agent activity.</li>
 </ul>
-<h2 id="v-0-3-8"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.7...v0.3.8" rel="noopener noreferrer"><span class="release-version">0.3.8</span></a><span class="release-date"> — 2026-04-21</span></h2>
+<h2 id="v-0-3-8"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.7...v0.3.8" rel="noopener noreferrer"><span class="release-version">0.3.8</span></a><span class="release-date"> — 2026-04-21</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li>Stopped overriding OpenCode&#39;s own model selection with a hardcoded <code>anthropic/claude-sonnet-4-20250514</code> string, which broke users authed with OpenAI / Google / other providers (<code>ProviderModelNotFoundError</code> → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via <code>opencode providers login</code> or env vars. (<a href="https://github.com/mattslight/oyster/issues/174" rel="noopener noreferrer">#174</a>)</li>
 <li>Claude Code MCP install command now uses <code>--scope user</code> so the Oyster MCP follows the user across every project instead of being pinned to the directory they happened to run <code>claude mcp add</code> from. Updated in README, landing page, <code>oyster.to/mcp</code>, the in-app &quot;Connect your AI&quot; builtin, and the CLI startup banner. (<a href="https://github.com/mattslight/oyster/issues/175" rel="noopener noreferrer">#175</a>)</li>
 </ul>
-<h2 id="v-0-3-7"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.6...v0.3.7" rel="noopener noreferrer"><span class="release-version">0.3.7</span></a><span class="release-date"> — 2026-04-20</span></h2>
+<h2 id="v-0-3-7"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.6...v0.3.7" rel="noopener noreferrer"><span class="release-version">0.3.7</span></a><span class="release-date"> — 2026-04-20</span></h2>
 <h3>Added</h3>
 <ul>
 <li><code>OYSTER_DEBUG</code> artifact-lifecycle logging (<code>OYSTER_DEBUG=1 oyster</code> or <code>OYSTER_DEBUG=artifact oyster</code>) — opt-in structured traces across MCP tool entry, OpenCode file events, watcher decisions, service layer, and reconciliation. No output when unset.</li>
@@ -656,7 +662,7 @@
 <li>MCP <code>create_artifact</code> and <code>register_artifact</code> handlers now <code>await</code> the async service calls. Previously the tool response serialised as <code>{}</code> and the agent received no artifact id, triggering recovery paths that could duplicate rows.</li>
 <li><code>docs/changelog.html</code> auto-regenerates on pushes to <code>main</code> that touch <code>CHANGELOG.md</code> or the build script — <code>oyster.to/changelog</code> no longer lags between releases.</li>
 </ul>
-<h2 id="v-0-3-6"><a class="release-version-link" href="https://github.com/mattslight/oyster/compare/v0.3.5...v0.3.6" rel="noopener noreferrer"><span class="release-version">0.3.6</span></a><span class="release-date"> — 2026-04-19</span></h2>
+<h2 id="v-0-3-6"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.3.5...v0.3.6" rel="noopener noreferrer"><span class="release-version">0.3.6</span></a><span class="release-date"> — 2026-04-19</span></h2>
 <h3>Fixed</h3>
 <ul>
 <li>Windows: artifact appeared as <code>C:</code> and hung in <code>generating</code> forever. Watcher now uses <code>path.isAbsolute()</code> instead of a POSIX-only <code>startsWith(&quot;/&quot;)</code> check.</li>
