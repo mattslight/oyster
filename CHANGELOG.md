@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Home's table view now matches the icon view for published artefacts.** Cloud-only published rows previously hid the artefact's real space behind a literal *"Cloud"* label and showed no published-status chip. The table now shows the underlying space (e.g. *tokinvest*) and renders the same *On cloud* / *Published* chip next to the title that the icon view shows below it — both views speak the same visual language.
+
 ### Removed
 
 - **Sprint-2 demo builtins out.** *Zombie Horde* (a browser game) and *The World's Your Oyster* (a positioning deck that contradicted the current framing) no longer ship in fresh installs. Existing installs keep their copies in `~/Oyster/apps/` — archive them from the surface if you don't want them.
