@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync, existsSync } from "node:fs";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isValidUuid, readOysterId } from "../src/oyster-id.js";
+import { isValidUuid, readOysterId, writeOysterId } from "../src/oyster-id.js";
 
 function makeTmp(): string {
   return realpathSync(mkdtempSync(join(tmpdir(), "oyster-id-test-")));
@@ -82,5 +82,38 @@ describe("readOysterId", () => {
     // Restore so the afterEach cleanup can rm it
     chmodSync(join(dir, ".oyster", "id"), 0o644);
     expect(result.status).toBe("unreadable");
+  });
+});
+
+describe("writeOysterId", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTmp(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("creates .oyster/id with the given UUID + trailing newline", () => {
+    writeOysterId(dir, "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f");
+    const back = readOysterId(dir);
+    expect(back).toEqual({ status: "valid", id: "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f" });
+  });
+
+  it("creates the .oyster directory if it doesn't exist", () => {
+    expect(existsSync(join(dir, ".oyster"))).toBe(false);
+    writeOysterId(dir, "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f");
+    expect(existsSync(join(dir, ".oyster"))).toBe(true);
+  });
+
+  it("overwrites an existing .oyster/id atomically", () => {
+    mkdirSync(join(dir, ".oyster"));
+    writeFileSync(join(dir, ".oyster", "id"), "old content", "utf8");
+    writeOysterId(dir, "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f");
+    expect(readOysterId(dir)).toEqual({ status: "valid", id: "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f" });
+  });
+
+  it("throws on a read-only filesystem (caller decides what to do)", () => {
+    if (process.platform === "win32") return;
+    // Make the dir itself read-only so .oyster can't be created
+    chmodSync(dir, 0o555);
+    expect(() => writeOysterId(dir, "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f")).toThrow();
+    chmodSync(dir, 0o755); // restore for cleanup
   });
 });

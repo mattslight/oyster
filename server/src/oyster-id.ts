@@ -3,7 +3,7 @@
 // See docs/superpowers/specs/2026-05-15-oyster-id-portable-identity-design.md
 // for the design rationale, invariants, and error-handling matrix.
 
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, mkdirSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -60,4 +60,19 @@ export function readOysterId(root: string): OysterIdReadResult {
     return { status: "valid", id: trimmed };
   }
   return { status: "malformed", value: trimmed };
+}
+
+export function writeOysterId(root: string, id: string): void {
+  if (!isValidUuid(id)) {
+    // Defensive: callers shouldn't pass garbage but if they do we
+    // refuse rather than write invalid disk state.
+    throw new Error(`writeOysterId: refusing to write non-UUID value: ${id}`);
+  }
+  const oysterPath = join(root, OYSTER_DIR);
+  mkdirSync(oysterPath, { recursive: true });
+
+  const tmpPath = join(oysterPath, `id.tmp-${process.pid}-${Date.now()}`);
+  const finalPath = join(oysterPath, ID_FILE);
+  writeFileSync(tmpPath, id + "\n", "utf8");
+  renameSync(tmpPath, finalPath);
 }
