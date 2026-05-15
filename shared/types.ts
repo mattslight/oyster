@@ -37,8 +37,13 @@ export interface Artifact {
   plugin?: boolean;
   /** For plugin artifacts: the folder-name id under ~/.oyster/userland/ (e.g. "pomodoro"). Used by Uninstall since `id` is a UUID that doesn't map to a directory. */
   pluginId?: string;
-  /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan / linked source. `ai_generated` — produced by an agent. Drives the source filter on Home. */
+  /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan. `ai_generated` — produced by an agent. */
   sourceOrigin?: "manual" | "discovered" | "ai_generated";
+  /** Project this artefact belongs to. Set by the watcher when an AI-
+   *  generated artefact is registered from a session bound to a project,
+   *  or by the discovery scan when the artefact lives under a project's
+   *  cached path. NULL for manual/standalone artefacts. */
+  projectId?: string | null;
   /** Cloud publication state for this artefact. Omitted entirely when no
    *  share token has ever been minted. When present with `unpublishedAt: null`
    *  the artefact is currently public; when `unpublishedAt` is non-null the

@@ -475,15 +475,28 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
+  // Per-project artefact counts for the tile badges. Returns {} while
+  // artefacts haven't yet been tagged with project_id (during migration);
+  // becomes meaningful once the server-side backfill runs.
+  const projectArtefactCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of effectiveDesktopProps.artifacts) {
+      if (a.projectId) counts[a.projectId] = (counts[a.projectId] ?? 0) + 1;
+    }
+    return counts;
+  }, [effectiveDesktopProps.artifacts]);
+
   // Filter + collapse to an incremental preview. Each "Show more" click
   // grows artefactsLimit by ARTEFACTS_PREVIEW; the cap applies to both
   // icon and table views so busy spaces don't push later sections far
   // below the fold.
-  // Per-project artefact filtering is a follow-up — artifacts don't yet
-  // carry a project_id, so selecting a project tile filters sessions
-  // (project-aware) without narrowing the artefact list.
   const filteredArtefacts = useMemo(() => {
     let list = effectiveDesktopProps.artifacts;
+    if (selectedProjectId === VAULT) {
+      list = list.filter((a) => !a.projectId);
+    } else if (selectedProjectId) {
+      list = list.filter((a) => a.projectId === selectedProjectId);
+    }
     if (artefactSource === "published") {
       list = list.filter(isLivePublication);
     } else if (artefactSource === "pinned") {
@@ -505,7 +518,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
       return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
     });
     return list;
-  }, [effectiveDesktopProps.artifacts, artefactSource]);
+  }, [effectiveDesktopProps.artifacts, artefactSource, selectedProjectId]);
   const visibleArtefacts = useMemo(
     () => filteredArtefacts.slice(0, artefactsLimit),
     [filteredArtefacts, artefactsLimit],
@@ -930,7 +943,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               spaceId={projectsSpaceId}
               spaceDisplayName={spaces.find((s) => s.id === projectsSpaceId)?.displayName ?? projectsSpaceId}
               projects={spaceProjects}
-              projectArtefactCounts={{}}
+              projectArtefactCounts={projectArtefactCounts}
               sessionCountsByProject={sessionCountsByProject}
               selectedProjectId={selectedProjectId}
               setSelectedProjectId={setSelectedProjectId}
