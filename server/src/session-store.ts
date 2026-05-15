@@ -22,10 +22,8 @@ export type SessionArtifactRole = "create" | "modify" | "read";
 export interface SessionRow {
   id: string;
   space_id: string | null;
-  source_id: string | null;
-  /** New (post-#496 + sources→projects rewrite). The watcher sets this at
-   *  ingest time by reading `<cwd>/.oyster/id`; older rows backfilled from
-   *  source_id by the one-shot migration in db.ts. NULL = orphan. */
+  /** Set by the watcher at ingest by reading `<cwd>/.oyster/id`; or
+   *  explicitly via move_session / claim_orphan. NULL = orphan. */
   project_id: string | null;
   cwd: string | null;
   /** Absolute on-disk path to the jsonl. NULL on rows that pre-date this
@@ -39,9 +37,9 @@ export interface SessionRow {
   ended_at: string | null;
   model: string | null;
   last_event_at: string;
-  /** Who owns the (space_id, source_id) classification. `'auto'` is open to
-   *  heuristic improvement as sources change; `'manual'` is pinned by the
-   *  user / an MCP-driven agent and is never overwritten by the heuristic. */
+  /** Who owns the (space_id, project_id) classification. `'auto'` lets the
+   *  watcher refresh on each ingest; `'manual'` is pinned by the user (or
+   *  an MCP-driven move_session) and is never overwritten by the watcher. */
   assignment_mode: AssignmentMode;
 }
 
@@ -82,7 +80,6 @@ export interface SessionEventSearchHit {
 export interface InsertSession {
   id: string;
   space_id: string | null;
-  source_id?: string | null;
   /** Project this session belongs to, resolved by the watcher via
    *  `<cwd>/.oyster/id`. NULL when the folder has no marker or is gone. */
   project_id?: string | null;
@@ -191,9 +188,9 @@ export class SqliteSessionStore implements SessionStore {
         LIMIT 1
       `),
       insertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
+        INSERT INTO sessions (id, space_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
-          @id, @space_id, @source_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
+          @id, @space_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now')),
@@ -211,9 +208,9 @@ export class SqliteSessionStore implements SessionStore {
       // reconcileExistingFile), so the overwrite here keeps the column
       // shape consistent across rows.
       upsertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
+        INSERT INTO sessions (id, space_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
-          @id, @space_id, @source_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
+          @id, @space_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now')),
@@ -221,11 +218,10 @@ export class SqliteSessionStore implements SessionStore {
         )
         ON CONFLICT(id) DO UPDATE SET
           -- Watcher upserts NEVER overwrite the user's manual classification.
-          -- For 'auto' rows we let the watcher refresh space/source from the
+          -- For 'auto' rows we let the watcher refresh space/project from the
           -- latest cwd resolution; for 'manual' rows the user pinned it, so
           -- the existing values stay.
           space_id      = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.space_id ELSE excluded.space_id END,
-          source_id     = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.source_id ELSE excluded.source_id END,
           project_id    = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.project_id ELSE excluded.project_id END,
           cwd           = COALESCE(excluded.cwd, sessions.cwd),
           -- jsonl_path: prefer the new value when the watcher knows where
@@ -310,7 +306,6 @@ export class SqliteSessionStore implements SessionStore {
       started_at: null,
       model: null,
       last_event_at: null,
-      source_id: null,
       project_id: null,
       cwd: null,
       jsonl_path: null,
@@ -325,7 +320,6 @@ export class SqliteSessionStore implements SessionStore {
       started_at: null,
       model: null,
       last_event_at: null,
-      source_id: null,
       project_id: null,
       cwd: null,
       jsonl_path: null,
