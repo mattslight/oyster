@@ -29,6 +29,8 @@ import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
+import { tryHandleProjectsRoute } from "./routes/projects.js";
+import { ProjectService } from "./project-service.js";
 import { tryHandleSetupRoute } from "./routes/setup.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
@@ -557,6 +559,7 @@ const spaceService = new SpaceService(
   spaceStore, store, artifactService, sessionStore, spaceSync,
   (command, payload) => broadcastUiEvent({ version: 1, command, payload }),
 );
+const projectService = new ProjectService(db);
 const sessionService = new SessionService(db, sessionStore, spaceStore);
 const publishService = createPublishService({
   db,
@@ -781,6 +784,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (await tryHandleArtifactRoute(req, res, url, ctx, {
     artifactService, sessionStore, pendingReveals,
     clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR, publishService,
+  })) return;
+
+  // /api/projects/* — projects identity surface (replaces /api/spaces/:id/sources*
+  // during the sources→projects cut).
+  if (await tryHandleProjectsRoute(req, res, url, ctx, {
+    projectService, broadcastUiEvent,
   })) return;
 
   // /api/spaces/* — collapsed from the legacy spaces-routes.ts and the
