@@ -47,7 +47,7 @@ function makeDb(): Database.Database {
       id TEXT PRIMARY KEY, space_id TEXT NOT NULL,
       type TEXT NOT NULL, path TEXT NOT NULL,
       label TEXT, added_at TEXT NOT NULL DEFAULT (datetime('now')),
-      removed_at TEXT
+      removed_at TEXT, portable_id TEXT
     );
   `);
   return db;

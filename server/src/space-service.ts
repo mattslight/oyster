@@ -183,7 +183,7 @@ export class SpaceService {
     } else {
       const id = crypto.randomUUID();
       try {
-        this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
+        this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved, portable_id: null });
         source = this.spaceStore.getSourceById(id)!;
       } catch (err) {
         // Race: a concurrent caller inserted the same path between our check and

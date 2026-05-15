@@ -28,6 +28,10 @@ export interface Source {
   label: string | null;
   added_at: string;
   removed_at: string | null;
+  // New field — cross-machine identity, sourced from <path>/.oyster/id.
+  // NULL is valid: the file may not exist yet, the path may not exist on
+  // disk, or a write may have failed. NULL is never imaginary state.
+  portable_id: string | null;
 }
 
 export interface SpaceStore {
@@ -38,7 +42,7 @@ export interface SpaceStore {
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void;
   delete(id: string): void;
   // sources
-  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null }): void;
+  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null; portable_id: string | null }): void;
   softDeleteSource(sourceId: string): void;
   restoreSource(sourceId: string): void;
   getSources(spaceId: string, opts?: { includeRemoved?: boolean }): Source[];
@@ -132,8 +136,8 @@ export class SqliteSpaceStore implements SpaceStore {
         )
       `),
       addSource: db.prepare(`
-        INSERT INTO sources (id, space_id, type, path, label)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO sources (id, space_id, type, path, label, portable_id)
+        VALUES (?, ?, ?, ?, ?, ?)
       `),
       softDeleteSource: db.prepare("UPDATE sources SET removed_at = datetime('now') WHERE id = ? AND removed_at IS NULL"),
       restoreSource: db.prepare("UPDATE sources SET removed_at = NULL WHERE id = ?"),
@@ -201,8 +205,8 @@ export class SqliteSpaceStore implements SpaceStore {
     this.db.prepare("DELETE FROM spaces WHERE id = ?").run(id);
   }
 
-  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null }): void {
-    this.stmts.addSource.run(args.id, args.space_id, args.type, args.path, args.label ?? null);
+  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null; portable_id: string | null }): void {
+    this.stmts.addSource.run(args.id, args.space_id, args.type, args.path, args.label ?? null, args.portable_id);
   }
   softDeleteSource(sourceId: string): void { this.stmts.softDeleteSource.run(sourceId); }
   restoreSource(sourceId: string): void { this.stmts.restoreSource.run(sourceId); }

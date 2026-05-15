@@ -190,6 +190,18 @@ export interface SessionJoinedForArtifact extends SessionArtifact {
   session: Session;
 }
 
+export interface Source {
+  id: string;
+  space_id: string;
+  type: "local_folder";
+  path: string;
+  label: string | null;
+  // New field — cross-machine identity, sourced from <path>/.oyster/id.
+  // NULL is valid: the file may not exist yet, the path may not exist on
+  // disk, or a write may have failed. NULL is never imaginary state.
+  portable_id: string | null;
+}
+
 export interface Space {
   id: string;
   displayName: string;
