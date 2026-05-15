@@ -6,7 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
-- **Cloud-only artefacts in Home's table view now show their real space.** Previously every published-from-another-device artefact showed *"Cloud"* as its space, hiding the actual space it belongs to (e.g. *tokinvest*). The space column now shows the underlying space with a small cloud glyph next to it; only artefacts whose original space no longer exists locally fall back to *"Cloud"*.
+- **Home's table view now matches the icon view for published artefacts.** Cloud-only published rows previously hid the artefact's real space behind a literal *"Cloud"* label and showed no published-status chip. The table now shows the underlying space (e.g. *tokinvest*) and renders the same *On cloud* / *Published* chip next to the title that the icon view shows below it — both views speak the same visual language.
 
 ### Removed
 
