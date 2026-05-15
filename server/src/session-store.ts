@@ -389,6 +389,11 @@ export class SqliteSessionStore implements SessionStore {
     //   - Auto rows bound to a more specific source are never demoted —
     //     NOT EXISTS finds the longer match and the row is skipped.
     //   - Manual rows are immune via the assignment_mode filter.
+    // Root-path special case: when the path itself ends in `/` (POSIX
+    // root `/`, Windows drive root `C:/`) the trailing slash IS the
+    // boundary, so we don't need a second `/` in the cwd after the
+    // prefix. Without this branch a root source could never bind any
+    // of its descendants.
     const info = this.db
       .prepare(
         `UPDATE sessions
@@ -398,7 +403,8 @@ export class SqliteSessionStore implements SessionStore {
             AND (
               cwd = @path
               OR (substr(cwd, 1, length(@path)) = @path
-                  AND substr(cwd, length(@path) + 1, 1) = '/')
+                  AND (substr(@path, length(@path), 1) = '/'
+                       OR substr(cwd, length(@path) + 1, 1) = '/'))
             )
             AND NOT EXISTS (
               SELECT 1 FROM sources s
@@ -408,7 +414,8 @@ export class SqliteSessionStore implements SessionStore {
                  AND (
                    sessions.cwd = s.path
                    OR (substr(sessions.cwd, 1, length(s.path)) = s.path
-                       AND substr(sessions.cwd, length(s.path) + 1, 1) = '/')
+                       AND (substr(s.path, length(s.path), 1) = '/'
+                            OR substr(sessions.cwd, length(s.path) + 1, 1) = '/'))
                  )
             )`,
       )

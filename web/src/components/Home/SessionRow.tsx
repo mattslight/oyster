@@ -45,12 +45,16 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
   // Lazy-load the available sources each time the menu opens for a space
   // we haven't loaded yet (or whose spaceId has changed). Scoped to the
   // session's current space — same-space moves are the common case;
-  // cross-space moves go through MCP for now. Cancellation: the effect
-  // wires an AbortController into fetchSpaceSources and an `ignore` flag
-  // guards the state setters so we don't write back into a row that's
-  // been unmounted (or whose spaceId changed mid-flight).
+  // cross-space moves go through MCP for now.
+  //
+  // The dep list intentionally excludes `sourcesLoading` even though the
+  // effect mutates it: an earlier version listed it as a dep, which made
+  // setSourcesLoading(true) re-trigger the effect, which then aborted
+  // its own in-flight fetch and left the row stuck loading. Cancellation
+  // still works via the AbortController + `ignore` flag — only menuOpen,
+  // sourcesCache, and session.spaceId actually need to drive re-runs.
   useEffect(() => {
-    if (!menuOpen || sourcesLoading) return;
+    if (!menuOpen) return;
     if (sourcesCache && sourcesCache.spaceId === session.spaceId) return;
     if (!session.spaceId) {
       setSourcesCache({ spaceId: null, sources: [] });
@@ -68,7 +72,7 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
       ignore = true;
       ctrl.abort();
     };
-  }, [menuOpen, sourcesCache, sourcesLoading, session.spaceId]);
+  }, [menuOpen, sourcesCache, session.spaceId]);
 
   // Reset the cache when the menu closes so a fresh open always sees the
   // latest source list (a user might have just attached a new folder).

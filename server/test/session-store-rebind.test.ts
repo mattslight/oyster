@@ -173,6 +173,25 @@ describe("rebindAutoSessionsForSource (longest-prefix)", () => {
     expect(n).toBe(0);
   });
 
+  it("a root path (POSIX `/`) binds its descendants", () => {
+    // normaliseSourcePath preserves trailing `/` for roots; the substr
+    // boundary check has to treat that trailing `/` as the anchor, not
+    // demand a second `/` after the prefix.
+    seedSpace(env.db, "sp");
+    seedSource(env.db, "src", "sp", "/");
+    seedSession(env.db, { id: "s", cwd: "/Users/me/proj" });
+    env.sessionStore.rebindAutoSessionsForSource("sp", "src", "/");
+    expect(env.sessionStore.getById("s")?.source_id).toBe("src");
+  });
+
+  it("a Windows drive root binds its descendants", () => {
+    seedSpace(env.db, "sp");
+    seedSource(env.db, "src", "sp", "C:/");
+    seedSession(env.db, { id: "s", cwd: "C:/Users/me/repo" });
+    env.sessionStore.rebindAutoSessionsForSource("sp", "src", "C:/");
+    expect(env.sessionStore.getById("s")?.source_id).toBe("src");
+  });
+
   it("treats LIKE wildcards in path literally (no _ / % aliasing)", () => {
     // Real-world paths contain `_` constantly (`node_modules`, `my_repo`).
     // SQL LIKE treats `_` as a single-char wildcard, so an unescaped
@@ -245,6 +264,19 @@ describe("getActiveSourceForCwd (longest-prefix read)", () => {
     seedSpace(env.db, "sp");
     seedSource(env.db, "src", "sp", "/Users/me/scratch");
     expect(env.spaceStore.getActiveSourceForCwd("/Users/me/scratch-old")).toBeUndefined();
+  });
+
+  it("matches descendants of a POSIX root source", () => {
+    seedSpace(env.db, "sp");
+    seedSource(env.db, "src", "sp", "/");
+    expect(env.spaceStore.getActiveSourceForCwd("/")?.id).toBe("src");
+    expect(env.spaceStore.getActiveSourceForCwd("/anything/deep")?.id).toBe("src");
+  });
+
+  it("matches descendants of a Windows drive-root source", () => {
+    seedSpace(env.db, "sp");
+    seedSource(env.db, "src", "sp", "C:/");
+    expect(env.spaceStore.getActiveSourceForCwd("C:/Users/me")?.id).toBe("src");
   });
 
   it("treats _ in a source path literally (no LIKE wildcard aliasing)", () => {

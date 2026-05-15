@@ -149,13 +149,20 @@ export class SqliteSpaceStore implements SpaceStore {
       // LIKE here would silently mis-bind. The trailing-`/` substr check
       // anchors at a directory boundary so `~/Oyster` doesn't capture a
       // cwd of `~/Oyster-old`.
+      //
+      // Root-path special case: when `path` itself ends with `/` (POSIX
+      // root `/`, Windows drive root `C:/`), the boundary is already
+      // anchored by the path's own trailing separator — there's no extra
+      // `/` after the prefix in the cwd to find. Without this branch a
+      // root source could never bind any of its descendants.
       getActiveSourceForCwd: db.prepare(
         `SELECT * FROM sources
           WHERE removed_at IS NULL
             AND (
               @cwd = path
               OR (substr(@cwd, 1, length(path)) = path
-                  AND substr(@cwd, length(path) + 1, 1) = '/')
+                  AND (substr(path, length(path), 1) = '/'
+                       OR substr(@cwd, length(path) + 1, 1) = '/'))
             )
           ORDER BY length(path) DESC
           LIMIT 1`,

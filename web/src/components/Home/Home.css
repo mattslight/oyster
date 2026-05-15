@@ -718,9 +718,14 @@
   transition: opacity 0.15s ease;
 }
 .home-row:hover .home-row-more,
-.home-row-more.open {
+.home-row-more.open,
+.home-row-more:focus-visible {
   opacity: 1;
   pointer-events: auto;
+}
+.home-row-more:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
 }
 .home-row-more:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
 .home-row-more.open {
