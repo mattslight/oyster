@@ -10,6 +10,8 @@ import type { SpaceSyncService } from "./space-sync-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
 import { normaliseSourcePath } from "./path-normalise.js";
+import { readOysterId, writeOysterId } from "./oyster-id.js";
+import type { OysterIdReadResult } from "./oyster-id.js";
 
 function pathExistsSafe(path: string): boolean {
   // "Path missing" only makes sense for a directory — a file at the
@@ -89,7 +91,12 @@ function rowToSpace(row: SpaceRow): Space {
   };
 }
 
-const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage", ".cache", ".claude", ".opencode", ".vscode", ".idea", "__pycache__", ".tox", "venv", ".venv", "target", "vendor"]);
+// Oyster's own per-source metadata directory; `.oyster/id` and any
+// future siblings are internal state, never user-visible artefacts.
+// (Invariant 6 of the portable-identity spec.) The trailing
+// `entry.startsWith(".")` check in walk() also catches this, but the
+// explicit entry is the defensive guarantee.
+const SKIP_DIRS = new Set(["node_modules", ".git", ".oyster", "dist", "build", ".next", "out", "coverage", ".cache", ".claude", ".opencode", ".vscode", ".idea", "__pycache__", ".tox", "venv", ".venv", "target", "vendor"]);
 const SKIP_FILE_PATTERNS = [/\.lock$/, /\.log$/];
 const MAX_DEPTH = 4;
 const APP_DIR_NAMES = new Set(["web", "admin", "app", "client", "frontend", "ui", "dashboard", "portal", "site"]);
@@ -171,6 +178,10 @@ export class SpaceService {
       try {
         this.spaceStore.restoreSource(removed.id);
         source = { ...removed, removed_at: null };
+        // Reconcile portable_id against disk — the source may have been
+        // detached while .oyster/id was rewritten externally (e.g. git pull
+        // brought a new value). Same disk-truth guarantee as fresh attach.
+        this.reconcilePortableId(source);
       } catch (err) {
         // Race: between our check and the restore, another caller inserted a
         // fresh active source for the same path. Re-evaluate.
@@ -182,8 +193,42 @@ export class SpaceService {
       }
     } else {
       const id = crypto.randomUUID();
+      // portable_id decision — see spec invariant 4 (disk-backed, never imaginary).
+      // We decide BEFORE the INSERT so the row is written exactly once: never
+      // INSERT with a generated id then UPDATE it back to NULL on write failure.
+      let portable_id: string | null = null;
+      if (existsSync(resolved)) {
+        const idResult: OysterIdReadResult = readOysterId(resolved);
+        switch (idResult.status) {
+          case "valid":
+            portable_id = idResult.id;
+            break;
+          case "missing": {
+            const newId = crypto.randomUUID();
+            try {
+              writeOysterId(resolved, newId);
+              portable_id = newId;
+            } catch (err) {
+              console.warn(`[oyster-id] write failed for ${resolved}; leaving portable_id NULL`, err);
+              // portable_id stays NULL — disk is truth.
+            }
+            break;
+          }
+          case "malformed":
+            console.warn(`[oyster-id] malformed .oyster/id at ${resolved} — leaving portable_id NULL, file untouched`);
+            break;
+          case "unreadable":
+            console.warn(`[oyster-id] unreadable .oyster/id at ${resolved} — leaving portable_id NULL`, idResult.error);
+            break;
+          case "blocked":
+            console.warn(`[oyster-id] .oyster at ${resolved} is a file, not a directory — leaving portable_id NULL`);
+            break;
+        }
+      }
+      // If !existsSync(resolved): #490's advisory-existence case — portable_id stays NULL.
+      // A later scanSpace after "Update folder location…" will populate it.
       try {
-        this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved });
+        this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved, portable_id });
         source = this.spaceStore.getSourceById(id)!;
       } catch (err) {
         // Race: a concurrent caller inserted the same path between our check and
@@ -475,6 +520,14 @@ export class SpaceService {
     void this.spaceSync?.pushDelete(id);
   }
 
+  // NOTE: scanSpace is no longer purely read-only. For each source whose
+  // portable_id is NULL and whose path exists on disk but lacks .oyster/id,
+  // reconcilePortableId (called at the top of the loop) will write
+  // <source.path>/.oyster/id. This is intentional per the portable-identity
+  // spec (see docs/superpowers/specs/2026-05-15-oyster-id-portable-identity-design.md):
+  // it is bounded (one write per source, once) and is the migration path for
+  // sources attached before portable_id existed. Operators who notice
+  // `git status` churn after an upgrade can attribute it to this write.
   async scanSpace(spaceId: string): Promise<ScanResult> {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
@@ -490,6 +543,7 @@ export class SpaceService {
     const result: ScanResult = { discovered: 0, skipped: 0, resurfaced: 0, errors: [], artifacts: [] };
     try {
       for (const source of sources) {
+        this.reconcilePortableId(source);
         const folderPath = source.path;
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           result.errors.push(`Skipped missing folder: ${folderPath}`);
@@ -539,6 +593,46 @@ export class SpaceService {
       this.scanning.delete(spaceId);
     }
     return result;
+  }
+
+  // scanSpace-time portable_id reconciliation. Reads <source.path>/.oyster/id
+  // and updates `sources.portable_id` only when the file's value differs
+  // from the DB's. Never mutates `sources.id`, never touches sessions or
+  // artefacts. See spec invariants 1, 4, 5.
+  private reconcilePortableId(source: Source): void {
+    if (!existsSync(source.path)) return; // #490 advisory case; nothing to read or write
+    const result = readOysterId(source.path);
+    switch (result.status) {
+      case "valid":
+        if (result.id !== source.portable_id) {
+          this.spaceStore.updatePortableId(source.id, result.id);
+        }
+        // else: matches, no-op
+        return;
+      case "missing":
+        if (source.portable_id === null) {
+          const newId = crypto.randomUUID();
+          try {
+            writeOysterId(source.path, newId);
+            this.spaceStore.updatePortableId(source.id, newId);
+          } catch (err) {
+            console.warn(`[oyster-id] write failed for ${source.path}; portable_id stays NULL`, err);
+          }
+        }
+        // else: portable_id is set but file is missing — don't clobber what
+        // we have; the file may have been deleted manually and the user's
+        // intent isn't clear.
+        return;
+      case "malformed":
+        console.warn(`[oyster-id] malformed .oyster/id at ${source.path} — leaving portable_id unchanged`);
+        return;
+      case "unreadable":
+        console.warn(`[oyster-id] unreadable .oyster/id at ${source.path} — leaving portable_id unchanged`, result.error);
+        return;
+      case "blocked":
+        console.warn(`[oyster-id] .oyster at ${source.path} is a file, not a directory — leaving portable_id unchanged`);
+        return;
+    }
   }
 
   private walk(

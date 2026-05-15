@@ -57,6 +57,7 @@ async function run() {
     type: "local_folder",
     path: fakeCwd,
     label: null,
+    portable_id: null,
   });
 
   // Seed an artifact so artifact-touch logic finds a match.

@@ -28,6 +28,10 @@ export interface Source {
   label: string | null;
   added_at: string;
   removed_at: string | null;
+  // New field — cross-machine identity, sourced from <path>/.oyster/id.
+  // NULL is valid: the file may not exist yet, the path may not exist on
+  // disk, or a write may have failed. NULL is never imaginary state.
+  portable_id: string | null;
 }
 
 export interface SpaceStore {
@@ -38,7 +42,7 @@ export interface SpaceStore {
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void;
   delete(id: string): void;
   // sources
-  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null }): void;
+  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null; portable_id: string | null }): void;
   softDeleteSource(sourceId: string): void;
   restoreSource(sourceId: string): void;
   getSources(spaceId: string, opts?: { includeRemoved?: boolean }): Source[];
@@ -59,6 +63,9 @@ export interface SpaceStore {
    *  (`getActiveSourceByPath` returning a different id) BEFORE calling — the
    *  store enforces neither, it just runs the UPDATE. */
   updateSource(sourceId: string, fields: { path?: string; label?: string | null }): void;
+  /** Single-row UPDATE of `sources.portable_id`. No cascade. Never touches
+   *  sessions or artifacts — they FK to `sources.id`, which is unchanged. */
+  updatePortableId(sourceId: string, portableId: string | null): void;
   /** Soft-delete a space. Sets deleted_at to the provided timestamp (or
    *  Date.now()). Idempotent — re-call on an already-deleted row is a no-op
    *  (preserves the original deleted_at). When applying a cross-device
@@ -106,6 +113,7 @@ export class SqliteSpaceStore implements SpaceStore {
     getActiveSourceByPath: Database.Statement;
     getActiveSourceForCwd: Database.Statement;
     getSoftDeletedSourceByPathForSpace: Database.Statement;
+    updatePortableId: Database.Statement;
     softDelete: Database.Statement;
     markSyncDirty: Database.Statement;
     getDirtyRows: Database.Statement;
@@ -132,8 +140,8 @@ export class SqliteSpaceStore implements SpaceStore {
         )
       `),
       addSource: db.prepare(`
-        INSERT INTO sources (id, space_id, type, path, label)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO sources (id, space_id, type, path, label, portable_id)
+        VALUES (?, ?, ?, ?, ?, ?)
       `),
       softDeleteSource: db.prepare("UPDATE sources SET removed_at = datetime('now') WHERE id = ? AND removed_at IS NULL"),
       restoreSource: db.prepare("UPDATE sources SET removed_at = NULL WHERE id = ?"),
@@ -170,6 +178,7 @@ export class SqliteSpaceStore implements SpaceStore {
       getSoftDeletedSourceByPathForSpace: db.prepare(
         "SELECT * FROM sources WHERE space_id = ? AND path = ? AND removed_at IS NOT NULL ORDER BY added_at DESC LIMIT 1"
       ),
+      updatePortableId: db.prepare("UPDATE sources SET portable_id = ? WHERE id = ?"),
       softDelete: db.prepare("UPDATE spaces SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL"),
       markSyncDirty: db.prepare("UPDATE spaces SET sync_dirty_at = ? WHERE id = ?"),
       getDirtyRows: db.prepare(`
@@ -201,8 +210,8 @@ export class SqliteSpaceStore implements SpaceStore {
     this.db.prepare("DELETE FROM spaces WHERE id = ?").run(id);
   }
 
-  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null }): void {
-    this.stmts.addSource.run(args.id, args.space_id, args.type, args.path, args.label ?? null);
+  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null; portable_id: string | null }): void {
+    this.stmts.addSource.run(args.id, args.space_id, args.type, args.path, args.label ?? null, args.portable_id);
   }
   softDeleteSource(sourceId: string): void { this.stmts.softDeleteSource.run(sourceId); }
   restoreSource(sourceId: string): void { this.stmts.restoreSource.run(sourceId); }
@@ -233,6 +242,9 @@ export class SqliteSpaceStore implements SpaceStore {
     if (sets.length === 0) return;
     values.push(sourceId);
     this.db.prepare(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+  }
+  updatePortableId(sourceId: string, portableId: string | null): void {
+    this.stmts.updatePortableId.run(portableId, sourceId);
   }
 
   transaction<T>(fn: () => T): T {
