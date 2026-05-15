@@ -21,6 +21,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **Windows: same folder no longer shows as two orphan tiles.** A folder you've run sessions in on Windows used to appear twice in *Everything else.* — once as `C:/Users/...` and once as `C:\Users\...` — depending on whether the session was a local one or pulled back from another device. They now collapse into a single tile.
 - **Home's table view now matches the icon view for published artefacts.** Cloud-only published rows previously hid the artefact's real space behind a literal *"Cloud"* label and showed no published-status chip. The table now shows the underlying space (e.g. *tokinvest*) and renders the same *On cloud* / *Published* chip next to the title that the icon view shows below it — both views speak the same visual language.
 - **Sessions no longer get stuck pointing at a detached folder.** Previously, removing a folder left sessions silently linked to a deleted source; they now correctly fall back to the space vault.
 
