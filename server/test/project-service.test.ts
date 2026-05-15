@@ -123,3 +123,56 @@ describe("ProjectService.claimOrphan", () => {
     expect(() => service.claimOrphan({ cwd: "/foo", projectId: "nope" })).toThrow();
   });
 });
+
+describe("ProjectService.deleteProject", () => {
+  let dir: string;
+  let db: Database.Database;
+  let service: ProjectService;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-ps-del-"));
+    db = initDb(dir);
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('work', 'Work', '#000', 'none')`);
+    service = new ProjectService(db);
+  });
+  afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  it("soft-deletes the project (sets removed_at) so listForSpace stops returning it", () => {
+    const p = service.createProject({ spaceId: "work", name: "Proj" });
+    service.deleteProject(p.id);
+    expect(service.listForSpace("work")).toEqual([]);
+    // Row still exists in the DB — sessions FK-pointing at it stay valid.
+    const row = db.prepare("SELECT removed_at FROM projects WHERE id = ?").get(p.id) as { removed_at: string };
+    expect(row.removed_at).not.toBeNull();
+  });
+
+  it("throws when the project doesn't exist", () => {
+    expect(() => service.deleteProject("nope")).toThrow();
+  });
+});
+
+describe("ProjectService.updateProject", () => {
+  let dir: string;
+  let db: Database.Database;
+  let service: ProjectService;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-ps-up-"));
+    db = initDb(dir);
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('work', 'Work', '#000', 'none')`);
+    service = new ProjectService(db);
+  });
+  afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  it("renames the project", () => {
+    const p = service.createProject({ spaceId: "work", name: "Old" });
+    const updated = service.updateProject(p.id, { name: "New" });
+    expect(updated.name).toBe("New");
+    expect(service.listForSpace("work").map((x) => x.name)).toEqual(["New"]);
+  });
+
+  it("rejects an empty name", () => {
+    const p = service.createProject({ spaceId: "work", name: "Old" });
+    expect(() => service.updateProject(p.id, { name: "  " })).toThrow();
+  });
+});

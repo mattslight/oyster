@@ -202,6 +202,7 @@ export async function tryHandleSessionRoute(
       spaceId: string | null;
       sourceId: string | null;
       sourceLabel: string | null;
+      projectId: string | null;
       cwd: string | null;
       agent: string;
       title: string | null;
@@ -238,6 +239,7 @@ export async function tryHandleSessionRoute(
         spaceId: row.space_id,
         sourceId: row.source_id ?? null,
         sourceLabel: label,
+        projectId: row.project_id ?? null,
         cwd: row.cwd,
         agent: row.agent,
         title: row.title,
@@ -313,6 +315,7 @@ export async function tryHandleSessionRoute(
           spaceId: null,
           sourceId: null,
           sourceLabel: null,
+          projectId: null,
           cwd: r.cwd,
           agent: r.agent,
           title: r.title,
@@ -401,6 +404,7 @@ export async function tryHandleSessionRoute(
           spaceId: row.space_id,
           sourceId: row.source_id ?? null,
           sourceLabel,
+          projectId: row.project_id ?? null,
           cwd: row.cwd,
           agent: row.agent,
           title: row.title,
@@ -446,6 +450,7 @@ export async function tryHandleSessionRoute(
             spaceId: null,
             sourceId: null,
             sourceLabel: null,
+            projectId: null,
             cwd: remoteRow.cwd,
             agent: remoteRow.agent,
             title: remoteRow.title,

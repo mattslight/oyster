@@ -66,6 +66,28 @@ export async function tryHandleProjectsRoute(
     return true;
   }
 
+  const idMatch = pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (idMatch && (req.method === "DELETE" || req.method === "PATCH")) {
+    if (rejectIfNonLocalOrigin()) return true;
+    try {
+      const projectId = safeDecode(idMatch[1]!);
+      if (projectId === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
+      if (req.method === "DELETE") {
+        projectService.deleteProject(projectId);
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+        sendJson({ ok: true });
+      } else {
+        const body = await readJsonBody();
+        const updated = projectService.updateProject(projectId, {
+          name: typeof body.name === "string" ? body.name : undefined,
+        });
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+        sendJson(updated);
+      }
+    } catch (err) { sendError(err); }
+    return true;
+  }
+
   const claimMatch = pathname.match(/^\/api\/projects\/([^/]+)\/claim$/);
   if (claimMatch && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;

@@ -1,4 +1,4 @@
-import { getJson, postJson } from "./http";
+import { getJson, postJson, patchJson, del } from "./http";
 
 // Mirrors `Project` in server/src/project-service.ts. Defined locally to
 // avoid a server-side type import that would pull in better-sqlite3 types.
@@ -26,4 +26,12 @@ export async function createProject(spaceId: string, name: string): Promise<Proj
 // or create one, then sweep orphans into it. Returns the number claimed.
 export async function claimOrphan(projectId: string, cwd: string): Promise<{ claimed: number }> {
   return postJson<{ claimed: number }>(`/api/projects/${encodeURIComponent(projectId)}/claim`, { cwd });
+}
+
+export async function renameProject(projectId: string, name: string): Promise<Project> {
+  return patchJson<Project>(`/api/projects/${encodeURIComponent(projectId)}`, { name });
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await del(`/api/projects/${encodeURIComponent(projectId)}`);
 }

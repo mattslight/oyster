@@ -66,4 +66,29 @@ export class ProjectService {
       .get(id) as ProjectRow;
     return rowToProject(row);
   }
+
+  // Soft-delete. The row stays so sessions.project_id FKs keep resolving
+  // (UI just stops surfacing the tile via listForSpace). Reattach later
+  // by creating a new project and claiming orphans into it.
+  deleteProject(projectId: string): void {
+    const info = this.db
+      .prepare("UPDATE projects SET removed_at = datetime('now') WHERE id = ? AND removed_at IS NULL")
+      .run(projectId);
+    if (info.changes === 0) throw new Error(`Project "${projectId}" not found`);
+  }
+
+  // Currently only `name` is updatable. `spaceId` is intentionally
+  // immutable — a project moves spaces by being recreated, not edited.
+  updateProject(projectId: string, fields: { name?: string }): Project {
+    if (typeof fields.name === "string") {
+      const name = fields.name.trim();
+      if (!name) throw new Error("name must not be empty");
+      this.db.prepare("UPDATE projects SET name = ? WHERE id = ? AND removed_at IS NULL").run(name, projectId);
+    }
+    const row = this.db
+      .prepare("SELECT id, space_id, name, created_at FROM projects WHERE id = ?")
+      .get(projectId) as ProjectRow | undefined;
+    if (!row) throw new Error(`Project "${projectId}" not found`);
+    return rowToProject(row);
+  }
 }

@@ -95,6 +95,11 @@ export interface Session {
    * tiles don't need a per-row lookup. Null when sourceId is null or
    * (rare) when the source has been hard-deleted. */
   sourceLabel: string | null;
+  /** Project this session is bound to (post-rewrite identity model).
+   * Resolved by the watcher via `<cwd>/.oyster/id`, or by an explicit
+   * claim_orphan call. Null = orphan. Will eventually replace sourceId
+   * entirely; both coexist during the migration. */
+  projectId: string | null;
   /** Original working directory captured by the watcher. Persisted so
    * the UI can rebuild the resume command (`cd <cwd> && claude
    * --resume <id>`) and label orphan sessions whose cwd doesn't match
