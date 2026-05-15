@@ -22,6 +22,7 @@
     "build:changelog": "node scripts/build-changelog.mjs",
     "preview:banner": "node scripts/preview-banner.mjs",
     "serve:docs": "npm run build:changelog && npx --yes serve@14 docs",
+    "predev": "node -e \"require('fs').rmSync('.dev-port', { force: true })\"",
     "dev": "npx concurrently -n web,server -c blue,green \"npx wait-on file:.dev-port && cd web && npm run dev\" \"cd server && npm run dev\"",
     "dev:web": "cd web && npm run dev",
     "dev:server": "cd server && npm run dev",
