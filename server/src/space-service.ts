@@ -89,7 +89,12 @@ function rowToSpace(row: SpaceRow): Space {
   };
 }
 
-const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage", ".cache", ".claude", ".opencode", ".vscode", ".idea", "__pycache__", ".tox", "venv", ".venv", "target", "vendor"]);
+// Oyster's own per-source metadata directory; `.oyster/id` and any
+// future siblings are internal state, never user-visible artefacts.
+// (Invariant 6 of the portable-identity spec.) The trailing
+// `entry.startsWith(".")` check in walk() also catches this, but the
+// explicit entry is the defensive guarantee.
+const SKIP_DIRS = new Set(["node_modules", ".git", ".oyster", "dist", "build", ".next", "out", "coverage", ".cache", ".claude", ".opencode", ".vscode", ".idea", "__pycache__", ".tox", "venv", ".venv", "target", "vendor"]);
 const SKIP_FILE_PATTERNS = [/\.lock$/, /\.log$/];
 const MAX_DEPTH = 4;
 const APP_DIR_NAMES = new Set(["web", "admin", "app", "client", "frontend", "ui", "dashboard", "portal", "site"]);
