@@ -154,26 +154,26 @@ Identity and the open web — sign in, publish artefacts, share them anywhere.
 
 ### Added
 
-- **Sign in to Oyster.** Free account in three clicks. Continue with GitHub, or magic-link via email as a fallback. ([#295](https://github.com/mattslight/oyster/issues/295), [#340](https://github.com/mattslight/oyster/issues/340))
-- **Publish artefacts.** Right-click an artefact, hit Share in the file viewer, or type `/p` in the chat bar. Open, password, and sign-in-required modes. Published tiles get a copy-link chip and a QR toggle for mobile. ([#317](https://github.com/mattslight/oyster/issues/317))
-- **Public viewer.** Visiting a share URL renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, inline images. Password links unlock once for 24 hours per browser. ([#316](https://github.com/mattslight/oyster/issues/316))
-- **Filter Home to published artefacts.** A `published` pill in the Artefacts header narrows the grid to currently-live shares. ([#374](https://github.com/mattslight/oyster/issues/374))
-- **Unpublish from the chat bar.** `/u <artefact>` retires a live share in one keystroke. ([#388](https://github.com/mattslight/oyster/issues/388))
-- **Pin artefacts.** Right-click for Pin / Unpin; pinned items sort above the rest with a gold corner. New `pinned` filter chip on Home. ([#387](https://github.com/mattslight/oyster/issues/387))
-- **Delete a memory.** Hover any row in the Memories list for a trash icon. ([#398](https://github.com/mattslight/oyster/issues/398))
+- **Sign in to Oyster.** Free account in three clicks. Continue with GitHub, or magic-link via email as a fallback. ([#295](https://github.com/oyster-to/oyster/issues/295), [#340](https://github.com/oyster-to/oyster/issues/340))
+- **Publish artefacts.** Right-click an artefact, hit Share in the file viewer, or type `/p` in the chat bar. Open, password, and sign-in-required modes. Published tiles get a copy-link chip and a QR toggle for mobile. ([#317](https://github.com/oyster-to/oyster/issues/317))
+- **Public viewer.** Visiting a share URL renders the artefact — markdown, mermaid diagrams, sandboxed HTML apps, inline images. Password links unlock once for 24 hours per browser. ([#316](https://github.com/oyster-to/oyster/issues/316))
+- **Filter Home to published artefacts.** A `published` pill in the Artefacts header narrows the grid to currently-live shares. ([#374](https://github.com/oyster-to/oyster/issues/374))
+- **Unpublish from the chat bar.** `/u <artefact>` retires a live share in one keystroke. ([#388](https://github.com/oyster-to/oyster/issues/388))
+- **Pin artefacts.** Right-click for Pin / Unpin; pinned items sort above the rest with a gold corner. New `pinned` filter chip on Home. ([#387](https://github.com/oyster-to/oyster/issues/387))
+- **Delete a memory.** Hover any row in the Memories list for a trash icon. ([#398](https://github.com/oyster-to/oyster/issues/398))
 
 ### Changed
 
 - **Password-protected shares are a Pro feature.** Free accounts get open and sign-in-required links; the Password option shows a Pro pill linking to [oyster.to/pricing](https://oyster.to/pricing). Existing password publications keep working until unpublished.
-- **Published shares live on `share.oyster.to`.** Untrusted content runs on its own origin so it can't reach the main app's session; sandboxed apps regain real `localStorage`. Existing `oyster.to/p/...` links redirect. ([#397](https://github.com/mattslight/oyster/issues/397))
+- **Published shares live on `share.oyster.to`.** Untrusted content runs on its own origin so it can't reach the main app's session; sandboxed apps regain real `localStorage`. Existing `oyster.to/p/...` links redirect. ([#397](https://github.com/oyster-to/oyster/issues/397))
 - **"Set up Oyster" is a panel, not a wall of text.** After scanning your dev folder, the agent surfaces a structured proposal — drag chips between suggested spaces, rename, untick what you don't want, then Create.
 - **Setup is a checklist.** One required step (set up your spaces), three optional. The dock pill stops nagging once the required step is done.
-- **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are excluded from scan results. ([#281](https://github.com/mattslight/oyster/issues/281))
-- **Home sections cap their preview.** Sessions and Artefacts each show ten with a `Show more` toggle in both icon and table views. ([#389](https://github.com/mattslight/oyster/issues/389))
+- **Repo scanner respects `.gitignore`.** Folders and files matched by a project's `.gitignore` are excluded from scan results. ([#281](https://github.com/oyster-to/oyster/issues/281))
+- **Home sections cap their preview.** Sessions and Artefacts each show ten with a `Show more` toggle in both icon and table views. ([#389](https://github.com/oyster-to/oyster/issues/389))
 
 ### Fixed
 
-- **Faster startup.** Chat is usable in ~1.5s on cold boot, down from ~14s. ([#385](https://github.com/mattslight/oyster/issues/385))
+- **Faster startup.** Chat is usable in ~1.5s on cold boot, down from ~14s. ([#385](https://github.com/oyster-to/oyster/issues/385))
 - **Sign-in re-syncs your published artefacts.** Fresh device or after a workspace reset, the cloud is the source of truth. Publications without a local copy surface as `On cloud` tiles you can manage from any signed-in device.
 - **Existing publications self-heal their label and space.** Older shares populate proper context on next sign-in instead of forcing a re-publish.
 - **Right-click works on the artefacts list view.** Pin, Publish settings, Unpublish, and Publish… now appear in a context menu in list view too.
@@ -186,22 +186,22 @@ Trustworthy recall — every memory traceable, every conversation searchable.
 
 ### Added
 
-- **Find within a session.** Cmd+F in the session inspector opens an in-place search bar; ↑/↓ steps through matches with the current one scrolled into view. ([#332](https://github.com/mattslight/oyster/issues/332))
-- **Spotlight searches transcripts.** Cmd+K now matches past conversation turns alongside artefacts; click through to open the source session at that turn. ([#329](https://github.com/mattslight/oyster/issues/329))
-- **Verbatim transcript recall.** Agents can search your past conversations directly, not just the memory layer. Same-device for now; cross-device lands with cloud transcripts in 0.8.0. ([#311](https://github.com/mattslight/oyster/issues/311))
-- **Memory tab on the session inspector.** Shows what each session wrote and pulled; click any entry to jump to its source session. The Home memories list grows the same affordance. ([#310](https://github.com/mattslight/oyster/issues/310))
+- **Find within a session.** Cmd+F in the session inspector opens an in-place search bar; ↑/↓ steps through matches with the current one scrolled into view. ([#332](https://github.com/oyster-to/oyster/issues/332))
+- **Spotlight searches transcripts.** Cmd+K now matches past conversation turns alongside artefacts; click through to open the source session at that turn. ([#329](https://github.com/oyster-to/oyster/issues/329))
+- **Verbatim transcript recall.** Agents can search your past conversations directly, not just the memory layer. Same-device for now; cross-device lands with cloud transcripts in 0.8.0. ([#311](https://github.com/oyster-to/oyster/issues/311))
+- **Memory tab on the session inspector.** Shows what each session wrote and pulled; click any entry to jump to its source session. The Home memories list grows the same affordance. ([#310](https://github.com/oyster-to/oyster/issues/310))
 - **Floating scroll-to-bottom arrow** in the session inspector — snaps back to the tail and re-arms auto-tail.
 
 ## [0.5.0] - 2026-05-01
 
 Identical to `0.5.0-beta.2`. Headline changes from the beta cycle:
 
-- **Oyster sees your Claude Code sessions.** Run `claude` in any folder mapped to a space and Oyster picks it up — title, file edits, and live state, with no MCP wiring. ([#251](https://github.com/mattslight/oyster/issues/251))
-- **Session inspector.** Click a session for the live transcript, touched artefacts, and a *Copy resume command* — and process-aware state means no spurious red on long thinking turns. ([#253](https://github.com/mattslight/oyster/issues/253), [#274](https://github.com/mattslight/oyster/issues/274), [#275](https://github.com/mattslight/oyster/issues/275))
-- **Home is a sectioned feed.** Spaces · Sessions · Artefacts · Memories replace the spatial desktop as the default surface; chips filter inline and live-update as agents work. ([#252](https://github.com/mattslight/oyster/issues/252), [#254](https://github.com/mattslight/oyster/issues/254), [#280](https://github.com/mattslight/oyster/issues/280))
-- **Project tiles on every space.** Scope a space to one linked folder, promote an Elsewhere folder into its own space in one click, and removing the only folder cleanly deletes the space. ([#266](https://github.com/mattslight/oyster/issues/266), [#285](https://github.com/mattslight/oyster/issues/285))
+- **Oyster sees your Claude Code sessions.** Run `claude` in any folder mapped to a space and Oyster picks it up — title, file edits, and live state, with no MCP wiring. ([#251](https://github.com/oyster-to/oyster/issues/251))
+- **Session inspector.** Click a session for the live transcript, touched artefacts, and a *Copy resume command* — and process-aware state means no spurious red on long thinking turns. ([#253](https://github.com/oyster-to/oyster/issues/253), [#274](https://github.com/oyster-to/oyster/issues/274), [#275](https://github.com/oyster-to/oyster/issues/275))
+- **Home is a sectioned feed.** Spaces · Sessions · Artefacts · Memories replace the spatial desktop as the default surface; chips filter inline and live-update as agents work. ([#252](https://github.com/oyster-to/oyster/issues/252), [#254](https://github.com/oyster-to/oyster/issues/254), [#280](https://github.com/oyster-to/oyster/issues/280))
+- **Project tiles on every space.** Scope a space to one linked folder, promote an Elsewhere folder into its own space in one click, and removing the only folder cleanly deletes the space. ([#266](https://github.com/oyster-to/oyster/issues/266), [#285](https://github.com/oyster-to/oyster/issues/285))
 - **Oyster Pro foundations.** Coming-soon page with local vault inventory and waitlist signup at [oyster.to/pricing](https://oyster.to/pricing).
-- **Local-only endpoints refuse non-loopback callers.** Closes a same-WiFi gap where a non-browser client could pull local APIs. ([#289](https://github.com/mattslight/oyster/issues/289))
+- **Local-only endpoints refuse non-loopback callers.** Closes a same-WiFi gap where a non-browser client could pull local APIs. ([#289](https://github.com/oyster-to/oyster/issues/289))
 
 See `0.5.0-beta.0` through `0.5.0-beta.2` below for per-beta detail.
 
@@ -221,42 +221,42 @@ See `0.5.0-beta.0` through `0.5.0-beta.2` below for per-beta detail.
 ### Added
 
 - **Oyster Pro coming-soon page.** Shield-icon pill in the breadcrumb opens a page naming what's about to ship — Sync · Memory · Publish — and inventories your local workspace. CTA links to a public pricing page at [oyster.to/pricing](https://oyster.to/pricing).
-- **Session inspector.** Click a session for the live transcript, touched artefacts, and a *Copy resume command* button. Disconnected sessions show a last-heartbeat banner. ([#253](https://github.com/mattslight/oyster/issues/253))
-- **Scroll up to load older transcript turns.** 1000-turn window with a `1000+` badge; older turns prepend in place, scroll position pinned. ([#274](https://github.com/mattslight/oyster/issues/274))
-- **Memories on Home.** Agents' `remember` notes show alongside Sessions and Artefacts, scoped by space pills. ([#254](https://github.com/mattslight/oyster/issues/254))
-- **Project tiles on every space.** Scope to one linked folder, attach folders inline, scratchpad tile for native artefacts. ([#266](https://github.com/mattslight/oyster/issues/266))
-- **Filter and collapse Artefacts on Home.** Defaults to ~3 rows; chips split *mine* / *from agents* / *linked*. ([#280](https://github.com/mattslight/oyster/issues/280))
-- **Promote an Elsewhere folder to its own space — one click.** Sessions whose cwd matches re-attribute to the new space. ([#285](https://github.com/mattslight/oyster/issues/285))
+- **Session inspector.** Click a session for the live transcript, touched artefacts, and a *Copy resume command* button. Disconnected sessions show a last-heartbeat banner. ([#253](https://github.com/oyster-to/oyster/issues/253))
+- **Scroll up to load older transcript turns.** 1000-turn window with a `1000+` badge; older turns prepend in place, scroll position pinned. ([#274](https://github.com/oyster-to/oyster/issues/274))
+- **Memories on Home.** Agents' `remember` notes show alongside Sessions and Artefacts, scoped by space pills. ([#254](https://github.com/oyster-to/oyster/issues/254))
+- **Project tiles on every space.** Scope to one linked folder, attach folders inline, scratchpad tile for native artefacts. ([#266](https://github.com/oyster-to/oyster/issues/266))
+- **Filter and collapse Artefacts on Home.** Defaults to ~3 rows; chips split *mine* / *from agents* / *linked*. ([#280](https://github.com/oyster-to/oyster/issues/280))
+- **Promote an Elsewhere folder to its own space — one click.** Sessions whose cwd matches re-attribute to the new space. ([#285](https://github.com/oyster-to/oyster/issues/285))
 - **Right-click a space pill for Rename · Delete.** Delete itemises affected sessions, artefacts, and memories before confirming.
 
 ### Changed
 
 - **Process-aware session states.** Active / waiting / disconnected / done, derived from running `claude` processes — no more spurious red on long thinking turns.
-- **Removing the only folder from a space deletes the space.** Detach no longer leaves empty-shell spaces behind; sessions return to Elsewhere. ([#285](https://github.com/mattslight/oyster/issues/285))
+- **Removing the only folder from a space deletes the space.** Detach no longer leaves empty-shell spaces behind; sessions return to Elsewhere. ([#285](https://github.com/oyster-to/oyster/issues/285))
 - **Empty-shell space surfaces a delete affordance** — the "no folders attached" banner now ends with `…or delete it.`
 
 ### Fixed
 
-- **Older sessions show their transcripts.** Sessions whose `claude` process finished before Oyster started watching now backfill on the next boot scan. ([#275](https://github.com/mattslight/oyster/issues/275))
+- **Older sessions show their transcripts.** Sessions whose `claude` process finished before Oyster started watching now backfill on the next boot scan. ([#275](https://github.com/oyster-to/oyster/issues/275))
 
 ### Security
 
-- **Local-only endpoints refuse non-loopback callers.** Server binds to `127.0.0.1` and rejects no-Origin requests from non-loopback addresses. ([#289](https://github.com/mattslight/oyster/issues/289))
+- **Local-only endpoints refuse non-loopback callers.** Server binds to `127.0.0.1` and rejects no-Origin requests from non-loopback addresses. ([#289](https://github.com/oyster-to/oyster/issues/289))
 
 ## [0.5.0-beta.0] - 2026-04-28
 
 ### Added
 
-- **Oyster sees your `claude` sessions.** Run `claude` in any folder mapped to a space and Oyster picks the session up automatically — no MCP wiring. Title from your first prompt, file edits attributed to tiles, sessions in unregistered folders land as orphans. ([#251](https://github.com/mattslight/oyster/issues/251))
-- **Home is now a sectioned feed.** Spaces · Sessions · Artefacts replace the spatial desktop as the default surface, scoped together by the chat-bar pills. State chips filter sessions inline; the list updates live. ([#252](https://github.com/mattslight/oyster/issues/252))
+- **Oyster sees your `claude` sessions.** Run `claude` in any folder mapped to a space and Oyster picks the session up automatically — no MCP wiring. Title from your first prompt, file edits attributed to tiles, sessions in unregistered folders land as orphans. ([#251](https://github.com/oyster-to/oyster/issues/251))
+- **Home is now a sectioned feed.** Spaces · Sessions · Artefacts replace the spatial desktop as the default surface, scoped together by the chat-bar pills. State chips filter sessions inline; the list updates live. ([#252](https://github.com/oyster-to/oyster/issues/252))
 
 ## [0.4.0] - 2026-04-28
 
 The 0.4.0 line is now stable. Code is identical to `0.4.0-beta.8`. Headline changes from the beta cycle:
 
-- **Agent-led setup.** Connect your AI, ask *"Set up Oyster"*, and your agent audits your filesystem and proposes spaces. Works through Claude Code, Cursor, Windsurf, VS Code, or Oyster's own chat bar. ([#184](https://github.com/mattslight/oyster/issues/184), [#195](https://github.com/mattslight/oyster/pull/195))
-- **Visible workspace at `~/Oyster/`** with typed sub-folders — `db/`, `apps/`, `spaces/`, `backups/`. Browsable outside Oyster. ([#207](https://github.com/mattslight/oyster/issues/207))
-- **Linked folders are first-class.** Attach external folders to a space; detach removes their tiles cleanly; reattach restores them. The ↗ glyph and *Where do my files live?* tile make it obvious which tiles you own vs which are windows into folders elsewhere on disk. ([#208](https://github.com/mattslight/oyster/issues/208), [#220](https://github.com/mattslight/oyster/issues/220))
+- **Agent-led setup.** Connect your AI, ask *"Set up Oyster"*, and your agent audits your filesystem and proposes spaces. Works through Claude Code, Cursor, Windsurf, VS Code, or Oyster's own chat bar. ([#184](https://github.com/oyster-to/oyster/issues/184), [#195](https://github.com/oyster-to/oyster/pull/195))
+- **Visible workspace at `~/Oyster/`** with typed sub-folders — `db/`, `apps/`, `spaces/`, `backups/`. Browsable outside Oyster. ([#207](https://github.com/oyster-to/oyster/issues/207))
+- **Linked folders are first-class.** Attach external folders to a space; detach removes their tiles cleanly; reattach restores them. The ↗ glyph and *Where do my files live?* tile make it obvious which tiles you own vs which are windows into folders elsewhere on disk. ([#208](https://github.com/oyster-to/oyster/issues/208), [#220](https://github.com/oyster-to/oyster/issues/220))
 - **Cloud-AI memory import.** Bring context across from another AI by pasting Oyster's export prompt — spaces, summaries, and memories seed in one pass.
 - **Logical-only spaces.** Create a conceptual space first; attach folders later or keep it folder-less.
 - **HTML-styled documents render as designed** (invoices, decks, letters), no longer forced through the dark markdown wrapper.
@@ -269,20 +269,20 @@ See `0.4.0-beta.0` through `0.4.0-beta.8` below for per-beta detail.
 
 ### Fixed
 
-- **First-run hero tagline no longer overlays the chat output.** Clicking the *Set up Oyster* prompt pill (instead of typing into the input) used to send the message without focusing the chat, so the *"Welcome to your surface."* tagline stayed on screen and floated over the streaming reply. The tagline now hides as soon as any chat message exists. ([#235](https://github.com/mattslight/oyster/pull/235))
-- **Space pickers now show your renamed name.** The `#` and `/s` autocompletes used to label every space by its slug (`sample-dashboard`), so renaming *Sample Dashboard* → *Project X* still showed `sample-dashboard` in the picker. They now show the display name; the slug appears as a secondary hint. ([#236](https://github.com/mattslight/oyster/pull/236))
+- **First-run hero tagline no longer overlays the chat output.** Clicking the *Set up Oyster* prompt pill (instead of typing into the input) used to send the message without focusing the chat, so the *"Welcome to your surface."* tagline stayed on screen and floated over the streaming reply. The tagline now hides as soon as any chat message exists. ([#235](https://github.com/oyster-to/oyster/pull/235))
+- **Space pickers now show your renamed name.** The `#` and `/s` autocompletes used to label every space by its slug (`sample-dashboard`), so renaming *Sample Dashboard* → *Project X* still showed `sample-dashboard` in the picker. They now show the display name; the slug appears as a secondary hint. ([#236](https://github.com/oyster-to/oyster/pull/236))
 
 ## [0.4.0-beta.7] - 2026-04-25
 
 ### Changed
 
-- **"Where do my files live?" tile is more useful at a glance.** Adopts the Quick Start visual language, leads with the resolved path of your Oyster home, and shows a small preview of the chain-link marker so you can see what a linked tile looks like — not just be told. ([#222](https://github.com/mattslight/oyster/pull/222))
+- **"Where do my files live?" tile is more useful at a glance.** Adopts the Quick Start visual language, leads with the resolved path of your Oyster home, and shows a small preview of the chain-link marker so you can see what a linked tile looks like — not just be told. ([#222](https://github.com/oyster-to/oyster/pull/222))
 
 ## [0.4.0-beta.6] - 2026-04-25
 
 ### Changed
 
-- **Linked tiles now carry a small chain-link marker** (bottom-left of the icon) so you can tell at a glance which tiles are windows into folders elsewhere on disk vs. native to your Oyster workspace. Hover the marker for the source folder name. The "Where are my files?" tile is now **"Where do my files live?"** and explains the two homes — Oyster-managed workspace, and linked folders you own. ([#220](https://github.com/mattslight/oyster/issues/220))
+- **Linked tiles now carry a small chain-link marker** (bottom-left of the icon) so you can tell at a glance which tiles are windows into folders elsewhere on disk vs. native to your Oyster workspace. Hover the marker for the source folder name. The "Where are my files?" tile is now **"Where do my files live?"** and explains the two homes — Oyster-managed workspace, and linked folders you own. ([#220](https://github.com/oyster-to/oyster/issues/220))
 
 ## [0.4.0-beta.5] - 2026-04-25
 
@@ -314,35 +314,35 @@ See `0.4.0-beta.0` through `0.4.0-beta.8` below for per-beta detail.
 
 ### Fixed
 
-- **`oyster install <id>` now works.** The CLI was writing to the pre-0.4 hidden workspace path while the server scans the new `~/Oyster/apps/` — so installs silently landed where nothing looked. Community plugins now install and appear on the surface after a restart. ([#212](https://github.com/mattslight/oyster/pull/212))
+- **`oyster install <id>` now works.** The CLI was writing to the pre-0.4 hidden workspace path while the server scans the new `~/Oyster/apps/` — so installs silently landed where nothing looked. Community plugins now install and appear on the surface after a restart. ([#212](https://github.com/oyster-to/oyster/pull/212))
 
 ## [0.4.0-beta.1] - 2026-04-24
 
 ### Added
 
-- **"Where are my files?" tile.** Shows your live workspace paths, not a generic doc. ([#207](https://github.com/mattslight/oyster/issues/207))
-- **Archive shortcut** — icon bottom-left opens the archived view. ([#207](https://github.com/mattslight/oyster/issues/207))
-- **Right-click → Regenerate icon** on any tile, including builtins. ([#207](https://github.com/mattslight/oyster/issues/207))
-- **Agent can list and restore archived artifacts.** Previously it couldn't see them. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **"Where are my files?" tile.** Shows your live workspace paths, not a generic doc. ([#207](https://github.com/oyster-to/oyster/issues/207))
+- **Archive shortcut** — icon bottom-left opens the archived view. ([#207](https://github.com/oyster-to/oyster/issues/207))
+- **Right-click → Regenerate icon** on any tile, including builtins. ([#207](https://github.com/oyster-to/oyster/issues/207))
+- **Agent can list and restore archived artifacts.** Previously it couldn't see them. ([#207](https://github.com/oyster-to/oyster/issues/207))
 
 ### Changed
 
-- **Workspace moves to `~/Oyster/`** (from hidden `~/.oyster/userland/`). Visible in Finder / Explorer, with clear sub-folders: `db/`, `apps/`, `spaces/<project>/`, `backups/`. Your content is browsable outside Oyster. ([#207](https://github.com/mattslight/oyster/issues/207))
-- **Styled confirm / rename dialogs** replace the default browser prompts for uninstall, archive, and folder rename. ([#207](https://github.com/mattslight/oyster/issues/207))
-- **"Import from AI" → "Import Memories"** — same tile, clearer name. ([#207](https://github.com/mattslight/oyster/issues/207))
+- **Workspace moves to `~/Oyster/`** (from hidden `~/.oyster/userland/`). Visible in Finder / Explorer, with clear sub-folders: `db/`, `apps/`, `spaces/<project>/`, `backups/`. Your content is browsable outside Oyster. ([#207](https://github.com/oyster-to/oyster/issues/207))
+- **Styled confirm / rename dialogs** replace the default browser prompts for uninstall, archive, and folder rename. ([#207](https://github.com/oyster-to/oyster/issues/207))
+- **"Import from AI" → "Import Memories"** — same tile, clearer name. ([#207](https://github.com/oyster-to/oyster/issues/207))
 
 ### Fixed
 
 - **Your AI can now create HTML-styled documents (invoices, receipts, letters).** Agents can save artifacts as HTML so they render on the surface the way they were designed — white paper, printable layout. Previously every agent-created notes artifact was forced into markdown and shown through the dark markdown wrapper, so pages meant for white paper looked wrong.
-- **Silent AI failures now surface.** When your AI provider rejects a message (expired key, rate limit, provider outage) Oyster shows a banner with the reason and, for auth failures, the exact command to reconnect — instead of the chat bar staying mute. ([#201](https://github.com/mattslight/oyster/issues/201))
-- **AI engine no longer piles up after crashes or force-quits.** Previous Oyster sessions that died without a clean shutdown used to leave their AI engine subprocess running forever, and across days of use these could stack up and fill your swap. Oyster now reaps any orphaned engines on startup, and uses OS-level process groups so a graceful shutdown kills the whole engine tree in one go. ([#191](https://github.com/mattslight/oyster/issues/191))
-- **Silent "thinking…" hang when no AI provider is configured.** Some AI-engine failures only surfaced in the server log and never reached the chat — messages would sit on "thinking…" forever. Oyster now catches those and raises them into the same banner as other AI errors, so you always get a reason and a next step. ([#203](https://github.com/mattslight/oyster/issues/203))
+- **Silent AI failures now surface.** When your AI provider rejects a message (expired key, rate limit, provider outage) Oyster shows a banner with the reason and, for auth failures, the exact command to reconnect — instead of the chat bar staying mute. ([#201](https://github.com/oyster-to/oyster/issues/201))
+- **AI engine no longer piles up after crashes or force-quits.** Previous Oyster sessions that died without a clean shutdown used to leave their AI engine subprocess running forever, and across days of use these could stack up and fill your swap. Oyster now reaps any orphaned engines on startup, and uses OS-level process groups so a graceful shutdown kills the whole engine tree in one go. ([#191](https://github.com/oyster-to/oyster/issues/191))
+- **Silent "thinking…" hang when no AI provider is configured.** Some AI-engine failures only surfaced in the server log and never reached the chat — messages would sit on "thinking…" forever. Oyster now catches those and raises them into the same banner as other AI errors, so you always get a reason and a next step. ([#203](https://github.com/oyster-to/oyster/issues/203))
 
 ## [0.4.0-beta.0] - 2026-04-23
 
 ### Added
 
-- **Onboarding pill.** A persistent setup companion in the top-right of a fresh Oyster walks you through three steps: connect your AI agent, ask it to set things up, and optionally import memories from another AI. Progress tracks automatically as you go. ([#184](https://github.com/mattslight/oyster/issues/184))
+- **Onboarding pill.** A persistent setup companion in the top-right of a fresh Oyster walks you through three steps: connect your AI agent, ask it to set things up, and optionally import memories from another AI. Progress tracks automatically as you go. ([#184](https://github.com/oyster-to/oyster/issues/184))
 - **Agent-led discovery.** Connect Claude Code, Cursor, Windsurf, VS Code — or use Oyster's own chat bar — and ask *"set up Oyster for me."* Your agent audits your filesystem, proposes a set of spaces in chat, and creates them once you confirm.
 - **Cloud-AI import.** Bring your context across from another AI: copy Oyster's import prompt into ChatGPT or Claude, paste the response back into Oyster's chat, and your spaces, summaries, and memories are seeded in one pass.
 - **Logical-only spaces.** Spaces no longer need a folder on disk. Create a conceptual space ("Work", "Reading") first; attach folders later, or keep it purely for memories and artifacts.
@@ -351,7 +351,7 @@ See `0.4.0-beta.0` through `0.4.0-beta.8` below for per-beta detail.
 
 - **Safer imports.** When Oyster asks another AI to export your context, it now explicitly tells that AI to leave out credentials and third-party personal details — so a raw export can't leak context you wouldn't want on your desktop.
 - **Clearer first-run copy.** The hero bar leads with *"Tell your agent to set up Oyster"*, and the connect-your-AI builtin leads with what you get (an agent driving your workspace) rather than protocol terminology.
-- **Drag-and-drop onboarding retired for this release.** Onboarding now goes through your agent; post-onboarding drag-drop to add folders later will return in a future release ([#190](https://github.com/mattslight/oyster/issues/190)).
+- **Drag-and-drop onboarding retired for this release.** Onboarding now goes through your agent; post-onboarding drag-drop to add folders later will return in a future release ([#190](https://github.com/oyster-to/oyster/issues/190)).
 
 ### Fixed
 
@@ -364,8 +364,8 @@ See `0.4.0-beta.0` through `0.4.0-beta.8` below for per-beta detail.
 
 ### Fixed
 
-- Stopped overriding OpenCode's own model selection with a hardcoded `anthropic/claude-sonnet-4-20250514` string, which broke users authed with OpenAI / Google / other providers (`ProviderModelNotFoundError` → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via `opencode providers login` or env vars. ([#174](https://github.com/mattslight/oyster/issues/174))
-- Claude Code MCP install command now uses `--scope user` so the Oyster MCP follows the user across every project instead of being pinned to the directory they happened to run `claude mcp add` from. Updated in README, landing page, `oyster.to/mcp`, the in-app "Connect your AI" builtin, and the CLI startup banner. ([#175](https://github.com/mattslight/oyster/issues/175))
+- Stopped overriding OpenCode's own model selection with a hardcoded `anthropic/claude-sonnet-4-20250514` string, which broke users authed with OpenAI / Google / other providers (`ProviderModelNotFoundError` → 502 in chat + AI import). OpenCode now picks its default model from whichever provider the user authed with via `opencode providers login` or env vars. ([#174](https://github.com/oyster-to/oyster/issues/174))
+- Claude Code MCP install command now uses `--scope user` so the Oyster MCP follows the user across every project instead of being pinned to the directory they happened to run `claude mcp add` from. Updated in README, landing page, `oyster.to/mcp`, the in-app "Connect your AI" builtin, and the CLI startup banner. ([#175](https://github.com/oyster-to/oyster/issues/175))
 
 ## [0.3.7] - 2026-04-20
 
@@ -639,28 +639,28 @@ Agents (Claude Code, OpenCode, Cursor, etc.) can manage the Oyster surface via M
 - Surface with Aurora WebGL animated background.
 - Typed artifact icons, chat bar, window system with viewer.
 
-[0.7.0]: https://github.com/mattslight/oyster/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/mattslight/oyster/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.2...v0.5.0
-[0.5.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2
-[0.5.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
-[0.5.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.4.0...v0.5.0-beta.0
-[0.4.0]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.8...v0.4.0
-[0.4.0-beta.8]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.7...v0.4.0-beta.8
-[0.4.0-beta.7]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.6...v0.4.0-beta.7
-[0.4.0-beta.6]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.5...v0.4.0-beta.6
-[0.4.0-beta.5]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.4...v0.4.0-beta.5
-[0.4.0-beta.4]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.3...v0.4.0-beta.4
-[0.4.0-beta.3]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.2...v0.4.0-beta.3
-[0.4.0-beta.2]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.1...v0.4.0-beta.2
-[0.4.0-beta.1]: https://github.com/mattslight/oyster/compare/v0.4.0-beta.0...v0.4.0-beta.1
-[0.4.0-beta.0]: https://github.com/mattslight/oyster/compare/v0.3.8...v0.4.0-beta.0
-[0.3.5]: https://github.com/mattslight/oyster/compare/v0.3.4...v0.3.5
-[0.3.4]: https://github.com/mattslight/oyster/compare/v0.3.3...v0.3.4
-[0.3.3]: https://github.com/mattslight/oyster/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/mattslight/oyster/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/mattslight/oyster/compare/v0.2.4...v0.3.1
-[0.2.4]: https://github.com/mattslight/oyster/compare/v0.1.21...v0.2.4
-[0.1.21]: https://github.com/mattslight/oyster/compare/v0.1.17...v0.1.21
-[0.1.17]: https://github.com/mattslight/oyster/compare/v0.1.10...v0.1.17
-[0.1.10]: https://github.com/mattslight/oyster/releases/tag/v0.1.10
+[0.7.0]: https://github.com/oyster-to/oyster/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/oyster-to/oyster/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/oyster-to/oyster/compare/v0.5.0-beta.2...v0.5.0
+[0.5.0-beta.2]: https://github.com/oyster-to/oyster/compare/v0.5.0-beta.1...v0.5.0-beta.2
+[0.5.0-beta.1]: https://github.com/oyster-to/oyster/compare/v0.5.0-beta.0...v0.5.0-beta.1
+[0.5.0-beta.0]: https://github.com/oyster-to/oyster/compare/v0.4.0...v0.5.0-beta.0
+[0.4.0]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.8...v0.4.0
+[0.4.0-beta.8]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.7...v0.4.0-beta.8
+[0.4.0-beta.7]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.6...v0.4.0-beta.7
+[0.4.0-beta.6]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.5...v0.4.0-beta.6
+[0.4.0-beta.5]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.4...v0.4.0-beta.5
+[0.4.0-beta.4]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.3...v0.4.0-beta.4
+[0.4.0-beta.3]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.2...v0.4.0-beta.3
+[0.4.0-beta.2]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.1...v0.4.0-beta.2
+[0.4.0-beta.1]: https://github.com/oyster-to/oyster/compare/v0.4.0-beta.0...v0.4.0-beta.1
+[0.4.0-beta.0]: https://github.com/oyster-to/oyster/compare/v0.3.8...v0.4.0-beta.0
+[0.3.5]: https://github.com/oyster-to/oyster/compare/v0.3.4...v0.3.5
+[0.3.4]: https://github.com/oyster-to/oyster/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/oyster-to/oyster/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/oyster-to/oyster/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/oyster-to/oyster/compare/v0.2.4...v0.3.1
+[0.2.4]: https://github.com/oyster-to/oyster/compare/v0.1.21...v0.2.4
+[0.1.21]: https://github.com/oyster-to/oyster/compare/v0.1.17...v0.1.21
+[0.1.17]: https://github.com/oyster-to/oyster/compare/v0.1.10...v0.1.17
+[0.1.10]: https://github.com/oyster-to/oyster/releases/tag/v0.1.10
