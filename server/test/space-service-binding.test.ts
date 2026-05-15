@@ -3,7 +3,7 @@
 // that REST and MCP both call through.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initDb } from "../src/db.js";
@@ -110,6 +110,39 @@ describe("SpaceService.removeSource — soft-delete + session detach", () => {
 
     expect(env.sessionStore.getById("auto")?.source_id).toBe(restored.id);
     expect(env.sessionStore.getById("manual")?.source_id).toBeNull(); // never recaptured by heuristic
+  });
+});
+
+describe("SpaceService.addSource — orphan-tile attach with missing folder", () => {
+  let env: ReturnType<typeof makeEnv>;
+  beforeEach(() => { env = makeEnv(); });
+  afterEach(() => { env.cleanup(); });
+
+  it("accepts a non-existent path and binds orphan auto-sessions whose cwd matches", () => {
+    // Scenario from the field: 41 'done' sessions exist with cwd
+    // ~/Dev/oyster-os, but that folder was renamed on disk. The orphan-tile
+    // attach must succeed even though the path is gone, so the heuristic
+    // can claim the sessions for the chosen space.
+    const missing = join(env.workDir, "renamed-away");
+    const space = env.service.createSpace({ name: "sp" });
+    seedSession(env.db, { id: "a", cwd: missing });
+    seedSession(env.db, { id: "b", cwd: join(missing, "sub") });
+
+    const source = env.service.addSource(space.id, missing);
+    expect(source.path).toBe(missing);
+    expect(env.sessionStore.getById("a")?.source_id).toBe(source.id);
+    expect(env.sessionStore.getById("b")?.source_id).toBe(source.id);
+
+    // The tile would render with pathExists: false.
+    const sources = env.service.getSources(space.id);
+    expect(sources.find((s) => s.id === source.id)?.pathExists).toBe(false);
+  });
+
+  it("still rejects a path that exists but is a file rather than a directory", () => {
+    const filePath = join(env.workDir, "not-a-dir");
+    writeFileSync(filePath, "hi");
+    const space = env.service.createSpace({ name: "sp" });
+    expect(() => env.service.addSource(space.id, filePath)).toThrow(/not a directory/);
   });
 });
 

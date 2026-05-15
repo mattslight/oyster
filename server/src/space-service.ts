@@ -117,8 +117,18 @@ export class SpaceService {
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
     const resolved = normaliseSourcePath(rawPath);
-    if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
-    if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
+    // Path existence is advisory, not a precondition — matches updateSource.
+    // The case this unblocks: orphan-tile attach where the session's cwd
+    // points at a folder that's since been renamed or moved (or was on an
+    // unmounted drive). Letting the attach succeed lets the longest-prefix
+    // heuristic claim the sessions for the chosen space; the tile renders
+    // with the amber "Path missing" chip so the user can use "Update folder
+    // location…" to point at the new path. We still reject the only case
+    // the check ever genuinely caught: a path that exists but points at a
+    // file rather than a directory.
+    if (existsSync(resolved) && !statSync(resolved).isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolved}`);
+    }
 
     // Cross-space conflict / same-space no-op check.
     const active = this.spaceStore.getActiveSourceByPath(resolved);
@@ -343,8 +353,11 @@ export class SpaceService {
     if (!rawPath) throw new Error("path is required");
 
     const resolved = normaliseSourcePath(rawPath);
-    if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
-    if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
+    // Existence is advisory (see addSource above). Same rationale: lets
+    // the user promote an orphan tile whose folder has since been renamed.
+    if (existsSync(resolved) && !statSync(resolved).isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolved}`);
+    }
 
     const active = this.spaceStore.getActiveSourceByPath(resolved);
     if (active) {
