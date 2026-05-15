@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { SpaceService } from "./space-service.js";
+import { SessionService, SessionNotFoundError, SourceNotFoundError } from "./session-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { SessionStore } from "./session-store.js";
@@ -121,6 +122,7 @@ interface McpDeps {
    */
   getNativeSourcePath: (spaceId: string) => string;
   spaceService: SpaceService;
+  sessionService: SessionService;
   memoryProvider: MemoryProvider;
   sessionStore: SessionStore;
   pendingReveals: Set<string>;
@@ -534,6 +536,87 @@ export function createMcpServer(deps: McpDeps): McpServer {
       }
       deps.spaceService.removeSource(source.id);
       return { detached: source.path, source_id: source.id, space_id: source.space_id };
+    },
+  );
+
+  // ── move_session ──
+
+  tool(
+    "move_session",
+    "Reassign a session to a different source (folder), to the space vault (source_id: null), or back to auto-binding. Setting source_id flips the session to manual — heuristics will not re-bind it. Pass assignment_mode: 'auto' (with no source_id) to recompute via longest-prefix lookup on the session's cwd. Cross-space moves are allowed; the resulting space_id is derived from the target source.",
+    {
+      session_id: z.string().describe("ID of the session to reassign"),
+      source_id: z.string().nullable().optional().describe("Target source id; pass `null` to send to the space vault; omit to keep the current binding."),
+      space_id: z.string().optional().describe("Only honoured when source_id is null/omitted; ignored when source_id is set (derived from the source instead)."),
+      assignment_mode: z.enum(["auto", "manual"]).optional().describe("'auto' (with no source_id) triggers atomic recompute; 'manual' freezes the current binding."),
+    },
+    async ({ session_id, source_id, space_id, assignment_mode }) => {
+      try {
+        const updated = deps.sessionService.moveSession({
+          session_id,
+          ...(source_id !== undefined ? { source_id } : {}),
+          ...(space_id !== undefined ? { space_id } : {}),
+          ...(assignment_mode !== undefined ? { assignment_mode } : {}),
+        });
+        deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: session_id } });
+        return {
+          session_id: updated.id,
+          space_id: updated.space_id,
+          source_id: updated.source_id,
+          assignment_mode: updated.assignment_mode,
+        };
+      } catch (err) {
+        if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError) {
+          throw new Error(err.message);
+        }
+        throw err;
+      }
+    },
+  );
+
+  // ── set_source_path ──
+
+  tool(
+    "set_source_path",
+    "Update a source's filesystem path — e.g. after the user renamed or moved the folder on disk. Existing sessions bound to this source stay bound (source identity is its id, not its path); auto-orphans whose cwd matches the new path get rebound. Path existence is advisory: a non-existent path is accepted (useful for unmounted drives). If the new path is already attached to another source in the same space, throws — call consolidate_sources instead to merge.",
+    {
+      source_id: z.string().describe("ID of the source to update"),
+      path: z.string().describe("New absolute folder path (~/ supported)"),
+    },
+    async ({ source_id, path }) => {
+      const updated = deps.spaceService.updateSource(source_id, { path });
+      deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+      return {
+        source_id: updated.id,
+        space_id: updated.space_id,
+        path: updated.path,
+        label: updated.label,
+      };
+    },
+  );
+
+  // ── consolidate_sources ──
+
+  tool(
+    "consolidate_sources",
+    "Merge one source into another in the same space: bulk-reassign every session and artefact from the `from` source onto the `into` source, then soft-delete `from`. Use this when a folder rename or partial onboarding left multiple sources covering one logical project. Cross-space consolidation is not supported.",
+    {
+      from_source_id: z.string().describe("Source that will be merged away (soft-deleted at the end)"),
+      into_source_id: z.string().describe("Destination source that receives the sessions and artefacts"),
+    },
+    async ({ from_source_id, into_source_id }) => {
+      const result = deps.spaceService.consolidateSource(from_source_id, into_source_id);
+      deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+      return {
+        sessions_moved: result.sessionsMoved,
+        artefacts_moved: result.artefactsMoved,
+        into: {
+          id: result.intoSource.id,
+          space_id: result.intoSource.space_id,
+          path: result.intoSource.path,
+          label: result.intoSource.label,
+        },
+      };
     },
   );
 

@@ -21,6 +21,7 @@ import { ClaudeCodeWatcher } from "./watchers/claude-code.js";
 import { ArtifactService } from "./artifact-service.js";
 import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
+import { SessionService } from "./session-service.js";
 import { slugify } from "./utils.js";
 import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
@@ -533,6 +534,7 @@ const sessionSnapshotHandle = setInterval(() => {
 sessionSnapshotHandle.unref();
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
+const sessionService = new SessionService(db, sessionStore, spaceStore);
 const publishService = createPublishService({
   db,
   readArtifactBytes: async (artifactId) => {
@@ -741,6 +743,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   if (await tryHandleSessionRoute(req, res, url, ctx, {
     db, sessionStore, spaceStore, artifactService, memoryProvider, sessionSync,
     currentUserId: () => authService.getState().user?.id ?? null,
+    sessionService, broadcastUiEvent,
   })) return;
 
   // /api/artifacts/*, /api/groups/*, /api/plugins/:id/uninstall.
@@ -787,7 +790,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // and the OAuth discovery + redirect URLs must advertise the real port.
   if (await tryHandleOAuthMcpRoute(req, res, url, ctx, {
     port,
-    store, artifactService, spaceService, memoryProvider,
+    store, artifactService, spaceService, sessionService, memoryProvider,
     sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,

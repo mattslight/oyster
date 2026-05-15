@@ -456,6 +456,57 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
+  // assignment_mode: who owns the (space_id, source_id) classification on a
+  // session row. `'auto'` means the longest-prefix heuristic may assign or
+  // improve the binding as sources are attached / paths updated. `'manual'`
+  // means the user (or an MCP-driven agent) has pinned the classification —
+  // heuristics never overwrite it. Existing rows backfill to `'auto'`.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN assignment_mode TEXT NOT NULL DEFAULT 'auto' CHECK (assignment_mode IN ('auto','manual'))");
+  } catch { /* already exists */ }
+  db.exec("CREATE INDEX IF NOT EXISTS sessions_auto_cwd ON sessions(cwd) WHERE assignment_mode = 'auto'");
+
+  // One-time canonical-form migration for paths and cwds. The longest-prefix
+  // binding SQL compares `sessions.cwd` against `sources.path` via substr
+  // equality, which requires identical separator conventions and no trailing
+  // slash. New writes go through `normaliseSourcePath` (which produces
+  // forward-slash, trimmed strings); pre-existing rows may have backslashes
+  // (Windows) or trailing slashes. Rewrite them in place once so the new
+  // heuristic catches everything that ought to match. Idempotent: re-running
+  // on already-canonical rows is a no-op. We do NOT resolve symlinks here
+  // (that would require a JS-side loop with realpath calls per row and
+  // wouldn't work for missing paths) — separator + trim is enough to fix
+  // the cross-platform case that motivated this.
+  //
+  // Drive-root guard: a path of `C:\` after the `\` → `/` replace becomes
+  // `C:/`. A naive `rtrim(..., '/')` would strip that final slash and leave
+  // `C:`, which is an invalid path. The CASE preserves the slash when the
+  // result looks like a drive root.
+  const canonicalisePath = `CASE
+    WHEN replace($col, '\\', '/') = '/' THEN '/'
+    WHEN length(replace($col, '\\', '/')) = 3
+         AND substr(replace($col, '\\', '/'), 2, 2) = ':/'
+      THEN replace($col, '\\', '/')
+    ELSE rtrim(replace($col, '\\', '/'), '/')
+  END`;
+  db.exec(`
+    UPDATE sources
+       SET path = ${canonicalisePath.replace(/\$col/g, "path")}
+     WHERE path LIKE '%\\%'
+        OR (length(path) > 1
+            AND substr(path, length(path), 1) = '/'
+            AND NOT (length(path) = 3 AND substr(path, 2, 2) = ':/'));
+  `);
+  db.exec(`
+    UPDATE sessions
+       SET cwd = ${canonicalisePath.replace(/\$col/g, "cwd")}
+     WHERE cwd IS NOT NULL
+       AND (cwd LIKE '%\\%'
+            OR (length(cwd) > 1
+                AND substr(cwd, length(cwd), 1) = '/'
+                AND NOT (length(cwd) = 3 AND substr(cwd, 2, 2) = ':/')));
+  `);
+
   // Cloud session sync (#322). Seven columns drive the cross-device sync:
   // - sync_dirty_at: unix-ms of the most recent material change since last
   //   successful push. NULL = clean. Overwritten on every dirty mark, so

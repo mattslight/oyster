@@ -8,6 +8,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "../space-service.js";
+import { SourcePathConflictError } from "../space-service.js";
+import { existsSync, statSync } from "node:fs";
 import type { UiCommand } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
@@ -171,8 +173,127 @@ export async function tryHandleSpaceRoute(
           return true;
         }
         spaceService.removeSource(sourceId);
+        // Sessions previously bound to this source are now orphan; tell
+        // connected clients to refetch so the home feed reflects the
+        // detach without waiting for the next watcher tick.
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
         res.writeHead(204);
         res.end();
+      } catch (err) {
+        sendError(err);
+      }
+      return true;
+    }
+    // PATCH /api/spaces/:id/sources/:source_id — update a source's path
+    // (folder rename / unmounted-drive recovery) and/or label. Existing
+    // bindings are preserved; the longest-prefix heuristic runs after a
+    // path change so orphan auto-sessions matching the new path get bound
+    // and auto-sessions move to a more specific source when one applies.
+    //
+    // If the new path is already attached to another source in this space,
+    // the user almost certainly wants to *merge* this source into that one
+    // rather than rename — we return 409 with a structured
+    // `would_consolidate` body so the UI can offer the merge.
+    if (dm && req.method === "PATCH") {
+      if (rejectIfNonLocalOrigin()) return true;
+      const spaceId = safeDecode(dm[1]);
+      const sourceId = safeDecode(dm[2]);
+      if (spaceId === null || sourceId === null) {
+        sendJson({ error: "Invalid URL encoding" }, 400);
+        return true;
+      }
+      try {
+        const source = spaceService.getSourceById(sourceId);
+        // Detached sources are 404 too: callers shouldn't be able to PATCH
+        // a row we've soft-deleted. Mirrors DELETE's "active only" guard.
+        if (!source || source.space_id !== spaceId || source.removed_at) {
+          sendJson({ error: "source not found in this space" }, 404);
+          return true;
+        }
+        const body = await readJsonBody();
+        const fields: { path?: string; label?: string | null } = {};
+        if (body.path !== undefined) {
+          if (typeof body.path !== "string" || body.path.trim().length === 0) {
+            sendJson({ error: "path must be a non-empty string" }, 400);
+            return true;
+          }
+          fields.path = body.path.trim();
+        }
+        if (body.label !== undefined) {
+          if (body.label === null) fields.label = null;
+          else if (typeof body.label === "string") fields.label = body.label;
+          else {
+            sendJson({ error: "label must be a string or null" }, 400);
+            return true;
+          }
+        }
+        try {
+          const updated = spaceService.updateSource(sourceId, fields);
+          broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+          // Compute pathExists from the actual updated path — non-existent
+          // paths are accepted (unmounted drives / renamed folders), so a
+          // hardcoded `true` would lie to the client for one render cycle
+          // until the next GET. Match the same safe stat the GET uses.
+          let pathExists = false;
+          try { pathExists = existsSync(updated.path) && statSync(updated.path).isDirectory(); }
+          catch { /* slow drive / EACCES — advisory only, false is fine */ }
+          sendJson({ ...updated, pathExists });
+        } catch (err) {
+          if (err instanceof SourcePathConflictError) {
+            const summary = spaceService.sourceContentSummary(source.id);
+            sendJson({
+              error: "would_consolidate",
+              target: {
+                id: err.conflict.id,
+                space_id: err.conflict.space_id,
+                path: err.conflict.path,
+                label: err.conflict.label,
+              },
+              source: { id: err.source.id, label: err.source.label, path: err.source.path },
+              moves: summary,
+              sameSpace: err.conflict.space_id === err.source.space_id,
+            }, 409);
+            return true;
+          }
+          throw err;
+        }
+      } catch (err) {
+        sendError(err);
+      }
+      return true;
+    }
+    // POST /api/spaces/:id/sources/:source_id/consolidate { intoSourceId }
+    // — merge this source into the target: bulk-reassign sessions +
+    // artefacts, then soft-delete this source. Both must be in the same
+    // space. Returns the move counts.
+    const cm = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources\/([^/]+)\/consolidate$/);
+    if (cm && req.method === "POST") {
+      if (rejectIfNonLocalOrigin()) return true;
+      const spaceId = safeDecode(cm[1]);
+      const sourceId = safeDecode(cm[2]);
+      if (spaceId === null || sourceId === null) {
+        sendJson({ error: "Invalid URL encoding" }, 400);
+        return true;
+      }
+      try {
+        const source = spaceService.getSourceById(sourceId);
+        if (!source || source.space_id !== spaceId || source.removed_at) {
+          sendJson({ error: "source not found in this space" }, 404);
+          return true;
+        }
+        const body = await readJsonBody();
+        const intoSourceId = typeof body.intoSourceId === "string" ? body.intoSourceId : "";
+        if (!intoSourceId) {
+          sendJson({ error: "intoSourceId is required" }, 400);
+          return true;
+        }
+        const result = spaceService.consolidateSource(sourceId, intoSourceId);
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+        sendJson({
+          sessionsMoved: result.sessionsMoved,
+          artefactsMoved: result.artefactsMoved,
+          into: result.intoSource,
+        });
       } catch (err) {
         sendError(err);
       }

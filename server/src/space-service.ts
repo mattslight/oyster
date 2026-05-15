@@ -1,6 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
-import { homedir } from "node:os";
 import crypto from "node:crypto";
 import ignore, { type Ignore } from "ignore";
 import type { SpaceStore, SpaceRow, Source } from "./space-store.js";
@@ -10,6 +9,28 @@ import type { SessionStore } from "./session-store.js";
 import type { SpaceSyncService } from "./space-sync-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
+import { normaliseSourcePath } from "./path-normalise.js";
+
+function pathExistsSafe(path: string): boolean {
+  // "Path missing" only makes sense for a directory — a file at the
+  // recorded path is just as broken from the source-binding perspective.
+  // statSync covers both branches and stays cheap; the catch handles
+  // both ENOENT (file/dir gone) and slow/dead drives (EBUSY/ETIMEDOUT).
+  try { return statSync(path).isDirectory(); } catch { return false; }
+}
+
+/** Thrown by updateSource when the new path is already attached to a
+ *  different active source. The route layer turns this into a 409 with a
+ *  structured `would_consolidate` body so the UI can offer a merge. */
+export class SourcePathConflictError extends Error {
+  constructor(
+    public readonly source: Source,
+    public readonly conflict: Source,
+  ) {
+    super(`Path is already attached to source "${conflict.label ?? conflict.path}"`);
+    this.name = "SourcePathConflictError";
+  }
+}
 
 // Build a gitignore matcher from .gitignore at the scan root, if one exists.
 // Returns null when there's nothing to honor — callers can skip the per-entry
@@ -38,11 +59,6 @@ export function folderSlug(folderPath: string): string {
   return parts.pop() ?? folderPath;
 }
 
-function expandHome(rawPath: string): string {
-  return rawPath.startsWith("~/")
-    ? resolve(join(homedir(), rawPath.slice(2)))
-    : resolve(rawPath);
-}
 
 const SPACE_PALETTE = [
   "#6057c4", "#3d8aaa", "#3a8f64", "#b06840",
@@ -117,9 +133,19 @@ export class SpaceService {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
-    const resolved = expandHome(rawPath);
-    if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
-    if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
+    const resolved = normaliseSourcePath(rawPath);
+    // Path existence is advisory, not a precondition — matches updateSource.
+    // The case this unblocks: orphan-tile attach where the session's cwd
+    // points at a folder that's since been renamed or moved (or was on an
+    // unmounted drive). Letting the attach succeed lets the longest-prefix
+    // heuristic claim the sessions for the chosen space; the tile renders
+    // with the amber "Path missing" chip so the user can use "Update folder
+    // location…" to point at the new path. We still reject the only case
+    // the check ever genuinely caught: a path that exists but points at a
+    // file rather than a directory.
+    if (existsSync(resolved) && !statSync(resolved).isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolved}`);
+    }
 
     // Cross-space conflict / same-space no-op check.
     const active = this.spaceStore.getActiveSourceByPath(resolved);
@@ -129,7 +155,7 @@ export class SpaceService {
         // still backfill — pre-existing orphan sessions for this cwd may
         // never have been swept (e.g. attached before the backfill behaviour
         // existed). Idempotent, so safe to run on every retry.
-        this.sessionStore.backfillSourceForCwd(resolved, spaceId, active.id);
+        this.sessionStore.rebindAutoSessionsForSource(spaceId, active.id, resolved);
         return active;
       }
       const ownerName = this.spaceStore.getById(active.space_id)?.display_name ?? active.space_id;
@@ -174,7 +200,7 @@ export class SpaceService {
     // createSpaceFromPath, so the Unsorted folder tile disappears once its
     // sessions get a home. Idempotent (only updates rows where space_id and
     // source_id are both NULL), so safe on the race-conflict path too.
-    this.sessionStore.backfillSourceForCwd(resolved, spaceId, source.id);
+    this.sessionStore.rebindAutoSessionsForSource(spaceId, source.id, resolved);
     return source;
   }
 
@@ -206,20 +232,126 @@ export class SpaceService {
     if (this.scanning.has(source.space_id)) {
       throw new Error(`Cannot detach while space "${source.space_id}" is scanning — try again in a moment.`);
     }
-    // Atomic cascade: artifact bulk soft-delete + source soft-delete inside a
-    // single transaction. If either fails the SQL rolls back together, so we
-    // never leave a partial state (tiles gone but source still attached, or
-    // vice versa). The cache invalidation in artifactService.removeBySource
+    // Atomic cascade: artifact bulk soft-delete + session source_id null-out
+    // + source soft-delete, all in one transaction. If any step fails the SQL
+    // rolls back together, so we never leave a partial state (tiles gone but
+    // source still attached, sessions pointing at a soft-deleted source, …).
+    // The session detach is explicit because `removeSource` is a soft-delete
+    // (UPDATE removed_at) — the FK `ON DELETE SET NULL` never fires, so
+    // without this update sessions silently keep pointing at a removed
+    // source. Mode is left untouched: a manually-pinned session whose source
+    // vanishes stays orphan-but-manual; "Let Oyster decide" re-binds it via
+    // the heuristic. The cache invalidation in artifactService.removeBySource
     // is a JS state change, not SQL — it doesn't roll back, but an over-eager
     // cache invalidation just causes a re-read on next access (harmless).
     this.spaceStore.transaction(() => {
       this.artifactService.removeBySource(sourceId);
+      this.sessionStore.detachSourceFromSessions(sourceId);
       this.spaceStore.softDeleteSource(sourceId);
     });
   }
 
-  getSources(spaceId: string): Source[] {
-    return this.spaceStore.getSources(spaceId);
+  /** Update a source's path and/or label. Path updates re-run the
+   *  longest-prefix heuristic so orphan auto-sessions whose `cwd` matches
+   *  the new path get bound, and previously-bound auto sessions move to a
+   *  more specific source if one now applies (the "improve" case). Existing
+   *  bindings on the same source are never touched — the source's identity
+   *  is its `id`, not its `path`, so renaming a folder doesn't unbind work.
+   *
+   *  Path existence is advisory: a non-existent path is accepted (useful
+   *  for unmounted drives or pre-recording a planned rename). The GET
+   *  response carries `pathExists` so the UI can surface a warning.
+   *
+   *  Collisions with another active source's path → caller-friendly error,
+   *  mirroring `addSource`. */
+  updateSource(sourceId: string, fields: { path?: string; label?: string | null }): Source {
+    const source = this.spaceStore.getSourceById(sourceId);
+    if (!source) throw new Error(`Source "${sourceId}" not found`);
+    if (source.removed_at) throw new Error(`Source "${sourceId}" is detached`);
+
+    let resolvedPath: string | undefined;
+    if (fields.path !== undefined) {
+      resolvedPath = normaliseSourcePath(fields.path);
+      const conflict = this.spaceStore.getActiveSourceByPath(resolvedPath);
+      if (conflict && conflict.id !== sourceId) {
+        // Structured error so the route/UI can offer a consolidate flow
+        // when the conflict is in the same space — the user almost
+        // certainly typed the path because they want to merge.
+        throw new SourcePathConflictError(source, conflict);
+      }
+    }
+
+    const labelUpdate = fields.label === undefined
+      ? undefined
+      : (typeof fields.label === "string" && fields.label.trim().length > 0
+          ? fields.label.trim()
+          : null);
+
+    if (resolvedPath === undefined && labelUpdate === undefined) {
+      return source; // nothing to do
+    }
+
+    this.spaceStore.transaction(() => {
+      this.spaceStore.updateSource(sourceId, {
+        path: resolvedPath,
+        label: labelUpdate,
+      });
+      if (resolvedPath !== undefined) {
+        this.sessionStore.rebindAutoSessionsForSource(source.space_id, sourceId, resolvedPath);
+      }
+    });
+
+    return this.spaceStore.getSourceById(sourceId)!;
+  }
+
+  /** Counts of live sessions + artefacts currently bound to a source.
+   *  Drives the consolidate-confirm dialog so the user knows how much
+   *  will move. Two SELECT COUNTs — cheap. */
+  sourceContentSummary(sourceId: string): { sessionCount: number; artefactCount: number } {
+    return {
+      sessionCount: this.sessionStore.countBySource(sourceId),
+      artefactCount: this.artifactStore.countLiveBySource(sourceId),
+    };
+  }
+
+  /** Merge `fromSourceId` into `intoSourceId`: bulk-reassign sessions +
+   *  artefacts, then soft-delete the `from` source. Both must be active and
+   *  in the same space. Transaction-wrapped. Returns the move counts. */
+  consolidateSource(fromSourceId: string, intoSourceId: string): { sessionsMoved: number; artefactsMoved: number; intoSource: Source } {
+    if (fromSourceId === intoSourceId) {
+      throw new Error("Cannot consolidate a source into itself");
+    }
+    const from = this.spaceStore.getSourceById(fromSourceId);
+    const into = this.spaceStore.getSourceById(intoSourceId);
+    if (!from || from.removed_at) throw new Error(`Source "${fromSourceId}" not found`);
+    if (!into || into.removed_at) throw new Error(`Source "${intoSourceId}" not found`);
+    if (from.space_id !== into.space_id) {
+      throw new Error("Cross-space consolidation is not supported — move sessions individually if needed");
+    }
+    if (this.scanning.has(from.space_id)) {
+      throw new Error(`Cannot consolidate while space "${from.space_id}" is scanning — try again in a moment.`);
+    }
+
+    let sessionsMoved = 0;
+    let artefactsMoved = 0;
+    this.spaceStore.transaction(() => {
+      artefactsMoved = this.artifactStore.reassignBySourceId(from.id, into.id, into.space_id);
+      sessionsMoved = this.sessionStore.reassignSourceForSessions(from.id, into.id, into.space_id);
+      this.spaceStore.softDeleteSource(from.id);
+    });
+
+    return { sessionsMoved, artefactsMoved, intoSource: this.spaceStore.getSourceById(into.id)! };
+  }
+
+  getSources(spaceId: string): Array<Source & { pathExists: boolean }> {
+    return this.spaceStore.getSources(spaceId).map((s) => ({
+      ...s,
+      // Cheap stat per source. Wrapped: a stale mount point that errors on
+      // stat (EBUSY / ETIMEDOUT) reads as "missing" instead of throwing
+      // back through a list endpoint. Existence is advisory anyway — used
+      // only for the "Path missing" surface affordance.
+      pathExists: pathExistsSafe(s.path),
+    }));
   }
 
   getSourceById(sourceId: string): Source | undefined {
@@ -227,7 +359,7 @@ export class SpaceService {
   }
 
   getActiveSourceByPath(path: string): Source | undefined {
-    return this.spaceStore.getActiveSourceByPath(expandHome(path));
+    return this.spaceStore.getActiveSourceByPath(normaliseSourcePath(path));
   }
 
   listSpaces(): Space[] { return this.spaceStore.getAll().map(rowToSpace); }
@@ -278,9 +410,12 @@ export class SpaceService {
     const rawPath = params.path?.trim();
     if (!rawPath) throw new Error("path is required");
 
-    const resolved = expandHome(rawPath);
-    if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
-    if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
+    const resolved = normaliseSourcePath(rawPath);
+    // Existence is advisory (see addSource above). Same rationale: lets
+    // the user promote an orphan tile whose folder has since been renamed.
+    if (existsSync(resolved) && !statSync(resolved).isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolved}`);
+    }
 
     const active = this.spaceStore.getActiveSourceByPath(resolved);
     if (active) {
@@ -311,7 +446,7 @@ export class SpaceService {
       throw err;
     }
 
-    const backfilled = this.sessionStore.backfillSourceForCwd(resolved, space.id, source.id);
+    const backfilled = this.sessionStore.rebindAutoSessionsForSource(space.id, source.id, resolved);
     return { space, source, backfilled };
   }
 

@@ -4,13 +4,25 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- **Home's table view now matches the icon view for published artefacts.** Cloud-only published rows previously hid the artefact's real space behind a literal *"Cloud"* label and showed no published-status chip. The table now shows the underlying space (e.g. *tokinvest*) and renders the same *On cloud* / *Published* chip next to the title that the icon view shows below it — both views speak the same visual language.
+- **Move a session to a different folder, or back to "let Oyster decide".** When a session ran in the wrong folder or a folder gets renamed, you can now reassign it instead of being stuck with the original binding. Available to agents via the new `move_session` and `set_source_path` MCP tools, with the UI affordances landing alongside.
+- **Update a folder's path after you've renamed it on disk.** A new option on each folder tile points an existing source at its new location without losing artefacts or sessions. Works for unmounted drives too — the path is accepted even when the folder isn't currently reachable.
+- **Merge duplicate folders into one.** When *Update folder location* points at a path that's already attached in this space, Oyster offers to merge instead — sessions and artefacts move onto the existing folder, the old tile is removed. Agents can drive the same merge via the new `consolidate_sources` MCP tool.
+
+### Changed
+
+- **Sessions bind to the most specific matching folder.** Attaching `~/Repo` then later `~/Repo/web` now moves sessions that ran in `~/Repo/web` over to the more specific source automatically. Manually-pinned sessions are immune.
+- **Attaching a folder no longer requires it to exist on disk.** The orphan-tile attach flow used to throw when the folder had been renamed since the sessions ran. Attach succeeds; the tile renders with the amber *Path missing* chip; the longest-prefix heuristic claims the matching sessions.
 
 ### Removed
 
 - **Sprint-2 demo builtins out.** *Zombie Horde* (a browser game) and *The World's Your Oyster* (a positioning deck that contradicted the current framing) no longer ship in fresh installs. Existing installs keep their copies in `~/Oyster/apps/` — archive them from the surface if you don't want them.
+
+### Fixed
+
+- **Home's table view now matches the icon view for published artefacts.** Cloud-only published rows previously hid the artefact's real space behind a literal *"Cloud"* label and showed no published-status chip. The table now shows the underlying space (e.g. *tokinvest*) and renders the same *On cloud* / *Published* chip next to the title that the icon view shows below it — both views speak the same visual language.
+- **Sessions no longer get stuck pointing at a detached folder.** Previously, removing a folder left sessions silently linked to a deleted source; they now correctly fall back to the space vault.
 
 ## [0.8.2] - 2026-05-14
 
