@@ -66,6 +66,7 @@ import { attachWebSocket } from "./pty-manager.js";
 import { SqliteFtsMemoryProvider } from "./memory-store.js";
 import { AuthService } from "./auth-service.js";
 import { bootMark, bootTime, bootTimeAsync } from "./boot-timer.js";
+import { backfillPortableIds } from "./oyster-id-migration.js";
 
 bootMark("imports loaded");
 
@@ -249,6 +250,7 @@ delete cleanEnv["OPENAI_API_KEY"];
 // ── Artifact store ──
 
 const db = bootTime("initDb (migrations)", () => initDb(DB_DIR));
+backfillPortableIds(db);
 const store = new SqliteArtifactStore(db);
 const spaceStore = new SqliteSpaceStore(db);
 const sessionStore = new SqliteSessionStore(db);
