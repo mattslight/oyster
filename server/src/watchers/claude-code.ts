@@ -3,7 +3,6 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import type { ArtifactStore } from "../artifact-store.js";
-import type { SpaceStore } from "../space-store.js";
 import type {
   InsertSessionEvent,
   SessionArtifactRole,
@@ -12,7 +11,6 @@ import type {
   SessionStore,
 } from "../session-store.js";
 import { encodeCwd } from "../session-sync-service.js";
-import { normaliseSourcePath } from "../path-normalise.js";
 import { activeClaudeCwdCounts } from "./claude-process-probe.js";
 
 // claude-code session log watcher (Sprint 2 of the 0.5.0 sessions arc).
@@ -72,13 +70,8 @@ const TITLE_MAX = 80;
 
 export interface ClaudeCodeWatcherDeps {
   sessionStore: SessionStore;
-  spaceStore: SpaceStore;
   artifactStore: ArtifactStore;
-  /** Resolve a cwd → `{ projectId, spaceId }` via `<cwd>/.oyster/id`.
-   *  Additive alongside the legacy longest-prefix `lookupSource`: we write
-   *  project_id at ingest time (when the marker file is there) so the new
-   *  identity model picks up new sessions automatically. Once `sources` is
-   *  retired the watcher will rely on this alone. */
+  /** Resolve a cwd → `{ projectId, spaceId }` via `<cwd>/.oyster/id`. */
   lookupProject: (cwd: string | null) => { projectId: string | null; spaceId: string | null };
   /** Called whenever a session row is inserted/updated, for SSE broadcast. */
   emitSessionChanged?: (sessionId: string) => void;
@@ -96,11 +89,6 @@ interface FileTracker {
   // partial (rare — we read line-by-line, so partial lines are buffered).
   sessionId: string | null;
   cwd: string | null;
-  /** `normaliseSourcePath(cwd)` cached per tracker so the hot path doesn't
-   *  realpath-syscall on every JSONL event. Invalidated to null whenever
-   *  `cwd` is reassigned; `resolveSourceCached` recomputes on demand and stores
-   *  the result back. */
-  normalisedCwd: string | null;
   startedAt: string | null;
   model: string | null;
   // Title sources, in descending priority: customTitle > agentName >
@@ -269,21 +257,12 @@ export class ClaudeCodeWatcher {
     // consistent (`YYYY-MM-DDTHH:MM:SS.mmmZ`).
     const startedAt = meta.startedAt ?? (stat.birthtime ?? stat.mtime).toISOString();
 
-    const resolved = this.lookupSource(meta.cwd);
     const project = this.deps.lookupProject(meta.cwd);
     this.deps.sessionStore.upsertSession({
       id: meta.sessionId,
-      // Project takes precedence over source for space attribution when it
-      // resolves — `.oyster/id` is the authoritative identity once the new
-      // model is fully wired. Falls back to lookupSource for sessions that
-      // ran before the marker existed.
-      space_id: project.spaceId ?? resolved.spaceId,
-      source_id: resolved.sourceId,
+      space_id: project.spaceId,
       project_id: project.projectId,
-      // Persist the canonicalised form (forward-slash, realpath-resolved)
-      // so the source-binding SQL on a Windows install sees matching
-      // separators. lookupSource already computed the normalised string.
-      cwd: resolved.normalised ?? meta.cwd,
+      cwd: meta.cwd,
       // Ground truth for pushBytes: the actual on-disk path. Required
       // for cross-device resumed sessions whose events still carry the
       // origin device's cwd. See db.ts on the jsonl_path column.
@@ -314,7 +293,6 @@ export class ClaudeCodeWatcher {
       offset: stat.size,
       sessionId: meta.sessionId,
       cwd: meta.cwd,
-      normalisedCwd: null,
       startedAt: meta.startedAt,
       model: meta.model,
       customTitle: meta.customTitle,
@@ -356,7 +334,7 @@ export class ClaudeCodeWatcher {
     // append.
     if (lines.length > 0) lines.pop();
 
-    const spaceId = this.lookupSource(cwd).spaceId;
+    const spaceId = this.deps.lookupProject(cwd).spaceId;
     const events: InsertSessionEvent[] = [];
 
     for (const line of lines) {
@@ -528,7 +506,6 @@ export class ClaudeCodeWatcher {
       offset: 0,
       sessionId: filenameToSessionId(filePath),
       cwd: null,
-      normalisedCwd: null,
       startedAt: null,
       model: null,
       customTitle: null,
@@ -640,9 +617,6 @@ export class ClaudeCodeWatcher {
         // (origin-device) cwd captured at boot/onFileAppeared time.
         if (typeof ev.cwd === "string" && encodeCwd(ev.cwd) === parentDir && ev.cwd !== tracker.cwd) {
           tracker.cwd = ev.cwd;
-          // Cwd changed → cached normalisation is stale. Recompute lazily on
-          // next resolveSourceCached call.
-          tracker.normalisedCwd = null;
         }
         if (!tracker.startedAt && typeof ev.timestamp === "string") {
           tracker.startedAt = ev.timestamp;
@@ -676,20 +650,12 @@ export class ClaudeCodeWatcher {
       // First event from a brand-new file: upsert the row before any events
       // are inserted (FK constraint).
       if (!sessionEnsured && tracker.sessionId) {
-        const resolved = this.resolveSourceCached(tracker);
         const project = this.deps.lookupProject(tracker.cwd);
         this.deps.sessionStore.upsertSession({
           id: tracker.sessionId,
-          space_id: project.spaceId ?? resolved.spaceId,
-          source_id: resolved.sourceId,
+          space_id: project.spaceId,
           project_id: project.projectId,
-          // Persist the canonicalised cwd (forward-slash, realpath-resolved)
-          // so the substr-based prefix match in rebindAutoSessionsForSource
-          // sees matching separators on both sides. On macOS/Linux this is
-          // the same string the watcher already saw; on Windows it's
-          // `C:/Users/foo` instead of `C:\Users\foo`. Falls back to the raw
-          // tracker.cwd if normalisation didn't run (cache empty).
-          cwd: tracker.normalisedCwd ?? tracker.cwd,
+          cwd: tracker.cwd,
           jsonl_path: filePath,
           agent: "claude-code",
           title: effectiveTitle(tracker),
@@ -720,7 +686,7 @@ export class ClaudeCodeWatcher {
 
       // Artifact touches from tool_use blocks.
       if (ev.type === "assistant" && Array.isArray(ev.message?.content) && tracker.sessionId) {
-        const spaceId = this.resolveSourceCached(tracker).spaceId;
+        const spaceId = this.deps.lookupProject(tracker.cwd).spaceId;
         // Skip touch attribution entirely for orphan sessions (cwd not
         // mapped to any space). Without a session→space link we can't
         // tell whether the touch belongs here or is bleed-through from a
@@ -820,37 +786,6 @@ export class ClaudeCodeWatcher {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
-
-  /** Longest-prefix source lookup. Used directly by the boot-scan and
-   *  backfill paths (which don't have a tracker). The hot per-event path
-   *  goes through `resolveSourceCached` so the realpath syscall only runs
-   *  once per session. */
-  private lookupSource(rawCwd: string | null): { spaceId: string | null; sourceId: string | null; normalised: string | null } {
-    if (!rawCwd) return { spaceId: null, sourceId: null, normalised: null };
-    let normalised: string;
-    try {
-      normalised = normaliseSourcePath(rawCwd);
-    } catch {
-      normalised = rawCwd;
-    }
-    const source = this.deps.spaceStore.getActiveSourceForCwd(normalised);
-    return { spaceId: source?.space_id ?? null, sourceId: source?.id ?? null, normalised };
-  }
-
-  /** Like `lookupSource(tracker.cwd)` but caches the normalised cwd on the
-   *  tracker so the realpath syscall stays out of the per-event path. */
-  private resolveSourceCached(
-    tracker: FileTracker,
-  ): { spaceId: string | null; sourceId: string | null } {
-    if (!tracker.cwd) return { spaceId: null, sourceId: null };
-    if (tracker.normalisedCwd) {
-      const source = this.deps.spaceStore.getActiveSourceForCwd(tracker.normalisedCwd);
-      return { spaceId: source?.space_id ?? null, sourceId: source?.id ?? null };
-    }
-    const { spaceId, sourceId, normalised } = this.lookupSource(tracker.cwd);
-    tracker.normalisedCwd = normalised;
-    return { spaceId, sourceId };
-  }
 
   private logError = (err: unknown) => {
     // Watcher errors are non-fatal; log and continue. Silence in tests by

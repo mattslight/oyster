@@ -1121,7 +1121,6 @@ httpServer.listen(port, "127.0.0.1", () => {
 
   const claudeCodeWatcher = new ClaudeCodeWatcher({
     sessionStore,
-    spaceStore,
     artifactStore: store,
     lookupProject: (cwd) => lookupProject(db, cwd),
     emitSessionChanged: (id) => {
