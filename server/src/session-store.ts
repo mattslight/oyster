@@ -129,19 +129,6 @@ export interface SessionStore {
   upsertSession(row: InsertSession): void;
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void;
   updateSession(id: string, fields: Partial<Omit<SessionRow, "id" | "started_at">>): void;
-  /** Null out `source_id` on every session pointing at this source. Used by
-   *  `removeSource` to keep the binding consistent after a soft-delete —
-   *  the FK ON DELETE SET NULL never fires because the source row stays in
-   *  the table. `assignment_mode` is left as-is so a manual-pinned session
-   *  whose source vanishes becomes orphan-but-frozen (the user can choose
-   *  "Let Oyster decide" to recompute). */
-  detachSourceFromSessions(sourceId: string): number;
-  /** Bulk re-point every session bound to `fromSourceId` onto `toSourceId`,
-   *  setting space_id to the target's space. Used by consolidateSource. */
-  reassignSourceForSessions(fromSourceId: string, toSourceId: string, toSpaceId: string): number;
-  /** Count of sessions currently bound to a source. For the consolidate
-   *  preview dialog so the user sees how many rows will move. */
-  countBySource(sourceId: string): number;
   // session_events — bulk-friendly
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
@@ -352,7 +339,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   private static readonly UPDATABLE_SESSION_COLUMNS = new Set([
-    "space_id", "source_id", "project_id", "cwd", "title", "state", "ended_at", "model", "last_event_at", "assignment_mode",
+    "space_id", "project_id", "cwd", "title", "state", "ended_at", "model", "last_event_at", "assignment_mode",
   ]);
 
   updateSession(
@@ -368,38 +355,6 @@ export class SqliteSessionStore implements SessionStore {
     }
     if (sets.length === 0) return;
     this.db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = @id`).run(values);
-  }
-
-  detachSourceFromSessions(sourceId: string): number {
-    // Soft-delete-aware detach companion: removeSource only flips
-    // `sources.removed_at`, so the FK ON DELETE SET NULL never fires.
-    // Without this update, `sessions.source_id` keeps pointing at a
-    // soft-deleted row — silently broken state. Mode is left as-is so a
-    // manually-pinned session whose source vanishes stays manual; the user
-    // can run "Let Oyster decide" to recompute via the heuristic.
-    const info = this.db
-      .prepare("UPDATE sessions SET source_id = NULL WHERE source_id = ?")
-      .run(sourceId);
-    return Number(info.changes);
-  }
-
-  countBySource(sourceId: string): number {
-    const row = this.db
-      .prepare("SELECT COUNT(*) AS c FROM sessions WHERE source_id = ?")
-      .get(sourceId) as { c: number } | undefined;
-    return row?.c ?? 0;
-  }
-
-  reassignSourceForSessions(fromSourceId: string, toSourceId: string, toSpaceId: string): number {
-    // Bulk-move every session bound to source A onto source B. Used by
-    // SpaceService.consolidateSource when the user merges two folder tiles
-    // (e.g. after a rename created duplicate sources). Preserves
-    // assignment_mode — a manually-pinned session on A stays pinned on B,
-    // mirroring the user's intent ("this work is mine to organise").
-    const info = this.db
-      .prepare("UPDATE sessions SET source_id = ?, space_id = ? WHERE source_id = ?")
-      .run(toSourceId, toSpaceId, fromSourceId);
-    return Number(info.changes);
   }
 
   insertEvent(row: InsertSessionEvent): number {

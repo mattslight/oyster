@@ -290,8 +290,8 @@ const VIEWER_BASE = process.env.OYSTER_VIEWER_BASE
 
 // artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
-// not inside DB_DIR. spaceStore is passed in so rowToArtifact can resolve the
-// linked-source path for tiles whose `source_id` is non-null.
+// not inside DB_DIR. spaceStore is passed in so the service can enumerate
+// local spaces when filtering cloud-only publications.
 const artifactService = new ArtifactService(store, WORKER_BASE, VIEWER_BASE, OYSTER_HOME, spaceStore);
 
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
@@ -557,7 +557,7 @@ sessionSnapshotHandle.unref();
 
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const projectService = new ProjectService(db);
-const sessionService = new SessionService(db, sessionStore, spaceStore);
+const sessionService = new SessionService(db, sessionStore);
 const publishService = createPublishService({
   db,
   readArtifactBytes: async (artifactId) => {

@@ -135,8 +135,7 @@ export class ArtifactService {
       rows.push(row);
     }
 
-    const sourceLabels = this.buildSourceLabelMap(rows);
-    const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row, sourceLabels)));
+    const persisted = await Promise.all(rows.map((row) => this.rowToArtifact(row)));
 
     // Map of filePath → persisted artifact index — used to suppress and merge gen: twins
     const dbPathToIdx = new Map<string, number>();
@@ -532,16 +531,14 @@ export class ArtifactService {
       const row = this.store.getById(id);
       if (row) rows.push(row);
     }
-    const sourceLabels = this.buildSourceLabelMap(rows);
-    return Promise.all(rows.map((row) => this.rowToArtifact(row, sourceLabels)));
+    return Promise.all(rows.map((row) => this.rowToArtifact(row)));
   }
 
   // ── Archived-view helpers ──
 
   async getArchivedArtifacts(): Promise<Artifact[]> {
     const rows = this.store.getAllArchived();
-    const sourceLabels = this.buildSourceLabelMap(rows);
-    return Promise.all(rows.map((row) => this.rowToArtifact(row, sourceLabels)));
+    return Promise.all(rows.map((row) => this.rowToArtifact(row)));
   }
 
   restoreArtifact(id: string): void {
@@ -595,50 +592,10 @@ export class ArtifactService {
     return rows.length;
   }
 
-  // Bulk soft-delete every live artifact attached to a source — the detach
-  // cascade fired by space-service.removeSource(). Mirrors archiveGroup:
-  // single SQL UPDATE for the rows, one cache invalidation at the end.
-  removeBySource(sourceId: string): number {
-    const changed = this.store.removeBySourceId(sourceId);
-    if (changed > 0) this.invalidateArchivedPaths();
-    return changed;
-  }
-
   // ── Private ──
 
-  // Pre-resolve a sources Map<id, basename-label> once per batch caller so
-  // listing many linked-folder tiles doesn't N+1 the sources table. One SQL
-  // roundtrip via WHERE id IN (...). Stores the basename only — absolute
-  // paths never leave the server via /api/artifacts. Single-row callers can
-  // pass undefined and pay the per-row lookup.
-  private buildSourceLabelMap(rows: ArtifactRow[]): Map<string, string> {
-    const map = new Map<string, string>();
-    if (!this.spaceStore) return map;
-    const ids = new Set<string>();
-    for (const row of rows) {
-      if (row.source_id) ids.add(row.source_id);
-    }
-    if (ids.size === 0) return map;
-    for (const source of this.spaceStore.getSourcesByIds([...ids])) {
-      map.set(source.id, basename(source.path));
-    }
-    return map;
-  }
-
-  private async rowToArtifact(row: ArtifactRow, sourceLabels?: Map<string, string>): Promise<Artifact> {
+  private async rowToArtifact(row: ArtifactRow): Promise<Artifact> {
     const runtimeConfig = parseJson(row.runtime_config);
-    // Resolve a display label for the linked source so the UI can render the
-    // "↗" provenance glyph without a second fetch. Basename only — full path
-    // is server-private (drilldown belongs to a separately-gated endpoint).
-    let sourceLabel: string | null = null;
-    if (row.source_id) {
-      if (sourceLabels) {
-        sourceLabel = sourceLabels.get(row.source_id) ?? null;
-      } else if (this.spaceStore) {
-        const path = this.spaceStore.getSourceById(row.source_id)?.path;
-        sourceLabel = path ? basename(path) : null;
-      }
-    }
 
     const publication = row.share_token
       ? {
@@ -676,9 +633,7 @@ export class ArtifactService {
         url: `http://localhost:${port}`,
         createdAt: row.created_at,
         groupName: row.group_name || undefined,
-        sourceLabel,
         sourceOrigin: row.source_origin,
-        sourceId: row.source_id,
         ...this.resolveIcon(row),
         ...(publication ? { publication } : {}),
         ...(row.pinned_at != null ? { pinnedAt: row.pinned_at } : {}),
@@ -704,7 +659,6 @@ export class ArtifactService {
       url,
       createdAt: row.created_at,
       groupName: row.group_name || undefined,
-      sourceLabel,
       sourceOrigin: row.source_origin,
       ...this.resolveIcon(row),
       ...(publication ? { publication } : {}),

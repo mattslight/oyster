@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { SpaceService } from "./space-service.js";
-import { SessionService, SessionNotFoundError, SourceNotFoundError } from "./session-service.js";
+import { SessionService, SessionNotFoundError, ProjectNotFoundError } from "./session-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { SessionStore } from "./session-store.js";
@@ -287,9 +287,8 @@ connected to real folders on disk.
 **Spaces** — named workspaces (tabs) the user switches between. Each space has an ID,
 display name, and scan status. Use \`list_spaces\` to enumerate them. Every workspace
 has a "home" space by default; the user adds others as they onboard projects. Spaces
-are logical groupings — they can optionally have one or more folders attached (scan
-sources). Use \`onboard_space\` to create a space (with or without paths), or
-\`scan_space\` to rescan folders already attached to a space.
+are logical groupings — they can optionally have one or more folders attached. Use
+\`onboard_space\` to create a space (with or without paths).
 
 **Artifact kinds**:
 - \`app\` — a local web app (React, Vite, etc.) that runs as a process on a port
@@ -311,8 +310,7 @@ sources). Use \`onboard_space\` to create a space (with or without paths), or
 1. Call \`list_spaces\` — check if the space already exists (avoid duplicates).
 2. Call \`onboard_space\` with the project name and path — pass \`paths: ["/abs/path"]\` (array). Creates the space, attaches the path, scans for apps, docs, and diagrams.
 3. Call \`list_artifacts\` with the new space_id to see what was discovered.
-4. To rescan later (e.g. after new files are added), call \`scan_space\`.
-5. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
+4. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
 
 **Onboarding a developer container (e.g. \`~/Dev\` with many repos):**
 
@@ -495,52 +493,27 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
   );
 
-  // ── scan_space ──
-
-  tool(
-    "scan_space",
-    "Rescan an existing space's repo for new apps, docs, and diagrams. Already-registered artifacts are skipped (idempotent). Use this after adding new files to a repo that was previously onboarded.",
-    {
-      space_id: z.string().describe("ID of the space to scan"),
-    },
-    async ({ space_id }) => deps.spaceService.scanSpace(space_id),
-  );
-
-  // ── detach_source ──
-
-  // Removed: detach_source, set_source_path, consolidate_sources — all
-  // source-shaped operations that the projects identity model supersedes.
-  // Use create_project / delete_project / claim_orphan (HTTP today; MCP
-  // wrappers are follow-up work) instead.
-
   // ── move_session ──
 
   tool(
     "move_session",
-    "Reassign a session to a different source (folder), to the space vault (source_id: null), or back to auto-binding. Setting source_id flips the session to manual — heuristics will not re-bind it. Pass assignment_mode: 'auto' (with no source_id) to recompute via longest-prefix lookup on the session's cwd. Cross-space moves are allowed; the resulting space_id is derived from the target source.",
+    "Bind a session to a project (project_id) or clear the project binding (project_id: null). When binding, the session's space_id is derived from the project row.",
     {
       session_id: z.string().describe("ID of the session to reassign"),
-      source_id: z.string().nullable().optional().describe("Target source id; pass `null` to send to the space vault; omit to keep the current binding."),
-      space_id: z.string().optional().describe("Only honoured when source_id is null/omitted; ignored when source_id is set (derived from the source instead)."),
-      assignment_mode: z.enum(["auto", "manual"]).optional().describe("'auto' (with no source_id) triggers atomic recompute; 'manual' freezes the current binding."),
+      project_id: z.string().nullable().describe("Target project id; pass `null` to clear the project binding and leave the session in the space vault."),
     },
-    async ({ session_id, source_id, space_id, assignment_mode }) => {
+    async ({ session_id, project_id }) => {
       try {
-        const updated = deps.sessionService.moveSession({
-          session_id,
-          ...(source_id !== undefined ? { source_id } : {}),
-          ...(space_id !== undefined ? { space_id } : {}),
-          ...(assignment_mode !== undefined ? { assignment_mode } : {}),
-        });
+        const updated = deps.sessionService.moveSession({ session_id, project_id });
         deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: session_id } });
         return {
           session_id: updated.id,
           space_id: updated.space_id,
-          source_id: updated.source_id,
+          project_id: updated.project_id,
           assignment_mode: updated.assignment_mode,
         };
       } catch (err) {
-        if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError) {
+        if (err instanceof SessionNotFoundError || err instanceof ProjectNotFoundError) {
           throw new Error(err.message);
         }
         throw err;

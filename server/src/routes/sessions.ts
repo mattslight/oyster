@@ -15,7 +15,7 @@ import type { SqliteSpaceStore } from "../space-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
-import { SessionService, SessionNotFoundError, SourceNotFoundError, ProjectNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
+import { SessionService, SessionNotFoundError, ProjectNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
 import type { UiCommand } from "../../../shared/types.js";
 import {
   encodeCwd,
@@ -38,60 +38,6 @@ export interface SessionRouteDeps {
 }
 
 // ── Resume helpers (#322 PR 2) ──────────────────────────────────────────
-
-interface SourceCandidate {
-  path: string;
-  label: string | null;
-}
-
-/** Find which local folder(s) match a remote session's space_id. Returns
- *  exactly one when there's an unambiguous mapping, an empty array when
- *  this device hasn't attached any source to that space (needs_target),
- *  or N candidates when multiple sources exist for the space (pick_source). */
-function findResumeCandidates(
-  db: Database.Database,
-  spaceStore: SqliteSpaceStore,
-  sessionId: string,
-  ownerId: string,
-): { spaceId: string | null; candidates: SourceCandidate[]; remoteCwd: string | null } {
-  // Look up the remote session's space_id by joining to the local sessions
-  // table first (if we happen to have ingested it locally too), else fall
-  // back to nothing — remote sessions don't carry space_id today; their
-  // cwd is the only locator we have. We use that to find a matching source
-  // by path-prefix as a best-effort.
-  const remote = db.prepare(
-    `SELECT cwd FROM remote_sessions WHERE owner_id = ? AND session_id = ? LIMIT 1`,
-  ).get(ownerId, sessionId) as { cwd: string | null } | undefined;
-  const remoteCwd = remote?.cwd ?? null;
-
-  // Approach: scan all active local sources. A source is a candidate when
-  // either: (a) its path is a prefix of the remote cwd (the remote session
-  // lived inside a project the user has attached locally — even if at a
-  // different on-disk path), or (b) the basename of its path matches the
-  // basename of the remote cwd (rough but useful for "same project, sister
-  // worktrees" cases). Both checks are advisory — the picker is the
-  // safety net for anything we don't auto-resolve.
-  if (!remoteCwd) {
-    return { spaceId: null, candidates: [], remoteCwd: null };
-  }
-  const remoteBasename = basename(remoteCwd);
-  const allSources = db.prepare(
-    `SELECT id, space_id, path, label FROM sources WHERE removed_at IS NULL`,
-  ).all() as Array<{ id: string; space_id: string; path: string; label: string | null }>;
-  const candidates: SourceCandidate[] = [];
-  for (const src of allSources) {
-    const matchesPrefix = remoteCwd === src.path || remoteCwd.startsWith(`${src.path}/`);
-    const matchesBasename = basename(src.path) === remoteBasename;
-    if (matchesPrefix || matchesBasename) {
-      candidates.push({ path: src.path, label: src.label ?? basename(src.path) });
-    }
-  }
-  // Dedupe by path (sources can legitimately share a basename + prefix overlap).
-  const seen = new Set<string>();
-  const deduped = candidates.filter((c) => seen.has(c.path) ? false : (seen.add(c.path), true));
-  void spaceStore;  // currently unused; reserved for future space-based heuristics
-  return { spaceId: null, candidates: deduped, remoteCwd };
-}
 
 interface ValidationOutcome {
   ok: boolean;
@@ -176,7 +122,7 @@ export async function tryHandleSessionRoute(
   deps: SessionRouteDeps,
 ): Promise<boolean> {
   const { sendJson, sendError, rejectIfNonLocalOrigin, readJsonBody } = ctx;
-  const { db, sessionStore, spaceStore, artifactService, memoryProvider, sessionSync, currentUserId, sessionService, broadcastUiEvent } = deps;
+  const { db, sessionStore, artifactService, memoryProvider, sessionSync, currentUserId, sessionService, broadcastUiEvent } = deps;
 
   // GET /api/sessions — agent sessions captured by the watchers (#251).
   // Read-only for 0.5.0; the home feed renders these. Local-origin only —
@@ -184,24 +130,9 @@ export async function tryHandleSessionRoute(
   if (url === "/api/sessions" && req.method === "GET") {
     if (rejectIfNonLocalOrigin()) return true;
     const rows = sessionStore.getAll();
-    // Join sources for sourceLabel — batched IN-list queries so the
-    // home feed can show "active project" tiles without a per-tile
-    // round trip. Sources are dedup'd because most sessions cluster
-    // around a small number of registered folders. Chunked at 500
-    // ids per batch to stay well below SQLite's 999-bound-variable
-    // ceiling on installs that haven't been recompiled with the
-    // higher 32_766 limit.
-    const sourceIds = [...new Set(rows.map((r) => r.source_id).filter((id): id is string => !!id))];
-    const SOURCE_BATCH = 500;
-    const sourceList = [];
-    for (let i = 0; i < sourceIds.length; i += SOURCE_BATCH) {
-      sourceList.push(...spaceStore.getSourcesByIds(sourceIds.slice(i, i + SOURCE_BATCH)));
-    }
     interface MergedSessionPayload {
       id: string;
       spaceId: string | null;
-      sourceId: string | null;
-      sourceLabel: string | null;
       projectId: string | null;
       cwd: string | null;
       agent: string;
@@ -230,15 +161,10 @@ export async function tryHandleSessionRoute(
     // hasn't been seeded yet; the chip silently skips in that case.
     const { myDeviceId, myDeviceLabel } = readMyDeviceIdentity(db);
     const resolveActiveLabel = makeActiveLabelResolver(myDeviceId, myDeviceLabel);
-    const sourcesById = new Map(sourceList.map((s) => [s.id, s]));
     const localPayload: MergedSessionPayload[] = rows.map((row) => {
-      const src = row.source_id ? sourcesById.get(row.source_id) : null;
-      const label = src ? (src.label ?? (basename(src.path) || null)) : null;
       return {
         id: row.id,
         spaceId: row.space_id,
-        sourceId: row.source_id ?? null,
-        sourceLabel: label,
         projectId: row.project_id ?? null,
         cwd: row.cwd,
         agent: row.agent,
@@ -313,8 +239,6 @@ export async function tryHandleSessionRoute(
         .map((r) => ({
           id: r.session_id,
           spaceId: null,
-          sourceId: null,
-          sourceLabel: null,
           projectId: null,
           cwd: r.cwd,
           agent: r.agent,
@@ -397,13 +321,9 @@ export async function tryHandleSessionRoute(
       const id = m[1]!;
       const row = sessionStore.getById(id);
       if (row) {
-        const src = row.source_id ? spaceStore.getSourceById(row.source_id) : undefined;
-        const sourceLabel = src ? (src.label ?? (basename(src.path) || null)) : null;
         sendJson({
           id: row.id,
           spaceId: row.space_id,
-          sourceId: row.source_id ?? null,
-          sourceLabel,
           projectId: row.project_id ?? null,
           cwd: row.cwd,
           agent: row.agent,
@@ -448,8 +368,6 @@ export async function tryHandleSessionRoute(
           sendJson({
             id,
             spaceId: null,
-            sourceId: null,
-            sourceLabel: null,
             projectId: null,
             cwd: remoteRow.cwd,
             agent: remoteRow.agent,
@@ -490,7 +408,7 @@ export async function tryHandleSessionRoute(
       const id = m[1]!;
       try {
         const body = await readJsonBody();
-        const input: { session_id: string; project_id?: string | null; source_id?: string | null; space_id?: string; assignment_mode?: "auto" | "manual" } = { session_id: id };
+        const input: { session_id: string; project_id?: string | null } = { session_id: id };
         if ("project_id" in body) {
           if (body.project_id === null) {
             input.project_id = null;
@@ -501,44 +419,11 @@ export async function tryHandleSessionRoute(
             return true;
           }
         }
-        if ("source_id" in body) {
-          if (body.source_id === null) {
-            input.source_id = null;
-          } else if (typeof body.source_id === "string" && body.source_id.trim().length > 0) {
-            input.source_id = body.source_id.trim();
-          } else {
-            sendJson({ error: "source_id must be a non-empty string or null" }, 400);
-            return true;
-          }
-        }
-        if ("space_id" in body) {
-          // Empty / whitespace-only space_id would hit the sessions FK
-          // constraint as a constraint error and bubble out as a 500;
-          // catch it here as a clean 400. The service still validates
-          // existence — passing a non-empty-but-unknown id surfaces as a
-          // service-level error.
-          if (typeof body.space_id === "string" && body.space_id.trim().length > 0) {
-            input.space_id = body.space_id.trim();
-          } else {
-            sendJson({ error: "space_id must be a non-empty string" }, 400);
-            return true;
-          }
-        }
-        if (body.assignment_mode === "auto" || body.assignment_mode === "manual") {
-          input.assignment_mode = body.assignment_mode;
-        } else if (body.assignment_mode !== undefined) {
-          sendJson({ error: "assignment_mode must be 'auto' or 'manual'" }, 400);
-          return true;
-        }
         const updated = sessionService.moveSession(input);
-        const src = updated.source_id ? spaceStore.getSourceById(updated.source_id) : undefined;
-        const sourceLabel = src ? (src.label ?? (basename(src.path) || null)) : null;
         broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
         sendJson({
           id: updated.id,
           spaceId: updated.space_id,
-          sourceId: updated.source_id ?? null,
-          sourceLabel,
           projectId: updated.project_id ?? null,
           cwd: updated.cwd,
           agent: updated.agent,
@@ -557,7 +442,7 @@ export async function tryHandleSessionRoute(
           activeDeviceLabel: null,
         });
       } catch (err) {
-        if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError || err instanceof ProjectNotFoundError) {
+        if (err instanceof SessionNotFoundError || err instanceof ProjectNotFoundError) {
           sendJson({ error: err.message }, 404);
           return true;
         }
@@ -799,17 +684,15 @@ export async function tryHandleSessionRoute(
           }
           targetCwd = overrideCwd;
         } else {
-          // No override — try auto-resolve via local sources.
-          const { candidates, remoteCwd } = findResumeCandidates(db, spaceStore, sessionId, ownerId);
-          if (candidates.length === 0) {
-            sendJson({ status: "needs_target", remoteCwd, suggestedSpaceId: null }, 200);
-            return true;
-          }
-          if (candidates.length > 1) {
-            sendJson({ status: "pick_source", candidates, remoteCwd }, 200);
-            return true;
-          }
-          targetCwd = candidates[0]!.path;
+          // No override — the sources-based auto-resolve heuristic is gone
+          // with the sources→projects rewrite. The client is now expected
+          // to supply `targetCwd` explicitly; we surface the remote cwd as
+          // a hint so the picker can default-select it.
+          sendJson(
+            { status: "needs_target", remoteCwd: remoteRow.cwd, suggestedSpaceId: null },
+            200,
+          );
+          return true;
         }
 
         // 3. Reassemble chunks into the encoded jsonl path Claude Code expects.
