@@ -131,6 +131,16 @@ export interface SessionStore {
    *  may be moved to a more specific source (the "improve" case) but
    *  are never demoted to a less specific one. */
   rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number;
+  /** Find up to `limit` candidate session ids that need rebinding to this
+   *  (space, source, path) under the longest-prefix rule. Excludes rows
+   *  already correctly bound. Returns ids in stable order; caller pages
+   *  through batches. Uses the indexable range form of the prefix predicate
+   *  so this stays fast on big DBs (substr() in the single-shot
+   *  rebindAutoSessionsForSource is unindexable). */
+  findAutoSessionsToRebind(spaceId: string, sourceId: string, path: string, limit: number): string[];
+  /** Bulk-apply the (space, source) binding to a list of session ids.
+   *  No scanning — PK update. Pair with findAutoSessionsToRebind. */
+  rebindSessionsByIds(spaceId: string, sourceId: string, ids: string[]): number;
   /** Null out `source_id` on every session pointing at this source. Used by
    *  `removeSource` to keep the binding consistent after a soft-delete —
    *  the FK ON DELETE SET NULL never fires because the source row stays in
@@ -367,6 +377,65 @@ export class SqliteSessionStore implements SessionStore {
     }
     if (sets.length === 0) return;
     this.db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = @id`).run(values);
+  }
+
+  // Find up to `limit` auto-mode sessions that should bind to (spaceId,
+  // sourceId) under the longest-prefix rule, excluding rows already correctly
+  // bound. The outer prefix check is rewritten as a range scan on `cwd` so
+  // SQLite uses the partial index `sessions_auto_cwd` (db.ts) — substr() is
+  // unindexable and turned the legacy single UPDATE into a full table scan
+  // (15s+ on big DBs, which is exactly the timeout users hit when attaching).
+  // Inner NOT EXISTS still uses substr against `sources.path` because that
+  // table is small (handful of rows) and the outer set is already narrowed.
+  findAutoSessionsToRebind(
+    spaceId: string,
+    sourceId: string,
+    path: string,
+    limit: number,
+  ): string[] {
+    // Range bounds for "cwd starts with path[+'/']". '/' is 0x2F, '0' is 0x30,
+    // so [path||'/', path||'0') is exactly "starts with path+'/'".
+    // Root paths (ending in '/') need the trailing slash dropped before the
+    // upper-bound replace so '/' becomes '0', not '/0'.
+    const isRoot = path.endsWith("/");
+    const lower = isRoot ? path : path + "/";
+    const upper = isRoot ? path.slice(0, -1) + "0" : path + "0";
+    const rows = this.db.prepare(
+      `SELECT s.id FROM sessions s
+        WHERE s.assignment_mode = 'auto'
+          AND s.cwd IS NOT NULL
+          AND (s.cwd = @path OR (s.cwd >= @lower AND s.cwd < @upper))
+          AND (s.source_id IS NULL OR s.source_id <> @source_id)
+          AND NOT EXISTS (
+            SELECT 1 FROM sources t
+             WHERE t.removed_at IS NULL
+               AND t.id <> @source_id
+               AND length(t.path) > length(@path)
+               AND (
+                 s.cwd = t.path
+                 OR (substr(s.cwd, 1, length(t.path)) = t.path
+                     AND (substr(t.path, length(t.path), 1) = '/'
+                          OR substr(s.cwd, length(t.path) + 1, 1) = '/'))
+               )
+          )
+        ORDER BY s.id
+        LIMIT @limit`,
+    ).all({ path, lower, upper, source_id: sourceId, limit }) as Array<{ id: string }>;
+    return rows.map((r) => r.id);
+  }
+
+  // Bulk-apply a (spaceId, sourceId) binding to the given session ids. Pure
+  // primary-key UPDATE, no scanning. Caller is expected to have produced the
+  // ids via findAutoSessionsToRebind in the same logical batch.
+  rebindSessionsByIds(spaceId: string, sourceId: string, ids: string[]): number {
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map(() => "?").join(",");
+    const info = this.db.prepare(
+      `UPDATE sessions
+          SET space_id = ?, source_id = ?
+        WHERE id IN (${placeholders})`,
+    ).run(spaceId, sourceId, ...ids);
+    return Number(info.changes);
   }
 
   rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number {

@@ -7,6 +7,7 @@ import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
 import { OnboardingDock } from "./components/OnboardingDock";
+import { RebindStatusToast } from "./components/RebindStatusToast";
 import { SetupProposalPanel } from "./components/SetupProposalPanel";
 import { AuthBadge } from "./components/AuthBadge";
 import { windowsReducer } from "./stores/windows";
@@ -625,6 +626,8 @@ export default function App() {
       <OnboardingDock
         userSpaceCount={FORCE_ONBOARDING ? 0 : spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
       />
+
+      <RebindStatusToast />
 
       {setupProposal && (
         <SetupProposalPanel
