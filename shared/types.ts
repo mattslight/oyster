@@ -132,6 +132,12 @@ export interface Session {
    *  remote_sessions.device_label and returns whichever matches; null when
    *  active is some third device we don't yet have a label for. */
   activeDeviceLabel?: string | null;
+  /** 'auto': Oyster's heuristic may assign or improve the source binding
+   *  as folders are attached or their paths updated. 'manual': the user
+   *  (or an MCP-driven agent) pinned this row — heuristics never overwrite
+   *  it. Returned by GET /api/sessions/:id and PATCH; absent on older
+   *  rows from before this column existed, which the UI treats as 'auto'. */
+  assignmentMode?: "auto" | "manual";
 }
 
 /** POST /api/sessions/:id/resume response shapes. */

@@ -222,6 +222,7 @@ export async function tryHandleSessionRoute(
        *  - null (when active is some third device we don't yet know about).
        *  Drives the "Now active on Mac" chip in the UI. */
       activeDeviceLabel: string | null;
+      assignmentMode?: "auto" | "manual";
     }
     // Cache the current device identity once — used to resolve "active is us"
     // for both local and remote payload entries. NULL when device_identity
@@ -257,6 +258,7 @@ export async function tryHandleSessionRoute(
         // Local sessions are always actively written by this device.
         activeDeviceId: null,
         activeDeviceLabel: null,
+        assignmentMode: row.assignment_mode,
       };
     });
 
@@ -414,6 +416,7 @@ export async function tryHandleSessionRoute(
           hasBytes: true,
           activeDeviceId: null,
           activeDeviceLabel: null,
+          assignmentMode: row.assignment_mode,
         });
         return true;
       }

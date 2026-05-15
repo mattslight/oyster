@@ -2,8 +2,9 @@
 // Home/index.tsx.
 import { useEffect, useState } from "react";
 import type { SpaceSource } from "../../data/spaces-api";
-import { removeSpaceSource } from "../../data/spaces-api";
+import { removeSpaceSource, updateSpaceSource } from "../../data/spaces-api";
 import { ConfirmModal } from "../ConfirmModal";
+import { PromptModal } from "../PromptModal";
 
 export function ProjectTile({
   source, artefactCount, sessionCounts, selected, onSelect, onSourcesChanged,
@@ -23,6 +24,7 @@ export function ProjectTile({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pathPromptOpen, setPathPromptOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Separator-agnostic so Windows paths (`C:\Users\...`) display correctly too.
   const basename = source.path.split(/[\\/]/).filter(Boolean).pop() ?? source.path;
@@ -59,6 +61,24 @@ export function ProjectTile({
     }
   }
 
+  async function performPathUpdate(newPath: string) {
+    const trimmed = newPath.trim();
+    if (!trimmed || trimmed === source.path) {
+      setPathPromptOpen(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateSpaceSource(source.space_id, source.id, { path: trimmed });
+      onSourcesChanged();
+      setPathPromptOpen(false);
+    } catch (err) {
+      alert(`Couldn't update folder: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const sessionPhrase = spaceTotalSessions === 1 ? "1 session" : `${spaceTotalSessions} sessions`;
 
   return (
@@ -76,6 +96,11 @@ export function ProjectTile({
             {sessionCounts && sessionCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{sessionCounts.waiting} waiting</span>}
             {sessionCounts && sessionCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{sessionCounts.disconnected} disconnected</span>}
             <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>
+            {source.pathExists === false && (
+              <span className="signal signal-warning" title="Folder not found at this path. Update or detach.">
+                <span className="pip pip-amber" /> Path missing
+              </span>
+            )}
           </div>
         </button>
         <button
@@ -94,6 +119,13 @@ export function ProjectTile({
             <div className="home-project-tile-menu-divider" />
             <button
               type="button"
+              className="home-project-tile-menu-item"
+              onClick={() => { setMenuOpen(false); setPathPromptOpen(true); }}
+            >
+              Update folder location…
+            </button>
+            <button
+              type="button"
               className="home-project-tile-menu-item danger"
               onClick={() => { setMenuOpen(false); setConfirmOpen(true); }}
             >
@@ -102,6 +134,20 @@ export function ProjectTile({
           </div>
         )}
       </div>
+      <PromptModal
+        open={pathPromptOpen}
+        title={`Update folder location for "${basename}"`}
+        body={
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+            Point this source at a new absolute path. Existing sessions stay bound to this source — the change is metadata only. The path doesn't need to exist right now (useful for unmounted drives).
+          </div>
+        }
+        initialValue={source.path}
+        placeholder="/absolute/path/to/folder"
+        confirmLabel={busy ? "Updating…" : "Update"}
+        onSubmit={performPathUpdate}
+        onCancel={() => !busy && setPathPromptOpen(false)}
+      />
       <ConfirmModal
         open={confirmOpen}
         title={willCollapseSpace ? `Remove "${basename}" and delete ${spaceDisplayName}?` : `Remove "${basename}"?`}

@@ -14,10 +14,25 @@ import type {
   SessionEvent,
   SessionArtifactJoined,
 } from "../../../shared/types";
-import { ApiError, getJson } from "./http";
+import { ApiError, getJson, patchJson } from "./http";
 
 export async function fetchSessions(): Promise<Session[]> {
   return getJson<Session[]>("/api/sessions");
+}
+
+/** Reassign a session to a different source/space, or flip its
+ *  assignment_mode. Setting `source_id` implicitly flips to `'manual'`;
+ *  pass `assignment_mode: 'auto'` (with no source_id) to recompute via
+ *  the longest-prefix heuristic on this session's cwd. */
+export async function patchSession(
+  id: string,
+  body: {
+    source_id?: string | null;
+    space_id?: string;
+    assignment_mode?: "auto" | "manual";
+  },
+): Promise<Session> {
+  return patchJson<Session>(`/api/sessions/${encodeURIComponent(id)}`, body);
 }
 
 export async function fetchSession(id: string, signal?: AbortSignal): Promise<Session> {

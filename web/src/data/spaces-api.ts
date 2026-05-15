@@ -34,6 +34,10 @@ export interface SpaceSource {
   label: string | null;
   added_at: string;
   removed_at: string | null;
+  /** Set by the server on GET: false when the folder no longer exists on
+   *  disk. Drives the "Path missing" warning chip on the tile so the user
+   *  can choose to update the path or detach. Older builds may omit. */
+  pathExists?: boolean;
 }
 
 export async function fetchSpaceSources(spaceId: string, signal?: AbortSignal): Promise<SpaceSource[]> {
@@ -46,6 +50,21 @@ export async function addSpaceSource(spaceId: string, path: string): Promise<Spa
 
 export async function removeSpaceSource(spaceId: string, sourceId: string): Promise<void> {
   return del(`/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(sourceId)}`);
+}
+
+/** Update a source's filesystem path (folder rename / unmounted-drive
+ *  recovery) and/or its display label. Path existence is advisory — the
+ *  server accepts a non-existent path and the next GET returns
+ *  `pathExists: false`. */
+export async function updateSpaceSource(
+  spaceId: string,
+  sourceId: string,
+  fields: { path?: string; label?: string | null },
+): Promise<SpaceSource> {
+  return patchJson<SpaceSource>(
+    `/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(sourceId)}`,
+    fields,
+  );
 }
 
 export async function deleteSpace(spaceId: string, folderName?: string): Promise<void> {
