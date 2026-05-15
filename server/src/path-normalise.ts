@@ -14,11 +14,12 @@ import { isAbsolute, resolve } from "node:path";
 // reject here either. Callers that need a stricter "must exist" check can
 // statSync the result themselves.
 //
-// Cross-platform: the longest-prefix matching SQL uses `cwd LIKE path || '/%'`,
-// which only works if both sides use the same separator. We normalise to
-// forward slashes here so a Windows source.path of `C:/Users/foo` matches a
-// session whose cwd was canonicalised to `C:/Users/foo/bar`. The watcher runs
-// incoming `tracker.cwd` through this same helper before persisting to
+// Cross-platform: the longest-prefix matching SQL uses literal substr
+// comparison against `path` and `cwd`, which only works if both sides use
+// the same separator. We normalise to forward slashes here so a Windows
+// source.path of `C:/Users/foo` matches a session whose cwd was
+// canonicalised to `C:/Users/foo/bar`. The watcher runs incoming
+// `tracker.cwd` through this same helper before persisting to
 // `sessions.cwd`, so the comparison stays consistent on both sides.
 export function normaliseSourcePath(raw: string): string {
   if (typeof raw !== "string" || raw.length === 0) {

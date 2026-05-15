@@ -670,9 +670,9 @@ export class ClaudeCodeWatcher {
           space_id: resolved.spaceId,
           source_id: resolved.sourceId,
           // Persist the canonicalised cwd (forward-slash, realpath-resolved)
-          // so the longest-prefix LIKE in rebindAutoSessionsForSource sees
-          // matching separators on both sides. On macOS/Linux this is the
-          // same string the watcher already saw; on Windows it's
+          // so the substr-based prefix match in rebindAutoSessionsForSource
+          // sees matching separators on both sides. On macOS/Linux this is
+          // the same string the watcher already saw; on Windows it's
           // `C:/Users/foo` instead of `C:\Users\foo`. Falls back to the raw
           // tracker.cwd if normalisation didn't run (cache empty).
           cwd: tracker.normalisedCwd ?? tracker.cwd,

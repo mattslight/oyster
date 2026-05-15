@@ -34,25 +34,40 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
   const isManual = session.assignmentMode === "manual";
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sourcesForSpace, setSourcesForSpace] = useState<SpaceSource[] | null>(null);
+  // Cache keyed by the spaceId we loaded for, so an empty result (or a
+  // failure) doesn't lock subsequent opens out — if the user closes the
+  // menu and re-opens it, or the session's space changes, the next open
+  // refetches. `null` means "haven't tried for this space yet".
+  const [sourcesCache, setSourcesCache] = useState<{ spaceId: string | null; sources: SpaceSource[] } | null>(null);
   const [sourcesLoading, setSourcesLoading] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Lazy-load the available sources the first time the menu opens. Scoped
-  // to the session's current space (same-space moves are the common case;
-  // cross-space moves go through MCP for now).
+  // Lazy-load the available sources each time the menu opens for a space
+  // we haven't loaded yet (or whose spaceId has changed). Scoped to the
+  // session's current space — same-space moves are the common case;
+  // cross-space moves go through MCP for now.
   useEffect(() => {
-    if (!menuOpen || sourcesForSpace !== null || sourcesLoading) return;
+    if (!menuOpen || sourcesLoading) return;
+    if (sourcesCache && sourcesCache.spaceId === session.spaceId) return;
     if (!session.spaceId) {
-      setSourcesForSpace([]);
+      setSourcesCache({ spaceId: null, sources: [] });
       return;
     }
+    const targetSpaceId = session.spaceId;
     setSourcesLoading(true);
-    fetchSpaceSources(session.spaceId)
-      .then(setSourcesForSpace)
-      .catch(() => setSourcesForSpace([]))
+    fetchSpaceSources(targetSpaceId)
+      .then((sources) => setSourcesCache({ spaceId: targetSpaceId, sources }))
+      .catch(() => { /* leave cache null so the next open retries */ })
       .finally(() => setSourcesLoading(false));
-  }, [menuOpen, sourcesForSpace, sourcesLoading, session.spaceId]);
+  }, [menuOpen, sourcesCache, sourcesLoading, session.spaceId]);
+
+  // Reset the cache when the menu closes so a fresh open always sees the
+  // latest source list (a user might have just attached a new folder).
+  useEffect(() => {
+    if (!menuOpen) setSourcesCache(null);
+  }, [menuOpen]);
+
+  const sourcesForSpace = sourcesCache?.sources ?? null;
 
   // Close on outside click — same pattern as ProjectTile.
   useEffect(() => {

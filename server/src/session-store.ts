@@ -122,13 +122,14 @@ export interface SessionStore {
   upsertSession(row: InsertSession): void;
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void;
   updateSession(id: string, fields: Partial<Omit<SessionRow, "id" | "started_at">>): void;
-  /** Bind every `assignment_mode = 'auto'` session whose `cwd` is matched by
-   *  `path` (exact OR `cwd LIKE path || '/%'`) to this source — *unless* a
-   *  different active source has a strictly longer matching path, in which
-   *  case the longer source wins. Idempotent. Returns the number of rows
-   *  updated. Manual rows are immune. Already-bound auto rows may be moved
-   *  to a more specific source (the "improve" case) but are never demoted
-   *  to a less specific one. */
+  /** Bind every `assignment_mode = 'auto'` session whose `cwd` is matched
+   *  by `path` (exact or proper subdirectory, compared literally via
+   *  substr — no LIKE-wildcard semantics) to this source, unless a
+   *  different active source has a strictly longer matching path, in
+   *  which case the longer source wins. Idempotent. Returns the number
+   *  of rows updated. Manual rows are immune. Already-bound auto rows
+   *  may be moved to a more specific source (the "improve" case) but
+   *  are never demoted to a less specific one. */
   rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number;
   /** Null out `source_id` on every session pointing at this source. Used by
    *  `removeSource` to keep the binding consistent after a soft-delete —

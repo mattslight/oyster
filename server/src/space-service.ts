@@ -12,7 +12,11 @@ import { slugify, toScanStatus } from "./utils.js";
 import { normaliseSourcePath } from "./path-normalise.js";
 
 function pathExistsSafe(path: string): boolean {
-  try { return existsSync(path); } catch { return false; }
+  // "Path missing" only makes sense for a directory — a file at the
+  // recorded path is just as broken from the source-binding perspective.
+  // statSync covers both branches and stays cheap; the catch handles
+  // both ENOENT (file/dir gone) and slow/dead drives (EBUSY/ETIMEDOUT).
+  try { return statSync(path).isDirectory(); } catch { return false; }
 }
 
 /** Thrown by updateSource when the new path is already attached to a

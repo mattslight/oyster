@@ -325,7 +325,9 @@ describe("SpaceService.getSources — pathExists", () => {
     const src1 = env.service.addSource(space.id, present);
 
     // Make a second source point at a non-existent path (via updateSource,
-    // since addSource rejects non-existent paths). This is the "user
+    // since addSource takes the path through normaliseSourcePath at attach
+    // time; we then delete the folder to simulate an unmounted drive or
+    // rename. This is the "user
     // renamed the folder on disk before telling Oyster" / unmounted-drive
     // scenario.
     const missing = join(env.workDir, "gone");
