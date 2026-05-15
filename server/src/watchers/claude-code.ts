@@ -268,7 +268,10 @@ export class ClaudeCodeWatcher {
       id: meta.sessionId,
       space_id: resolved.spaceId,
       source_id: resolved.sourceId,
-      cwd: meta.cwd,
+      // Persist the canonicalised form (forward-slash, realpath-resolved)
+      // so the source-binding SQL on a Windows install sees matching
+      // separators. lookupSource already computed the normalised string.
+      cwd: resolved.normalised ?? meta.cwd,
       // Ground truth for pushBytes: the actual on-disk path. Required
       // for cross-device resumed sessions whose events still carry the
       // origin device's cwd. See db.ts on the jsonl_path column.
@@ -666,7 +669,13 @@ export class ClaudeCodeWatcher {
           id: tracker.sessionId,
           space_id: resolved.spaceId,
           source_id: resolved.sourceId,
-          cwd: tracker.cwd,
+          // Persist the canonicalised cwd (forward-slash, realpath-resolved)
+          // so the longest-prefix LIKE in rebindAutoSessionsForSource sees
+          // matching separators on both sides. On macOS/Linux this is the
+          // same string the watcher already saw; on Windows it's
+          // `C:/Users/foo` instead of `C:\Users\foo`. Falls back to the raw
+          // tracker.cwd if normalisation didn't run (cache empty).
+          cwd: tracker.normalisedCwd ?? tracker.cwd,
           jsonl_path: filePath,
           agent: "claude-code",
           title: effectiveTitle(tracker),

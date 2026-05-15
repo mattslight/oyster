@@ -9,6 +9,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "../space-service.js";
 import { SourcePathConflictError } from "../space-service.js";
+import { existsSync, statSync } from "node:fs";
 import type { UiCommand } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
@@ -203,7 +204,9 @@ export async function tryHandleSpaceRoute(
       }
       try {
         const source = spaceService.getSourceById(sourceId);
-        if (!source || source.space_id !== spaceId) {
+        // Detached sources are 404 too: callers shouldn't be able to PATCH
+        // a row we've soft-deleted. Mirrors DELETE's "active only" guard.
+        if (!source || source.space_id !== spaceId || source.removed_at) {
           sendJson({ error: "source not found in this space" }, 404);
           return true;
         }
@@ -227,7 +230,14 @@ export async function tryHandleSpaceRoute(
         try {
           const updated = spaceService.updateSource(sourceId, fields);
           broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-          sendJson({ ...updated, pathExists: true });
+          // Compute pathExists from the actual updated path — non-existent
+          // paths are accepted (unmounted drives / renamed folders), so a
+          // hardcoded `true` would lie to the client for one render cycle
+          // until the next GET. Match the same safe stat the GET uses.
+          let pathExists = false;
+          try { pathExists = existsSync(updated.path) && statSync(updated.path).isDirectory(); }
+          catch { /* slow drive / EACCES — advisory only, false is fine */ }
+          sendJson({ ...updated, pathExists });
         } catch (err) {
           if (err instanceof SourcePathConflictError) {
             const summary = spaceService.sourceContentSummary(source.id);
@@ -267,7 +277,7 @@ export async function tryHandleSpaceRoute(
       }
       try {
         const source = spaceService.getSourceById(sourceId);
-        if (!source || source.space_id !== spaceId) {
+        if (!source || source.space_id !== spaceId || source.removed_at) {
           sendJson({ error: "source not found in this space" }, 404);
           return true;
         }

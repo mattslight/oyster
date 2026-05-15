@@ -35,6 +35,17 @@ export class SourceNotFoundError extends Error {
   constructor(id: string) { super(`Source "${id}" not found`); }
 }
 
+/** Thrown when a move request doesn't specify anything to change, or
+ *  combines fields in an internally inconsistent way (e.g. `space_id`
+ *  set alongside a `source_id` whose space disagrees). The route layer
+ *  turns these into 400s. */
+export class InvalidMoveSessionInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidMoveSessionInputError";
+  }
+}
+
 export class SessionService {
   constructor(
     private db: Database.Database,
@@ -63,17 +74,43 @@ export class SessionService {
       return this.resetSessionToAuto(input.session_id);
     }
 
+    // Reject empty / no-op bodies. An empty PATCH used to silently flip the
+    // session to manual; better to surface a clear error so callers fix the
+    // request rather than mutate state by accident.
+    const hasSourceField = input.source_id !== undefined;
+    const hasSpaceField = input.space_id !== undefined;
+    const hasModeField = input.assignment_mode !== undefined;
+    if (!hasSourceField && !hasSpaceField && !hasModeField) {
+      throw new InvalidMoveSessionInputError(
+        "At least one of source_id, space_id, or assignment_mode must be provided",
+      );
+    }
+
     // Build the new (space_id, source_id, mode) tuple.
     let newSourceId: string | null;
     let newSpaceId: string | null;
     let newMode: AssignmentMode;
 
     if (input.source_id === undefined) {
-      // Mode-only flip (the implied case is mode === 'manual'). Keep current
-      // binding; just freeze it.
+      // No source change — pure mode/space metadata change. `space_id` is
+      // only honoured when the row is currently sourceless (the vault case)
+      // — moving a sourced session into another space without picking the
+      // new source would leave the (source, space) pair inconsistent.
+      if (hasSpaceField && row.source_id !== null) {
+        throw new InvalidMoveSessionInputError(
+          "space_id can only be changed when source_id is null — pick the target source instead",
+        );
+      }
       newSourceId = row.source_id;
-      newSpaceId = row.space_id;
-      newMode = input.assignment_mode ?? "manual";
+      newSpaceId = input.space_id ?? row.space_id;
+      // Mode must be explicitly set in this branch — we no longer assume
+      // 'manual' silently. assignment_mode === 'auto' was handled above.
+      if (!hasModeField) {
+        throw new InvalidMoveSessionInputError(
+          "assignment_mode is required when no source_id is provided",
+        );
+      }
+      newMode = input.assignment_mode!;
     } else if (input.source_id === null) {
       newSourceId = null;
       newSpaceId = input.space_id ?? row.space_id;
@@ -81,10 +118,15 @@ export class SessionService {
     } else {
       const source = this.spaceStore.getSourceById(input.source_id);
       if (!source || source.removed_at) throw new SourceNotFoundError(input.source_id);
+      // Reject inconsistent (source_id, space_id) pairs from the client
+      // instead of silently overriding. The previous "always derive from
+      // source" behaviour was safe but masked client bugs.
+      if (hasSpaceField && input.space_id !== source.space_id) {
+        throw new InvalidMoveSessionInputError(
+          `space_id "${input.space_id}" does not match source "${input.source_id}"'s space "${source.space_id}"`,
+        );
+      }
       newSourceId = source.id;
-      // Always derive space_id from the source — ignores any body.space_id
-      // when source_id is set, which prevents inconsistent (source in space
-      // X, session claiming space Y) state.
       newSpaceId = source.space_id;
       newMode = "manual";
     }

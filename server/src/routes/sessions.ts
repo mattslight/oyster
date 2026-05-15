@@ -15,7 +15,7 @@ import type { SqliteSpaceStore } from "../space-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
-import { SessionService, SessionNotFoundError, SourceNotFoundError } from "../session-service.js";
+import { SessionService, SessionNotFoundError, SourceNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
 import type { UiCommand } from "../../../shared/types.js";
 import {
   encodeCwd,
@@ -531,6 +531,10 @@ export async function tryHandleSessionRoute(
       } catch (err) {
         if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError) {
           sendJson({ error: err.message }, 404);
+          return true;
+        }
+        if (err instanceof InvalidMoveSessionInputError) {
+          sendJson({ error: err.message }, 400);
           return true;
         }
         sendError(err);

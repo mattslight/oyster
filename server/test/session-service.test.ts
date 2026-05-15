@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { initDb } from "../src/db.js";
 import { SqliteSessionStore } from "../src/session-store.js";
 import { SqliteSpaceStore } from "../src/space-store.js";
-import { SessionService, SessionNotFoundError, SourceNotFoundError } from "../src/session-service.js";
+import { SessionService, SessionNotFoundError, SourceNotFoundError, InvalidMoveSessionInputError } from "../src/session-service.js";
 import type Database from "better-sqlite3";
 
 function seedSpace(db: Database.Database, id: string) {
@@ -78,22 +78,34 @@ describe("SessionService.moveSession", () => {
     expect(updated.assignment_mode).toBe("manual");
   });
 
-  it("cross-space move: space_id is derived from the new source, not the request body", () => {
+  it("cross-space move with no space_id: derives space from the new source", () => {
     seedSpace(env.db, "sp1");
     seedSpace(env.db, "sp2");
     seedSource(env.db, "src1", "sp1", "/p1");
     seedSource(env.db, "src2", "sp2", "/p2");
     seedSession(env.db, { id: "s", cwd: "/p1", source_id: "src1", space_id: "sp1" });
 
-    // Even though the caller passes a misleading space_id, source's space wins.
-    const updated = env.service.moveSession({
-      session_id: "s",
-      source_id: "src2",
-      space_id: "sp1", // ignored
-    });
+    const updated = env.service.moveSession({ session_id: "s", source_id: "src2" });
     expect(updated.source_id).toBe("src2");
     expect(updated.space_id).toBe("sp2");
     expect(updated.assignment_mode).toBe("manual");
+  });
+
+  it("rejects an inconsistent (source_id, space_id) pair instead of silently overriding", () => {
+    seedSpace(env.db, "sp1");
+    seedSpace(env.db, "sp2");
+    seedSource(env.db, "src1", "sp1", "/p1");
+    seedSource(env.db, "src2", "sp2", "/p2");
+    seedSession(env.db, { id: "s", cwd: "/p1", source_id: "src1", space_id: "sp1" });
+
+    // Caller passes a space_id that disagrees with the source's space.
+    // Previous behaviour silently overrode body.space_id; new behaviour
+    // surfaces the bug to the caller.
+    expect(() => env.service.moveSession({
+      session_id: "s",
+      source_id: "src2",
+      space_id: "sp1",
+    })).toThrow(/does not match/);
   });
 
   it("source_id: null → unbinds to vault, flips to manual", () => {
@@ -139,6 +151,46 @@ describe("SessionService.moveSession", () => {
   it("404s on unknown source", () => {
     seedSession(env.db, { id: "s" });
     expect(() => env.service.moveSession({ session_id: "s", source_id: "nope" })).toThrow(SourceNotFoundError);
+  });
+
+  it("rejects an empty body (nothing to change)", () => {
+    seedSession(env.db, { id: "s" });
+    expect(() => env.service.moveSession({ session_id: "s" }))
+      .toThrow(InvalidMoveSessionInputError);
+  });
+
+  it("rejects space_id-only changes on a sourced session (would leave the pair inconsistent)", () => {
+    seedSpace(env.db, "sp1");
+    seedSpace(env.db, "sp2");
+    seedSource(env.db, "src1", "sp1", "/p");
+    seedSession(env.db, { id: "s", source_id: "src1", space_id: "sp1" });
+    expect(() => env.service.moveSession({ session_id: "s", space_id: "sp2" }))
+      .toThrow(/space_id can only be changed when source_id is null/);
+  });
+
+  it("rejects pure space_id-change on an unsourced session when assignment_mode is omitted", () => {
+    seedSpace(env.db, "sp1");
+    seedSpace(env.db, "sp2");
+    seedSession(env.db, { id: "s", source_id: null, space_id: "sp1" });
+    // For an unsourced session, space_id IS allowed to change — but we
+    // still need an explicit assignment_mode rather than silently
+    // defaulting to 'manual' as the old code did.
+    expect(() => env.service.moveSession({ session_id: "s", space_id: "sp2" }))
+      .toThrow(/assignment_mode is required/);
+  });
+
+  it("accepts space_id change on an unsourced session with explicit mode", () => {
+    seedSpace(env.db, "sp1");
+    seedSpace(env.db, "sp2");
+    seedSession(env.db, { id: "s", source_id: null, space_id: "sp1" });
+    const updated = env.service.moveSession({
+      session_id: "s",
+      space_id: "sp2",
+      assignment_mode: "manual",
+    });
+    expect(updated.space_id).toBe("sp2");
+    expect(updated.source_id).toBeNull();
+    expect(updated.assignment_mode).toBe("manual");
   });
 
   it("404s on soft-deleted source", () => {
