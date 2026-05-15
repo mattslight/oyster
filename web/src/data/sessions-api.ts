@@ -193,7 +193,7 @@ export async function resumeSession(
       return body as SessionResumeResponse;
     }
     const message = body?.message ?? body?.error ?? "Conflict";
-    throw new ApiError(message, 409);
+    throw new ApiError(409, message);
   }
-  throw new ApiError(`Resume failed: ${res.status}`, res.status);
+  throw new ApiError(res.status, `Resume failed: ${res.status}`);
 }

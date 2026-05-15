@@ -8,6 +8,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "../space-service.js";
+import { SourcePathConflictError } from "../space-service.js";
 import type { UiCommand } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
@@ -187,6 +188,11 @@ export async function tryHandleSpaceRoute(
     // bindings are preserved; the longest-prefix heuristic runs after a
     // path change so orphan auto-sessions matching the new path get bound
     // and auto-sessions move to a more specific source when one applies.
+    //
+    // If the new path is already attached to another source in this space,
+    // the user almost certainly wants to *merge* this source into that one
+    // rather than rename — we return 409 with a structured
+    // `would_consolidate` body so the UI can offer the merge.
     if (dm && req.method === "PATCH") {
       if (rejectIfNonLocalOrigin()) return true;
       const spaceId = safeDecode(dm[1]);
@@ -218,12 +224,66 @@ export async function tryHandleSpaceRoute(
             return true;
           }
         }
-        const updated = spaceService.updateSource(sourceId, fields);
-        // Path change may have re-bound orphans / moved auto-sessions to a
-        // more specific source; even label-only changes affect the tile,
-        // so always broadcast.
+        try {
+          const updated = spaceService.updateSource(sourceId, fields);
+          broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+          sendJson({ ...updated, pathExists: true });
+        } catch (err) {
+          if (err instanceof SourcePathConflictError) {
+            const summary = spaceService.sourceContentSummary(source.id);
+            sendJson({
+              error: "would_consolidate",
+              target: {
+                id: err.conflict.id,
+                space_id: err.conflict.space_id,
+                path: err.conflict.path,
+                label: err.conflict.label,
+              },
+              source: { id: err.source.id, label: err.source.label, path: err.source.path },
+              moves: summary,
+              sameSpace: err.conflict.space_id === err.source.space_id,
+            }, 409);
+            return true;
+          }
+          throw err;
+        }
+      } catch (err) {
+        sendError(err);
+      }
+      return true;
+    }
+    // POST /api/spaces/:id/sources/:source_id/consolidate { intoSourceId }
+    // — merge this source into the target: bulk-reassign sessions +
+    // artefacts, then soft-delete this source. Both must be in the same
+    // space. Returns the move counts.
+    const cm = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources\/([^/]+)\/consolidate$/);
+    if (cm && req.method === "POST") {
+      if (rejectIfNonLocalOrigin()) return true;
+      const spaceId = safeDecode(cm[1]);
+      const sourceId = safeDecode(cm[2]);
+      if (spaceId === null || sourceId === null) {
+        sendJson({ error: "Invalid URL encoding" }, 400);
+        return true;
+      }
+      try {
+        const source = spaceService.getSourceById(sourceId);
+        if (!source || source.space_id !== spaceId) {
+          sendJson({ error: "source not found in this space" }, 404);
+          return true;
+        }
+        const body = await readJsonBody();
+        const intoSourceId = typeof body.intoSourceId === "string" ? body.intoSourceId : "";
+        if (!intoSourceId) {
+          sendJson({ error: "intoSourceId is required" }, 400);
+          return true;
+        }
+        const result = spaceService.consolidateSource(sourceId, intoSourceId);
         broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-        sendJson({ ...updated, pathExists: true /* best-effort; UI also re-stats on GET */ });
+        sendJson({
+          sessionsMoved: result.sessionsMoved,
+          artefactsMoved: result.artefactsMoved,
+          into: result.intoSource,
+        });
       } catch (err) {
         sendError(err);
       }

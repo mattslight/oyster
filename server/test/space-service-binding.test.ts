@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { initDb } from "../src/db.js";
 import { SqliteSessionStore } from "../src/session-store.js";
 import { SqliteSpaceStore } from "../src/space-store.js";
-import { SpaceService } from "../src/space-service.js";
+import { SpaceService, SourcePathConflictError } from "../src/space-service.js";
 import { SqliteArtifactStore } from "../src/artifact-store.js";
 import { ArtifactService } from "../src/artifact-service.js";
 import type Database from "better-sqlite3";
@@ -193,15 +193,20 @@ describe("SpaceService.updateSource", () => {
     expect(() => env.service.updateSource(source.id, { path: missing })).not.toThrow();
   });
 
-  it("rejects collision with another active source", () => {
+  it("rejects collision with another active source via SourcePathConflictError", () => {
     const a = join(env.workDir, "a");
     const b = join(env.workDir, "b");
     mkdirSync(a);
     mkdirSync(b);
     const space = env.service.createSpace({ name: "sp" });
     const srcA = env.service.addSource(space.id, a);
-    env.service.addSource(space.id, b);
-    expect(() => env.service.updateSource(srcA.id, { path: b })).toThrow(/already attached/);
+    const srcB = env.service.addSource(space.id, b);
+    let caught: unknown;
+    try { env.service.updateSource(srcA.id, { path: b }); } catch (err) { caught = err; }
+    expect(caught).toBeInstanceOf(SourcePathConflictError);
+    const conflictErr = caught as SourcePathConflictError;
+    expect(conflictErr.source.id).toBe(srcA.id);
+    expect(conflictErr.conflict.id).toBe(srcB.id);
   });
 
   it("label-only update: doesn't run the rebind heuristic, leaves source_id untouched", () => {
@@ -231,6 +236,80 @@ describe("SpaceService.updateSource", () => {
     const source = env.service.addSource(space.id, folder);
     env.service.removeSource(source.id);
     expect(() => env.service.updateSource(source.id, { label: "x" })).toThrow(/detached/);
+  });
+});
+
+describe("SpaceService.consolidateSource — merge two sources in the same space", () => {
+  let env: ReturnType<typeof makeEnv>;
+  beforeEach(() => { env = makeEnv(); });
+  afterEach(() => { env.cleanup(); });
+
+  it("moves sessions onto target, soft-deletes the source, preserves manual pin", () => {
+    const a = join(env.workDir, "old");
+    const b = join(env.workDir, "new");
+    mkdirSync(a);
+    mkdirSync(b);
+    const space = env.service.createSpace({ name: "sp" });
+    const srcA = env.service.addSource(space.id, a);
+    const srcB = env.service.addSource(space.id, b);
+    seedSession(env.db, { id: "auto", cwd: a, source_id: srcA.id, space_id: space.id });
+    seedSession(env.db, {
+      id: "manual",
+      cwd: a,
+      source_id: srcA.id,
+      space_id: space.id,
+      assignment_mode: "manual",
+    });
+    const result = env.service.consolidateSource(srcA.id, srcB.id);
+    expect(result.sessionsMoved).toBe(2);
+    expect(env.sessionStore.getById("auto")?.source_id).toBe(srcB.id);
+    expect(env.sessionStore.getById("manual")?.source_id).toBe(srcB.id);
+    expect(env.sessionStore.getById("manual")?.assignment_mode).toBe("manual"); // pin preserved
+    // Source A is soft-deleted — getSources (active only) shouldn't include it.
+    expect(env.service.getSources(space.id).map((s) => s.id)).toEqual([srcB.id]);
+  });
+
+  it("rejects merging a source into itself", () => {
+    const a = join(env.workDir, "a");
+    mkdirSync(a);
+    const space = env.service.createSpace({ name: "sp" });
+    const srcA = env.service.addSource(space.id, a);
+    expect(() => env.service.consolidateSource(srcA.id, srcA.id)).toThrow(/itself/);
+  });
+
+  it("rejects cross-space consolidation", () => {
+    const a = join(env.workDir, "a");
+    const b = join(env.workDir, "b");
+    mkdirSync(a);
+    mkdirSync(b);
+    const sp1 = env.service.createSpace({ name: "sp1" });
+    const sp2 = env.service.createSpace({ name: "sp2" });
+    const srcA = env.service.addSource(sp1.id, a);
+    const srcB = env.service.addSource(sp2.id, b);
+    expect(() => env.service.consolidateSource(srcA.id, srcB.id)).toThrow(/Cross-space/);
+  });
+
+  it("404s on unknown source ids", () => {
+    expect(() => env.service.consolidateSource("nope-from", "nope-into")).toThrow(/not found/);
+  });
+});
+
+describe("SpaceService.sourceContentSummary", () => {
+  let env: ReturnType<typeof makeEnv>;
+  beforeEach(() => { env = makeEnv(); });
+  afterEach(() => { env.cleanup(); });
+
+  it("counts only live sessions + artefacts bound to the source", () => {
+    const folder = join(env.workDir, "p");
+    mkdirSync(folder);
+    const space = env.service.createSpace({ name: "sp" });
+    const source = env.service.addSource(space.id, folder);
+    seedSession(env.db, { id: "s1", source_id: source.id, space_id: space.id });
+    seedSession(env.db, { id: "s2", source_id: source.id, space_id: space.id });
+    seedSession(env.db, { id: "s3", source_id: null, space_id: null }); // unrelated
+    const summary = env.service.sourceContentSummary(source.id);
+    expect(summary.sessionCount).toBe(2);
+    expect(summary.artefactCount).toBe(0);
   });
 });
 

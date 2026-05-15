@@ -330,10 +330,12 @@
 <ul>
 <li><strong>Move a session to a different folder, or back to &quot;let Oyster decide&quot;.</strong> When a session ran in the wrong folder or a folder gets renamed, you can now reassign it instead of being stuck with the original binding. Available to agents via the new <code>move_session</code> and <code>set_source_path</code> MCP tools, with the UI affordances landing alongside.</li>
 <li><strong>Update a folder&#39;s path after you&#39;ve renamed it on disk.</strong> A new option on each folder tile points an existing source at its new location without losing artefacts or sessions. Works for unmounted drives too — the path is accepted even when the folder isn&#39;t currently reachable.</li>
+<li><strong>Merge duplicate folders into one.</strong> When <em>Update folder location</em> points at a path that&#39;s already attached in this space, Oyster offers to merge instead — sessions and artefacts move onto the existing folder, the old tile is removed. Agents can drive the same merge via the new <code>consolidate_sources</code> MCP tool.</li>
 </ul>
 <h3>Changed</h3>
 <ul>
 <li><strong>Sessions bind to the most specific matching folder.</strong> Attaching <code>~/Repo</code> then later <code>~/Repo/web</code> now moves sessions that ran in <code>~/Repo/web</code> over to the more specific source automatically. Manually-pinned sessions are immune.</li>
+<li><strong>Attaching a folder no longer requires it to exist on disk.</strong> The orphan-tile attach flow used to throw when the folder had been renamed since the sessions ran. Attach succeeds; the tile renders with the amber <em>Path missing</em> chip; the longest-prefix heuristic claims the matching sessions.</li>
 </ul>
 <h3>Fixed</h3>
 <ul>

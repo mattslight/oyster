@@ -6,10 +6,16 @@
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Decoded JSON response body when the server returned one. Callers that
+   *  need structured error payloads (e.g. would_consolidate on a 409
+   *  source-rename collision) check `body` rather than parsing the
+   *  message string. Undefined when the body wasn't valid JSON. */
+  body?: unknown;
+  constructor(status: number, message: string, body?: unknown) {
     super(message);
     this.status = status;
     this.name = "ApiError";
+    this.body = body;
   }
 }
 
@@ -77,11 +83,14 @@ async function runWithTimeout<T>(opts: MutateOpts, run: (signal: AbortSignal) =>
 
 async function decodeError(res: Response): Promise<ApiError> {
   let message = `HTTP ${res.status}`;
+  let body: unknown;
   try {
-    const body = await res.json() as { error?: string } | null;
-    if (body && typeof body.error === "string") message = body.error;
+    body = await res.json();
+    if (body && typeof (body as { error?: unknown }).error === "string") {
+      message = (body as { error: string }).error;
+    }
   } catch { /* not JSON */ }
-  return new ApiError(res.status, message);
+  return new ApiError(res.status, message, body);
 }
 
 export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {

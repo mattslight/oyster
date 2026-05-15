@@ -1,5 +1,5 @@
 import type { Space } from "../../../shared/types";
-import { getJson, patchJson, postJson, del } from "./http";
+import { getJson, patchJson, postJson, del, ApiError } from "./http";
 
 export async function fetchSpaces(): Promise<Space[]> {
   // Returns [] on failure rather than throwing — callers (App bootstrap)
@@ -55,15 +55,71 @@ export async function removeSpaceSource(spaceId: string, sourceId: string): Prom
 /** Update a source's filesystem path (folder rename / unmounted-drive
  *  recovery) and/or its display label. Path existence is advisory — the
  *  server accepts a non-existent path and the next GET returns
- *  `pathExists: false`. */
+ *  `pathExists: false`.
+ *
+ *  If the new path is already attached to another active source in the
+ *  same space, the server returns 409 with a structured body and we
+ *  surface that as a `WouldConsolidateError` so the UI can offer a merge
+ *  flow instead. */
 export async function updateSpaceSource(
   spaceId: string,
   sourceId: string,
   fields: { path?: string; label?: string | null },
 ): Promise<SpaceSource> {
-  return patchJson<SpaceSource>(
-    `/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(sourceId)}`,
-    fields,
+  try {
+    return await patchJson<SpaceSource>(
+      `/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(sourceId)}`,
+      fields,
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) {
+      const body = (err as ApiError).body as
+        | { error?: string; target?: { id: string; label: string | null; path: string; space_id: string }; moves?: { sessionCount: number; artefactCount: number }; sameSpace?: boolean }
+        | undefined;
+      if (body && body.error === "would_consolidate" && body.target && body.moves) {
+        throw new WouldConsolidateError(body.target, body.moves, Boolean(body.sameSpace));
+      }
+    }
+    throw err;
+  }
+}
+
+export interface ConsolidateTarget {
+  id: string;
+  label: string | null;
+  path: string;
+  space_id: string;
+}
+
+/** Thrown by updateSpaceSource when the typed path is already attached
+ *  to another active source. The UI catches this and shows a merge
+ *  confirmation. `sameSpace` is true when the merge is allowed (the
+ *  consolidate endpoint requires same-space). */
+export class WouldConsolidateError extends Error {
+  target: ConsolidateTarget;
+  moves: { sessionCount: number; artefactCount: number };
+  sameSpace: boolean;
+  constructor(
+    target: ConsolidateTarget,
+    moves: { sessionCount: number; artefactCount: number },
+    sameSpace: boolean,
+  ) {
+    super(`Path is already attached as "${target.label ?? target.path}"`);
+    this.name = "WouldConsolidateError";
+    this.target = target;
+    this.moves = moves;
+    this.sameSpace = sameSpace;
+  }
+}
+
+export async function consolidateSpaceSource(
+  spaceId: string,
+  fromSourceId: string,
+  intoSourceId: string,
+): Promise<{ sessionsMoved: number; artefactsMoved: number; into: SpaceSource }> {
+  return postJson(
+    `/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(fromSourceId)}/consolidate`,
+    { intoSourceId },
   );
 }
 

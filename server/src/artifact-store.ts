@@ -48,6 +48,11 @@ export interface ArtifactStore {
   resurface(id: string): void;
   remove(id: string): void;
   removeBySourceId(sourceId: string): number;
+  /** Bulk-move every live artifact from one source to another, updating
+   *  source_id and space_id. Used by SpaceService.consolidateSource. */
+  reassignBySourceId(fromSourceId: string, toSourceId: string, toSpaceId: string): number;
+  /** Count of live (non-removed) artifacts bound to a source. */
+  countLiveBySource(sourceId: string): number;
   delete(id: string): void;
   pin(id: string, pinnedAt: number): void;
   unpin(id: string): void;
@@ -169,6 +174,20 @@ export class SqliteArtifactStore implements ArtifactStore {
       "UPDATE artifacts SET removed_at = datetime('now') WHERE source_id = ? AND removed_at IS NULL"
     ).run(sourceId);
     return info.changes;
+  }
+
+  reassignBySourceId(fromSourceId: string, toSourceId: string, toSpaceId: string): number {
+    const info = this.db.prepare(
+      "UPDATE artifacts SET source_id = ?, space_id = ?, updated_at = datetime('now') WHERE source_id = ? AND removed_at IS NULL"
+    ).run(toSourceId, toSpaceId, fromSourceId);
+    return info.changes;
+  }
+
+  countLiveBySource(sourceId: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS c FROM artifacts WHERE source_id = ? AND removed_at IS NULL")
+      .get(sourceId) as { c: number } | undefined;
+    return row?.c ?? 0;
   }
 
   // All rows that have been soft-deleted — newest first, for the Archived view.

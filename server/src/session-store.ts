@@ -137,6 +137,12 @@ export interface SessionStore {
    *  whose source vanishes becomes orphan-but-frozen (the user can choose
    *  "Let Oyster decide" to recompute). */
   detachSourceFromSessions(sourceId: string): number;
+  /** Bulk re-point every session bound to `fromSourceId` onto `toSourceId`,
+   *  setting space_id to the target's space. Used by consolidateSource. */
+  reassignSourceForSessions(fromSourceId: string, toSourceId: string, toSpaceId: string): number;
+  /** Count of sessions currently bound to a source. For the consolidate
+   *  preview dialog so the user sees how many rows will move. */
+  countBySource(sourceId: string): number;
   // session_events — bulk-friendly
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
@@ -407,6 +413,25 @@ export class SqliteSessionStore implements SessionStore {
     const info = this.db
       .prepare("UPDATE sessions SET source_id = NULL WHERE source_id = ?")
       .run(sourceId);
+    return Number(info.changes);
+  }
+
+  countBySource(sourceId: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS c FROM sessions WHERE source_id = ?")
+      .get(sourceId) as { c: number } | undefined;
+    return row?.c ?? 0;
+  }
+
+  reassignSourceForSessions(fromSourceId: string, toSourceId: string, toSpaceId: string): number {
+    // Bulk-move every session bound to source A onto source B. Used by
+    // SpaceService.consolidateSource when the user merges two folder tiles
+    // (e.g. after a rename created duplicate sources). Preserves
+    // assignment_mode — a manually-pinned session on A stays pinned on B,
+    // mirroring the user's intent ("this work is mine to organise").
+    const info = this.db
+      .prepare("UPDATE sessions SET source_id = ?, space_id = ? WHERE source_id = ?")
+      .run(toSourceId, toSpaceId, fromSourceId);
     return Number(info.changes);
   }
 

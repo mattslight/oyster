@@ -15,6 +15,19 @@ function pathExistsSafe(path: string): boolean {
   try { return existsSync(path); } catch { return false; }
 }
 
+/** Thrown by updateSource when the new path is already attached to a
+ *  different active source. The route layer turns this into a 409 with a
+ *  structured `would_consolidate` body so the UI can offer a merge. */
+export class SourcePathConflictError extends Error {
+  constructor(
+    public readonly source: Source,
+    public readonly conflict: Source,
+  ) {
+    super(`Path is already attached to source "${conflict.label ?? conflict.path}"`);
+    this.name = "SourcePathConflictError";
+  }
+}
+
 // Build a gitignore matcher from .gitignore at the scan root, if one exists.
 // Returns null when there's nothing to honor — callers can skip the per-entry
 // check entirely. Only the root .gitignore is read; nested .gitignore files
@@ -257,8 +270,10 @@ export class SpaceService {
       resolvedPath = normaliseSourcePath(fields.path);
       const conflict = this.spaceStore.getActiveSourceByPath(resolvedPath);
       if (conflict && conflict.id !== sourceId) {
-        const ownerName = this.spaceStore.getById(conflict.space_id)?.display_name ?? conflict.space_id;
-        throw new Error(`Path is already attached to space "${ownerName}"`);
+        // Structured error so the route/UI can offer a consolidate flow
+        // when the conflict is in the same space — the user almost
+        // certainly typed the path because they want to merge.
+        throw new SourcePathConflictError(source, conflict);
       }
     }
 
@@ -283,6 +298,45 @@ export class SpaceService {
     });
 
     return this.spaceStore.getSourceById(sourceId)!;
+  }
+
+  /** Counts of live sessions + artefacts currently bound to a source.
+   *  Drives the consolidate-confirm dialog so the user knows how much
+   *  will move. Two SELECT COUNTs — cheap. */
+  sourceContentSummary(sourceId: string): { sessionCount: number; artefactCount: number } {
+    return {
+      sessionCount: this.sessionStore.countBySource(sourceId),
+      artefactCount: this.artifactStore.countLiveBySource(sourceId),
+    };
+  }
+
+  /** Merge `fromSourceId` into `intoSourceId`: bulk-reassign sessions +
+   *  artefacts, then soft-delete the `from` source. Both must be active and
+   *  in the same space. Transaction-wrapped. Returns the move counts. */
+  consolidateSource(fromSourceId: string, intoSourceId: string): { sessionsMoved: number; artefactsMoved: number; intoSource: Source } {
+    if (fromSourceId === intoSourceId) {
+      throw new Error("Cannot consolidate a source into itself");
+    }
+    const from = this.spaceStore.getSourceById(fromSourceId);
+    const into = this.spaceStore.getSourceById(intoSourceId);
+    if (!from || from.removed_at) throw new Error(`Source "${fromSourceId}" not found`);
+    if (!into || into.removed_at) throw new Error(`Source "${intoSourceId}" not found`);
+    if (from.space_id !== into.space_id) {
+      throw new Error("Cross-space consolidation is not supported — move sessions individually if needed");
+    }
+    if (this.scanning.has(from.space_id)) {
+      throw new Error(`Cannot consolidate while space "${from.space_id}" is scanning — try again in a moment.`);
+    }
+
+    let sessionsMoved = 0;
+    let artefactsMoved = 0;
+    this.spaceStore.transaction(() => {
+      artefactsMoved = this.artifactStore.reassignBySourceId(from.id, into.id, into.space_id);
+      sessionsMoved = this.sessionStore.reassignSourceForSessions(from.id, into.id, into.space_id);
+      this.spaceStore.softDeleteSource(from.id);
+    });
+
+    return { sessionsMoved, artefactsMoved, intoSource: this.spaceStore.getSourceById(into.id)! };
   }
 
   getSources(spaceId: string): Array<Source & { pathExists: boolean }> {

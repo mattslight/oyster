@@ -2,7 +2,13 @@
 // Home/index.tsx.
 import { useEffect, useState } from "react";
 import type { SpaceSource } from "../../data/spaces-api";
-import { removeSpaceSource, updateSpaceSource } from "../../data/spaces-api";
+import {
+  removeSpaceSource,
+  updateSpaceSource,
+  consolidateSpaceSource,
+  WouldConsolidateError,
+  type ConsolidateTarget,
+} from "../../data/spaces-api";
 import { ConfirmModal } from "../ConfirmModal";
 import { PromptModal } from "../PromptModal";
 
@@ -25,9 +31,21 @@ export function ProjectTile({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pathPromptOpen, setPathPromptOpen] = useState(false);
+  const [consolidateOffer, setConsolidateOffer] = useState<{
+    target: ConsolidateTarget;
+    moves: { sessionCount: number; artefactCount: number };
+    sameSpace: boolean;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   // Separator-agnostic so Windows paths (`C:\Users\...`) display correctly too.
   const basename = source.path.split(/[\\/]/).filter(Boolean).pop() ?? source.path;
+  const targetBasename = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+  function moveSummary(m: { sessionCount: number; artefactCount: number }) {
+    const parts: string[] = [];
+    if (m.sessionCount > 0) parts.push(`${m.sessionCount} ${m.sessionCount === 1 ? "session" : "sessions"}`);
+    if (m.artefactCount > 0) parts.push(`${m.artefactCount} ${m.artefactCount === 1 ? "artefact" : "artefacts"}`);
+    return parts.join(" and ") || "Nothing";
+  }
   // Removing the only folder from a real space implicitly demotes the space:
   // we soft-delete the source then ask App to delete the (now empty) space.
   // Cascade returns sessions to Elsewhere via sessions.space_id ON DELETE SET NULL.
@@ -73,7 +91,29 @@ export function ProjectTile({
       onSourcesChanged();
       setPathPromptOpen(false);
     } catch (err) {
-      alert(`Couldn't update folder: ${err instanceof Error ? err.message : String(err)}`);
+      if (err instanceof WouldConsolidateError) {
+        // The typed path is already attached to another active source.
+        // Offer to merge this folder into that one instead of throwing
+        // a raw error at the user.
+        setPathPromptOpen(false);
+        setConsolidateOffer({ target: err.target, moves: err.moves, sameSpace: err.sameSpace });
+      } else {
+        alert(`Couldn't update folder: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function performConsolidate() {
+    if (!consolidateOffer) return;
+    setBusy(true);
+    try {
+      await consolidateSpaceSource(source.space_id, source.id, consolidateOffer.target.id);
+      onSourcesChanged();
+      setConsolidateOffer(null);
+    } catch (err) {
+      alert(`Couldn't merge folders: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -134,6 +174,44 @@ export function ProjectTile({
           </div>
         )}
       </div>
+      <ConfirmModal
+        open={consolidateOffer !== null}
+        title={consolidateOffer
+          ? consolidateOffer.sameSpace
+            ? `Merge "${basename}" into "${consolidateOffer.target.label ?? targetBasename(consolidateOffer.target.path)}"?`
+            : `Path is already attached in another space`
+          : ""
+        }
+        body={consolidateOffer ? (
+          consolidateOffer.sameSpace ? (
+            <>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>
+                {consolidateOffer.target.path}
+              </div>
+              {consolidateOffer.moves.sessionCount + consolidateOffer.moves.artefactCount > 0 ? (
+                <>
+                  {moveSummary(consolidateOffer.moves)} will move from <strong>{basename}</strong> to{" "}
+                  <strong>{consolidateOffer.target.label ?? targetBasename(consolidateOffer.target.path)}</strong>,
+                  and <strong>{basename}</strong> will be removed.
+                </>
+              ) : (
+                <>
+                  Nothing is currently bound to <strong>{basename}</strong>, so the merge will just remove this tile and leave the
+                  existing <strong>{consolidateOffer.target.label ?? targetBasename(consolidateOffer.target.path)}</strong> in place.
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              That path is attached to a different space. Cross-space merge isn't supported — detach it there first if you really want to consolidate.
+            </>
+          )
+        ) : null}
+        confirmLabel={busy ? "Merging…" : consolidateOffer?.sameSpace ? "Merge" : "OK"}
+        destructive={Boolean(consolidateOffer?.sameSpace)}
+        onConfirm={consolidateOffer?.sameSpace ? performConsolidate : () => setConsolidateOffer(null)}
+        onCancel={() => !busy && setConsolidateOffer(null)}
+      />
       <PromptModal
         open={pathPromptOpen}
         title={`Update folder location for "${basename}"`}
