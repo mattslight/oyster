@@ -531,6 +531,7 @@ export class SpaceService {
     const result: ScanResult = { discovered: 0, skipped: 0, resurfaced: 0, errors: [], artifacts: [] };
     try {
       for (const source of sources) {
+        this.reconcilePortableId(source);
         const folderPath = source.path;
         if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
           result.errors.push(`Skipped missing folder: ${folderPath}`);
@@ -580,6 +581,46 @@ export class SpaceService {
       this.scanning.delete(spaceId);
     }
     return result;
+  }
+
+  // scanSpace-time portable_id reconciliation. Reads <source.path>/.oyster/id
+  // and updates `sources.portable_id` only when the file's value differs
+  // from the DB's. Never mutates `sources.id`, never touches sessions or
+  // artefacts. See spec invariants 1, 4, 5.
+  private reconcilePortableId(source: Source): void {
+    if (!existsSync(source.path)) return; // #490 advisory case; nothing to read or write
+    const result = readOysterId(source.path);
+    switch (result.status) {
+      case "valid":
+        if (result.id !== source.portable_id) {
+          this.spaceStore.updatePortableId(source.id, result.id);
+        }
+        // else: matches, no-op
+        return;
+      case "missing":
+        if (source.portable_id === null) {
+          const newId = crypto.randomUUID();
+          try {
+            writeOysterId(source.path, newId);
+            this.spaceStore.updatePortableId(source.id, newId);
+          } catch (err) {
+            console.warn(`[oyster-id] write failed for ${source.path}; portable_id stays NULL`, err);
+          }
+        }
+        // else: portable_id is set but file is missing — don't clobber what
+        // we have; the file may have been deleted manually and the user's
+        // intent isn't clear.
+        return;
+      case "malformed":
+        console.warn(`[oyster-id] malformed .oyster/id at ${source.path} — leaving portable_id unchanged`);
+        return;
+      case "unreadable":
+        console.warn(`[oyster-id] unreadable .oyster/id at ${source.path} — leaving portable_id unchanged`, result.error);
+        return;
+      case "blocked":
+        console.warn(`[oyster-id] .oyster at ${source.path} is a file, not a directory — leaving portable_id unchanged`);
+        return;
+    }
   }
 
   private walk(

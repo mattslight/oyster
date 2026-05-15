@@ -63,6 +63,9 @@ export interface SpaceStore {
    *  (`getActiveSourceByPath` returning a different id) BEFORE calling — the
    *  store enforces neither, it just runs the UPDATE. */
   updateSource(sourceId: string, fields: { path?: string; label?: string | null }): void;
+  /** Single-row UPDATE of `sources.portable_id`. No cascade. Never touches
+   *  sessions or artifacts — they FK to `sources.id`, which is unchanged. */
+  updatePortableId(sourceId: string, portableId: string | null): void;
   /** Soft-delete a space. Sets deleted_at to the provided timestamp (or
    *  Date.now()). Idempotent — re-call on an already-deleted row is a no-op
    *  (preserves the original deleted_at). When applying a cross-device
@@ -110,6 +113,7 @@ export class SqliteSpaceStore implements SpaceStore {
     getActiveSourceByPath: Database.Statement;
     getActiveSourceForCwd: Database.Statement;
     getSoftDeletedSourceByPathForSpace: Database.Statement;
+    updatePortableId: Database.Statement;
     softDelete: Database.Statement;
     markSyncDirty: Database.Statement;
     getDirtyRows: Database.Statement;
@@ -174,6 +178,7 @@ export class SqliteSpaceStore implements SpaceStore {
       getSoftDeletedSourceByPathForSpace: db.prepare(
         "SELECT * FROM sources WHERE space_id = ? AND path = ? AND removed_at IS NOT NULL ORDER BY added_at DESC LIMIT 1"
       ),
+      updatePortableId: db.prepare("UPDATE sources SET portable_id = ? WHERE id = ?"),
       softDelete: db.prepare("UPDATE spaces SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL"),
       markSyncDirty: db.prepare("UPDATE spaces SET sync_dirty_at = ? WHERE id = ?"),
       getDirtyRows: db.prepare(`
@@ -237,6 +242,9 @@ export class SqliteSpaceStore implements SpaceStore {
     if (sets.length === 0) return;
     values.push(sourceId);
     this.db.prepare(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+  }
+  updatePortableId(sourceId: string, portableId: string | null): void {
+    this.stmts.updatePortableId.run(portableId, sourceId);
   }
 
   transaction<T>(fn: () => T): T {
