@@ -552,7 +552,10 @@ const sessionSnapshotHandle = setInterval(() => {
 }, SESSION_SNAPSHOT_INTERVAL_MS);
 sessionSnapshotHandle.unref();
 
-const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
+const spaceService = new SpaceService(
+  spaceStore, store, artifactService, sessionStore, spaceSync,
+  (command, payload) => broadcastUiEvent({ version: 1, command, payload }),
+);
 const sessionService = new SessionService(db, sessionStore, spaceStore);
 const publishService = createPublishService({
   db,
