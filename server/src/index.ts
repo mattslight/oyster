@@ -15,6 +15,7 @@ import {
 } from "./process-manager.js";
 import Database from "better-sqlite3";
 import { acquireLock, AlreadyRunningError, releaseLock, setLockPort } from "./single-instance-lock.js";
+import { lookupProject } from "./lookup-project.js";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
 import { SqliteSessionStore } from "./session-store.js";
@@ -1116,6 +1117,7 @@ httpServer.listen(port, "127.0.0.1", () => {
     sessionStore,
     spaceStore,
     artifactStore: store,
+    lookupProject: (cwd) => lookupProject(db, cwd),
     emitSessionChanged: (id) => {
       broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
       // Cross-device session sync (#322): every session-row change marks the

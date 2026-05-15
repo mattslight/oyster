@@ -23,6 +23,10 @@ export interface SessionRow {
   id: string;
   space_id: string | null;
   source_id: string | null;
+  /** New (post-#496 + sources→projects rewrite). The watcher sets this at
+   *  ingest time by reading `<cwd>/.oyster/id`; older rows backfilled from
+   *  source_id by the one-shot migration in db.ts. NULL = orphan. */
+  project_id: string | null;
   cwd: string | null;
   /** Absolute on-disk path to the jsonl. NULL on rows that pre-date this
    *  column (back-compat) — pushBytes falls back to computing from cwd in
@@ -79,6 +83,9 @@ export interface InsertSession {
   id: string;
   space_id: string | null;
   source_id?: string | null;
+  /** Project this session belongs to, resolved by the watcher via
+   *  `<cwd>/.oyster/id`. NULL when the folder has no marker or is gone. */
+  project_id?: string | null;
   cwd?: string | null;
   /** Absolute path to the jsonl file on disk. The watcher knows this from
    *  its chokidar events; passing it on every upsert lets pushBytes locate
@@ -216,9 +223,9 @@ export class SqliteSessionStore implements SessionStore {
         LIMIT 1
       `),
       insertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
+        INSERT INTO sessions (id, space_id, source_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
-          @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
+          @id, @space_id, @source_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now')),
@@ -236,9 +243,9 @@ export class SqliteSessionStore implements SessionStore {
       // reconcileExistingFile), so the overwrite here keeps the column
       // shape consistent across rows.
       upsertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
+        INSERT INTO sessions (id, space_id, source_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
-          @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
+          @id, @space_id, @source_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now')),
@@ -251,6 +258,7 @@ export class SqliteSessionStore implements SessionStore {
           -- the existing values stay.
           space_id      = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.space_id ELSE excluded.space_id END,
           source_id     = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.source_id ELSE excluded.source_id END,
+          project_id    = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.project_id ELSE excluded.project_id END,
           cwd           = COALESCE(excluded.cwd, sessions.cwd),
           -- jsonl_path: prefer the new value when the watcher knows where
           -- the file is. The watcher always passes the real path on every
@@ -335,6 +343,7 @@ export class SqliteSessionStore implements SessionStore {
       model: null,
       last_event_at: null,
       source_id: null,
+      project_id: null,
       cwd: null,
       jsonl_path: null,
       assignment_mode: "auto",
@@ -349,6 +358,7 @@ export class SqliteSessionStore implements SessionStore {
       model: null,
       last_event_at: null,
       source_id: null,
+      project_id: null,
       cwd: null,
       jsonl_path: null,
       assignment_mode: "auto",

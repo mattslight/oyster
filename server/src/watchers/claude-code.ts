@@ -74,6 +74,12 @@ export interface ClaudeCodeWatcherDeps {
   sessionStore: SessionStore;
   spaceStore: SpaceStore;
   artifactStore: ArtifactStore;
+  /** Resolve a cwd → `{ projectId, spaceId }` via `<cwd>/.oyster/id`.
+   *  Additive alongside the legacy longest-prefix `lookupSource`: we write
+   *  project_id at ingest time (when the marker file is there) so the new
+   *  identity model picks up new sessions automatically. Once `sources` is
+   *  retired the watcher will rely on this alone. */
+  lookupProject: (cwd: string | null) => { projectId: string | null; spaceId: string | null };
   /** Called whenever a session row is inserted/updated, for SSE broadcast. */
   emitSessionChanged?: (sessionId: string) => void;
   /** Override the watch root (tests). */
@@ -264,10 +270,16 @@ export class ClaudeCodeWatcher {
     const startedAt = meta.startedAt ?? (stat.birthtime ?? stat.mtime).toISOString();
 
     const resolved = this.lookupSource(meta.cwd);
+    const project = this.deps.lookupProject(meta.cwd);
     this.deps.sessionStore.upsertSession({
       id: meta.sessionId,
-      space_id: resolved.spaceId,
+      // Project takes precedence over source for space attribution when it
+      // resolves — `.oyster/id` is the authoritative identity once the new
+      // model is fully wired. Falls back to lookupSource for sessions that
+      // ran before the marker existed.
+      space_id: project.spaceId ?? resolved.spaceId,
       source_id: resolved.sourceId,
+      project_id: project.projectId,
       // Persist the canonicalised form (forward-slash, realpath-resolved)
       // so the source-binding SQL on a Windows install sees matching
       // separators. lookupSource already computed the normalised string.
@@ -665,10 +677,12 @@ export class ClaudeCodeWatcher {
       // are inserted (FK constraint).
       if (!sessionEnsured && tracker.sessionId) {
         const resolved = this.resolveSourceCached(tracker);
+        const project = this.deps.lookupProject(tracker.cwd);
         this.deps.sessionStore.upsertSession({
           id: tracker.sessionId,
-          space_id: resolved.spaceId,
+          space_id: project.spaceId ?? resolved.spaceId,
           source_id: resolved.sourceId,
+          project_id: project.projectId,
           // Persist the canonicalised cwd (forward-slash, realpath-resolved)
           // so the substr-based prefix match in rebindAutoSessionsForSource
           // sees matching separators on both sides. On macOS/Linux this is
