@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oyster — Storage-mode badge (v1: legibility, not judgement)</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Tokens copied verbatim from web/src/components/Home/Home.css :root */
+    :root {
+      --accent: #7c6bff;
+      --home-border: rgba(255, 255, 255, 0.06);
+      --home-border-accent: rgba(124, 107, 255, 0.3);
+      --home-surface: rgba(12, 13, 28, 0.6);
+      --home-text-muted: rgba(232, 233, 240, 0.3);
+      --home-green: #4ade80;
+      --home-amber: #fbbf24;
+      --home-red: #f87171;
+      --home-accent-bright: #a597ff;
+      --home-text: #f0f0f5;
+      --text: #f0f0f5;
+      --text-dim: rgba(232, 233, 240, 0.55);
+      --text-muted: rgba(232, 233, 240, 0.3);
+      --font-body: 'Space Grotesk', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      color: var(--home-text);
+      background: rgba(30, 31, 54, 1);
+      min-height: 100vh;
+      padding-bottom: 120px;
+    }
+    .glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(ellipse 70% 45% at 50% 10%, rgba(124,107,255,0.10) 0%, transparent 60%);
+    }
+
+    .wrap { position: relative; z-index: 2; max-width: 1100px; margin: 0 auto; padding: 56px 32px 8px; }
+    .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); opacity: 0.85; margin-bottom: 10px; }
+    h1 { font-size: clamp(1.9rem, 4vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 10px; }
+    .lede { font-size: 16px; color: var(--text-dim); max-width: 760px; line-height: 1.55; margin-bottom: 8px; }
+    .lede strong { color: var(--home-text); }
+    .meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; margin-bottom: 48px; }
+
+    section { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 24px 32px; }
+    section > .section-eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--home-accent-bright); margin-bottom: 8px; opacity: 0.8; }
+    section > h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 6px; }
+    section > p { font-size: 14px; color: var(--text-dim); max-width: 720px; line-height: 1.55; margin-bottom: 24px; }
+    section > .file-ref { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-bottom: 18px; }
+
+    /* ============================================================
+       The badge — ONE component, THREE states. No warnings, no judgement.
+       ============================================================ */
+    .storage-ic {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px; height: 14px;
+      flex: 0 0 14px;
+      vertical-align: -2px;
+      color: var(--text-dim);
+    }
+    .storage-ic svg { width: 100%; height: 100%; }
+    .storage-ic.vault  { color: var(--home-accent-bright); }
+    .storage-ic.folder { color: var(--text-dim); }
+    .storage-ic.git    { color: var(--text-dim); }
+
+    /* Standalone pill version — used in inspector + reference card */
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 9px 4px 8px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      letter-spacing: 0.02em;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid var(--home-border);
+      color: var(--home-text);
+    }
+    .pill .storage-ic { vertical-align: 0; }
+
+    /* ProjectTile (verbatim from Home.css) */
+    .home-project-tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      max-width: 780px;
+    }
+    .home-space-card {
+      display: flex; flex-direction: column; align-items: flex-start;
+      padding: 12px 14px;
+      background: var(--home-surface);
+      border: 1px solid var(--home-border);
+      border-radius: 12px;
+      backdrop-filter: blur(20px);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      color: var(--home-text);
+    }
+    .home-space-card:hover {
+      border-color: var(--home-border-accent);
+      background: rgba(124, 107, 255, 0.05);
+    }
+    .home-space-card-name {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 13px;
+      color: var(--home-accent-bright);
+      margin-bottom: 8px;
+    }
+    .home-space-card-counts {
+      display: flex; flex-wrap: wrap; gap: 3px 12px;
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--text-dim);
+    }
+    .home-space-card-counts .signal { display: inline-flex; align-items: center; gap: 5px; color: rgba(232, 233, 240, 0.78); }
+    .pip { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+    .pip-green { background: var(--home-green); box-shadow: 0 0 6px var(--home-green); }
+    .pip-amber { background: var(--home-amber); box-shadow: 0 0 6px var(--home-amber); }
+    .pip-dim   { background: var(--home-text-muted); }
+
+    /* ArtefactTable (verbatim from Home.css) */
+    .home-table-wrap {
+      background: var(--home-surface);
+      border: 1px solid var(--home-border);
+      border-radius: 12px;
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+      max-width: 780px;
+    }
+    .home-artefact-row {
+      display: grid;
+      grid-template-columns: 1fr 130px 100px 110px;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--home-border);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .home-artefact-row:hover { background: rgba(124, 107, 255, 0.05); }
+    .home-artefact-row:last-child { border-bottom: none; }
+    .home-artefact-row-title {
+      font-size: 13px; color: var(--home-text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .home-artefact-row-space {
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--home-accent-bright);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .home-artefact-row-kind { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-transform: lowercase; }
+    .home-artefact-row-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-align: right; }
+    .row-header {
+      display: grid; grid-template-columns: 1fr 130px 100px 110px; gap: 14px;
+      padding: 10px 18px;
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--home-text-muted); letter-spacing: 0.1em; text-transform: uppercase;
+      background: rgba(0,0,0,0.18);
+      border-bottom: 1px solid var(--home-border);
+    }
+
+    /* Inspector */
+    .inspector-card {
+      background: var(--home-surface);
+      border: 1px solid var(--home-border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      backdrop-filter: blur(20px);
+      max-width: 540px;
+      margin-bottom: 14px;
+    }
+    .inspector-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 2px; display: inline-flex; align-items: center; gap: 8px; }
+    .inspector-card .sub { font-family: var(--font-mono); font-size: 11px; color: var(--home-text-muted); letter-spacing: 0.04em; margin-bottom: 14px; }
+    .ins-row { display: grid; grid-template-columns: 80px 1fr; gap: 10px; padding: 8px 0; font-size: 12.5px; color: var(--home-text); border-top: 1px solid var(--home-border); }
+    .ins-row:first-of-type { border-top: none; }
+    .ins-row .k { font-family: var(--font-mono); font-size: 10px; color: var(--home-text-muted); letter-spacing: 0.1em; text-transform: uppercase; padding-top: 3px; }
+    .ins-row .v { line-height: 1.5; }
+    .ins-row .v.path { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); word-break: break-all; }
+    .cta-row { display: flex; gap: 8px; margin-top: 12px; }
+    .cta {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-body); font-size: 11.5px; font-weight: 500;
+      padding: 5px 10px; border-radius: 7px;
+      border: 1px solid var(--home-border);
+      background: rgba(255,255,255,0.04);
+      color: var(--home-text);
+      cursor: pointer;
+    }
+    .cta:hover { background: rgba(255,255,255,0.08); }
+    .cta.primary { background: rgba(124, 107, 255, 0.18); border-color: var(--home-border-accent); color: var(--home-accent-bright); }
+    .cta .ic { width: 12px; height: 12px; display: inline-flex; }
+    .cta .ic svg { width: 100%; height: 100%; }
+
+    /* Three-state reference card */
+    .states { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; max-width: 780px; margin-bottom: 8px; }
+    .state-ref {
+      background: var(--home-surface);
+      border: 1px solid var(--home-border);
+      border-radius: 12px;
+      padding: 18px;
+      backdrop-filter: blur(20px);
+    }
+    .state-ref .pill-row { margin-bottom: 12px; }
+    .state-ref .desc { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+
+    .tree {
+      font-family: var(--font-mono); font-size: 12.5px;
+      color: var(--text-dim); line-height: 1.85;
+      background: rgba(0,0,0,0.25);
+      border: 1px dashed var(--home-border);
+      border-radius: 12px;
+      padding: 18px 22px;
+      white-space: pre;
+      overflow-x: auto;
+      max-width: 780px;
+    }
+    .tree .accent { color: var(--home-accent-bright); }
+
+    @media (max-width: 780px) { .states { grid-template-columns: 1fr; } }
+
+    /* ============================================================
+       Icon view — verbatim from web/src/App.css (.artifact-icon)
+       ============================================================ */
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 18px 12px;
+      padding: 22px;
+      max-width: 780px;
+      background: rgba(12, 13, 28, 0.4);
+      border: 1px solid var(--home-border);
+      border-radius: 12px;
+      backdrop-filter: blur(20px);
+    }
+    .artifact-icon {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 10px;
+      border-radius: 12px;
+      border: none;
+      background: none;
+      color: var(--home-text);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.2s ease;
+    }
+    .artifact-icon:hover { background: rgba(124, 107, 255, 0.08); transform: scale(1.04); }
+
+    .icon-thumb {
+      width: 72px; height: 72px;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .icon-thumb svg.kind-glyph {
+      width: 32px; height: 32px;
+      opacity: 0.9;
+    }
+
+    /* Kind gradients (copied verbatim from ArtifactIcon.tsx typeConfig) */
+    .icon-thumb.kind-notes   { background: linear-gradient(135deg, #1e3a2f, #243f34); }
+    .icon-thumb.kind-app     { background: linear-gradient(135deg, #1e2d4a, #253a5c); }
+    .icon-thumb.kind-diagram { background: linear-gradient(135deg, #3a2d1e, #4a3a24); }
+
+    .icon-thumb .file-ext {
+      font-family: var(--font-mono);
+      font-size: 0.55rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      position: absolute;
+      bottom: 5px; right: 5px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(0,0,0,0.5);
+      color: #fff;
+      line-height: 1;
+    }
+
+    /* Storage glyph — the new component, slotted into the existing
+       .source-glyph position (bottom-left, dark pill, 18x18). Same chrome
+       for all three states; icon shape carries the meaning. */
+    .storage-glyph {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      cursor: help;
+      color: #fff;
+    }
+    .storage-glyph svg { width: 11px; height: 11px; }
+    .storage-glyph.vault  { color: var(--home-accent-bright); }
+    .storage-glyph.folder { color: #fff; }
+    .storage-glyph.git    { color: #fff; }
+
+    .icon-label {
+      font-size: 0.72rem;
+      font-weight: 400;
+      text-align: center;
+      line-height: 1.35;
+      color: var(--home-text);
+      word-break: break-word;
+      max-width: 110px;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+    }
+    .icon-label-meta {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.02em;
+      color: rgba(232, 233, 240, 0.3);
+      text-align: center;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <!-- lucide Shield (solid) = vault -->
+      <symbol id="ic-shield" viewBox="0 0 24 24">
+        <path fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+      </symbol>
+      <!-- lucide Folder = attached folder, not git -->
+      <symbol id="ic-folder" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+        </g>
+      </symbol>
+      <!-- lucide GitBranch = git folder -->
+      <symbol id="ic-git" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="3" x2="6" y2="15"/>
+          <circle cx="18" cy="6" r="3"/>
+          <circle cx="6" cy="18" r="3"/>
+          <path d="M18 9a9 9 0 0 1-9 9"/>
+        </g>
+      </symbol>
+      <!-- lucide CloudUpload for "Move to vault" -->
+      <symbol id="ic-cloud-up" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.5 19a4.5 4.5 0 1 0-3.5-7.4A5.5 5.5 0 1 0 6.5 18h11"/>
+          <path d="m12 12 0 8"/>
+          <path d="m9 15 3-3 3 3"/>
+        </g>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="wrap">
+    <div class="eyebrow">Mockup · v1 (legibility, not judgement)</div>
+    <h1>Storage-mode badge — three states, one action</h1>
+    <p class="lede">
+      v1 answers exactly one question: <strong>"where are my bytes?"</strong> It does not tell the user whether their work is safe. It does not detect git remotes. It does not warn about disk-failure risk. That entire mental model is v1.5 territory and is what was metastasising the spec.
+    </p>
+    <p class="meta">docs/mockups/storage-mode-badge.html · proposal for 0.10.0 · mirrors web/src/components/Home/Home.css</p>
+  </div>
+
+  <!-- THREE STATES, FLAT -->
+  <section>
+    <div class="section-eyebrow">The badge</div>
+    <h2>Three states</h2>
+    <p>
+      Same neutral pill chrome for all three; the icon does the work. No amber, no warning border, no "at risk" copy. The pill version below is shown for reference — in the live UI the icon-only form sits inline next to the title (see surfaces below).
+    </p>
+
+    <div class="states">
+      <div class="state-ref">
+        <div class="pill-row">
+          <span class="pill">
+            <span class="storage-ic vault"><svg><use href="#ic-shield"/></svg></span>
+            Vault
+          </span>
+        </div>
+        <div class="desc">Stored inside Oyster (<code>~/Oyster/</code>).</div>
+      </div>
+
+      <div class="state-ref">
+        <div class="pill-row">
+          <span class="pill">
+            <span class="storage-ic folder"><svg><use href="#ic-folder"/></svg></span>
+            Folder
+          </span>
+        </div>
+        <div class="desc">Stored in an attached local folder that isn't a git repo.</div>
+      </div>
+
+      <div class="state-ref">
+        <div class="pill-row">
+          <span class="pill">
+            <span class="storage-ic git"><svg><use href="#ic-git"/></svg></span>
+            Git folder
+          </span>
+        </div>
+        <div class="desc">Stored inside a git repository.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROJECT TILES -->
+  <section>
+    <div class="section-eyebrow">Surface 1 of 3</div>
+    <h2>Folder cards (<code>ProjectTile</code>)</h2>
+    <p>
+      14px icon prefix on the folder name. Vault never appears here (the vault is not an attached folder), so this surface shows only <strong>Folder</strong> and <strong>Git folder</strong>.
+    </p>
+    <p class="file-ref">file: web/src/components/Home/ProjectTile.tsx · class: .home-space-card-name</p>
+
+    <div class="home-project-tile-grid">
+      <div class="home-space-card">
+        <div class="home-space-card-name">
+          <span class="storage-ic git" title="Git folder"><svg><use href="#ic-git"/></svg></span>
+          oyster-dev
+        </div>
+        <div class="home-space-card-counts">
+          <span class="signal"><span class="pip pip-green"></span>1 active</span>
+          <span class="signal"><span class="pip pip-dim"></span>87 artefacts</span>
+        </div>
+      </div>
+
+      <div class="home-space-card">
+        <div class="home-space-card-name">
+          <span class="storage-ic git" title="Git folder"><svg><use href="#ic-git"/></svg></span>
+          tokinvest
+        </div>
+        <div class="home-space-card-counts">
+          <span class="signal"><span class="pip pip-green"></span>2 active</span>
+          <span class="signal"><span class="pip pip-amber"></span>1 waiting</span>
+          <span class="signal"><span class="pip pip-dim"></span>15 artefacts</span>
+        </div>
+      </div>
+
+      <div class="home-space-card">
+        <div class="home-space-card-name">
+          <span class="storage-ic folder" title="Folder"><svg><use href="#ic-folder"/></svg></span>
+          scratch
+        </div>
+        <div class="home-space-card-counts">
+          <span class="signal"><span class="pip pip-dim"></span>3 artefacts</span>
+        </div>
+      </div>
+
+      <div class="home-space-card">
+        <div class="home-space-card-name">
+          <span class="storage-ic git" title="Git folder"><svg><use href="#ic-git"/></svg></span>
+          blunderfixer
+        </div>
+        <div class="home-space-card-counts">
+          <span class="signal"><span class="pip pip-green"></span>1 active</span>
+          <span class="signal"><span class="pip pip-dim"></span>66 artefacts</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARTEFACT ICON VIEW -->
+  <section>
+    <div class="section-eyebrow">Surface 2 of 3</div>
+    <h2>Artefact icon view (<code>ArtifactIcon</code>)</h2>
+    <p>
+      The icon view already has a corner-glyph slot on the thumb (today's <code>.source-glyph</code>, a chain Link2 icon shown only for source-linked artefacts). The storage badge slots into the <strong>same position</strong>, replacing the single Link2 with a three-state glyph — solid shield for vault, folder for attached folder, git-branch for git folder. Same 18×18 dark pill, bottom-left of the thumb, doesn't collide with <code>.file-ext</code> (bottom-right) or <code>.pin-glyph</code> (top-left).
+    </p>
+    <p class="file-ref">file: web/src/components/ArtifactIcon.tsx · class: .source-glyph → .storage-glyph</p>
+
+    <div class="icon-grid">
+      <!-- Vault notes -->
+      <div class="artifact-icon">
+        <div class="icon-thumb kind-notes">
+          <svg class="kind-glyph" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8"/>
+          </svg>
+          <span class="storage-glyph vault" title="Vault"><svg><use href="#ic-shield"/></svg></span>
+          <span class="file-ext">notes</span>
+        </div>
+        <span class="icon-label">Competitor analysis</span>
+        <span class="icon-label-meta">2h ago</span>
+      </div>
+
+      <!-- Git folder app -->
+      <div class="artifact-icon">
+        <div class="icon-thumb kind-app">
+          <svg class="kind-glyph" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>
+          </svg>
+          <span class="storage-glyph git" title="Git folder"><svg><use href="#ic-git"/></svg></span>
+          <span class="file-ext">app</span>
+        </div>
+        <span class="icon-label">Refactor auth middleware</span>
+        <span class="icon-label-meta">12m ago</span>
+      </div>
+
+      <!-- Git folder diagram -->
+      <div class="artifact-icon">
+        <div class="icon-thumb kind-diagram">
+          <svg class="kind-glyph" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/>
+          </svg>
+          <span class="storage-glyph git" title="Git folder"><svg><use href="#ic-git"/></svg></span>
+          <span class="file-ext">diagram</span>
+        </div>
+        <span class="icon-label">Token allocation flow — v3</span>
+        <span class="icon-label-meta">4h ago</span>
+      </div>
+
+      <!-- Folder (not git) notes -->
+      <div class="artifact-icon">
+        <div class="icon-thumb kind-notes">
+          <svg class="kind-glyph" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8"/>
+          </svg>
+          <span class="storage-glyph folder" title="Folder"><svg><use href="#ic-folder"/></svg></span>
+          <span class="file-ext">notes</span>
+        </div>
+        <span class="icon-label">House-purchase closing checklist</span>
+        <span class="icon-label-meta">18m ago</span>
+      </div>
+
+      <!-- Vault notes -->
+      <div class="artifact-icon">
+        <div class="icon-thumb kind-notes">
+          <svg class="kind-glyph" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8"/>
+          </svg>
+          <span class="storage-glyph vault" title="Vault"><svg><use href="#ic-shield"/></svg></span>
+          <span class="file-ext">notes</span>
+        </div>
+        <span class="icon-label">Yesterday's standup observations</span>
+        <span class="icon-label-meta">1d ago</span>
+      </div>
+    </div>
+
+    <p style="margin-top: 16px; font-size: 13px; color: var(--text-dim); max-width: 720px;">
+      ▸ The vault glyph picks up the accent purple so it visually pairs with the Oyster brand; folder + git stay neutral white-on-dark. The kind-coloured stroke on the centre glyph (green for notes, blue for app, amber for diagram) is unchanged from today.
+    </p>
+  </section>
+
+  <!-- ARTEFACT TABLE -->
+  <section>
+    <div class="section-eyebrow">Surface 3 of 3</div>
+    <h2>Artefact list view (<code>ArtefactTable</code>)</h2>
+    <p>
+      Same 14px icon, prefixing the title in <code>.home-artefact-row-title</code>. All three states render here; the vault state is only visible at the row level because there's no folder card for the vault.
+    </p>
+    <p class="file-ref">file: web/src/components/Home/ArtefactTable.tsx · class: .home-artefact-row</p>
+
+    <div class="home-table-wrap">
+      <div class="row-header">
+        <div>Title</div>
+        <div>Space</div>
+        <div>Kind</div>
+        <div style="text-align: right">Modified</div>
+      </div>
+
+      <div class="home-artefact-row">
+        <span class="home-artefact-row-title">
+          <span class="storage-ic vault" title="Vault"><svg><use href="#ic-shield"/></svg></span>
+          Competitor analysis — Notion vs Linear vs Bear
+        </span>
+        <span class="home-artefact-row-space">strategy</span>
+        <span class="home-artefact-row-kind">notes</span>
+        <span class="home-artefact-row-time">2h ago</span>
+      </div>
+
+      <div class="home-artefact-row">
+        <span class="home-artefact-row-title">
+          <span class="storage-ic git" title="Git folder"><svg><use href="#ic-git"/></svg></span>
+          Refactor auth middleware
+        </span>
+        <span class="home-artefact-row-space">oyster-dev</span>
+        <span class="home-artefact-row-kind">app</span>
+        <span class="home-artefact-row-time">12m ago</span>
+      </div>
+
+      <div class="home-artefact-row">
+        <span class="home-artefact-row-title">
+          <span class="storage-ic git" title="Git folder"><svg><use href="#ic-git"/></svg></span>
+          Token allocation flow — v3
+        </span>
+        <span class="home-artefact-row-space">tokinvest</span>
+        <span class="home-artefact-row-kind">diagram</span>
+        <span class="home-artefact-row-time">4h ago</span>
+      </div>
+
+      <div class="home-artefact-row">
+        <span class="home-artefact-row-title">
+          <span class="storage-ic folder" title="Folder"><svg><use href="#ic-folder"/></svg></span>
+          House-purchase notes — closing checklist
+        </span>
+        <span class="home-artefact-row-space">scratch</span>
+        <span class="home-artefact-row-kind">notes</span>
+        <span class="home-artefact-row-time">18m ago</span>
+      </div>
+
+      <div class="home-artefact-row">
+        <span class="home-artefact-row-title">
+          <span class="storage-ic vault" title="Vault"><svg><use href="#ic-shield"/></svg></span>
+          Quick observations from yesterday's standup
+        </span>
+        <span class="home-artefact-row-space">strategy</span>
+        <span class="home-artefact-row-kind">notes</span>
+        <span class="home-artefact-row-time">1d ago</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSPECTOR -->
+  <section>
+    <div class="section-eyebrow">Inspector</div>
+    <h2>Storage row in the inspector</h2>
+    <p>
+      Two informational rows (<em>Storage</em> + <em>Path</em>) and exactly one action — <strong>Move to Oyster vault</strong>, available only for Folder and Git-folder artefacts. No "Initialize git here." No backup judgement. No CTAs for Vault artefacts (they're already in the vault).
+    </p>
+    <p class="file-ref">file: web/src/components/InspectorPanel.tsx (new Storage row + button)</p>
+
+    <!-- Vault: informational only, no action -->
+    <div class="inspector-card">
+      <h3>
+        <span class="storage-ic vault"><svg><use href="#ic-shield"/></svg></span>
+        Competitor analysis
+      </h3>
+      <div class="sub">notes · strategy</div>
+      <div class="ins-row">
+        <span class="k">Storage</span>
+        <span class="v">Stored in Oyster vault.</span>
+      </div>
+      <div class="ins-row">
+        <span class="k">Path</span>
+        <span class="v path">~/Oyster/spaces/strategy/a7c91b2e/competitor-analysis.md</span>
+      </div>
+    </div>
+
+    <!-- Folder: informational + Move-to-vault -->
+    <div class="inspector-card">
+      <h3>
+        <span class="storage-ic folder"><svg><use href="#ic-folder"/></svg></span>
+        House-purchase notes
+      </h3>
+      <div class="sub">notes · scratch</div>
+      <div class="ins-row">
+        <span class="k">Storage</span>
+        <span class="v">Stored in an attached folder.</span>
+      </div>
+      <div class="ins-row">
+        <span class="k">Path</span>
+        <span class="v path">~/scratch/house-purchase/closing-checklist.md</span>
+      </div>
+      <div class="cta-row">
+        <button class="cta primary">
+          <span class="ic"><svg><use href="#ic-cloud-up"/></svg></span>
+          Move to Oyster vault
+        </button>
+      </div>
+    </div>
+
+    <!-- Git folder: informational + Move-to-vault -->
+    <div class="inspector-card">
+      <h3>
+        <span class="storage-ic git"><svg><use href="#ic-git"/></svg></span>
+        Refactor auth middleware
+      </h3>
+      <div class="sub">app · oyster-dev</div>
+      <div class="ins-row">
+        <span class="k">Storage</span>
+        <span class="v">Stored in a git repository.</span>
+      </div>
+      <div class="ins-row">
+        <span class="k">Path</span>
+        <span class="v path">~/Dev/oyster-dev/web/src/middleware/auth.ts</span>
+      </div>
+      <div class="cta-row">
+        <button class="cta primary">
+          <span class="ic"><svg><use href="#ic-cloud-up"/></svg></span>
+          Move to Oyster vault
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- DETECTION -->
+  <section>
+    <div class="section-eyebrow">Engineering</div>
+    <h2>Detection — two checks</h2>
+    <p>Two filesystem checks per attached source; result persisted on the <code>sources</code> row.</p>
+
+    <div class="tree">
+<span class="accent">artefact</span>
+├─ <span class="accent">source_id IS NULL</span>             ─►  VAULT       (shield)
+└─ <span class="accent">source_id IS NOT NULL</span>
+   ├─ ancestor has <code>.git/</code>?
+   │  ├─ yes                              ─►  GIT FOLDER  (git icon)
+   │  └─ no                                ─►  FOLDER      (folder icon)
+    </div>
+  </section>
+
+  <!-- SCOPE -->
+  <section>
+    <div class="section-eyebrow">Scope</div>
+    <h2>What ships</h2>
+    <ol style="font-size: 14px; color: var(--text-dim); line-height: 1.75; padding-left: 22px;">
+      <li><strong style="color: var(--home-text)">Schema:</strong> add <code>storage_mode</code> column to <code>sources</code>. Enum: <code>git | folder</code>. Vault is implicit from <code>artifacts.source_id IS NULL</code>.</li>
+      <li><strong style="color: var(--home-text)">Detection</strong> on attach: check for <code>.git/</code> ancestor. One filesystem call.</li>
+      <li><strong style="color: var(--home-text)">StorageIcon component</strong> (~20 lines): inline 14px icon + <code>title</code> tooltip. Reused in <code>ProjectTile</code>, <code>ArtefactTable</code>, and the inspector header.</li>
+      <li><strong style="color: var(--home-text)">Inspector Storage + Path rows.</strong> Two new rows in the inspector body.</li>
+      <li><strong style="color: var(--home-text)">Move to Oyster vault</strong> action: copies the file into <code>~/Oyster/spaces/&lt;space&gt;/&lt;id&gt;/</code>, soft-deletes the source-linked artefact, creates a vault artefact pointing at the new path. One MCP-shaped call.</li>
+    </ol>
+
+    <p style="margin-top: 22px; font-size: 13px; color: var(--text-dim); max-width: 720px;">
+      <strong style="color: var(--home-text)">Explicitly out of v1:</strong> git remote detection · pushed/unpushed indicators · backup judgement · "at risk" copy · Initialize-git action · "no off-machine backup" warnings · disk-failure framing. All revisit at v1.5 once we've seen how people actually use the legibility version.
+    </p>
+  </section>
+</body>
+</html>
