@@ -10,7 +10,7 @@ function makeTmp(): string {
 }
 
 describe("isValidUuid", () => {
-  it("accepts a canonical lowercase v4 UUID", () => {
+  it("accepts a canonical lowercase UUID shape", () => {
     expect(isValidUuid("4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f")).toBe(true);
   });
   it("rejects uppercase letters (we canonicalise to lowercase)", () => {

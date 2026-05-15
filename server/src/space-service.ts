@@ -178,6 +178,10 @@ export class SpaceService {
       try {
         this.spaceStore.restoreSource(removed.id);
         source = { ...removed, removed_at: null };
+        // Reconcile portable_id against disk — the source may have been
+        // detached while .oyster/id was rewritten externally (e.g. git pull
+        // brought a new value). Same disk-truth guarantee as fresh attach.
+        this.reconcilePortableId(source);
       } catch (err) {
         // Race: between our check and the restore, another caller inserted a
         // fresh active source for the same path. Re-evaluate.
@@ -516,6 +520,14 @@ export class SpaceService {
     void this.spaceSync?.pushDelete(id);
   }
 
+  // NOTE: scanSpace is no longer purely read-only. For each source whose
+  // portable_id is NULL and whose path exists on disk but lacks .oyster/id,
+  // reconcilePortableId (called at the top of the loop) will write
+  // <source.path>/.oyster/id. This is intentional per the portable-identity
+  // spec (see docs/superpowers/specs/2026-05-15-oyster-id-portable-identity-design.md):
+  // it is bounded (one write per source, once) and is the migration path for
+  // sources attached before portable_id existed. Operators who notice
+  // `git status` churn after an upgrade can attribute it to this write.
   async scanSpace(spaceId: string): Promise<ScanResult> {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);

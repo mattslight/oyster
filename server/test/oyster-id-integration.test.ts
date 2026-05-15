@@ -317,7 +317,6 @@ describe("Test 7 — backfillPortableIds: idempotent; never mutates sources.id",
     mkdirSync(repo);
 
     // Manually INSERT a sources row with portable_id = NULL, bypassing SpaceService.
-    const manualId = "manual-id-bbbbbbbb-cccc-dddd-eeee-ffffffffffff".slice(0, 36);
     const fixedId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
     env.db.prepare(
       `INSERT INTO sources (id, space_id, type, path, label, portable_id, added_at)

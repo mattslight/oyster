@@ -3,9 +3,13 @@
 // See docs/superpowers/specs/2026-05-15-oyster-id-portable-identity-design.md
 // for the design rationale, invariants, and error-handling matrix.
 
-import { readFileSync, statSync, mkdirSync, writeFileSync, renameSync } from "node:fs";
+import { readFileSync, statSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
+// Matches the canonical lowercase UUID shape (8-4-4-4-12 hex). Note that
+// Oyster *writes* UUIDv4 (via crypto.randomUUID()) but this regex accepts any
+// canonical-shape UUID so that .oyster/id files written by future Oyster
+// versions or other tools (e.g. UUIDv7) are still accepted.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const OYSTER_DIR = ".oyster";
 const ID_FILE = "id";
@@ -74,5 +78,12 @@ export function writeOysterId(root: string, id: string): void {
   const tmpPath = join(oysterPath, `id.tmp-${process.pid}-${Date.now()}`);
   const finalPath = join(oysterPath, ID_FILE);
   writeFileSync(tmpPath, id + "\n", "utf8");
-  renameSync(tmpPath, finalPath);
+  try {
+    renameSync(tmpPath, finalPath);
+  } catch (err) {
+    // Best-effort tmpfile cleanup; suppress secondary errors since we're
+    // already throwing the primary rename failure to the caller.
+    try { unlinkSync(tmpPath); } catch { /* ignore */ }
+    throw err;
+  }
 }
