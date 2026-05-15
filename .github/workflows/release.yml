@@ -62,6 +62,7 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
+          prerelease: ${{ contains(github.ref_name, '-beta') }}
           # Curated CHANGELOG section is the source of truth. Auto-generated PR
           # list would be prepended/appended to our body and duplicate content.
           generate_release_notes: false
