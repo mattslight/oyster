@@ -10,6 +10,7 @@ import type Database from "better-sqlite3";
 
 export type SessionState = "active" | "waiting" | "disconnected" | "done";
 export type SessionAgent = "claude-code" | "opencode" | "codex";
+export type AssignmentMode = "auto" | "manual";
 export type SessionEventRole =
   | "user"
   | "assistant"
@@ -34,6 +35,10 @@ export interface SessionRow {
   ended_at: string | null;
   model: string | null;
   last_event_at: string;
+  /** Who owns the (space_id, source_id) classification. `'auto'` is open to
+   *  heuristic improvement as sources change; `'manual'` is pinned by the
+   *  user / an MCP-driven agent and is never overwritten by the heuristic. */
+  assignment_mode: AssignmentMode;
 }
 
 export interface SessionEventRow {
@@ -87,6 +92,8 @@ export interface InsertSession {
   started_at?: string;
   model?: string | null;
   last_event_at?: string;
+  /** Defaults to `'auto'` when omitted — only manual-flip flows pass `'manual'`. */
+  assignment_mode?: AssignmentMode;
 }
 
 export interface InsertSessionEvent {
@@ -115,9 +122,21 @@ export interface SessionStore {
   upsertSession(row: InsertSession): void;
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void;
   updateSession(id: string, fields: Partial<Omit<SessionRow, "id" | "started_at">>): void;
-  /** Re-attribute orphan sessions (source_id NULL) whose cwd matches a newly-attached folder.
-   *  Without this, "done" sessions stay stuck in Elsewhere when the user promotes / attaches. */
-  backfillSourceForCwd(cwd: string, spaceId: string, sourceId: string): number;
+  /** Bind every `assignment_mode = 'auto'` session whose `cwd` is matched by
+   *  `path` (exact OR `cwd LIKE path || '/%'`) to this source — *unless* a
+   *  different active source has a strictly longer matching path, in which
+   *  case the longer source wins. Idempotent. Returns the number of rows
+   *  updated. Manual rows are immune. Already-bound auto rows may be moved
+   *  to a more specific source (the "improve" case) but are never demoted
+   *  to a less specific one. */
+  rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number;
+  /** Null out `source_id` on every session pointing at this source. Used by
+   *  `removeSource` to keep the binding consistent after a soft-delete —
+   *  the FK ON DELETE SET NULL never fires because the source row stays in
+   *  the table. `assignment_mode` is left as-is so a manual-pinned session
+   *  whose source vanishes becomes orphan-but-frozen (the user can choose
+   *  "Let Oyster decide" to recompute). */
+  detachSourceFromSessions(sourceId: string): number;
   // session_events — bulk-friendly
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
@@ -180,12 +199,13 @@ export class SqliteSessionStore implements SessionStore {
         LIMIT 1
       `),
       insertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at)
+        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
           @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
-          COALESCE(@last_event_at, datetime('now'))
+          COALESCE(@last_event_at, datetime('now')),
+          @assignment_mode
         )
       `),
       // Idempotent boot scan needs upsert: re-seeing a session file should
@@ -199,16 +219,21 @@ export class SqliteSessionStore implements SessionStore {
       // reconcileExistingFile), so the overwrite here keeps the column
       // shape consistent across rows.
       upsertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at)
+        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
           @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
-          COALESCE(@last_event_at, datetime('now'))
+          COALESCE(@last_event_at, datetime('now')),
+          @assignment_mode
         )
         ON CONFLICT(id) DO UPDATE SET
-          space_id      = excluded.space_id,
-          source_id     = excluded.source_id,
+          -- Watcher upserts NEVER overwrite the user's manual classification.
+          -- For 'auto' rows we let the watcher refresh space/source from the
+          -- latest cwd resolution; for 'manual' rows the user pinned it, so
+          -- the existing values stay.
+          space_id      = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.space_id ELSE excluded.space_id END,
+          source_id     = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.source_id ELSE excluded.source_id END,
           cwd           = COALESCE(excluded.cwd, sessions.cwd),
           -- jsonl_path: prefer the new value when the watcher knows where
           -- the file is. The watcher always passes the real path on every
@@ -220,6 +245,9 @@ export class SqliteSessionStore implements SessionStore {
           model         = excluded.model,
           started_at    = excluded.started_at,
           last_event_at = MAX(excluded.last_event_at, sessions.last_event_at)
+          -- assignment_mode is deliberately omitted from the UPDATE — it can
+          -- only be changed via the mutation surfaces (PATCH / MCP tool), not
+          -- by a watcher upsert.
       `),
       updateSessionState: db.prepare(
         "UPDATE sessions SET state = ?, last_event_at = ? WHERE id = ?"
@@ -292,6 +320,7 @@ export class SqliteSessionStore implements SessionStore {
       source_id: null,
       cwd: null,
       jsonl_path: null,
+      assignment_mode: "auto",
       ...row,
     });
   }
@@ -305,6 +334,7 @@ export class SqliteSessionStore implements SessionStore {
       source_id: null,
       cwd: null,
       jsonl_path: null,
+      assignment_mode: "auto",
       ...row,
     });
   }
@@ -314,7 +344,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   private static readonly UPDATABLE_SESSION_COLUMNS = new Set([
-    "space_id", "source_id", "cwd", "title", "state", "ended_at", "model", "last_event_at",
+    "space_id", "source_id", "cwd", "title", "state", "ended_at", "model", "last_event_at", "assignment_mode",
   ]);
 
   updateSession(
@@ -332,14 +362,51 @@ export class SqliteSessionStore implements SessionStore {
     this.db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = @id`).run(values);
   }
 
-  backfillSourceForCwd(cwd: string, spaceId: string, sourceId: string): number {
-    // Only re-attribute genuinely-orphan rows. Both space_id and source_id
-    // must be NULL — a session manually attached to a "logical-only" space
-    // (no source) should not get yanked into the freshly-promoted folder
-    // just because its cwd happens to match.
+  rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number {
+    // Longest-prefix rebind. Touches `assignment_mode = 'auto'` rows only.
+    //
+    // Match condition: `cwd = path` (exact) OR `cwd LIKE path || '/%'`
+    // (proper subdirectory — the `/` guard stops `~/Oyster-old` from being
+    // matched by `~/Oyster`).
+    //
+    // The NOT EXISTS clause is what makes longest-prefix work both ways:
+    //   - Orphan auto rows whose cwd matches this source bind here.
+    //   - Auto rows currently bound to a *less specific* source move up to
+    //     this one (the "improve" case — e.g. session was bound to
+    //     `~/Oyster` when only that source existed; now `~/Oyster/web` is
+    //     attached and the session's cwd is `~/Oyster/web/src`).
+    //   - Auto rows bound to a more specific source are never demoted —
+    //     NOT EXISTS finds the longer match and the row is skipped.
+    //   - Manual rows are immune via the assignment_mode filter.
     const info = this.db
-      .prepare("UPDATE sessions SET space_id = ?, source_id = ? WHERE cwd = ? AND source_id IS NULL AND space_id IS NULL")
-      .run(spaceId, sourceId, cwd);
+      .prepare(
+        `UPDATE sessions
+            SET space_id = @space_id, source_id = @source_id
+          WHERE assignment_mode = 'auto'
+            AND cwd IS NOT NULL
+            AND (cwd = @path OR cwd LIKE @path_prefix)
+            AND NOT EXISTS (
+              SELECT 1 FROM sources s
+               WHERE s.removed_at IS NULL
+                 AND s.id <> @source_id
+                 AND length(s.path) > length(@path)
+                 AND (sessions.cwd = s.path OR sessions.cwd LIKE s.path || '/%')
+            )`,
+      )
+      .run({ space_id: spaceId, source_id: sourceId, path, path_prefix: `${path}/%` });
+    return Number(info.changes);
+  }
+
+  detachSourceFromSessions(sourceId: string): number {
+    // Soft-delete-aware detach companion: removeSource only flips
+    // `sources.removed_at`, so the FK ON DELETE SET NULL never fires.
+    // Without this update, `sessions.source_id` keeps pointing at a
+    // soft-deleted row — silently broken state. Mode is left as-is so a
+    // manually-pinned session whose source vanishes stays manual; the user
+    // can run "Let Oyster decide" to recompute via the heuristic.
+    const info = this.db
+      .prepare("UPDATE sessions SET source_id = NULL WHERE source_id = ?")
+      .run(sourceId);
     return Number(info.changes);
   }
 

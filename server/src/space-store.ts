@@ -46,7 +46,19 @@ export interface SpaceStore {
   /** Batched lookup for callers that already know the set of ids they need (e.g. resolving sources for a page of artifacts). One SQL roundtrip via WHERE id IN (...). */
   getSourcesByIds(sourceIds: string[]): Source[];
   getActiveSourceByPath(path: string): Source | undefined;
+  /** Find the most-specific active source whose `path` is a prefix of `cwd`
+   *  (or equals it). Returns undefined when no source matches. Read-only
+   *  companion to `rebindAutoSessionsForSource` — used by the watcher when
+   *  a new session first appears so it lands under the longest-matching
+   *  source straight away. */
+  getActiveSourceForCwd(cwd: string): Source | undefined;
   getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined;
+  /** Replace a source's `path` (and/or `label`). No-op if both fields are
+   *  undefined. Callers must canonicalise the path through
+   *  `normaliseSourcePath` and check the partial unique index won't fire
+   *  (`getActiveSourceByPath` returning a different id) BEFORE calling — the
+   *  store enforces neither, it just runs the UPDATE. */
+  updateSource(sourceId: string, fields: { path?: string; label?: string | null }): void;
   /** Soft-delete a space. Sets deleted_at to the provided timestamp (or
    *  Date.now()). Idempotent — re-call on an already-deleted row is a no-op
    *  (preserves the original deleted_at). When applying a cross-device
@@ -92,6 +104,7 @@ export class SqliteSpaceStore implements SpaceStore {
     getSourcesAll: Database.Statement;
     getSourceById: Database.Statement;
     getActiveSourceByPath: Database.Statement;
+    getActiveSourceForCwd: Database.Statement;
     getSoftDeletedSourceByPathForSpace: Database.Statement;
     softDelete: Database.Statement;
     markSyncDirty: Database.Statement;
@@ -128,6 +141,18 @@ export class SqliteSpaceStore implements SpaceStore {
       getSourcesAll: db.prepare("SELECT * FROM sources WHERE space_id = ? ORDER BY added_at"),
       getSourceById: db.prepare("SELECT * FROM sources WHERE id = ?"),
       getActiveSourceByPath: db.prepare("SELECT * FROM sources WHERE path = ? AND removed_at IS NULL"),
+      // Longest-prefix lookup. ORDER BY length(path) DESC means a session
+      // whose cwd matches both `~/Oyster` and `~/Oyster/web` lands under the
+      // more specific source. The `?2 LIKE path || '/%'` form requires the
+      // path's trailing slash to anchor at a directory boundary — without
+      // it `~/Oyster` would falsely match a cwd of `~/Oyster-old`.
+      getActiveSourceForCwd: db.prepare(
+        `SELECT * FROM sources
+          WHERE removed_at IS NULL
+            AND (?1 = path OR ?2 LIKE path || '/%')
+          ORDER BY length(path) DESC
+          LIMIT 1`,
+      ),
       getSoftDeletedSourceByPathForSpace: db.prepare(
         "SELECT * FROM sources WHERE space_id = ? AND path = ? AND removed_at IS NOT NULL ORDER BY added_at DESC LIMIT 1"
       ),
@@ -180,8 +205,20 @@ export class SqliteSpaceStore implements SpaceStore {
     return this.db.prepare(`SELECT * FROM sources WHERE id IN (${placeholders})`).all(...sourceIds) as Source[];
   }
   getActiveSourceByPath(path: string): Source | undefined { return this.stmts.getActiveSourceByPath.get(path) as Source | undefined; }
+  getActiveSourceForCwd(cwd: string): Source | undefined {
+    return this.stmts.getActiveSourceForCwd.get(cwd, cwd) as Source | undefined;
+  }
   getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined {
     return this.stmts.getSoftDeletedSourceByPathForSpace.get(spaceId, path) as Source | undefined;
+  }
+  updateSource(sourceId: string, fields: { path?: string; label?: string | null }): void {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    if (fields.path !== undefined) { sets.push("path = ?"); values.push(fields.path); }
+    if (fields.label !== undefined) { sets.push("label = ?"); values.push(fields.label); }
+    if (sets.length === 0) return;
+    values.push(sourceId);
+    this.db.prepare(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`).run(...values);
   }
 
   transaction<T>(fn: () => T): T {

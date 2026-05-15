@@ -1,6 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative, sep } from "node:path";
-import { homedir } from "node:os";
 import crypto from "node:crypto";
 import ignore, { type Ignore } from "ignore";
 import type { SpaceStore, SpaceRow, Source } from "./space-store.js";
@@ -10,6 +9,7 @@ import type { SessionStore } from "./session-store.js";
 import type { SpaceSyncService } from "./space-sync-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
+import { normaliseSourcePath } from "./path-normalise.js";
 
 // Build a gitignore matcher from .gitignore at the scan root, if one exists.
 // Returns null when there's nothing to honor — callers can skip the per-entry
@@ -38,11 +38,6 @@ export function folderSlug(folderPath: string): string {
   return parts.pop() ?? folderPath;
 }
 
-function expandHome(rawPath: string): string {
-  return rawPath.startsWith("~/")
-    ? resolve(join(homedir(), rawPath.slice(2)))
-    : resolve(rawPath);
-}
 
 const SPACE_PALETTE = [
   "#6057c4", "#3d8aaa", "#3a8f64", "#b06840",
@@ -117,7 +112,7 @@ export class SpaceService {
     const row = this.spaceStore.getById(spaceId);
     if (!row) throw new Error(`Space "${spaceId}" not found`);
 
-    const resolved = expandHome(rawPath);
+    const resolved = normaliseSourcePath(rawPath);
     if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
     if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
 
@@ -129,7 +124,7 @@ export class SpaceService {
         // still backfill — pre-existing orphan sessions for this cwd may
         // never have been swept (e.g. attached before the backfill behaviour
         // existed). Idempotent, so safe to run on every retry.
-        this.sessionStore.backfillSourceForCwd(resolved, spaceId, active.id);
+        this.sessionStore.rebindAutoSessionsForSource(spaceId, active.id, resolved);
         return active;
       }
       const ownerName = this.spaceStore.getById(active.space_id)?.display_name ?? active.space_id;
@@ -174,7 +169,7 @@ export class SpaceService {
     // createSpaceFromPath, so the Unsorted folder tile disappears once its
     // sessions get a home. Idempotent (only updates rows where space_id and
     // source_id are both NULL), so safe on the race-conflict path too.
-    this.sessionStore.backfillSourceForCwd(resolved, spaceId, source.id);
+    this.sessionStore.rebindAutoSessionsForSource(spaceId, source.id, resolved);
     return source;
   }
 
@@ -227,7 +222,7 @@ export class SpaceService {
   }
 
   getActiveSourceByPath(path: string): Source | undefined {
-    return this.spaceStore.getActiveSourceByPath(expandHome(path));
+    return this.spaceStore.getActiveSourceByPath(normaliseSourcePath(path));
   }
 
   listSpaces(): Space[] { return this.spaceStore.getAll().map(rowToSpace); }
@@ -278,7 +273,7 @@ export class SpaceService {
     const rawPath = params.path?.trim();
     if (!rawPath) throw new Error("path is required");
 
-    const resolved = expandHome(rawPath);
+    const resolved = normaliseSourcePath(rawPath);
     if (!existsSync(resolved)) throw new Error(`Path does not exist: ${resolved}`);
     if (!statSync(resolved).isDirectory()) throw new Error(`Path is not a directory: ${resolved}`);
 
@@ -311,7 +306,7 @@ export class SpaceService {
       throw err;
     }
 
-    const backfilled = this.sessionStore.backfillSourceForCwd(resolved, space.id, source.id);
+    const backfilled = this.sessionStore.rebindAutoSessionsForSource(space.id, source.id, resolved);
     return { space, source, backfilled };
   }
 

@@ -456,6 +456,16 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
+  // assignment_mode: who owns the (space_id, source_id) classification on a
+  // session row. `'auto'` means the longest-prefix heuristic may assign or
+  // improve the binding as sources are attached / paths updated. `'manual'`
+  // means the user (or an MCP-driven agent) has pinned the classification —
+  // heuristics never overwrite it. Existing rows backfill to `'auto'`.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN assignment_mode TEXT NOT NULL DEFAULT 'auto' CHECK (assignment_mode IN ('auto','manual'))");
+  } catch { /* already exists */ }
+  db.exec("CREATE INDEX IF NOT EXISTS sessions_auto_cwd ON sessions(cwd) WHERE assignment_mode = 'auto'");
+
   // Cloud session sync (#322). Seven columns drive the cross-device sync:
   // - sync_dirty_at: unix-ms of the most recent material change since last
   //   successful push. NULL = clean. Overwritten on every dirty mark, so
