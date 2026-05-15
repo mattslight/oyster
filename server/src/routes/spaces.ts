@@ -104,28 +104,7 @@ export async function tryHandleSpaceRoute(
     return true;
   }
 
-  // /api/spaces/:id/sources — active sources (linked folders) for a
-  // space. Local-origin only: paths leak the user's home directory.
-  // Surfaces #266 plus attach/detach from the Folders section.
-  {
-    const sourcesPath = url.split("?")[0];
-    const m = sourcesPath.match(/^\/api\/spaces\/([^/]+)\/sources$/);
-    if (m && req.method === "GET") {
-      if (rejectIfNonLocalOrigin()) return true;
-      const spaceId = safeDecode(m[1]);
-      if (spaceId === null) { sendJson({ error: "Invalid URL encoding" }, 400); return true; }
-      try {
-        sendJson(spaceService.getSources(spaceId));
-      } catch (err) {
-        sendError(err, 500);
-      }
-      return true;
-    }
-    // Write-side source endpoints (POST attach, DELETE detach, PATCH
-    // rename, POST consolidate) were removed when the UI switched to
-    // /api/projects/*. The read endpoint above stays alive for legacy
-    // consumers (SessionRow's "move session to folder" dropdown).
-  }
+  // /api/spaces/:id/sources/* are gone — the UI moved to /api/projects/*.
 
   // PATCH /api/spaces/:id — rename / recolour
   // DELETE /api/spaces/:id — soft-delete; cascades to sessions.space_id = NULL

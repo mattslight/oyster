@@ -13,14 +13,6 @@ import { normaliseSourcePath } from "./path-normalise.js";
 import { readOysterId, writeOysterId } from "./oyster-id.js";
 import type { OysterIdReadResult } from "./oyster-id.js";
 
-function pathExistsSafe(path: string): boolean {
-  // "Path missing" only makes sense for a directory — a file at the
-  // recorded path is just as broken from the source-binding perspective.
-  // statSync covers both branches and stays cheap; the catch handles
-  // both ENOENT (file/dir gone) and slow/dead drives (EBUSY/ETIMEDOUT).
-  try { return statSync(path).isDirectory(); } catch { return false; }
-}
-
 // Build a gitignore matcher from .gitignore at the scan root, if one exists.
 // Returns null when there's nothing to honor — callers can skip the per-entry
 // check entirely. Only the root .gitignore is read; nested .gitignore files
@@ -241,17 +233,6 @@ export class SpaceService {
       throw new Error(`Path is already attached to space "${ownerName}"`);
     }
     throw originalErr;
-  }
-
-  getSources(spaceId: string): Array<Source & { pathExists: boolean }> {
-    return this.spaceStore.getSources(spaceId).map((s) => ({
-      ...s,
-      // Cheap stat per source. Wrapped: a stale mount point that errors on
-      // stat (EBUSY / ETIMEDOUT) reads as "missing" instead of throwing
-      // back through a list endpoint. Existence is advisory anyway — used
-      // only for the "Path missing" surface affordance.
-      pathExists: pathExistsSafe(s.path),
-    }));
   }
 
   getSourceById(sourceId: string): Source | undefined {
