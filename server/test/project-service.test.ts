@@ -259,4 +259,30 @@ describe("ProjectService.attachFolder", () => {
 
     rmSync(folder, { recursive: true, force: true });
   });
+
+  it("re-attaching under a DIFFERENT space moves the undeleted project to the new space (and reclaims sessions there)", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-cross-space-"));
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('personal', 'Personal', '#111', 'none')`);
+    // Project was created under "work", folder marker still points at it,
+    // tile was soft-deleted, user now attaches the same folder under "personal".
+    const existing = service.createProject({ spaceId: "work", name: "Pre" });
+    mkdirSync(join(folder, ".oyster"));
+    writeFileSync(join(folder, ".oyster", "id"), existing.id);
+    service.deleteProject(existing.id);
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd) VALUES ('s-new', 'claude-code', 'done', ?)").run(folder);
+
+    const { project, claimed } = service.attachFolder({ spaceId: "personal", path: folder });
+
+    expect(project.id).toBe(existing.id);
+    expect(project.spaceId).toBe("personal");
+    expect(claimed).toBe(1);
+    // Project is listed under the new space, not the old one.
+    expect(service.listForSpace("personal").map((p) => p.id)).toContain(existing.id);
+    expect(service.listForSpace("work").map((p) => p.id)).not.toContain(existing.id);
+    // Reclaimed session lands under personal.
+    const sessionRow = db.prepare("SELECT space_id FROM sessions WHERE id = 's-new'").get() as { space_id: string };
+    expect(sessionRow.space_id).toBe("personal");
+
+    rmSync(folder, { recursive: true, force: true });
+  });
 });

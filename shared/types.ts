@@ -39,10 +39,9 @@ export interface Artifact {
   pluginId?: string;
   /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan. `ai_generated` — produced by an agent. */
   sourceOrigin?: "manual" | "discovered" | "ai_generated";
-  /** Project this artefact belongs to. Set by the watcher when an AI-
-   *  generated artefact is registered from a session bound to a project,
-   *  or by the discovery scan when the artefact lives under a project's
-   *  cached path. NULL for manual/standalone artefacts. */
+  /** Project this artefact belongs to. Column exists; auto-population
+   *  on create/register is a follow-up — today the only writer is the
+   *  PATCH /api/artifacts/:id route (manual assignment). NULL until set. */
   projectId?: string | null;
   /** Cloud publication state for this artefact. Omitted entirely when no
    *  share token has ever been minted. When present with `unpublishedAt: null`

@@ -69,13 +69,18 @@ export class ProjectService {
       // owns its historical session/artefact bindings (project_id FKs are
       // intact, just hidden from listForSpace). Re-attach must undelete and
       // adopt the same id rather than minting a new one, which would orphan
-      // those rows permanently.
+      // those rows permanently. If the caller is re-attaching under a
+      // different space, move the project there too so the tile renders
+      // under the right header and claimOrphan tags sessions to that space.
       const row = this.db
         .prepare("SELECT id, space_id, name, created_at, removed_at FROM projects WHERE id = ?")
         .get(existing.id) as (ProjectRow & { removed_at: string | null }) | undefined;
       if (row) {
-        if (row.removed_at) {
-          this.db.prepare("UPDATE projects SET removed_at = NULL WHERE id = ?").run(row.id);
+        if (row.removed_at || row.space_id !== args.spaceId) {
+          this.db
+            .prepare("UPDATE projects SET removed_at = NULL, space_id = ? WHERE id = ?")
+            .run(args.spaceId, row.id);
+          row.space_id = args.spaceId;
         }
         project = rowToProject(row);
       } else {
