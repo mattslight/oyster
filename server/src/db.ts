@@ -477,6 +477,75 @@ export function initDb(userlandDir: string): Database.Database {
     "CREATE INDEX IF NOT EXISTS sources_portable_id ON sources(portable_id) WHERE portable_id IS NOT NULL"
   );
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // projects + project_paths — the simplified identity model that supersedes
+  // `sources`. A project's id is its `.oyster/id` UUID (or a fresh UUID for
+  // pre-existing sources without one). Sessions bind to projects directly via
+  // `sessions.project_id`; the watcher tags them at ingest by reading
+  // `<cwd>/.oyster/id`. No longest-prefix path matching, no async rebind, no
+  // "Update folder location" — folder renames are filesystem ops that don't
+  // touch Oyster's identity layer.
+  //
+  // `project_paths` is a per-machine cache of "where this project lives on
+  // disk right now" — populated lazily by the watcher and used for affordances
+  // like "Reveal in Finder". Worktrees and sibling checkouts share a project
+  // id and contribute multiple rows. Authoritative identity is `projects.id`,
+  // never the path.
+  // ─────────────────────────────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id          TEXT PRIMARY KEY,
+      space_id    TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      removed_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS projects_space_id ON projects(space_id) WHERE removed_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS project_paths (
+      project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      path          TEXT NOT NULL,
+      last_seen_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (project_id, path)
+    );
+    CREATE INDEX IF NOT EXISTS project_paths_path ON project_paths(path);
+  `);
+
+  try { db.exec("ALTER TABLE sessions ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL"); }
+  catch { /* already exists */ }
+  db.exec("CREATE INDEX IF NOT EXISTS sessions_project_id ON sessions(project_id) WHERE project_id IS NOT NULL");
+
+  // One-shot data migration: sources → projects. Idempotent guard: skip if
+  // there's already at least one project (we never partially-migrate, so the
+  // presence of any project row means this has run or a fresh install
+  // already populated projects through the new code path).
+  const hasProjects = db.prepare("SELECT 1 FROM projects LIMIT 1").get();
+  if (!hasProjects) {
+    const insertProject = db.prepare(
+      "INSERT OR IGNORE INTO projects (id, space_id, name, created_at) VALUES (?, ?, ?, ?)",
+    );
+    const insertPath = db.prepare(
+      "INSERT OR IGNORE INTO project_paths (project_id, path) VALUES (?, ?)",
+    );
+    const updateSessions = db.prepare(
+      "UPDATE sessions SET project_id = ? WHERE source_id = ? AND project_id IS NULL",
+    );
+    const activeSources = db.prepare(
+      "SELECT id, space_id, path, label, portable_id, added_at FROM sources WHERE removed_at IS NULL",
+    ).all() as Array<{ id: string; space_id: string; path: string; label: string | null; portable_id: string | null; added_at: string }>;
+    db.transaction(() => {
+      for (const row of activeSources) {
+        // portable_id (if set) preserves cross-machine identity from .oyster/id.
+        // Otherwise mint a fresh UUID — same shape, just no cross-device anchor yet.
+        const projectId = row.portable_id ?? crypto.randomUUID();
+        const name = row.label ?? row.path.split("/").filter(Boolean).pop() ?? row.path;
+        insertProject.run(projectId, row.space_id, name, row.added_at);
+        insertPath.run(projectId, row.path);
+        updateSessions.run(projectId, row.id);
+      }
+    })();
+  }
+
   // One-time canonical-form migration for paths and cwds. The longest-prefix
   // binding SQL compares `sessions.cwd` against `sources.path` via substr
   // equality, which requires identical separator conventions and no trailing
