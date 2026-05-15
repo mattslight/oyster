@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cloud-only artefacts in Home's table view now show their real space.** Previously every published-from-another-device artefact showed *"Cloud"* as its space, hiding the actual space it belongs to (e.g. *tokinvest*). The space column now shows the underlying space with a small cloud glyph next to it; only artefacts whose original space no longer exists locally fall back to *"Cloud"*.
+
 ### Removed
 
 - **Sprint-2 demo builtins out.** *Zombie Horde* (a browser game) and *The World's Your Oyster* (a positioning deck that contradicted the current framing) no longer ship in fresh installs. Existing installs keep their copies in `~/Oyster/apps/` — archive them from the surface if you don't want them.
