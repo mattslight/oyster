@@ -70,7 +70,16 @@ export class SessionService {
     if (!row) throw new SessionNotFoundError(input.session_id);
 
     // Branch 1: assignment_mode: 'auto' with no source override → recompute.
+    // The recompute derives both space_id and source_id from the row's
+    // cwd via getActiveSourceForCwd, so a caller-supplied space_id would
+    // be silently ignored. Surface that ambiguity as a 400 instead of
+    // letting it look like the request succeeded.
     if (input.assignment_mode === "auto" && input.source_id === undefined) {
+      if (input.space_id !== undefined) {
+        throw new InvalidMoveSessionInputError(
+          "space_id cannot be combined with assignment_mode: 'auto' — the recompute derives space_id from the session's cwd",
+        );
+      }
       return this.resetSessionToAuto(input.session_id);
     }
 

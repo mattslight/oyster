@@ -248,6 +248,16 @@ describe("SessionService.resetSessionToAuto (and the assignment_mode:'auto' bran
     expect(updated.assignment_mode).toBe("auto");
   });
 
+  it("rejects assignment_mode: 'auto' combined with an explicit space_id (would be silently ignored)", () => {
+    seedSpace(env.db, "sp");
+    seedSession(env.db, { id: "s", space_id: "sp", assignment_mode: "manual" });
+    expect(() => env.service.moveSession({
+      session_id: "s",
+      assignment_mode: "auto",
+      space_id: "sp",
+    })).toThrow(/cannot be combined with assignment_mode: 'auto'/);
+  });
+
   it("moveSession({ assignment_mode: 'auto' }) without source_id delegates to resetSessionToAuto", () => {
     seedSpace(env.db, "sp");
     seedSource(env.db, "src", "sp", "/p");

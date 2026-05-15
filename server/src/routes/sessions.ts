@@ -489,14 +489,26 @@ export async function tryHandleSessionRoute(
         if ("source_id" in body) {
           if (body.source_id === null) {
             input.source_id = null;
-          } else if (typeof body.source_id === "string") {
-            input.source_id = body.source_id;
+          } else if (typeof body.source_id === "string" && body.source_id.trim().length > 0) {
+            input.source_id = body.source_id.trim();
           } else {
-            sendJson({ error: "source_id must be a string or null" }, 400);
+            sendJson({ error: "source_id must be a non-empty string or null" }, 400);
             return true;
           }
         }
-        if (typeof body.space_id === "string") input.space_id = body.space_id;
+        if ("space_id" in body) {
+          // Empty / whitespace-only space_id would hit the sessions FK
+          // constraint as a constraint error and bubble out as a 500;
+          // catch it here as a clean 400. The service still validates
+          // existence — passing a non-empty-but-unknown id surfaces as a
+          // service-level error.
+          if (typeof body.space_id === "string" && body.space_id.trim().length > 0) {
+            input.space_id = body.space_id.trim();
+          } else {
+            sendJson({ error: "space_id must be a non-empty string" }, 400);
+            return true;
+          }
+        }
         if (body.assignment_mode === "auto" || body.assignment_mode === "manual") {
           input.assignment_mode = body.assignment_mode;
         } else if (body.assignment_mode !== undefined) {
