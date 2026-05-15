@@ -466,6 +466,17 @@ export function initDb(userlandDir: string): Database.Database {
   } catch { /* already exists */ }
   db.exec("CREATE INDEX IF NOT EXISTS sessions_auto_cwd ON sessions(cwd) WHERE assignment_mode = 'auto'");
 
+  // portable_id: cross-machine identifier sourced from <path>/.oyster/id.
+  // Non-unique on purpose — worktrees and sibling checkouts share an id.
+  // `sources.id` (local PK) is NEVER derived from this column.
+  // See docs/superpowers/specs/2026-05-15-oyster-id-portable-identity-design.md
+  try {
+    db.exec("ALTER TABLE sources ADD COLUMN portable_id TEXT NULL");
+  } catch { /* already exists */ }
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS sources_portable_id ON sources(portable_id) WHERE portable_id IS NOT NULL"
+  );
+
   // One-time canonical-form migration for paths and cwds. The longest-prefix
   // binding SQL compares `sessions.cwd` against `sources.path` via substr
   // equality, which requires identical separator conventions and no trailing
