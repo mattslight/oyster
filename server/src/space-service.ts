@@ -10,6 +10,8 @@ import type { SpaceSyncService } from "./space-sync-service.js";
 import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
 import { normaliseSourcePath } from "./path-normalise.js";
+import { readOysterId, writeOysterId } from "./oyster-id.js";
+import type { OysterIdReadResult } from "./oyster-id.js";
 
 function pathExistsSafe(path: string): boolean {
   // "Path missing" only makes sense for a directory — a file at the
@@ -187,8 +189,42 @@ export class SpaceService {
       }
     } else {
       const id = crypto.randomUUID();
+      // portable_id decision — see spec invariant 4 (disk-backed, never imaginary).
+      // We decide BEFORE the INSERT so the row is written exactly once: never
+      // INSERT with a generated id then UPDATE it back to NULL on write failure.
+      let portable_id: string | null = null;
+      if (existsSync(resolved)) {
+        const idResult: OysterIdReadResult = readOysterId(resolved);
+        switch (idResult.status) {
+          case "valid":
+            portable_id = idResult.id;
+            break;
+          case "missing": {
+            const newId = crypto.randomUUID();
+            try {
+              writeOysterId(resolved, newId);
+              portable_id = newId;
+            } catch (err) {
+              console.warn(`[oyster-id] write failed for ${resolved}; leaving portable_id NULL`, err);
+              // portable_id stays NULL — disk is truth.
+            }
+            break;
+          }
+          case "malformed":
+            console.warn(`[oyster-id] malformed .oyster/id at ${resolved} — leaving portable_id NULL, file untouched`);
+            break;
+          case "unreadable":
+            console.warn(`[oyster-id] unreadable .oyster/id at ${resolved} — leaving portable_id NULL`, idResult.error);
+            break;
+          case "blocked":
+            console.warn(`[oyster-id] .oyster at ${resolved} is a file, not a directory — leaving portable_id NULL`);
+            break;
+        }
+      }
+      // If !existsSync(resolved): #490's advisory-existence case — portable_id stays NULL.
+      // A later scanSpace after "Update folder location…" will populate it.
       try {
-        this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved, portable_id: null });
+        this.spaceStore.addSource({ id, space_id: spaceId, type: "local_folder", path: resolved, portable_id });
         source = this.spaceStore.getSourceById(id)!;
       } catch (err) {
         // Race: a concurrent caller inserted the same path between our check and
