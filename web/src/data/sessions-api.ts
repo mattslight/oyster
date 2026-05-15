@@ -20,13 +20,14 @@ export async function fetchSessions(): Promise<Session[]> {
   return getJson<Session[]>("/api/sessions");
 }
 
-/** Reassign a session to a different source/space, or flip its
- *  assignment_mode. Setting `source_id` implicitly flips to `'manual'`;
- *  pass `assignment_mode: 'auto'` (with no source_id) to recompute via
- *  the longest-prefix heuristic on this session's cwd. */
+/** Reassign a session to a different project (space_id derived) or clear
+ *  the project binding. `source_id`/`space_id`/`assignment_mode` are
+ *  legacy fields kept alive during the sources→projects migration; new
+ *  callers should use `project_id`. */
 export async function patchSession(
   id: string,
   body: {
+    project_id?: string | null;
     source_id?: string | null;
     space_id?: string;
     assignment_mode?: "auto" | "manual";
