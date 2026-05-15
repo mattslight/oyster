@@ -24,11 +24,11 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
     : session.state === "disconnected" ? `disconnected ${rel}`
     : rel;
   const title = session.title ?? "(no title yet)";
-  // Prefer the most specific label available: source (folder) > space >
-  // cwd basename for orphan sessions. Always tooltip the full cwd so
-  // the user can identify where the session was running.
+  // Prefer the most specific label available: space > cwd basename for
+  // orphan sessions. Always tooltip the full cwd so the user can identify
+  // where the session was running.
   const cwdBasename = session.cwd ? session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
-  const projectLabel = session.sourceLabel ?? spaceLabel ?? cwdBasename ?? "—";
+  const projectLabel = spaceLabel ?? cwdBasename ?? "—";
   const remoteChip = originDeviceChipFor(session, myDeviceId);
   const activeChip = activeWriterChipFor(session, myDeviceId);
   const isManual = session.assignmentMode === "manual";

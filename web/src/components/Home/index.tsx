@@ -332,10 +332,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
       if (!s.projectId || !s.spaceId || s.state === "done") continue;
       let entry = map.get(s.projectId);
       if (!entry) {
+        const cwdBasename = s.cwd ? s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
         entry = {
           projectId: s.projectId,
           spaceId: s.spaceId,
-          label: s.sourceLabel ?? s.projectId,
+          label: cwdBasename ?? s.projectId,
           counts: { active: 0, waiting: 0, disconnected: 0 },
           lastEventAt: 0,
         };
@@ -474,30 +475,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
-  // Per-source artefact counts for the project tile grid. "vault"
-  // collects everything without a source_id (manual + ai_generated tiles
-  // that didn't come from a linked folder). The tile grid itself drives
-  // the SELECTED_FOLDER filter, separate from the source-origin chips.
-  const folderArtefactCounts = useMemo(() => {
-    const counts: Record<string, number> = { [VAULT]: 0 };
-    for (const a of effectiveDesktopProps.artifacts) {
-      if (a.sourceId) counts[a.sourceId] = (counts[a.sourceId] ?? 0) + 1;
-      else counts[VAULT]++;
-    }
-    return counts;
-  }, [effectiveDesktopProps.artifacts]);
-
   // Filter + collapse to an incremental preview. Each "Show more" click
   // grows artefactsLimit by ARTEFACTS_PREVIEW; the cap applies to both
   // icon and table views so busy spaces don't push later sections far
   // below the fold.
+  // Per-project artefact filtering is a follow-up — artifacts don't yet
+  // carry a project_id, so selecting a project tile filters sessions
+  // (project-aware) without narrowing the artefact list.
   const filteredArtefacts = useMemo(() => {
     let list = effectiveDesktopProps.artifacts;
-    if (selectedProjectId === VAULT) {
-      list = list.filter((a) => !a.sourceId);
-    } else if (selectedProjectId) {
-      list = list.filter((a) => a.sourceId === selectedProjectId);
-    }
     if (artefactSource === "published") {
       list = list.filter(isLivePublication);
     } else if (artefactSource === "pinned") {
@@ -519,7 +505,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
       return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
     });
     return list;
-  }, [effectiveDesktopProps.artifacts, artefactSource, selectedProjectId]);
+  }, [effectiveDesktopProps.artifacts, artefactSource]);
   const visibleArtefacts = useMemo(
     () => filteredArtefacts.slice(0, artefactsLimit),
     [filteredArtefacts, artefactsLimit],
