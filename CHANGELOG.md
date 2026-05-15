@@ -4,6 +4,19 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Move a session to a different folder, or back to "let Oyster decide".** When a session ran in the wrong folder or a folder gets renamed, you can now reassign it instead of being stuck with the original binding. Available to agents via the new `move_session` and `set_source_path` MCP tools, with the UI affordances landing alongside.
+- **Update a folder's path after you've renamed it on disk.** A new option on each folder tile points an existing source at its new location without losing artefacts or sessions. Works for unmounted drives too — the path is accepted even when the folder isn't currently reachable.
+
+### Changed
+
+- **Sessions bind to the most specific matching folder.** Attaching `~/Repo` then later `~/Repo/web` now moves sessions that ran in `~/Repo/web` over to the more specific source automatically. Manually-pinned sessions are immune.
+
+### Fixed
+
+- **Sessions no longer get stuck pointing at a detached folder.** Previously, removing a folder left sessions silently linked to a deleted source; they now correctly fall back to the space vault.
+
 ## [0.8.2] - 2026-05-14
 
 UI polish, sharper positioning, quieter background sync, and the first wave of Sprint-2 surgery. Headline changes from the 0.8.2-beta cycle plus a couple of final tweaks:

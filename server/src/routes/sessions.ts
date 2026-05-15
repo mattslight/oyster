@@ -15,6 +15,8 @@ import type { SqliteSpaceStore } from "../space-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
+import { SessionService, SessionNotFoundError, SourceNotFoundError } from "../session-service.js";
+import type { UiCommand } from "../../../shared/types.js";
 import {
   encodeCwd,
   LocalDivergedError,
@@ -31,6 +33,8 @@ export interface SessionRouteDeps {
   sessionSync: SessionSyncService;
   /** Caller for the current Pro user (for resume gating + path queries). */
   currentUserId: () => string | null;
+  sessionService: SessionService;
+  broadcastUiEvent: (event: UiCommand) => void;
 }
 
 // ── Resume helpers (#322 PR 2) ──────────────────────────────────────────
@@ -172,7 +176,7 @@ export async function tryHandleSessionRoute(
   deps: SessionRouteDeps,
 ): Promise<boolean> {
   const { sendJson, sendError, rejectIfNonLocalOrigin, readJsonBody } = ctx;
-  const { db, sessionStore, spaceStore, artifactService, memoryProvider, sessionSync, currentUserId } = deps;
+  const { db, sessionStore, spaceStore, artifactService, memoryProvider, sessionSync, currentUserId, sessionService, broadcastUiEvent } = deps;
 
   // GET /api/sessions — agent sessions captured by the watchers (#251).
   // Read-only for 0.5.0; the home feed renders these. Local-origin only —
@@ -462,6 +466,72 @@ export async function tryHandleSessionRoute(
 
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "session not found" }));
+      return true;
+    }
+  }
+
+  // PATCH /api/sessions/:id — reassign a session to a different source or
+  // back to auto-binding. The whole "cwd is evidence, not authority" model
+  // lives here: setting source_id flips the row to manual; setting
+  // assignment_mode: 'auto' triggers an atomic recompute via longest-prefix
+  // lookup on the row's cwd.
+  {
+    const m = url.match(/^\/api\/sessions\/([^/]+)$/);
+    if (m && req.method === "PATCH") {
+      if (rejectIfNonLocalOrigin()) return true;
+      const id = m[1]!;
+      try {
+        const body = await readJsonBody();
+        const input: { session_id: string; source_id?: string | null; space_id?: string; assignment_mode?: "auto" | "manual" } = { session_id: id };
+        if ("source_id" in body) {
+          if (body.source_id === null) {
+            input.source_id = null;
+          } else if (typeof body.source_id === "string") {
+            input.source_id = body.source_id;
+          } else {
+            sendJson({ error: "source_id must be a string or null" }, 400);
+            return true;
+          }
+        }
+        if (typeof body.space_id === "string") input.space_id = body.space_id;
+        if (body.assignment_mode === "auto" || body.assignment_mode === "manual") {
+          input.assignment_mode = body.assignment_mode;
+        } else if (body.assignment_mode !== undefined) {
+          sendJson({ error: "assignment_mode must be 'auto' or 'manual'" }, 400);
+          return true;
+        }
+        const updated = sessionService.moveSession(input);
+        const src = updated.source_id ? spaceStore.getSourceById(updated.source_id) : undefined;
+        const sourceLabel = src ? (src.label ?? (basename(src.path) || null)) : null;
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
+        sendJson({
+          id: updated.id,
+          spaceId: updated.space_id,
+          sourceId: updated.source_id ?? null,
+          sourceLabel,
+          cwd: updated.cwd,
+          agent: updated.agent,
+          title: updated.title,
+          state: updated.state,
+          startedAt: updated.started_at,
+          endedAt: updated.ended_at,
+          model: updated.model,
+          lastEventAt: updated.last_event_at,
+          assignmentMode: updated.assignment_mode,
+          originDeviceId: null,
+          originDeviceLabel: null,
+          jsonlAvailableLocally: true,
+          hasBytes: true,
+          activeDeviceId: null,
+          activeDeviceLabel: null,
+        });
+      } catch (err) {
+        if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError) {
+          sendJson({ error: err.message }, 404);
+          return true;
+        }
+        sendError(err);
+      }
       return true;
     }
   }

@@ -171,8 +171,59 @@ export async function tryHandleSpaceRoute(
           return true;
         }
         spaceService.removeSource(sourceId);
+        // Sessions previously bound to this source are now orphan; tell
+        // connected clients to refetch so the home feed reflects the
+        // detach without waiting for the next watcher tick.
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
         res.writeHead(204);
         res.end();
+      } catch (err) {
+        sendError(err);
+      }
+      return true;
+    }
+    // PATCH /api/spaces/:id/sources/:source_id — update a source's path
+    // (folder rename / unmounted-drive recovery) and/or label. Existing
+    // bindings are preserved; the longest-prefix heuristic runs after a
+    // path change so orphan auto-sessions matching the new path get bound
+    // and auto-sessions move to a more specific source when one applies.
+    if (dm && req.method === "PATCH") {
+      if (rejectIfNonLocalOrigin()) return true;
+      const spaceId = safeDecode(dm[1]);
+      const sourceId = safeDecode(dm[2]);
+      if (spaceId === null || sourceId === null) {
+        sendJson({ error: "Invalid URL encoding" }, 400);
+        return true;
+      }
+      try {
+        const source = spaceService.getSourceById(sourceId);
+        if (!source || source.space_id !== spaceId) {
+          sendJson({ error: "source not found in this space" }, 404);
+          return true;
+        }
+        const body = await readJsonBody();
+        const fields: { path?: string; label?: string | null } = {};
+        if (body.path !== undefined) {
+          if (typeof body.path !== "string" || body.path.trim().length === 0) {
+            sendJson({ error: "path must be a non-empty string" }, 400);
+            return true;
+          }
+          fields.path = body.path.trim();
+        }
+        if (body.label !== undefined) {
+          if (body.label === null) fields.label = null;
+          else if (typeof body.label === "string") fields.label = body.label;
+          else {
+            sendJson({ error: "label must be a string or null" }, 400);
+            return true;
+          }
+        }
+        const updated = spaceService.updateSource(sourceId, fields);
+        // Path change may have re-bound orphans / moved auto-sessions to a
+        // more specific source; even label-only changes affect the tile,
+        // so always broadcast.
+        broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+        sendJson({ ...updated, pathExists: true /* best-effort; UI also re-stats on GET */ });
       } catch (err) {
         sendError(err);
       }
