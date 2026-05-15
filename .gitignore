@@ -13,5 +13,8 @@ shared/types.js
 userland/
 server/registry.json
 
+# Dev-mode handshake file (server writes the bound port for the Vite proxy)
+.dev-port
+
 # Discovery PoC output (contains real paths/emails)
 scripts/discovery-poc-last.json

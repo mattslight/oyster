@@ -143,16 +143,18 @@ const BACKUPS_DIR = join(OYSTER_HOME, "backups");
 // Alias to OYSTER_HOME to minimise the surface of this PR.
 const USERLAND_DIR = OYSTER_HOME;
 
-// Dev handshake: write the actual bound port to userland/.dev-port so the
-// Vite dev server proxies to *this* backend, not whichever Oyster happens
-// to be on 3333. Each worktree has its own userland → its own file → no
-// cross-talk. Removed on shutdown so a stale file fails loud (connection
+// Dev handshake: write the actual bound port to ./.dev-port (repo root) so
+// the Vite dev server proxies to *this* backend, not whichever Oyster
+// happens to be on 3333. Lives at the repo root rather than under
+// OYSTER_HOME because each worktree has its own checkout → its own file →
+// no cross-talk, and so the file stays alongside `package.json`'s `npm run
+// dev` wait-on. Removed on shutdown so a stale file fails loud (connection
 // refused) rather than silent (talking to the wrong server). The pre-listen
 // delete closes the race where wait-on would otherwise succeed against a
 // crashed prior run's stale file. Declared up here (not next to listen())
 // so the SIGTERM/SIGINT handlers registered below don't hit a const TDZ if
 // a signal arrives mid-boot.
-const DEV_PORT_FILE = join(USERLAND_DIR, ".dev-port");
+const DEV_PORT_FILE = join(PACKAGE_ROOT, ".dev-port");
 function clearDevPortFile() {
   try { rmSync(DEV_PORT_FILE, { force: true }); } catch { /* best effort */ }
 }
@@ -699,22 +701,30 @@ startGenerationTimer((id, filePath, builtin) => {
 });
 startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DIR));
 
-process.on("SIGTERM", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); releaseLock(OYSTER_HOME); process.exit(0); });
-process.on("SIGINT", () => { markShuttingDown(); killOpenCode(); db.close(); memoryProvider.close(); clearDevPortFile(); releaseLock(OYSTER_HOME); process.exit(0); });
-process.on("uncaughtException", (err) => {
-  console.error(`[oyster] uncaught exception: ${err.message}`);
+// Shutdown cleanup. Wrap each step so a throw in (say) killOpenCode doesn't
+// stop the dev-port file and the workspace lock from being cleared — a stale
+// lock left behind is more annoying than the failure that triggered the exit.
+function shutdown(code: number): never {
   markShuttingDown();
   try { killOpenCode(); } catch { /* best effort */ }
+  try { db.close(); } catch { /* best effort */ }
+  try { memoryProvider.close(); } catch { /* best effort */ }
+  try { clearDevPortFile(); } catch { /* best effort */ }
+  try { releaseLock(OYSTER_HOME); } catch { /* best effort */ }
+  process.exit(code);
+}
+process.on("SIGTERM", () => shutdown(0));
+process.on("SIGINT", () => shutdown(0));
+process.on("uncaughtException", (err) => {
+  console.error(`[oyster] uncaught exception: ${err.message}`);
   // Fail fast — the server is in an unknown state with opencode-ai dead and
   // restart disabled. Exiting non-zero lets the user restart cleanly rather
   // than leaving a zombie that silently drops every chat message.
-  process.exit(1);
+  shutdown(1);
 });
 process.on("unhandledRejection", (err) => {
   console.error(`[oyster] unhandled rejection: ${err instanceof Error ? err.message : err}`);
-  markShuttingDown();
-  try { killOpenCode(); } catch { /* best effort */ }
-  process.exit(1);
+  shutdown(1);
 });
 
 // ── UI push events (SSE) ──
