@@ -437,7 +437,7 @@ See `0.4.0-beta.0` through `0.4.0-beta.8` below for per-beta detail.
 ### Added
 
 - **Plugins — Tier 2 installer.** `oyster install <id>`, `oyster uninstall <id>`, `oyster list` install community plugins by id.
-- `oyster install <id>` resolves the repo from the `mattslight/oyster-community-plugins` registry.
+- `oyster install <id>` resolves the repo from the `oyster-to/oyster-community-plugins` registry.
 - New `/plugins` catalog page on oyster.to with copy-install buttons, strict input validation, and a CDN fallback.
 - Plugin system design doc.
 
