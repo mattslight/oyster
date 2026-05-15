@@ -371,16 +371,20 @@ export class SqliteSessionStore implements SessionStore {
   rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number {
     // Longest-prefix rebind. Touches `assignment_mode = 'auto'` rows only.
     //
-    // Match condition: `cwd = path` (exact) OR `cwd LIKE path || '/%'`
-    // (proper subdirectory — the `/` guard stops `~/Oyster-old` from being
-    // matched by `~/Oyster`).
+    // Match condition: `cwd == path` (exact) OR `cwd` starts with
+    // `path + '/'`. Comparison is via `substr()` rather than `LIKE`
+    // because SQL LIKE treats `_` and `%` as wildcards, and `_` is
+    // unavoidable in real-world paths (`node_modules`, `my_repo`,
+    // snake-case directories generally) — LIKE would silently mis-bind
+    // wherever a path contains those characters. The substr form is
+    // literal and cheap.
     //
-    // The NOT EXISTS clause is what makes longest-prefix work both ways:
+    // The NOT EXISTS clause makes longest-prefix work both ways:
     //   - Orphan auto rows whose cwd matches this source bind here.
-    //   - Auto rows currently bound to a *less specific* source move up to
-    //     this one (the "improve" case — e.g. session was bound to
-    //     `~/Oyster` when only that source existed; now `~/Oyster/web` is
-    //     attached and the session's cwd is `~/Oyster/web/src`).
+    //   - Auto rows currently bound to a *less specific* source move up
+    //     to this one (the "improve" case — e.g. session was bound to
+    //     `~/Oyster` when only that source existed; now `~/Oyster/web`
+    //     is attached and the session's cwd is `~/Oyster/web/src`).
     //   - Auto rows bound to a more specific source are never demoted —
     //     NOT EXISTS finds the longer match and the row is skipped.
     //   - Manual rows are immune via the assignment_mode filter.
@@ -390,16 +394,24 @@ export class SqliteSessionStore implements SessionStore {
             SET space_id = @space_id, source_id = @source_id
           WHERE assignment_mode = 'auto'
             AND cwd IS NOT NULL
-            AND (cwd = @path OR cwd LIKE @path_prefix)
+            AND (
+              cwd = @path
+              OR (substr(cwd, 1, length(@path)) = @path
+                  AND substr(cwd, length(@path) + 1, 1) = '/')
+            )
             AND NOT EXISTS (
               SELECT 1 FROM sources s
                WHERE s.removed_at IS NULL
                  AND s.id <> @source_id
                  AND length(s.path) > length(@path)
-                 AND (sessions.cwd = s.path OR sessions.cwd LIKE s.path || '/%')
+                 AND (
+                   sessions.cwd = s.path
+                   OR (substr(sessions.cwd, 1, length(s.path)) = s.path
+                       AND substr(sessions.cwd, length(s.path) + 1, 1) = '/')
+                 )
             )`,
       )
-      .run({ space_id: spaceId, source_id: sourceId, path, path_prefix: `${path}/%` });
+      .run({ space_id: spaceId, source_id: sourceId, path });
     return Number(info.changes);
   }
 

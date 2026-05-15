@@ -466,6 +466,31 @@ export function initDb(userlandDir: string): Database.Database {
   } catch { /* already exists */ }
   db.exec("CREATE INDEX IF NOT EXISTS sessions_auto_cwd ON sessions(cwd) WHERE assignment_mode = 'auto'");
 
+  // One-time canonical-form migration for paths and cwds. The longest-prefix
+  // binding SQL compares `sessions.cwd` against `sources.path` via substr
+  // equality, which requires identical separator conventions and no trailing
+  // slash. New writes go through `normaliseSourcePath` (which produces
+  // forward-slash, trimmed strings); pre-existing rows may have backslashes
+  // (Windows) or trailing slashes. Rewrite them in place once so the new
+  // heuristic catches everything that ought to match. Idempotent: re-running
+  // on already-canonical rows is a no-op. We do NOT resolve symlinks here
+  // (that would require a JS-side loop with realpath calls per row and
+  // wouldn't work for missing paths) — separator + trim is enough to fix
+  // the cross-platform case that motivated this.
+  db.exec(`
+    UPDATE sources
+       SET path = rtrim(replace(path, '\\', '/'), '/')
+     WHERE path LIKE '%\\%'
+        OR (length(path) > 1 AND substr(path, length(path), 1) = '/');
+  `);
+  db.exec(`
+    UPDATE sessions
+       SET cwd = rtrim(replace(cwd, '\\', '/'), '/')
+     WHERE cwd IS NOT NULL
+       AND (cwd LIKE '%\\%'
+            OR (length(cwd) > 1 AND substr(cwd, length(cwd), 1) = '/'));
+  `);
+
   // Cloud session sync (#322). Seven columns drive the cross-device sync:
   // - sync_dirty_at: unix-ms of the most recent material change since last
   //   successful push. NULL = clean. Overwritten on every dirty mark, so

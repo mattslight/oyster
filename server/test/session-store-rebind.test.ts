@@ -173,6 +173,33 @@ describe("rebindAutoSessionsForSource (longest-prefix)", () => {
     expect(n).toBe(0);
   });
 
+  it("treats LIKE wildcards in path literally (no _ / % aliasing)", () => {
+    // Real-world paths contain `_` constantly (`node_modules`, `my_repo`).
+    // SQL LIKE treats `_` as a single-char wildcard, so an unescaped
+    // implementation would mis-bind a cwd of `/repos/myXrepo/foo` to a
+    // source at `/repos/my_repo`. The substr-based comparison treats `_`
+    // (and `%`) literally.
+    seedSpace(env.db, "sp");
+    seedSource(env.db, "src", "sp", "/repos/my_repo");
+    // Two orphan sessions: one is a genuine subdirectory match, one is a
+    // similarly-named sibling that LIKE would have falsely matched.
+    seedSession(env.db, { id: "real", cwd: "/repos/my_repo/web" });
+    seedSession(env.db, { id: "ghost", cwd: "/repos/myXrepo/web" });
+    env.sessionStore.rebindAutoSessionsForSource("sp", "src", "/repos/my_repo");
+    expect(env.sessionStore.getById("real")?.source_id).toBe("src");
+    expect(env.sessionStore.getById("ghost")?.source_id).toBeNull();
+  });
+
+  it("treats % in a path literally", () => {
+    seedSpace(env.db, "sp");
+    seedSource(env.db, "src", "sp", "/repos/100%done");
+    seedSession(env.db, { id: "real", cwd: "/repos/100%done/sub" });
+    seedSession(env.db, { id: "ghost", cwd: "/repos/100AnythingDone/sub" });
+    env.sessionStore.rebindAutoSessionsForSource("sp", "src", "/repos/100%done");
+    expect(env.sessionStore.getById("real")?.source_id).toBe("src");
+    expect(env.sessionStore.getById("ghost")?.source_id).toBeNull();
+  });
+
   it("soft-deleted sources don't participate in the 'NOT EXISTS longer match' check", () => {
     seedSpace(env.db, "sp");
     seedSource(env.db, "broad", "sp", "/Users/me/scratch");
@@ -218,6 +245,13 @@ describe("getActiveSourceForCwd (longest-prefix read)", () => {
     seedSpace(env.db, "sp");
     seedSource(env.db, "src", "sp", "/Users/me/scratch");
     expect(env.spaceStore.getActiveSourceForCwd("/Users/me/scratch-old")).toBeUndefined();
+  });
+
+  it("treats _ in a source path literally (no LIKE wildcard aliasing)", () => {
+    seedSpace(env.db, "sp");
+    seedSource(env.db, "src", "sp", "/repos/my_repo");
+    expect(env.spaceStore.getActiveSourceForCwd("/repos/my_repo/sub")?.id).toBe("src");
+    expect(env.spaceStore.getActiveSourceForCwd("/repos/myXrepo/sub")).toBeUndefined();
   });
 
   it("ignores soft-deleted sources", () => {

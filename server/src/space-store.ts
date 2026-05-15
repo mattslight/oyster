@@ -142,14 +142,21 @@ export class SqliteSpaceStore implements SpaceStore {
       getSourceById: db.prepare("SELECT * FROM sources WHERE id = ?"),
       getActiveSourceByPath: db.prepare("SELECT * FROM sources WHERE path = ? AND removed_at IS NULL"),
       // Longest-prefix lookup. ORDER BY length(path) DESC means a session
-      // whose cwd matches both `~/Oyster` and `~/Oyster/web` lands under the
-      // more specific source. The `?2 LIKE path || '/%'` form requires the
-      // path's trailing slash to anchor at a directory boundary — without
-      // it `~/Oyster` would falsely match a cwd of `~/Oyster-old`.
+      // whose cwd matches both `~/Oyster` and `~/Oyster/web` lands under
+      // the more specific source. Comparison is literal substr-based, not
+      // LIKE: SQL LIKE treats `_` and `%` as wildcards, and `_` shows up
+      // in nearly every codebase (`node_modules`, `my_repo`, …) — using
+      // LIKE here would silently mis-bind. The trailing-`/` substr check
+      // anchors at a directory boundary so `~/Oyster` doesn't capture a
+      // cwd of `~/Oyster-old`.
       getActiveSourceForCwd: db.prepare(
         `SELECT * FROM sources
           WHERE removed_at IS NULL
-            AND (? = path OR ? LIKE path || '/%')
+            AND (
+              @cwd = path
+              OR (substr(@cwd, 1, length(path)) = path
+                  AND substr(@cwd, length(path) + 1, 1) = '/')
+            )
           ORDER BY length(path) DESC
           LIMIT 1`,
       ),
@@ -206,7 +213,7 @@ export class SqliteSpaceStore implements SpaceStore {
   }
   getActiveSourceByPath(path: string): Source | undefined { return this.stmts.getActiveSourceByPath.get(path) as Source | undefined; }
   getActiveSourceForCwd(cwd: string): Source | undefined {
-    return this.stmts.getActiveSourceForCwd.get(cwd, cwd) as Source | undefined;
+    return this.stmts.getActiveSourceForCwd.get({ cwd }) as Source | undefined;
   }
   getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined {
     return this.stmts.getSoftDeletedSourceByPathForSpace.get(spaceId, path) as Source | undefined;
