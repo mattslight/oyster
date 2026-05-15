@@ -20,7 +20,7 @@ function makeDb(): Database.Database {
       removed_at           TEXT,
       source_origin        TEXT NOT NULL DEFAULT 'manual',
       source_ref           TEXT,
-      source_id            TEXT,
+      project_id           TEXT,
       created_at           TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
       share_token          TEXT,

@@ -16,7 +16,7 @@ export interface ArtifactRow {
   removed_at: string | null;
   source_origin: "manual" | "discovered" | "ai_generated";
   source_ref: string | null;   // e.g. 'web/:app', 'README.md:notes'
-  source_id: string | null;    // FK to sources.id; NULL = not from a linked external source
+  project_id: string | null;   // FK to projects.id; NULL = not yet bound to a project
   created_at: string;
   updated_at: string;
   share_token: string | null;
@@ -30,9 +30,10 @@ export interface ArtifactRow {
 
 // ── Store interface ──
 
-export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "source_id" | "share_token" | "share_mode" | "share_password_hash" | "published_at" | "share_updated_at" | "unpublished_at" | "pinned_at"> & {
+export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "project_id" | "share_token" | "share_mode" | "share_password_hash" | "published_at" | "share_updated_at" | "unpublished_at" | "pinned_at"> & {
   source_origin?: "manual" | "discovered" | "ai_generated";
   source_ref?: string | null;
+  project_id?: string | null;
 };
 
 export interface ArtifactStore {
@@ -81,11 +82,11 @@ export class SqliteArtifactStore implements ArtifactStore {
         INSERT INTO artifacts (
           id, owner_id, space_id, label, artifact_kind,
           storage_kind, storage_config, runtime_kind, runtime_config,
-          group_name, source_origin, source_ref
+          group_name, source_origin, source_ref, project_id
         ) VALUES (
           @id, @owner_id, @space_id, @label, @artifact_kind,
           @storage_kind, @storage_config, @runtime_kind, @runtime_config,
-          @group_name, COALESCE(@source_origin, 'manual'), @source_ref
+          @group_name, COALESCE(@source_origin, 'manual'), @source_ref, @project_id
         )
       `),
       delete: db.prepare("DELETE FROM artifacts WHERE id = ?"),
@@ -117,7 +118,7 @@ export class SqliteArtifactStore implements ArtifactStore {
   }
 
   insert(row: InsertRow): void {
-    this.stmts.insert.run(row);
+    this.stmts.insert.run({ project_id: null, ...row });
   }
 
   resurface(id: string): void {
@@ -129,7 +130,7 @@ export class SqliteArtifactStore implements ArtifactStore {
   private static readonly UPDATABLE_COLUMNS = new Set([
     "owner_id", "space_id", "label", "artifact_kind",
     "storage_kind", "storage_config", "runtime_kind", "runtime_config",
-    "group_name", "removed_at", "source_origin", "source_ref",
+    "group_name", "removed_at", "source_origin", "source_ref", "project_id",
   ]);
 
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void {

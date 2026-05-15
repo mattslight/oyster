@@ -461,6 +461,10 @@ export function initDb(userlandDir: string): Database.Database {
   catch { /* already exists */ }
   db.exec("CREATE INDEX IF NOT EXISTS sessions_project_id ON sessions(project_id) WHERE project_id IS NOT NULL");
 
+  try { db.exec("ALTER TABLE artifacts ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL"); }
+  catch { /* already exists */ }
+  db.exec("CREATE INDEX IF NOT EXISTS artifacts_project_id ON artifacts(project_id) WHERE project_id IS NOT NULL");
+
   // Sources → projects backfill was a one-shot for pre-rewrite installs;
   // it has already run on the only DB it ever needed to migrate. Fresh
   // installs go straight to the projects model.
