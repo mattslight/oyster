@@ -522,22 +522,10 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   // ── detach_source ──
 
-  tool(
-    "detach_source",
-    "Detach a previously-linked folder from a space. Soft-deletes the link AND any tiles that came from that folder. The folder itself is untouched on disk. Reversible — re-attaching the same path restores the link and resurfaces the tiles.",
-    {
-      space_id: z.string().describe("ID of the space the folder is attached to"),
-      path: z.string().describe("Absolute path of the linked folder to detach (~/ supported)"),
-    },
-    async ({ space_id, path: rawPath }) => {
-      const source = deps.spaceService.getActiveSourceByPath(rawPath);
-      if (!source || source.space_id !== space_id) {
-        throw new Error(`No folder at "${rawPath}" is currently attached to space "${space_id}".`);
-      }
-      deps.spaceService.removeSource(source.id);
-      return { detached: source.path, source_id: source.id, space_id: source.space_id };
-    },
-  );
+  // Removed: detach_source, set_source_path, consolidate_sources — all
+  // source-shaped operations that the projects identity model supersedes.
+  // Use create_project / delete_project / claim_orphan (HTTP today; MCP
+  // wrappers are follow-up work) instead.
 
   // ── move_session ──
 
@@ -571,52 +559,6 @@ export function createMcpServer(deps: McpDeps): McpServer {
         }
         throw err;
       }
-    },
-  );
-
-  // ── set_source_path ──
-
-  tool(
-    "set_source_path",
-    "Update a source's filesystem path — e.g. after the user renamed or moved the folder on disk. Existing sessions bound to this source stay bound (source identity is its id, not its path); auto-orphans whose cwd matches the new path get rebound. Path existence is advisory: a non-existent path is accepted (useful for unmounted drives). If the new path is already attached to another source in the same space, throws — call consolidate_sources instead to merge.",
-    {
-      source_id: z.string().describe("ID of the source to update"),
-      path: z.string().describe("New absolute folder path (~/ supported)"),
-    },
-    async ({ source_id, path }) => {
-      const updated = deps.spaceService.updateSource(source_id, { path });
-      deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-      return {
-        source_id: updated.id,
-        space_id: updated.space_id,
-        path: updated.path,
-        label: updated.label,
-      };
-    },
-  );
-
-  // ── consolidate_sources ──
-
-  tool(
-    "consolidate_sources",
-    "Merge one source into another in the same space: bulk-reassign every session and artefact from the `from` source onto the `into` source, then soft-delete `from`. Use this when a folder rename or partial onboarding left multiple sources covering one logical project. Cross-space consolidation is not supported.",
-    {
-      from_source_id: z.string().describe("Source that will be merged away (soft-deleted at the end)"),
-      into_source_id: z.string().describe("Destination source that receives the sessions and artefacts"),
-    },
-    async ({ from_source_id, into_source_id }) => {
-      const result = deps.spaceService.consolidateSource(from_source_id, into_source_id);
-      deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-      return {
-        sessions_moved: result.sessionsMoved,
-        artefacts_moved: result.artefactsMoved,
-        into: {
-          id: result.intoSource.id,
-          space_id: result.intoSource.space_id,
-          path: result.intoSource.path,
-          label: result.intoSource.label,
-        },
-      };
     },
   );
 
