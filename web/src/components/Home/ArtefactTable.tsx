@@ -103,6 +103,7 @@ export function ArtefactTable({ artifacts, spaces, onArtifactClick, onArtifactPu
                   <Cloud
                     size={11}
                     strokeWidth={2.5}
+                    fill="currentColor"
                     style={{ marginLeft: 6, verticalAlign: "-1px" }}
                     aria-label="Cloud-only"
                   />
