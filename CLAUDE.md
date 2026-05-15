@@ -29,7 +29,7 @@ Browser → http://localhost:4444
 
 **OpenCode** — AI engine, spawned as a subprocess by the server. Not user-facing. Configured via `.opencode/agents/oyster.md` and `.opencode/config.toml`.
 
-**SQLite** (`~/Oyster/db/oyster.db` installed; `./userland/db/oyster.db` dev) — artefact and space registry. Fast, local, no infrastructure.
+**SQLite** (`~/Oyster/db/oyster.db`) — artefact and space registry. Fast, local, no infrastructure. Dev and the installed package share the same workspace; a single-instance lockfile (`~/Oyster/.oyster.lock`) makes two concurrent servers impossible. Override with `OYSTER_USERLAND=/some/other/path` only for an isolated worktree.
 
 **Memory (v1)** — SQLite FTS5-backed `remember` / `recall` / `forget` / `list_memories` tools in `server/src/memory-store.ts`. Richer cross-session / graph-based memory is future work.
 
@@ -87,7 +87,7 @@ npm run build:changelog  # renders CHANGELOG.md → docs/changelog.html
 - Never write to SQLite directly from agent — use MCP tools
 - `source_origin: 'ai_generated'` on all agent-created artifacts
 - SQLite migrations are additive `ALTER TABLE ... ADD COLUMN` with try/catch (idempotent)
-- User workspace lives at `~/Oyster/` (installed) or `./userland/` (dev), split into `db/`, `config/`, `apps/`, `backups/`, `spaces/`. See `docs/plans/archived/userland-layout.md` for the full layout.
+- User workspace lives at `~/Oyster/`, split into `db/`, `config/`, `apps/`, `backups/`, `spaces/`. Dev and the installed package share this directory and cannot run concurrently (lockfile enforced). See `docs/plans/archived/userland-layout.md` for the full layout.
 - Always use feature branches, never commit to main directly
 - Add a `CHANGELOG.md` entry in the same PR as any user-visible change; run `npm run build:changelog` to refresh `docs/changelog.html` (also auto-runs via the `version` lifecycle on `npm run release`)
 - Changelog style is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/): terse bullets under Added / Changed / Fixed / Security, each one a user-visible outcome (bold lead-in, 1–2 lines max). No internal file paths, MCP tool names, route names, or implementation detail — those belong in the PR. If a section runs past ~6 bullets or any bullet runs past two lines, cut it down before tagging.

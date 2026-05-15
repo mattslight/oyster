@@ -12,6 +12,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **One Oyster per machine.** Dev mode and the installed package now share a single workspace at `~/Oyster/` instead of dev getting its own `./userland/` copy. Starting a second Oyster against the same workspace is refused with a clear *"already running on port X (pid Y)"* message rather than racing against the first one on the SQLite DB and `.dev-port` file. Set `OYSTER_USERLAND=/some/path` if you genuinely want an isolated worktree (and a different `OYSTER_PORT`).
 - **Sessions bind to the most specific matching folder.** Attaching `~/Repo` then later `~/Repo/web` now moves sessions that ran in `~/Repo/web` over to the more specific source automatically. Manually-pinned sessions are immune.
 - **Attaching a folder no longer requires it to exist on disk.** The orphan-tile attach flow used to throw when the folder had been renamed since the sessions ran. Attach succeeds; the tile renders with the amber *Path missing* chip; the longest-prefix heuristic claims the matching sessions.
 
