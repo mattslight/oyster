@@ -112,56 +112,7 @@ export class SpaceService {
     private artifactService: ArtifactService,
     private sessionStore: SessionStore,
     private spaceSync?: SpaceSyncService,
-    // Optional: SSE broadcaster for source_rebind_* progress events. Tests
-    // omit it; production passes index.ts's broadcastUiEvent.
-    private broadcast?: (command: string, payload: unknown) => void,
   ) {}
-
-  // Batched, async longest-prefix rebind. Returns immediately; the rebind
-  // runs in the background and emits source_rebind_started /
-  // source_rebind_progress / source_rebind_completed SSE events so the UI
-  // can show a "re-binding N sessions…" indicator instead of staring at a
-  // 15s spinner during attach.
-  //
-  // The legacy single-UPDATE path (rebindAutoSessionsForSource) is fast
-  // when sessions has 100s of rows but turns into a full table scan with
-  // unindexable substr() on bigger DBs (1.7 GB session_events at a real
-  // user's install was hitting the mutation timeout). The batched form
-  // uses findAutoSessionsToRebind, which is indexable.
-  //
-  // Batch size 100 keeps the per-batch UPDATE under a few ms even on a
-  // huge DB; the setImmediate yield between batches lets concurrent
-  // requests (chat, SSE, MCP) interleave.
-  private scheduleRebind(spaceId: string, sourceId: string, path: string): void {
-    const BATCH = 100;
-    const emit = (command: string, payload: object) => {
-      try { this.broadcast?.(command, { sourceId, spaceId, ...payload }); }
-      catch { /* never let SSE crash the rebind loop */ }
-    };
-    void (async () => {
-      try {
-        emit("source_rebind_started", { path });
-        let done = 0;
-        // Two consecutive empty batches → terminate. The "two" guards against
-        // a transient interleaving where a session row's cwd changes between
-        // batches; in practice one empty batch is enough.
-        while (true) {
-          const ids = this.sessionStore.findAutoSessionsToRebind(spaceId, sourceId, path, BATCH);
-          if (ids.length === 0) break;
-          this.sessionStore.rebindSessionsByIds(spaceId, sourceId, ids);
-          done += ids.length;
-          emit("source_rebind_progress", { done });
-          // Yield to the event loop so HTTP/SSE/MCP work isn't starved
-          // during a long rebind.
-          await new Promise<void>((resolve) => setImmediate(resolve));
-        }
-        emit("source_rebind_completed", { total: done });
-      } catch (err) {
-        console.warn(`[rebind] sourceId=${sourceId} failed:`, err instanceof Error ? err.message : err);
-        emit("source_rebind_completed", { total: -1, error: err instanceof Error ? err.message : String(err) });
-      }
-    })();
-  }
 
   createSpace(params: { name: string }): Space {
     const displayName = params.name.trim();
@@ -211,7 +162,6 @@ export class SpaceService {
         // still backfill — pre-existing orphan sessions for this cwd may
         // never have been swept (e.g. attached before the backfill behaviour
         // existed). Idempotent, so safe to run on every retry.
-        this.scheduleRebind(spaceId, active.id, resolved);
         return active;
       }
       const ownerName = this.spaceStore.getById(active.space_id)?.display_name ?? active.space_id;
@@ -290,11 +240,6 @@ export class SpaceService {
       }
     }
 
-    // Re-attribute orphan sessions whose cwd matches — same side-effect as
-    // createSpaceFromPath, so the Unsorted folder tile disappears once its
-    // sessions get a home. Async/batched: attach itself returns now, and the
-    // UI shows a "re-binding…" indicator driven by source_rebind_* SSE events.
-    this.scheduleRebind(spaceId, source.id, resolved);
     return source;
   }
 
@@ -391,7 +336,6 @@ export class SpaceService {
         label: labelUpdate,
       });
       if (resolvedPath !== undefined) {
-        this.scheduleRebind(source.space_id, sourceId, resolvedPath);
       }
     });
 
@@ -540,10 +484,6 @@ export class SpaceService {
       throw err;
     }
 
-    this.scheduleRebind(space.id, source.id, resolved);
-    // Legacy return shape uses a sync count; with the async rebind there's
-    // no count to return at this point. Callers that surface the number get
-    // 0 here and the real count via the source_rebind_completed SSE event.
     const backfilled = 0;
     return { space, source, backfilled };
   }

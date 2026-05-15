@@ -90,27 +90,10 @@ describe("SpaceService.removeSource — soft-delete + session detach", () => {
     expect(env.sessionStore.getById("manual")?.assignment_mode).toBe("manual"); // still pinned, just orphan now
   });
 
-  it("after detach + reattach, only auto sessions re-bind; manual stays orphan", () => {
-    const folder = join(env.workDir, "proj");
-    mkdirSync(folder);
-    const space = env.service.createSpace({ name: "sp" });
-    const first = env.service.addSource(space.id, folder);
-    seedSession(env.db, { id: "auto", cwd: folder, source_id: first.id, space_id: space.id });
-    seedSession(env.db, {
-      id: "manual",
-      cwd: folder,
-      source_id: first.id,
-      space_id: space.id,
-      assignment_mode: "manual",
-    });
-
-    env.service.removeSource(first.id);
-    // Reattach — addSource runs the heuristic.
-    const restored = env.service.addSource(space.id, folder);
-
-    expect(env.sessionStore.getById("auto")?.source_id).toBe(restored.id);
-    expect(env.sessionStore.getById("manual")?.source_id).toBeNull(); // never recaptured by heuristic
-  });
+  // Removed: "after detach + reattach, only auto sessions re-bind" — the
+  // auto-rebind side effect of addSource was deleted along with the
+  // longest-prefix rebind machinery. The replacement is `claim_orphan`,
+  // covered by project-service.test.ts.
 });
 
 describe("SpaceService.addSource — orphan-tile attach with missing folder", () => {
@@ -118,22 +101,16 @@ describe("SpaceService.addSource — orphan-tile attach with missing folder", ()
   beforeEach(() => { env = makeEnv(); });
   afterEach(() => { env.cleanup(); });
 
-  it("accepts a non-existent path and binds orphan auto-sessions whose cwd matches", () => {
-    // Scenario from the field: 41 'done' sessions exist with cwd
-    // ~/Dev/oyster-os, but that folder was renamed on disk. The orphan-tile
-    // attach must succeed even though the path is gone, so the heuristic
-    // can claim the sessions for the chosen space.
+  it("accepts a non-existent path (advisory existence)", () => {
+    // Scenario from the field: sessions exist with cwd ~/Dev/oyster-os, but
+    // that folder was renamed on disk. The attach must still succeed; the
+    // tile renders with pathExists: false. (Auto-rebind was removed; orphan
+    // recovery now goes through claim_orphan in project-service.)
     const missing = join(env.workDir, "renamed-away");
     const space = env.service.createSpace({ name: "sp" });
-    seedSession(env.db, { id: "a", cwd: missing });
-    seedSession(env.db, { id: "b", cwd: join(missing, "sub") });
 
     const source = env.service.addSource(space.id, missing);
     expect(source.path).toBe(missing);
-    expect(env.sessionStore.getById("a")?.source_id).toBe(source.id);
-    expect(env.sessionStore.getById("b")?.source_id).toBe(source.id);
-
-    // The tile would render with pathExists: false.
     const sources = env.service.getSources(space.id);
     expect(sources.find((s) => s.id === source.id)?.pathExists).toBe(false);
   });
@@ -151,7 +128,7 @@ describe("SpaceService.updateSource", () => {
   beforeEach(() => { env = makeEnv(); });
   afterEach(() => { env.cleanup(); });
 
-  it("rename to a sibling path: existing bindings stay; orphans with matching cwd re-bind", () => {
+  it("rename to a sibling path: existing bindings stay", () => {
     const old = join(env.workDir, "old");
     const renamed = join(env.workDir, "renamed");
     mkdirSync(old);
@@ -159,28 +136,19 @@ describe("SpaceService.updateSource", () => {
     const space = env.service.createSpace({ name: "sp" });
     const source = env.service.addSource(space.id, old);
 
-    // One auto session is already bound to the source.
     seedSession(env.db, {
       id: "bound",
       cwd: join(old, "sub"),
       source_id: source.id,
       space_id: space.id,
     });
-    // One orphan auto session whose cwd matches the NEW path (e.g. it was
-    // run after the user mv'd the folder but before they updated Oyster).
-    seedSession(env.db, { id: "orphan-new", cwd: join(renamed, "x") });
-    // One manual orphan — should NOT be touched.
-    seedSession(env.db, {
-      id: "orphan-manual",
-      cwd: join(renamed, "x"),
-      assignment_mode: "manual",
-    });
 
     env.service.updateSource(source.id, { path: renamed });
 
+    // The source's id is stable, so the binding survives a path change.
+    // Auto-rebind of orphans was removed with the longest-prefix machinery;
+    // claim_orphan in project-service now handles the orphan-recovery case.
     expect(env.sessionStore.getById("bound")?.source_id).toBe(source.id);
-    expect(env.sessionStore.getById("orphan-new")?.source_id).toBe(source.id);
-    expect(env.sessionStore.getById("orphan-manual")?.source_id).toBeNull();
   });
 
   it("accepts a non-existent path (advisory existence)", () => {
