@@ -11,6 +11,10 @@ import type { Space, ScanResult } from "../../shared/types.js";
 import { slugify, toScanStatus } from "./utils.js";
 import { normaliseSourcePath } from "./path-normalise.js";
 
+function pathExistsSafe(path: string): boolean {
+  try { return existsSync(path); } catch { return false; }
+}
+
 // Build a gitignore matcher from .gitignore at the scan root, if one exists.
 // Returns null when there's nothing to honor — callers can skip the per-entry
 // check entirely. Only the root .gitignore is read; nested .gitignore files
@@ -201,20 +205,85 @@ export class SpaceService {
     if (this.scanning.has(source.space_id)) {
       throw new Error(`Cannot detach while space "${source.space_id}" is scanning — try again in a moment.`);
     }
-    // Atomic cascade: artifact bulk soft-delete + source soft-delete inside a
-    // single transaction. If either fails the SQL rolls back together, so we
-    // never leave a partial state (tiles gone but source still attached, or
-    // vice versa). The cache invalidation in artifactService.removeBySource
+    // Atomic cascade: artifact bulk soft-delete + session source_id null-out
+    // + source soft-delete, all in one transaction. If any step fails the SQL
+    // rolls back together, so we never leave a partial state (tiles gone but
+    // source still attached, sessions pointing at a soft-deleted source, …).
+    // The session detach is explicit because `removeSource` is a soft-delete
+    // (UPDATE removed_at) — the FK `ON DELETE SET NULL` never fires, so
+    // without this update sessions silently keep pointing at a removed
+    // source. Mode is left untouched: a manually-pinned session whose source
+    // vanishes stays orphan-but-manual; "Let Oyster decide" re-binds it via
+    // the heuristic. The cache invalidation in artifactService.removeBySource
     // is a JS state change, not SQL — it doesn't roll back, but an over-eager
     // cache invalidation just causes a re-read on next access (harmless).
     this.spaceStore.transaction(() => {
       this.artifactService.removeBySource(sourceId);
+      this.sessionStore.detachSourceFromSessions(sourceId);
       this.spaceStore.softDeleteSource(sourceId);
     });
   }
 
-  getSources(spaceId: string): Source[] {
-    return this.spaceStore.getSources(spaceId);
+  /** Update a source's path and/or label. Path updates re-run the
+   *  longest-prefix heuristic so orphan auto-sessions whose `cwd` matches
+   *  the new path get bound, and previously-bound auto sessions move to a
+   *  more specific source if one now applies (the "improve" case). Existing
+   *  bindings on the same source are never touched — the source's identity
+   *  is its `id`, not its `path`, so renaming a folder doesn't unbind work.
+   *
+   *  Path existence is advisory: a non-existent path is accepted (useful
+   *  for unmounted drives or pre-recording a planned rename). The GET
+   *  response carries `pathExists` so the UI can surface a warning.
+   *
+   *  Collisions with another active source's path → caller-friendly error,
+   *  mirroring `addSource`. */
+  updateSource(sourceId: string, fields: { path?: string; label?: string | null }): Source {
+    const source = this.spaceStore.getSourceById(sourceId);
+    if (!source) throw new Error(`Source "${sourceId}" not found`);
+    if (source.removed_at) throw new Error(`Source "${sourceId}" is detached`);
+
+    let resolvedPath: string | undefined;
+    if (fields.path !== undefined) {
+      resolvedPath = normaliseSourcePath(fields.path);
+      const conflict = this.spaceStore.getActiveSourceByPath(resolvedPath);
+      if (conflict && conflict.id !== sourceId) {
+        const ownerName = this.spaceStore.getById(conflict.space_id)?.display_name ?? conflict.space_id;
+        throw new Error(`Path is already attached to space "${ownerName}"`);
+      }
+    }
+
+    const labelUpdate = fields.label === undefined
+      ? undefined
+      : (typeof fields.label === "string" && fields.label.trim().length > 0
+          ? fields.label.trim()
+          : null);
+
+    if (resolvedPath === undefined && labelUpdate === undefined) {
+      return source; // nothing to do
+    }
+
+    this.spaceStore.transaction(() => {
+      this.spaceStore.updateSource(sourceId, {
+        path: resolvedPath,
+        label: labelUpdate,
+      });
+      if (resolvedPath !== undefined) {
+        this.sessionStore.rebindAutoSessionsForSource(source.space_id, sourceId, resolvedPath);
+      }
+    });
+
+    return this.spaceStore.getSourceById(sourceId)!;
+  }
+
+  getSources(spaceId: string): Array<Source & { pathExists: boolean }> {
+    return this.spaceStore.getSources(spaceId).map((s) => ({
+      ...s,
+      // Cheap stat per source. Wrapped: a stale mount point that errors on
+      // stat (EBUSY / ETIMEDOUT) reads as "missing" instead of throwing
+      // back through a list endpoint. Existence is advisory anyway — used
+      // only for the "Path missing" surface affordance.
+      pathExists: pathExistsSafe(s.path),
+    }));
   }
 
   getSourceById(sourceId: string): Source | undefined {

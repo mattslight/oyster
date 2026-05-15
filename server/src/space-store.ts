@@ -149,7 +149,7 @@ export class SqliteSpaceStore implements SpaceStore {
       getActiveSourceForCwd: db.prepare(
         `SELECT * FROM sources
           WHERE removed_at IS NULL
-            AND (?1 = path OR ?2 LIKE path || '/%')
+            AND (? = path OR ? LIKE path || '/%')
           ORDER BY length(path) DESC
           LIMIT 1`,
       ),
