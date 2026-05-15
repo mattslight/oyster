@@ -379,14 +379,20 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     }>();
     for (const s of sessions) {
       if (s.spaceId !== null || !s.cwd) continue;
-      let entry = map.get(s.cwd);
+      // Group separator-equivalent Windows paths under one tile: local
+      // sessions write forward-slashed cwds while remote_sessions can hold
+      // the raw backslash form pushed from the origin device, so the same
+      // folder would otherwise render twice. Drive letter is lowercased
+      // because Windows treats the volume case-insensitively.
+      const key = s.cwd.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, d: string) => d.toLowerCase() + ":");
+      let entry = map.get(key);
       if (!entry) {
         entry = {
           cwd: s.cwd,
           counts: { active: 0, waiting: 0, disconnected: 0, done: 0 },
           lastEventAt: 0,
         };
-        map.set(s.cwd, entry);
+        map.set(key, entry);
       }
       entry.counts[s.state]++;
       const t = parseTimestamp(s.lastEventAt);
