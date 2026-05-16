@@ -1766,6 +1766,43 @@ body {
 }
 .spotlight-token-chip .x:hover { color: #d4d6db; }
 
+.spotlight-panel { position: relative; }
+.spotlight-ac {
+  position: absolute;
+  top: 48px;
+  left: 36px;
+  z-index: 6000;
+  min-width: 220px;
+  padding: 4px;
+  background: #181a1d;
+  border: 1px solid #3a3d44;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.spotlight-ac-hint {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6e7280;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid #2a2d33;
+  margin-bottom: 4px;
+}
+.spotlight-ac-hint--bottom { border-bottom: 0; border-top: 1px solid #2a2d33; margin: 4px 0 0; padding: 6px 8px 4px; }
+.spotlight-ac-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #d4d6db;
+}
+.spotlight-ac-item--sel { background: #2a2d33; }
+.spotlight-ac-prefix { color: #4d9aff; }
+.spotlight-ac-swatch { width: 8px; height: 8px; border-radius: 2px; }
+
 /* ── Hardcore Gate Modal ── */
 
 .hardcore-gate-overlay {

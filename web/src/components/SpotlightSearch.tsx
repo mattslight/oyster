@@ -9,6 +9,7 @@ import type { Memory } from "../data/memories-api";
 
 interface Props {
   artifacts: Artifact[];
+  spaces: { id: string; name?: string }[];
   onOpen: (artifact: Artifact) => void;
   onClose: () => void;
 }
@@ -21,12 +22,18 @@ const DEBOUNCE_MS = 180;
 type FilterType = "session" | "artefact" | "memory" | null;
 type SpotlightFilter = { type: FilterType; spaceId: string | null };
 
+const TYPE_OPTS: { value: 'session' | 'artefact' | 'memory'; color: string }[] = [
+  { value: 'session', color: '#4d9aff' },
+  { value: 'artefact', color: '#ff8a5c' },
+  { value: 'memory', color: '#a78bfa' },
+];
+
 type SpotlightHit =
   | { kind: "artefact"; artifact: Artifact }
   | { kind: "transcript"; hit: TranscriptHit }
   | { kind: "memory"; memory: Memory };
 
-export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
+export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [transcriptHits, setTranscriptHits] = useState<TranscriptHit[]>([]);
@@ -44,6 +51,49 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  type ActiveAc = { prefix: '@' | '#'; fragment: string; start: number } | null;
+  const activeAc: ActiveAc = useMemo(() => {
+    const at = query.lastIndexOf('@');
+    const hash = query.lastIndexOf('#');
+    const candidate = at > hash ? '@' : (hash > -1 ? '#' : null);
+    if (!candidate) return null;
+    const idx = candidate === '@' ? at : hash;
+    if (idx > 0 && !/\s/.test(query[idx - 1])) return null;
+    const fragment = query.slice(idx + 1);
+    if (/\s/.test(fragment)) return null;
+    return { prefix: candidate, fragment, start: idx };
+  }, [query]);
+
+  const acOptions = useMemo(() => {
+    if (!activeAc) return [];
+    const frag = activeAc.fragment.toLowerCase();
+    if (activeAc.prefix === '@') {
+      return TYPE_OPTS.filter(o => o.value.startsWith(frag));
+    }
+    return spaces
+      .filter(s => s.id.toLowerCase().includes(frag))
+      .slice(0, 8)
+      .map(s => ({ value: s.id, color: spaceColor(s.id) }));
+  }, [activeAc, spaces]);
+
+  const [acSelected, setAcSelected] = useState(0);
+  useEffect(() => {
+    // Reset highlighted autocomplete option when the active prefix/fragment changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAcSelected(0);
+  }, [activeAc?.prefix, activeAc?.fragment]);
+
+  function commitAcOption(value: string) {
+    if (!activeAc) return;
+    const isType = activeAc.prefix === '@';
+    setFilter(f => ({
+      type: isType ? (value as FilterType) : f.type,
+      spaceId: isType ? f.spaceId : value,
+      order: [...f.order.filter(o => o !== (isType ? 'type' : 'space')), isType ? 'type' : 'space'],
+    }));
+    setQuery(q => q.slice(0, activeAc.start) + q.slice(activeAc.start + 1 + activeAc.fragment.length));
+  }
 
   const artefactHits = useMemo(() => {
     if (!query.trim()) return [];
@@ -194,6 +244,23 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
       e.preventDefault();
       return;
     }
+    if (activeAc && acOptions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setAcSelected(s => Math.min(s + 1, acOptions.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setAcSelected(s => Math.max(s - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        commitAcOption(acOptions[acSelected].value);
+        return;
+      }
+    }
     if (e.key === "Escape") { onClose(); return; }
     // Arrow keys are no-ops on an empty list — without this guard,
     // ArrowDown's Math.min(s+1, -1) would set selected to -1.
@@ -260,6 +327,29 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
             <button className="spotlight-clear" onClick={() => setQuery("")}>✕</button>
           )}
         </div>
+
+        {activeAc && acOptions.length > 0 && (
+          <div className="spotlight-ac">
+            <div className="spotlight-ac-hint">
+              {activeAc.prefix === '@' ? 'Filter by type' : 'Filter by space'}
+            </div>
+            {acOptions.map((o, i) => (
+              <div
+                key={o.value}
+                className={`spotlight-ac-item${i === acSelected ? ' spotlight-ac-item--sel' : ''}`}
+                onMouseEnter={() => setAcSelected(i)}
+                onMouseDown={(e) => { e.preventDefault(); commitAcOption(o.value); }}
+              >
+                <span className="spotlight-ac-prefix">{activeAc.prefix}</span>
+                <span className="spotlight-ac-swatch" style={{ background: o.color }} />
+                <span className="spotlight-ac-label">{o.value}</span>
+              </div>
+            ))}
+            <div className="spotlight-ac-hint spotlight-ac-hint--bottom">
+              also try {activeAc.prefix === '@' ? '#space' : '@type'}
+            </div>
+          </div>
+        )}
 
         {showResults && (
           <div className="spotlight-results" ref={listRef}>

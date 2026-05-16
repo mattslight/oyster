@@ -617,6 +617,7 @@ export default function App() {
       {spotlightOpen && (
         <SpotlightSearch
           artifacts={artifacts}
+          spaces={spaces}
           onOpen={handleArtifactClick}
           onClose={() => setSpotlightOpen(false)}
         />
