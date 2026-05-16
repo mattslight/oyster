@@ -2,11 +2,19 @@
 
 All notable changes to Oyster are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0-beta.2] - 2026-05-16
 
 ### Fixed
 
-- **Boot migration order on existing installs.** `ALTER TABLE sessions DROP COLUMN source_id` was running before `DROP INDEX sessions_source_id`, which SQLite refuses; the column drop was caught silently and the legacy column persisted with a phantom FK to the dropped `sources` table. The index drop now runs first.
+- **`.oyster/id` self-heals at the project root, not inside subdirs.** A session at `<project>/web/src` whose marker had been deleted used to drop a new `.oyster/id` inside the subdir while leaving the real project root unmarked. The repair now writes at the matched ancestor.
+- **`Session.projectId` in artefact-touches.** The embedded session payload on `/api/artifacts/:id/sessions` was missing `projectId`; other session endpoints already returned it. Restored.
+
+## [0.9.0-beta.1] - 2026-05-16
+
+### Fixed
+
+- **Sessions stay bound to their project after restart.** Stale `space_id` (NULL or pointing at the wrong space) on rows with a valid `project_id` would render as orphans in *Everything else* even though they belonged to a real project. Boot-time repair syncs `sessions.space_id` and `artifacts.space_id` from the project's space on every start (idempotent; skips tombstone projects).
+- **Boot migration order on existing installs.** `ALTER TABLE sessions DROP COLUMN source_id` was running before `DROP INDEX sessions_source_id`, which SQLite refuses; the column drop was caught silently and the legacy column persisted. The index drop now runs first.
 - **Tilde paths in the "Add project" form.** `~/Dev/foo` no longer attaches a literal `~`; the leading tilde expands to the home directory before the marker is written, the cache is seeded, and orphan sessions are claimed.
 
 ## [0.9.0-beta.0] - 2026-05-16
