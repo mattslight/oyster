@@ -308,9 +308,8 @@ are logical groupings — they can optionally have one or more folders attached.
 
 **Onboarding a single project:**
 1. Call \`list_spaces\` — check if the space already exists (avoid duplicates).
-2. Call \`onboard_space\` with the project name and path — pass \`paths: ["/abs/path"]\` (array). Creates the space, attaches the path, scans for apps, docs, and diagrams.
-3. Call \`list_artifacts\` with the new space_id to see what was discovered.
-4. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
+2. Call \`onboard_space\` with the project name and path — pass \`paths: ["/abs/path"]\` (array). Creates the space and attaches the path as a project.
+3. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
 
 **Onboarding a developer container (e.g. \`~/Dev\` with many repos):**
 
@@ -386,7 +385,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   tool(
     "onboard_space",
-    "Create a space (or extend one with the same name) as a logical grouping for work. Spaces are named workspaces the user switches between — they don't require filesystem paths. If `paths` are provided, each folder is attached and scanned for apps, docs, and diagrams; if not, the space is created empty as a logical grouping (summaries, memories, and artifacts can attach later). If a space with this name already exists, any given paths are attached to it — NOT duplicated into a new one. Returns `created: true` when a new space was made, `created: false` when an existing one was extended.",
+    "Create a space (or extend one with the same name) as a logical grouping for work. Spaces are named workspaces the user switches between — they don't require filesystem paths. If `paths` are provided, each folder is attached as a project under the space; if not, the space is created empty as a logical grouping (summaries, memories, and artifacts can attach later). If a space with this name already exists, any given paths are attached to it — NOT duplicated into a new one. Returns `created: true` when a new space was made, `created: false` when an existing one was extended.",
     {
       name: z.string().describe("Display name for the space (slugified to ID). If a space with this name already exists, it's extended — no duplicate."),
       paths: z.array(z.string()).optional().describe("Optional. Absolute local paths to attach and scan. Omit for a logical grouping with no filesystem attachment."),
