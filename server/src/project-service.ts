@@ -15,6 +15,15 @@ export interface Project {
   spaceId: string;
   name: string;
   createdAt: string;
+  /** Most-recent cached path on this machine — used for tile labels +
+   *  tooltips. Null when no path has ever been cached for this project. */
+  recentPath?: string | null;
+  /** True when at least one of this project's cached paths exists on
+   *  disk. False = "homeless": the project only lives as a DB row, the
+   *  folder it came from has been renamed/moved/unmounted. Homeless
+   *  projects are the candidates for merging into a live project — no
+   *  marker rewrite needed, just a DB-side absorb. */
+  hasLivePath?: boolean;
   /** True when the project's most-recent cached path contains a `.git`
    *  entry (folder or file — git worktrees/submodules use a file).
    *  Computed at read time; never persisted, so a `git init` on disk is
@@ -56,18 +65,30 @@ export class ProjectService {
     const rows = this.db
       .prepare("SELECT id, space_id, name, created_at FROM projects WHERE space_id = ? AND removed_at IS NULL ORDER BY name COLLATE NOCASE")
       .all(spaceId) as ProjectRow[];
-    return rows.map((row) => ({ ...rowToProject(row), isGitRepo: this.detectGitRepo(row.id) }));
+    return rows.map((row) => ({ ...rowToProject(row), ...this.detectPathState(row.id) }));
   }
 
-  private detectGitRepo(projectId: string): boolean {
-    const row = this.db
-      .prepare("SELECT path FROM project_paths WHERE project_id = ? ORDER BY last_seen_at DESC LIMIT 1")
-      .get(projectId) as { path: string } | undefined;
-    if (!row) return false;
+  // Walk this project's cached paths once and derive:
+  //   - recentPath  (most-recent, for display)
+  //   - hasLivePath (ANY path exists on disk → not homeless)
+  //   - isGitRepo   (the most-recent path contains a .git entry)
+  // Three checks → one pass over `project_paths`. Stat is cheap; even a
+  // few thousand projects stay sub-millisecond.
+  private detectPathState(projectId: string): { recentPath: string | null; hasLivePath: boolean; isGitRepo: boolean } {
+    const paths = this.db
+      .prepare("SELECT path FROM project_paths WHERE project_id = ? ORDER BY last_seen_at DESC")
+      .all(projectId) as Array<{ path: string }>;
+    if (paths.length === 0) return { recentPath: null, hasLivePath: false, isGitRepo: false };
+    const recent = paths[0].path;
+    let hasLivePath = false;
+    for (const { path } of paths) {
+      if (existsSync(path)) { hasLivePath = true; break; }
+    }
     // `.git` is a folder for normal repos and a file for worktrees /
-    // submodules. existsSync handles both. Path-missing (renamed /
-    // unmounted drive) returns false — fine, the badge just doesn't show.
-    return existsSync(join(row.path, ".git"));
+    // submodules. existsSync handles both. Path-missing returns false —
+    // fine, the badge just doesn't show.
+    const isGitRepo = existsSync(join(recent, ".git"));
+    return { recentPath: recent, hasLivePath, isGitRepo };
   }
 
   // Bulk-tag orphan sessions whose `cwd` matches the project's path —

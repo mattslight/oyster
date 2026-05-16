@@ -7,6 +7,12 @@ export interface Project {
   spaceId: string;
   name: string;
   createdAt: string;
+  /** Most-recent cached path on this machine. Null when none cached. */
+  recentPath?: string | null;
+  /** False = homeless: project has no on-disk anchor (folder renamed,
+   *  unmounted, or never cached). Candidates for merging into a live
+   *  project — no marker rewrite needed. */
+  hasLivePath?: boolean;
   /** True when the project's most-recent cached path is a git repo on
    *  this machine. Drives the `<GitBranch>` chip on the project tile.
    *  Computed server-side per GET, so a `git init` after attach reflects

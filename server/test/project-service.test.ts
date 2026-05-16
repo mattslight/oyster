@@ -61,6 +61,49 @@ describe("ProjectService.listForSpace", () => {
     expect(projects.map((p) => p.name)).toEqual(["Alpha", "Zebra"]);
   });
 
+  it("flags hasLivePath: true + exposes recentPath when the most-recent cached path exists", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-live-"));
+    const proj = service.createProject({ spaceId: "work", name: "Live" });
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(proj.id, folder);
+
+    const [listed] = service.listForSpace("work");
+    expect(listed.hasLivePath).toBe(true);
+    expect(listed.recentPath).toBe(folder);
+
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("flags hasLivePath: false when every cached path is missing on disk (homeless)", () => {
+    const proj = service.createProject({ spaceId: "work", name: "Ghost" });
+    // Cache a path that doesn't exist — e.g. folder was renamed off-disk.
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(proj.id, "/tmp/this-folder-does-not-exist-" + Math.random());
+
+    const [listed] = service.listForSpace("work");
+    expect(listed.hasLivePath).toBe(false);
+    expect(listed.recentPath).toBeTruthy();
+  });
+
+  it("flags hasLivePath: true when ANY cached path exists (not just the most recent)", () => {
+    const liveFolder = mkdtempSync(join(tmpdir(), "oyster-livedup-"));
+    const proj = service.createProject({ spaceId: "work", name: "Mixed" });
+    // Older path that exists, newer path that's missing — UI should still
+    // consider the project live (has an on-disk anchor somewhere).
+    db.prepare("INSERT INTO project_paths (project_id, path, last_seen_at) VALUES (?, ?, datetime('now', '-1 hour'))").run(proj.id, liveFolder);
+    db.prepare("INSERT INTO project_paths (project_id, path, last_seen_at) VALUES (?, ?, datetime('now'))").run(proj.id, "/tmp/missing-" + Math.random());
+
+    const [listed] = service.listForSpace("work");
+    expect(listed.hasLivePath).toBe(true);
+
+    rmSync(liveFolder, { recursive: true, force: true });
+  });
+
+  it("flags hasLivePath: false + recentPath: null when no path is cached", () => {
+    service.createProject({ spaceId: "work", name: "Naked" });
+    const [listed] = service.listForSpace("work");
+    expect(listed.hasLivePath).toBe(false);
+    expect(listed.recentPath).toBeNull();
+  });
+
   it("flags isGitRepo: true when the project's cached path has a .git entry", () => {
     const repo = mkdtempSync(join(tmpdir(), "oyster-isgit-"));
     mkdirSync(join(repo, ".git"));

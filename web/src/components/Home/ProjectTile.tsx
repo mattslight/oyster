@@ -82,21 +82,29 @@ export function ProjectTile({
           onClick={onSelect}
           title={project.name}
         >
-          <div className="home-space-card-name">
+          <div
+            className="home-space-card-name"
+            style={{ display: "flex", alignItems: "flex-start", gap: 5 }}
+          >
             {project.isGitRepo && (
               <GitBranch
                 size={11}
                 aria-label="git repository"
-                style={{ marginRight: 5, verticalAlign: "-1px", opacity: 0.55 }}
+                style={{ marginTop: 4, flex: "0 0 auto", opacity: 0.55 }}
               />
             )}
-            {project.name}
+            <span style={{ minWidth: 0, wordBreak: "break-word" }}>{project.name}</span>
           </div>
           <div className="home-space-card-counts">
             {sessionCounts && sessionCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{sessionCounts.active} active</span>}
             {sessionCounts && sessionCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{sessionCounts.waiting} waiting</span>}
             {sessionCounts && sessionCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{sessionCounts.disconnected} disconnected</span>}
             <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>
+            {project.hasLivePath === false && (
+              <span className="signal" title={project.recentPath ?? "no path cached"} style={{ opacity: 0.55 }}>
+                <span className="pip pip-dim" />no folder
+              </span>
+            )}
           </div>
         </button>
         <button
