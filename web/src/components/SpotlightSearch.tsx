@@ -128,6 +128,10 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
       return;
     }
     if (filter.type !== null && filter.type !== "session") {
+      // Bump the ref so any in-flight fetch from a previous effect run
+      // (filter was set, request resolved between change and abort)
+      // fails its reqId guard and doesn't overwrite the cleared state.
+      transcriptReqIdRef.current++;
       setTranscriptHits([]);
       setTranscriptsLoading(false);
       return;
@@ -166,6 +170,8 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
       return;
     }
     if (filter.type !== null && filter.type !== "memory") {
+      // Same stale-request guard as the transcript effect — see comment there.
+      memoryReqIdRef.current++;
       setMemoryHits([]);
       setMemoriesLoading(false);
       return;
@@ -195,7 +201,7 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
 
   // Flat ordered list — used by keyboard nav. Artefacts first, then
   // transcript hits, then memory hits.
-  const flatHits: SpotlightHit[] = useMemo(() => [
+  const searchHits: SpotlightHit[] = useMemo(() => [
     ...artefactHits.map((a): SpotlightHit => ({ kind: "artefact", artifact: a })),
     ...transcriptHits.map((h): SpotlightHit => ({ kind: "transcript", hit: h })),
     ...memoryHits.map((m): SpotlightHit => ({ kind: "memory", memory: m })),
@@ -217,6 +223,13 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
       })
       .slice(0, 10);
   }, [query, filter.type, filter.spaceId, artifacts]);
+
+  // Whichever list is on screen drives keyboard nav. The recent feed only
+  // shows when searchHits is empty AND query/filter are empty, so the two
+  // never overlap.
+  const flatHits: SpotlightHit[] = searchHits.length > 0
+    ? searchHits
+    : recentFeed.map((a): SpotlightHit => ({ kind: "artefact", artifact: a }));
 
   useEffect(() => {
     // Reset highlighted result when the query changes.
@@ -284,7 +297,17 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
         return;
       }
     }
-    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "Escape") {
+      // If autocomplete is open, first Escape dismisses it (by deleting
+      // the @ / # prefix from the query); a second Escape closes Spotlight.
+      if (activeAc) {
+        e.preventDefault();
+        setQuery(q => q.slice(0, activeAc.start) + q.slice(activeAc.start + 1 + activeAc.fragment.length));
+        return;
+      }
+      onClose();
+      return;
+    }
     // Arrow keys are no-ops on an empty list — without this guard,
     // ArrowDown's Math.min(s+1, -1) would set selected to -1.
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && flatHits.length === 0) {
@@ -457,15 +480,17 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
         )}
 
         {!showResults && !showEmpty && recentFeed.length > 0 && (
-          <div className="spotlight-results">
+          <div className="spotlight-results" ref={listRef}>
             <div className="spotlight-section-label">Recent</div>
-            {recentFeed.map((a) => {
+            {recentFeed.map((a, i) => {
               const cfg = typeConfig[a.artifactKind] ?? typeConfig.app;
+              const isSelected = i === selected;
               return (
                 <div
                   key={`r-${a.id}`}
-                  className="spotlight-result"
-                  onClick={() => { onOpen(a); onClose(); }}
+                  className={`spotlight-result${isSelected ? " spotlight-result--selected" : ""}`}
+                  onMouseEnter={() => setSelected(i)}
+                  onClick={() => activate({ kind: "artefact", artifact: a })}
                 >
                   <span className="spotlight-result-dot" style={{ background: cfg.color }} />
                   <span className="spotlight-result-label">{a.label}</span>

@@ -16,7 +16,7 @@ The user's two driver phrasings:
 `web/src/components/SpotlightSearch.tsx`:
 
 - Single text input, flat results.
-- Two sources: artefact title fuzzy-match (client-side), transcript FTS (`/api/transcripts/search` via `searchTranscripts`).
+- Two sources: artefact title fuzzy-match (client-side), transcript FTS (`/api/sessions/search` via `searchTranscripts`).
 - No memory source. No type filter. No space filter beyond what the surface already shows.
 
 Memory backend is partially in place: `memory-store.ts` already runs FTS5 over `content` and `tags` (used by the MCP `recall` tool). There is **no** HTTP search endpoint — only `GET /api/memories` (list) and `POST /api/memories/reconcile`.
