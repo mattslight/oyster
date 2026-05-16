@@ -116,4 +116,16 @@ describe("writeOysterId", () => {
     expect(() => writeOysterId(dir, "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f")).toThrow();
     chmodSync(dir, 0o755); // restore for cleanup
   });
+
+  it("refuses to resurrect a missing folder — does NOT create the root just to drop a marker", () => {
+    // The lookup-project cache fallback used to silently call writeOysterId
+    // on a path that had been rm'd, and mkdirSync's recursive: true happily
+    // recreated the parent → ghost folders containing nothing but
+    // .oyster/id on every restart. The marker rides along with a real
+    // folder; refuse to fabricate one.
+    const missing = join(dir, "this-folder-was-deleted");
+    expect(existsSync(missing)).toBe(false);
+    expect(() => writeOysterId(missing, "4a7c9d2e-1b3f-4d5a-9c8e-6f2a1b3d4e5f")).toThrow(/does not exist/i);
+    expect(existsSync(missing)).toBe(false);
+  });
 });
