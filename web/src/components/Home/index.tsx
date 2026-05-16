@@ -27,7 +27,7 @@ import { MemoryCard } from "./MemoryCard";
 import { VaultInfo } from "./VaultInfo";
 import { homeRelative, renderPipCounts, stateColor } from "./utils";
 import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./types";
-import { createProject, claimOrphan } from "../../data/projects-api";
+import { attachFolder } from "../../data/projects-api";
 import { deleteMemory, type Memory } from "../../data/memories-api";
 import { ApiError } from "../../data/http";
 import "./Home.css";
@@ -1325,15 +1325,14 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               if (promotingCwd) throw new Error("Another attach is already in progress");
               setPromotingCwd(cwd);
               try {
-                // New identity model: create a project in the chosen space,
-                // then claim every session whose cwd matches into it. Name
-                // defaults to the folder's basename — users can rename later
-                // via the project tile. Folder is associated lazily by the
-                // watcher once it sees a session under that cwd (and writes
-                // `.oyster/id` if the directory exists).
-                const leaf = cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || cwd;
-                const project = await createProject(spaceId, leaf);
-                await claimOrphan(project.id, cwd);
+                // Server-side attachFolder is idempotent: adopts an
+                // existing project by `.oyster/id` or by project_paths
+                // cache, undeletes a soft-deleted match, falls back to
+                // creating one only when nothing matches. Survives a
+                // missing folder (writeOysterId failure is non-fatal).
+                // Replaces the old createProject + claimOrphan pair
+                // that minted duplicates on every press.
+                await attachFolder(spaceId, cwd);
               } finally {
                 setPromotingCwd(null);
               }
