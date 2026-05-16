@@ -27,6 +27,14 @@ function rowToProject(row: ProjectRow): Project {
   return { id: row.id, spaceId: row.space_id, name: row.name, createdAt: row.created_at };
 }
 
+// SQLite LIKE treats `_` and `%` as wildcards (and `\` as literal unless
+// ESCAPE is set). Folder names contain underscores all the time, so the
+// raw `path||'/%'` pattern would happily eat e.g. `proj_test`'s siblings
+// `projXtest`. Escape and pair with `ESCAPE '\\'` at the query site.
+function escapeLikePattern(s: string): string {
+  return s.replace(/[\\%_]/g, "\\$&");
+}
+
 function tryWriteOysterId(path: string, id: string): void {
   // writeOysterId can fail when the folder doesn't exist on disk (orphan-
   // attach for a renamed/missing folder) or the fs is read-only. The
@@ -56,20 +64,31 @@ export class ProjectService {
       .get(args.projectId) as { space_id: string } | undefined;
     if (!project) throw new Error(`Project "${args.projectId}" not found`);
     // Strip a trailing slash so the boundary pattern below doesn't double up.
+    // If the cwd is just slashes ("/" / "//"), root becomes empty — fall
+    // back to exact-match-only to avoid a runaway `LIKE '/%'` that would
+    // claim every absolute-path session.
     const root = args.cwd.replace(/\/+$/, "");
-    const info = this.db
-      .prepare(
-        `UPDATE sessions
-            SET project_id = @projectId, space_id = @spaceId
-          WHERE (cwd = @root OR cwd LIKE @prefix)
-            AND project_id IS NULL`,
-      )
-      .run({
-        projectId: args.projectId,
-        spaceId: project.space_id,
-        root,
-        prefix: root + "/%",
-      });
+    const info = root
+      ? this.db
+          .prepare(
+            `UPDATE sessions
+                SET project_id = @projectId, space_id = @spaceId
+              WHERE (cwd = @root OR cwd LIKE @prefix ESCAPE '\\')
+                AND project_id IS NULL`,
+          )
+          .run({
+            projectId: args.projectId,
+            spaceId: project.space_id,
+            root,
+            prefix: escapeLikePattern(root) + "/%",
+          })
+      : this.db
+          .prepare(
+            `UPDATE sessions
+                SET project_id = @projectId, space_id = @spaceId
+              WHERE cwd = @cwd AND project_id IS NULL`,
+          )
+          .run({ projectId: args.projectId, spaceId: project.space_id, cwd: args.cwd });
     return { claimed: Number(info.changes) };
   }
 
@@ -164,14 +183,21 @@ export class ProjectService {
     return rowToProject(row);
   }
 
-  // Soft-delete. The row stays so sessions.project_id FKs keep resolving
-  // (UI just stops surfacing the tile via listForSpace). Reattach later
-  // by creating a new project and claiming orphans into it.
+  // Soft-delete. Sessions / artefacts bound to this project are demoted
+  // to true orphans (project_id → NULL) so they surface under the space
+  // vault instead of getting FK-stuck to a hidden tombstone. The row
+  // itself stays — re-attaching the same folder via `.oyster/id`
+  // undeletes it and reclaims everything at that path.
   deleteProject(projectId: string): void {
-    const info = this.db
-      .prepare("UPDATE projects SET removed_at = datetime('now') WHERE id = ? AND removed_at IS NULL")
-      .run(projectId);
-    if (info.changes === 0) throw new Error(`Project "${projectId}" not found`);
+    const tx = this.db.transaction(() => {
+      const info = this.db
+        .prepare("UPDATE projects SET removed_at = datetime('now') WHERE id = ? AND removed_at IS NULL")
+        .run(projectId);
+      if (info.changes === 0) throw new Error(`Project "${projectId}" not found`);
+      this.db.prepare("UPDATE sessions SET project_id = NULL WHERE project_id = ?").run(projectId);
+      this.db.prepare("UPDATE artifacts SET project_id = NULL WHERE project_id = ?").run(projectId);
+    });
+    tx();
   }
 
   // Currently only `name` is updatable. `spaceId` is intentionally

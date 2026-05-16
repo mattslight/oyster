@@ -123,6 +123,34 @@ describe("ProjectService.claimOrphan", () => {
     expect(() => service.claimOrphan({ cwd: "/foo", projectId: "nope" })).toThrow();
   });
 
+  it("escapes LIKE wildcards in the cwd — `proj_test` does not claim `projXtest` sessions", () => {
+    // `_` and `%` are SQLite LIKE wildcards. A folder named `proj_test`
+    // would otherwise produce a prefix `proj_test/%` that matches
+    // `projXtest/anything`. Real-world: enough projects use underscores
+    // that this would silently misroute sessions.
+    const project = service.createProject({ spaceId: "work", name: "Underscore" });
+    insertSession("s-exact", "/foo/proj_test");
+    insertSession("s-sub", "/foo/proj_test/web");
+    insertSession("s-false-positive", "/foo/projXtest/web"); // must NOT match
+
+    const result = service.claimOrphan({ cwd: "/foo/proj_test", projectId: project.id });
+
+    expect(result.claimed).toBe(2);
+    const fp = db.prepare("SELECT project_id FROM sessions WHERE id = 's-false-positive'").get() as { project_id: string | null };
+    expect(fp.project_id).toBeNull();
+  });
+
+  it("handles a cwd of just slashes — does not produce a runaway LIKE that swallows everything", () => {
+    const project = service.createProject({ spaceId: "work", name: "Root" });
+    insertSession("s-elsewhere", "/foo/bar");
+
+    // Pathological input — attaching `/` shouldn't grab every absolute-path session.
+    service.claimOrphan({ cwd: "/", projectId: project.id });
+
+    const row = db.prepare("SELECT project_id FROM sessions WHERE id = 's-elsewhere'").get() as { project_id: string | null };
+    expect(row.project_id).toBeNull();
+  });
+
   it("claims sessions whose cwd is a descendant of the project's path (subdirectories)", () => {
     // Old source-shaped binding claimed exact + descendant cwds. The new
     // model must too — sessions started in `<project>/web/src` should
@@ -168,6 +196,21 @@ describe("ProjectService.deleteProject", () => {
 
   it("throws when the project doesn't exist", () => {
     expect(() => service.deleteProject("nope")).toThrow();
+  });
+
+  it("clears project_id on bound sessions so they don't end up FK'd to a tombstone", () => {
+    // The FK is ON DELETE SET NULL but only fires on hard deletes; soft-
+    // delete used to leave sessions pointing at the removed_at row, which
+    // hid them from the project tile but kept them in a weird limbo
+    // (space scope still showed them, no project tile claimed them).
+    // Cleaner: soft-delete demotes children to true orphans.
+    const project = service.createProject({ spaceId: "work", name: "Proj" });
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd, project_id, space_id) VALUES ('s1', 'claude-code', 'done', '/foo', ?, 'work')").run(project.id);
+
+    service.deleteProject(project.id);
+
+    const row = db.prepare("SELECT project_id FROM sessions WHERE id = 's1'").get() as { project_id: string | null };
+    expect(row.project_id).toBeNull();
   });
 });
 
