@@ -1790,10 +1790,17 @@ body {
   border-radius: 4px;
   cursor: pointer;
   color: #d4d6db;
+  justify-content: space-between;
 }
 .spotlight-ac-item--sel { background: #2a2d33; }
 .spotlight-ac-prefix { color: #4d9aff; }
 .spotlight-ac-swatch { width: 8px; height: 8px; border-radius: 2px; }
+.spotlight-ac-left { display: flex; gap: 8px; align-items: center; }
+.spotlight-ac-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: #6e7280;
+}
 
 /* ── Hardcore Gate Modal ── */
 

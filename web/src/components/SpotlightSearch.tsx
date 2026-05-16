@@ -77,6 +77,12 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
       .map(s => ({ value: s.id, color: spaceColor(s.id) }));
   }, [activeAc, spaces]);
 
+  const acCounts: Record<string, number | null> = useMemo(() => ({
+    session:  filter.type === null || filter.type === "session"  ? transcriptHits.length : null,
+    artefact: filter.type === null || filter.type === "artefact" ? artefactHits.length   : null,
+    memory:   filter.type === null || filter.type === "memory"   ? memoryHits.length     : null,
+  }), [filter.type, transcriptHits.length, artefactHits.length, memoryHits.length]);
+
   const [acSelected, setAcSelected] = useState(0);
   useEffect(() => {
     // Reset highlighted autocomplete option when the active prefix/fragment changes.
@@ -340,9 +346,14 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
                 onMouseEnter={() => setAcSelected(i)}
                 onMouseDown={(e) => { e.preventDefault(); commitAcOption(o.value); }}
               >
-                <span className="spotlight-ac-prefix">{activeAc.prefix}</span>
-                <span className="spotlight-ac-swatch" style={{ background: o.color }} />
-                <span className="spotlight-ac-label">{o.value}</span>
+                <span className="spotlight-ac-left">
+                  <span className="spotlight-ac-prefix">{activeAc.prefix}</span>
+                  <span className="spotlight-ac-swatch" style={{ background: o.color }} />
+                  <span className="spotlight-ac-label">{o.value}</span>
+                </span>
+                {activeAc.prefix === '@' && (
+                  <span className="spotlight-ac-count">{acCounts[o.value] ?? '—'}</span>
+                )}
               </div>
             ))}
             <div className="spotlight-ac-hint spotlight-ac-hint--bottom">
