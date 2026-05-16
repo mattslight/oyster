@@ -4,6 +4,8 @@ import { typeConfig } from "./ArtifactIcon";
 import { spaceColor } from "../utils/spaceColor";
 import { searchTranscripts } from "../data/sessions-api";
 import type { TranscriptHit } from "../data/sessions-api";
+import { searchMemories } from "../data/memories-api";
+import type { Memory } from "../data/memories-api";
 
 interface Props {
   artifacts: Artifact[];
@@ -13,17 +15,25 @@ interface Props {
 
 const ARTEFACTS_LIMIT = 8;
 const TRANSCRIPTS_LIMIT = 8;
+const MEMORIES_LIMIT = 8;
 const DEBOUNCE_MS = 180;
+
+type FilterType = "session" | "artefact" | "memory" | null;
+type SpotlightFilter = { type: FilterType; spaceId: string | null };
 
 type SpotlightHit =
   | { kind: "artefact"; artifact: Artifact }
-  | { kind: "transcript"; hit: TranscriptHit };
+  | { kind: "transcript"; hit: TranscriptHit }
+  | { kind: "memory"; memory: Memory };
 
 export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [transcriptHits, setTranscriptHits] = useState<TranscriptHit[]>([]);
   const [transcriptsLoading, setTranscriptsLoading] = useState(false);
+  const [memoryHits, setMemoryHits] = useState<Memory[]>([]);
+  const [memoriesLoading, setMemoriesLoading] = useState(false);
+  const [filter, setFilter] = useState<SpotlightFilter>({ type: null, spaceId: null });
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -33,15 +43,17 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
 
   const artefactHits = useMemo(() => {
     if (!query.trim()) return [];
+    if (filter.type !== null && filter.type !== "artefact") return [];
     const q = query.toLowerCase();
     return artifacts
       .filter((a) =>
-        a.label.toLowerCase().includes(q)
-        || a.artifactKind.toLowerCase().includes(q)
-        || a.spaceId.toLowerCase().includes(q),
+        (filter.spaceId ? a.spaceId === filter.spaceId : true) &&
+        (a.label.toLowerCase().includes(q)
+          || a.artifactKind.toLowerCase().includes(q)
+          || a.spaceId.toLowerCase().includes(q)),
       )
       .slice(0, ARTEFACTS_LIMIT);
-  }, [query, artifacts]);
+  }, [query, artifacts, filter]);
 
   // Debounced transcript search. AbortController cancels the request,
   // but a fetch that has already resolved before we abort can still
@@ -55,11 +67,16 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
       setTranscriptsLoading(false);
       return;
     }
+    if (filter.type !== null && filter.type !== "session") {
+      setTranscriptHits([]);
+      setTranscriptsLoading(false);
+      return;
+    }
     setTranscriptsLoading(true);
     const reqId = ++reqIdRef.current;
     const ac = new AbortController();
     const timer = setTimeout(() => {
-      searchTranscripts(trimmed, { limit: TRANSCRIPTS_LIMIT, signal: ac.signal })
+      searchTranscripts(trimmed, { limit: TRANSCRIPTS_LIMIT, spaceId: filter.spaceId, signal: ac.signal })
         .then((hits) => {
           if (reqId !== reqIdRef.current) return;
           setTranscriptHits(hits);
@@ -76,14 +93,50 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
       ac.abort();
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, filter]);
+
+  // Debounced memory search — mirrors the transcript effect:
+  // request id + abort controller protect against stale resolutions.
+  const memReqIdRef = useRef(0);
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setMemoryHits([]);
+      setMemoriesLoading(false);
+      return;
+    }
+    if (filter.type !== null && filter.type !== "memory") {
+      setMemoryHits([]);
+      setMemoriesLoading(false);
+      return;
+    }
+    setMemoriesLoading(true);
+    const reqId = ++memReqIdRef.current;
+    const ac = new AbortController();
+    const timer = setTimeout(() => {
+      searchMemories(trimmed, { limit: MEMORIES_LIMIT, spaceId: filter.spaceId, signal: ac.signal })
+        .then((hits) => {
+          if (reqId !== memReqIdRef.current) return;
+          setMemoryHits(hits);
+          setMemoriesLoading(false);
+        })
+        .catch((err) => {
+          if (ac.signal.aborted || reqId !== memReqIdRef.current) return;
+          console.warn("[Spotlight] memory search failed:", err);
+          setMemoryHits([]);
+          setMemoriesLoading(false);
+        });
+    }, DEBOUNCE_MS);
+    return () => { ac.abort(); clearTimeout(timer); };
+  }, [query, filter]);
 
   // Flat ordered list — used by keyboard nav. Artefacts first, then
-  // transcript hits below.
+  // transcript hits, then memory hits.
   const flatHits: SpotlightHit[] = useMemo(() => [
     ...artefactHits.map((a): SpotlightHit => ({ kind: "artefact", artifact: a })),
     ...transcriptHits.map((h): SpotlightHit => ({ kind: "transcript", hit: h })),
-  ], [artefactHits, transcriptHits]);
+    ...memoryHits.map((m): SpotlightHit => ({ kind: "memory", memory: m })),
+  ], [artefactHits, transcriptHits, memoryHits]);
 
   useEffect(() => {
     // Reset highlighted result when the query changes.
@@ -99,7 +152,7 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
   function activate(hit: SpotlightHit) {
     if (hit.kind === "artefact") {
       onOpen(hit.artifact);
-    } else {
+    } else if (hit.kind === "transcript") {
       // Bridge to Home's activePanel via a window event — Spotlight is
       // mounted at App level and doesn't have direct access to Home's
       // setActivePanel. eventId asks the inspector to scroll to + flash
@@ -112,6 +165,11 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
           eventId: hit.hit.event_id,
           query: query.trim(),
         },
+      }));
+    } else {
+      const targetSpace = hit.memory.space_id ?? "home";
+      window.dispatchEvent(new CustomEvent("oyster:open-memory", {
+        detail: { id: hit.memory.id, spaceId: targetSpace },
       }));
     }
     onClose();
@@ -140,8 +198,10 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
     }
   }
 
-  const showResults = artefactHits.length > 0 || transcriptHits.length > 0 || transcriptsLoading;
-  const showEmpty = !!query.trim() && !transcriptsLoading && flatHits.length === 0;
+  const showResults = artefactHits.length > 0
+    || transcriptHits.length > 0 || transcriptsLoading
+    || memoryHits.length > 0 || memoriesLoading;
+  const showEmpty = !!query.trim() && !transcriptsLoading && !memoriesLoading && flatHits.length === 0;
 
   return (
     <div className="spotlight-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -204,6 +264,32 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
                   </span>
                   <span className="spotlight-result-session">{h.session_title ?? h.session_id.slice(0, 8)}</span>
                   <span className="spotlight-result-role">{h.role}</span>
+                </div>
+              );
+            })}
+
+            {(memoryHits.length > 0 || memoriesLoading) && (
+              <div className="spotlight-section-label">Memories</div>
+            )}
+            {memoriesLoading && memoryHits.length === 0 && (
+              <div className="spotlight-section-loading">Searching memories…</div>
+            )}
+            {memoryHits.map((m, k) => {
+              const flatIndex = artefactHits.length + transcriptHits.length + k;
+              const isSelected = flatIndex === selected;
+              return (
+                <div
+                  key={`m-${m.id}`}
+                  className={`spotlight-result spotlight-result--memory${isSelected ? " spotlight-result--selected" : ""}`}
+                  onMouseEnter={() => setSelected(flatIndex)}
+                  onClick={() => activate({ kind: "memory", memory: m })}
+                >
+                  <span className="spotlight-result-dot" style={{ background: "#a78bfa" }} />
+                  <span className="spotlight-result-label">{m.content.length > 80 ? m.content.slice(0, 80) + "…" : m.content}</span>
+                  <span className="spotlight-result-badge">memory</span>
+                  {m.space_id && (
+                    <span className="spotlight-result-space" style={{ color: spaceColor(m.space_id), background: `${spaceColor(m.space_id)}18` }}>{m.space_id}</span>
+                  )}
                 </div>
               );
             })}
