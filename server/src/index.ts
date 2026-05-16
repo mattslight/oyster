@@ -290,7 +290,7 @@ const VIEWER_BASE = process.env.OYSTER_VIEWER_BASE
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
 // not inside DB_DIR. spaceStore is passed in so the service can enumerate
 // local spaces when filtering cloud-only publications.
-const artifactService = new ArtifactService(store, WORKER_BASE, VIEWER_BASE, OYSTER_HOME, spaceStore);
+const artifactService = new ArtifactService(db, store, WORKER_BASE, VIEWER_BASE, OYSTER_HOME, spaceStore);
 
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
 await bootTimeAsync("memoryProvider.init", () => memoryProvider.init());

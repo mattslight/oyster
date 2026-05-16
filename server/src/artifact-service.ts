@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { resolve, basename, dirname, join, sep } from "node:path";
 import crypto from "node:crypto";
+import type Database from "better-sqlite3";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { SpaceStore } from "./space-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
+import { resolveArtifactPathViaProjects } from "./resolve-artifact-path.js";
+import { artifactTouchFromToolUse } from "./watchers/claude-code.js";
 import { slugify, inferKindFromPath, toArtifactKind } from "./utils.js";
 import { debug, debugEnabled } from "./debug.js";
 
@@ -105,7 +108,7 @@ export class ArtifactService {
     this.getCloudOnlyPublications = source;
   }
 
-  constructor(private store: ArtifactStore, private workerBase: string, private viewerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
+  constructor(private db: Database.Database, private store: ArtifactStore, private workerBase: string, private viewerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const allRows = this.store.getAll();
@@ -124,13 +127,34 @@ export class ArtifactService {
     for (const row of allRows) {
       const storagePath = storagePathOf(row);
       if (storagePath) {
+        let effectivePath = storagePath;
         if (!pathExistsOrThrow(storagePath)) {
-          this.store.remove(row.id);
-          this.invalidateArchivedPaths();
-          onArtifactRemoved?.(row.id, storagePath);
-          continue;
+          // Before tombstoning, try to recover via project_paths — the
+          // file may have just moved with a folder rename. Same primitive
+          // as lookupProject for sessions: walk up the path, find the
+          // owning project, try the same relative remainder under each
+          // of the project's other cached folders.
+          const recovered = resolveArtifactPathViaProjects(this.db, storagePath);
+          if (recovered) {
+            this.store.update(row.id, {
+              storage_config: JSON.stringify({ path: recovered.newPath }),
+              project_id: recovered.projectId,
+            });
+            this.invalidateArchivedPaths();
+            // Refresh in-memory view so downstream rowToArtifact + the
+            // pathByRowIdx cache see the new path immediately. No need
+            // to re-SELECT — we know exactly what we just wrote.
+            row.storage_config = JSON.stringify({ path: recovered.newPath });
+            row.project_id = recovered.projectId;
+            effectivePath = recovered.newPath;
+          } else {
+            this.store.remove(row.id);
+            this.invalidateArchivedPaths();
+            onArtifactRemoved?.(row.id, storagePath);
+            continue;
+          }
         }
-        pathByRowIdx.set(rows.length, storagePath);
+        pathByRowIdx.set(rows.length, effectivePath);
       }
       rows.push(row);
     }
@@ -351,6 +375,14 @@ export class ArtifactService {
       source_ref: null,
     });
 
+    // Backfill session→artefact links. The watcher's live touch-detection
+    // only fires when the artefact already exists in the DB at tool_use
+    // time. Artefacts created via raw `Write` then registered later miss
+    // every session that touched them. Scan recent assistant events for
+    // tool_use blocks at this path and create matching session_artifacts
+    // rows.
+    this.backfillTouchesForNewArtefact(id, absPath);
+
     return {
       id,
       label: params.label,
@@ -363,6 +395,56 @@ export class ArtifactService {
       createdAt: new Date().toISOString(),
       groupName: params.group_name || undefined,
     };
+  }
+
+  // Look back at recent assistant events for tool_use blocks at this
+  // path; for each, insert a session_artifacts row with the role implied
+  // by the tool (Write → create, Edit → modify, Read → read). Deduped on
+  // (session_id, role) so we don't multiply duplicate touches when the
+  // same session called Write three times. Bounded to 30 days to keep
+  // the scan cheap; very old artefacts won't backfill, which is fine —
+  // the value is closing the loop for fresh creations.
+  private backfillTouchesForNewArtefact(artifactId: string, absPath: string): void {
+    // - `role IN ('assistant', 'tool')` — the watcher stores pure
+    //   tool-call turns as `tool` (see renderEvent in
+    //   watchers/claude-code.ts), not `assistant`. The old
+    //   `role = 'assistant'` filter missed the common case.
+    // - `instr(raw, ?) > 0` instead of `raw LIKE '%' || ? || '%'` —
+    //   sidesteps `_` / `%` wildcards in file paths that would
+    //   false-match unrelated events.
+    // - LIMIT 10000 + ORDER BY id DESC — bounded scan against
+    //   potentially-huge session_events. 10000 is plenty for the
+    //   "I just wrote this file" case the backfill targets.
+    const events = this.db
+      .prepare(
+        `SELECT session_id, raw
+           FROM session_events
+          WHERE role IN ('assistant', 'tool')
+            AND raw IS NOT NULL
+            AND instr(raw, ?) > 0
+          ORDER BY id DESC
+          LIMIT 10000`,
+      )
+      .all(absPath) as Array<{ session_id: string; raw: string }>;
+    const seen = new Set<string>(); // `${session_id}:${role}` keys already inserted
+    const insert = this.db.prepare(
+      "INSERT INTO session_artifacts (session_id, artifact_id, role) VALUES (?, ?, ?)",
+    );
+    for (const row of events) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(row.raw); } catch { continue; }
+      const content = (parsed as { message?: { content?: unknown[] } })?.message?.content;
+      if (!Array.isArray(content)) continue;
+      for (const block of content) {
+        const touch = artifactTouchFromToolUse(block);
+        if (!touch || touch.path !== absPath) continue;
+        const key = `${row.session_id}:${touch.role}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        try { insert.run(row.session_id, artifactId, touch.role); }
+        catch { /* FK to sessions might fail if session was deleted; ignore */ }
+      }
+    }
   }
 
   // ── Creation ──
