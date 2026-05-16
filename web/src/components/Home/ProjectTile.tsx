@@ -2,6 +2,7 @@
 // Projects don't have a path field — identity lives in `.oyster/id` inside
 // the folder, so renames + moves are invisible to Oyster.
 import { useEffect, useState } from "react";
+import { GitBranch } from "lucide-react";
 import type { Project } from "../../data/projects-api";
 import { renameProject, deleteProject } from "../../data/projects-api";
 import { ConfirmModal } from "../ConfirmModal";
@@ -81,7 +82,16 @@ export function ProjectTile({
           onClick={onSelect}
           title={project.name}
         >
-          <div className="home-space-card-name">{project.name}</div>
+          <div className="home-space-card-name">
+            {project.isGitRepo && (
+              <GitBranch
+                size={11}
+                aria-label="git repository"
+                style={{ marginRight: 5, verticalAlign: "-1px", opacity: 0.55 }}
+              />
+            )}
+            {project.name}
+          </div>
           <div className="home-space-card-counts">
             {sessionCounts && sessionCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{sessionCounts.active} active</span>}
             {sessionCounts && sessionCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{sessionCounts.waiting} waiting</span>}

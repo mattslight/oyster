@@ -7,6 +7,11 @@ export interface Project {
   spaceId: string;
   name: string;
   createdAt: string;
+  /** True when the project's most-recent cached path is a git repo on
+   *  this machine. Drives the `<GitBranch>` chip on the project tile.
+   *  Computed server-side per GET, so a `git init` after attach reflects
+   *  on the next refresh. Absent on responses from older builds. */
+  isGitRepo?: boolean;
 }
 
 export async function fetchProjectsForSpace(spaceId: string, signal?: AbortSignal): Promise<Project[]> {

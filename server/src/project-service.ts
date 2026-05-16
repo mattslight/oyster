@@ -6,7 +6,8 @@
 // identity.
 
 import type Database from "better-sqlite3";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
+import { existsSync } from "node:fs";
 import { readOysterId, writeOysterId } from "./oyster-id.js";
 
 export interface Project {
@@ -14,6 +15,11 @@ export interface Project {
   spaceId: string;
   name: string;
   createdAt: string;
+  /** True when the project's most-recent cached path contains a `.git`
+   *  entry (folder or file — git worktrees/submodules use a file).
+   *  Computed at read time; never persisted, so a `git init` on disk is
+   *  reflected on the next GET without any boot-scan dance. */
+  isGitRepo?: boolean;
 }
 
 interface ProjectRow {
@@ -50,7 +56,18 @@ export class ProjectService {
     const rows = this.db
       .prepare("SELECT id, space_id, name, created_at FROM projects WHERE space_id = ? AND removed_at IS NULL ORDER BY name COLLATE NOCASE")
       .all(spaceId) as ProjectRow[];
-    return rows.map(rowToProject);
+    return rows.map((row) => ({ ...rowToProject(row), isGitRepo: this.detectGitRepo(row.id) }));
+  }
+
+  private detectGitRepo(projectId: string): boolean {
+    const row = this.db
+      .prepare("SELECT path FROM project_paths WHERE project_id = ? ORDER BY last_seen_at DESC LIMIT 1")
+      .get(projectId) as { path: string } | undefined;
+    if (!row) return false;
+    // `.git` is a folder for normal repos and a file for worktrees /
+    // submodules. existsSync handles both. Path-missing (renamed /
+    // unmounted drive) returns false — fine, the badge just doesn't show.
+    return existsSync(join(row.path, ".git"));
   }
 
   // Bulk-tag orphan sessions whose `cwd` matches the project's path —

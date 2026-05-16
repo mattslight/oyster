@@ -61,6 +61,35 @@ describe("ProjectService.listForSpace", () => {
     expect(projects.map((p) => p.name)).toEqual(["Alpha", "Zebra"]);
   });
 
+  it("flags isGitRepo: true when the project's cached path has a .git entry", () => {
+    const repo = mkdtempSync(join(tmpdir(), "oyster-isgit-"));
+    mkdirSync(join(repo, ".git"));
+    const proj = service.createProject({ spaceId: "work", name: "Repo" });
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(proj.id, repo);
+
+    const [listed] = service.listForSpace("work");
+    expect(listed.isGitRepo).toBe(true);
+
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("flags isGitRepo: false when path exists but has no .git", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-isgit-plain-"));
+    const proj = service.createProject({ spaceId: "work", name: "Plain" });
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(proj.id, folder);
+
+    const [listed] = service.listForSpace("work");
+    expect(listed.isGitRepo).toBe(false);
+
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("flags isGitRepo: false when no path is cached at all", () => {
+    service.createProject({ spaceId: "work", name: "Naked" });
+    const [listed] = service.listForSpace("work");
+    expect(listed.isGitRepo).toBe(false);
+  });
+
   it("excludes soft-deleted projects", () => {
     const alive = service.createProject({ spaceId: "work", name: "Alive" });
     const dead = service.createProject({ spaceId: "work", name: "Dead" });
