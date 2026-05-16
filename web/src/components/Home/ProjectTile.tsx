@@ -117,8 +117,12 @@ export function ProjectTile({
             {sessionCounts && sessionCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{sessionCounts.disconnected} disconnected</span>}
             <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>
             {project.hasLivePath === false && (
-              <span className="signal" title={project.recentPath ?? "no path cached"} style={{ opacity: 0.55 }}>
-                <span className="pip pip-dim" />no folder
+              <span
+                className="signal"
+                title={project.recentPath ? `Folder missing: ${project.recentPath}` : "no path cached"}
+                style={{ color: "var(--home-amber)" }}
+              >
+                <span className="pip pip-amber" />no folder
               </span>
             )}
           </div>
