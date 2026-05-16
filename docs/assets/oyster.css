@@ -82,7 +82,9 @@ body {
   mix-blend-mode: overlay;
   opacity: 0.4;
 }
-.stars { position: absolute; inset: 0; }
+/* Overscan so parallax.js drift + mouse offset (peaks ~74px on near) never
+   exposes a starless edge inside the cosmos container. */
+.stars { position: absolute; inset: -120px; }
 .stars div {
   position: absolute;
   background: #fff;

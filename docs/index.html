@@ -2074,19 +2074,17 @@
     });
 
     // ============================================
-    // PARALLAX (mouse) on hero
+    // PEARL ORB mouse drift — stars + orbits are handled by parallax.js.
+    // Keeping pearl here because its base transform composes with a CSS
+    // rotate animation; routing it through the shared parallax loop
+    // would need the same CSS-var trick the orbit uses.
     // ============================================
-    const hero = document.querySelector('.hero');
     const pearl = document.querySelector('.pearl-orb');
-    const farLayer = document.getElementById('stars-far');
-    const nearLayer = document.getElementById('stars-near');
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches === false) {
+    if (pearl && window.matchMedia('(prefers-reduced-motion: reduce)').matches === false) {
       window.addEventListener('mousemove', (e) => {
         const x = (e.clientX / window.innerWidth - 0.5);
         const y = (e.clientY / window.innerHeight - 0.5);
-        if (farLayer) farLayer.style.transform = `translate3d(${x * -16}px, ${y * -12}px, 0)`;
-        if (nearLayer) nearLayer.style.transform = `translate3d(${x * -52}px, ${y * -36}px, 0)`;
-        if (pearl) pearl.style.transform = `translateX(calc(-50% + ${x * 40}px)) translateY(${y * 28}px)`;
+        pearl.style.transform = `translateX(calc(-50% + ${x * 40}px)) translateY(${y * 28}px)`;
       });
     }
 

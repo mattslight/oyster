@@ -6,14 +6,38 @@
 // Skipped under prefers-reduced-motion and on touch-only devices.
 (function () {
   if (!window.matchMedia) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+  var motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+  if (motionQuery.matches) return;
 
   var far = document.querySelector('.stars-far');
   var near = document.querySelector('.stars-near');
   var orbit = document.querySelector('.orbit-svg');
   var heroMock = document.querySelector('.hero-mock');
   if (!far && !near && !orbit) return;
+
+  // If the user enables Reduce Motion mid-session, stop the animation
+  // loop and reset everything back to its at-rest state.
+  var rafId = 0;
+  var stopped = false;
+  function stop() {
+    stopped = true;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (far) { far.style.transform = ''; far.style.willChange = ''; }
+    if (near) { near.style.transform = ''; near.style.willChange = ''; }
+    if (orbit) {
+      orbit.style.removeProperty('--parallax-x');
+      orbit.style.removeProperty('--parallax-y');
+      orbit.style.opacity = '';
+      orbit.style.willChange = '';
+    }
+  }
+  if (typeof motionQuery.addEventListener === 'function') {
+    motionQuery.addEventListener('change', function (e) { if (e.matches) stop(); });
+  } else if (typeof motionQuery.addListener === 'function') {
+    motionQuery.addListener(function (e) { if (e.matches) stop(); });
+  }
 
   // Page-Y of the hero-mock's bottom edge. Used to fade the orbit
   // from opacity 1 (page top) to opacity 0 (hero-mock fully past
@@ -66,6 +90,7 @@
   var TAU = Math.PI * 2;
 
   function tick(now) {
+    if (stopped) return;
     var t = (now - T0) / 1000;
     cx += (tx - cx) * EASE;
     cy += (ty - cy) * EASE;
@@ -96,7 +121,7 @@
       orbit.style.opacity = op.toFixed(3);
     }
 
-    requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
+  rafId = requestAnimationFrame(tick);
 })();
