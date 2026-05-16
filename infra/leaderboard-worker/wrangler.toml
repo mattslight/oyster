@@ -9,11 +9,21 @@ binding = "DB"
 database_name = "oyster-leaderboard"
 database_id = "ae5ea426-d959-4f19-8eba-7959eff29d72"
 
-# Route the Worker at both oyster.to/api/leaderboard and www.oyster.to/api/leaderboard.
+# Route the Worker at both oyster.to/api/leaderboard* and www.oyster.to/api/leaderboard*.
+# The wildcards cover the score POST + the /start token-mint endpoint.
 [[routes]]
-pattern = "oyster.to/api/leaderboard"
+pattern = "oyster.to/api/leaderboard*"
 zone_name = "oyster.to"
 
 [[routes]]
-pattern = "www.oyster.to/api/leaderboard"
+pattern = "www.oyster.to/api/leaderboard*"
 zone_name = "oyster.to"
+
+# Per-IP rate limit on POST — 1 submission every 60s. Marketing-site arcade,
+# so legit back-to-back games are still fine (the GET on the title screen
+# isn't limited).
+[[unsafe.bindings]]
+name = "POST_LIMITER"
+type = "ratelimit"
+namespace_id = "100"
+simple = { limit = 1, period = 60 }

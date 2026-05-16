@@ -1252,10 +1252,32 @@ function showCelebration() {
 // ============================================
 // LEADERBOARD — top 10, ranked by score DESC then created_at ASC (oldest wins ties).
 // Local mirror in localStorage; cloud source-of-truth via Cloudflare Worker.
+// Score POSTs require a short-lived HMAC token minted from /api/leaderboard/start.
 // ============================================
 const LB_KEY = 'oyster-rocket-leaderboard';
 const LB_SIZE = 10;
 const LB_API = '/api/leaderboard';
+const LB_API_START = '/api/leaderboard/start';
+
+// One token per session, refreshed on game start and when the previous expires.
+// TTL is 1h server-side; renew with 60s of headroom so an in-flight POST after
+// a long session never trips on a stale signature.
+let _playToken = null;
+let _playTokenExp = 0;
+async function ensurePlayToken() {
+  if (_playToken && Date.now() < _playTokenExp - 60_000) return _playToken;
+  try {
+    const r = await fetch(LB_API_START, { method: 'GET' });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data && typeof data.token === 'string' && typeof data.expires_at === 'number') {
+      _playToken = data.token;
+      _playTokenExp = data.expires_at;
+      return _playToken;
+    }
+  } catch (_) {}
+  return null;
+}
 // Comparator: highest score first; ties broken by who got there first.
 function lbSort(a, b) {
   if (b.score !== a.score) return b.score - a.score;
@@ -1292,18 +1314,27 @@ function addToLeaderboard(score, initials) {
   list.sort(lbSort);
   const trimmed = list.slice(0, LB_SIZE);
   writeLeaderboard(trimmed);
-  // Best-effort cloud sync (don't block the UI on it)
-  fetch(LB_API, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ score, initials, created_at: entry.created_at }),
-  }).then(r => r.ok && r.json()).then(data => {
-    if (data && Array.isArray(data.list)) {
-      writeLeaderboard(data.list.slice(0, LB_SIZE));
-      paintSplashHighScore();
-      paintLeaderboard();
-    }
-  }).catch(() => {});
+  // Best-effort cloud sync (don't block the UI on it). Server rejects POSTs
+  // without a valid HMAC token + a recent IP — failure here just leaves the
+  // local mirror as-is.
+  (async () => {
+    const token = await ensurePlayToken();
+    if (!token) return;
+    try {
+      const r = await fetch(LB_API, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ score, initials, token }),
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data && Array.isArray(data.list)) {
+        writeLeaderboard(data.list.slice(0, LB_SIZE));
+        paintSplashHighScore();
+        paintLeaderboard();
+      }
+    } catch (_) {}
+  })();
   return trimmed.findIndex(e => e === entry || (e.score === score && e.initials === initials && e.created_at === entry.created_at)) + 1;
 }
 // Refresh from cloud on load — replaces local mirror if server returns a list
@@ -1456,6 +1487,9 @@ const Splash = (function () {
     startGameMusic();
     if (typeof restartGame === 'function') restartGame();
     gameActive = true; // now the game world is live
+    // Mint a play-token in the background so the eventual score POST has one.
+    // No-op if we already have a fresh one.
+    if (typeof ensurePlayToken === 'function') ensurePlayToken();
   }
 
   // First-load: boot ends → title music starts AND title/leaderboard begin cycling
