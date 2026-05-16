@@ -78,7 +78,7 @@ describe("artifact wire format — publication", () => {
   beforeEach(() => {
     db = makeDb();
     const store = new SqliteArtifactStore(db);
-    service = new ArtifactService(store, "https://oyster.to", "https://share.oyster.to");
+    service = new ArtifactService(db, store, "https://oyster.to", "https://share.oyster.to");
   });
 
   it("omits the publication field when share_token is NULL", async () => {
@@ -125,7 +125,7 @@ describe("artifact wire format — cloud-only ghosts", () => {
 
   beforeEach(() => {
     db = makeDb();
-    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
+    service = new ArtifactService(db, new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
   });
 
   it("synthesises a cloudOnly ghost using the cloud label, falling back to artifact_id", async () => {
@@ -192,7 +192,7 @@ describe("artifact wire format — pin (#387)", () => {
 
   beforeEach(() => {
     db = makeDb();
-    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
+    service = new ArtifactService(db, new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
   });
 
   it("omits pinnedAt when pinned_at is NULL", async () => {
@@ -217,7 +217,7 @@ describe("artifact wire format — projectId", () => {
 
   beforeEach(() => {
     db = makeDb();
-    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
+    service = new ArtifactService(db, new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
   });
 
   it("emits projectId on the static_file/redirect branch (Home tile counts depend on it)", async () => {
@@ -244,7 +244,7 @@ describe("ArtifactService.pinArtifact / unpinArtifact (#387)", () => {
 
   beforeEach(() => {
     db = makeDb();
-    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
+    service = new ArtifactService(db, new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
   });
 
   it("pinArtifact stamps pinned_at and returns the timestamp", () => {

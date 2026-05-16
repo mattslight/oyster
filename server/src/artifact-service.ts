@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { resolve, basename, dirname, join, sep } from "node:path";
 import crypto from "node:crypto";
+import type Database from "better-sqlite3";
 import type { ArtifactStore, ArtifactRow } from "./artifact-store.js";
 import type { SpaceStore } from "./space-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
+import { resolveArtifactPathViaProjects } from "./resolve-artifact-path.js";
 import { slugify, inferKindFromPath, toArtifactKind } from "./utils.js";
 import { debug, debugEnabled } from "./debug.js";
 
@@ -105,7 +107,7 @@ export class ArtifactService {
     this.getCloudOnlyPublications = source;
   }
 
-  constructor(private store: ArtifactStore, private workerBase: string, private viewerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
+  constructor(private db: Database.Database, private store: ArtifactStore, private workerBase: string, private viewerBase: string, private userlandDir?: string, private spaceStore?: SpaceStore) {}
 
   async getAllArtifacts(onArtifactRemoved?: (id: string, filePath: string) => void): Promise<Artifact[]> {
     const allRows = this.store.getAll();
@@ -124,13 +126,34 @@ export class ArtifactService {
     for (const row of allRows) {
       const storagePath = storagePathOf(row);
       if (storagePath) {
+        let effectivePath = storagePath;
         if (!pathExistsOrThrow(storagePath)) {
-          this.store.remove(row.id);
-          this.invalidateArchivedPaths();
-          onArtifactRemoved?.(row.id, storagePath);
-          continue;
+          // Before tombstoning, try to recover via project_paths — the
+          // file may have just moved with a folder rename. Same primitive
+          // as lookupProject for sessions: walk up the path, find the
+          // owning project, try the same relative remainder under each
+          // of the project's other cached folders.
+          const recovered = resolveArtifactPathViaProjects(this.db, storagePath);
+          if (recovered) {
+            this.store.update(row.id, {
+              storage_config: JSON.stringify({ path: recovered.newPath }),
+              project_id: recovered.projectId,
+            });
+            this.invalidateArchivedPaths();
+            // Refresh in-memory view so downstream rowToArtifact + the
+            // pathByRowIdx cache see the new path immediately. No need
+            // to re-SELECT — we know exactly what we just wrote.
+            row.storage_config = JSON.stringify({ path: recovered.newPath });
+            row.project_id = recovered.projectId;
+            effectivePath = recovered.newPath;
+          } else {
+            this.store.remove(row.id);
+            this.invalidateArchivedPaths();
+            onArtifactRemoved?.(row.id, storagePath);
+            continue;
+          }
         }
-        pathByRowIdx.set(rows.length, storagePath);
+        pathByRowIdx.set(rows.length, effectivePath);
       }
       rows.push(row);
     }
