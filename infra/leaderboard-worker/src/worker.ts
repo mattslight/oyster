@@ -134,7 +134,14 @@ export default {
 
     const origin = req.headers.get("origin");
     const isMutation = req.method === "POST" || req.method === "OPTIONS";
-    if (isMutation || isStart) {
+    // POST/OPTIONS: REQUIRE an allowed Origin. Browsers always send Origin
+    // on mutating verbs (even same-origin), so this won't false-reject the
+    // iframe's score submissions but does block curl / hot-link attempts.
+    //
+    // GET (leaderboard read AND /start token mint): only reject if Origin is
+    // PRESENT and not in the allow-list. Same-origin GETs from the page don't
+    // send Origin at all, so requiring it would 403 our own iframe.
+    if (isMutation) {
       if (!isAllowedOrigin(origin)) return new Response("Forbidden", { status: 403 });
     } else if (origin !== null && !isAllowedOrigin(origin)) {
       return new Response("Forbidden", { status: 403 });
