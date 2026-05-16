@@ -20,6 +20,35 @@ export interface ArtifactPathResolution {
   projectId: string;
 }
 
+// Walk up `path` looking for an ancestor that's cached in project_paths
+// against a live project. Returns that project's id, or null when no
+// ancestor matches. The deepest match wins (nested projects). Used both
+// by the resolver (to know which project to search siblings under) and
+// by the tombstone-recovery migration (to stamp project_id on rows
+// whose original path is back).
+export function findProjectAtAncestor(
+  db: Database.Database,
+  path: string,
+): string | null {
+  let dir = dirname(path);
+  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
+    const row = db
+      .prepare(
+        `SELECT pp.project_id
+           FROM project_paths pp
+           JOIN projects p ON p.id = pp.project_id
+          WHERE pp.path = ? AND p.removed_at IS NULL
+          LIMIT 1`,
+      )
+      .get(dir) as { project_id: string } | undefined;
+    if (row) return row.project_id;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
 export function resolveArtifactPathViaProjects(
   db: Database.Database,
   originalPath: string,

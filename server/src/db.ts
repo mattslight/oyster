@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { join } from "node:path";
-import { resolveArtifactPathViaProjects } from "./resolve-artifact-path.js";
+import { existsSync } from "node:fs";
+import { resolveArtifactPathViaProjects, findProjectAtAncestor } from "./resolve-artifact-path.js";
 
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -539,12 +540,72 @@ export function initDb(userlandDir: string): Database.Database {
       let oldPath: string | undefined;
       try { oldPath = (JSON.parse(row.storage_config) as { path?: string }).path; } catch { /* malformed config, skip */ }
       if (!oldPath) continue;
+      if (existsSync(oldPath)) {
+        // File came back at the same path — undelete in place; stamp
+        // project_id from the ancestor walk.
+        const projectId = findProjectAtAncestor(db, oldPath);
+        update.run(row.storage_config, projectId, row.id);
+        continue;
+      }
       const recovered = resolveArtifactPathViaProjects(db, oldPath);
       if (recovered) {
         update.run(JSON.stringify({ path: recovered.newPath }), recovered.projectId, row.id);
       }
     }
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Artefact dedup: after recovery, multiple LIVE rows can point at the
+  // same storage_config.path (e.g. one already-recovered + one survivor
+  // at the same target). Collapse — keep the row with the most
+  // session_artifacts touches (tiebreaker: most recent created_at).
+  // Loser's links migrate to winner (with (session_id, role) dedup so we
+  // don't multiply duplicate touches), losers soft-deleted.
+  // Idempotent — after the collapse, exactly one live row per path.
+  // ─────────────────────────────────────────────────────────────────────────
+  db.exec(`
+    CREATE TEMP TABLE IF NOT EXISTS artefact_dedup_winners AS
+    WITH ranked AS (
+      SELECT
+        a.id,
+        json_extract(a.storage_config, '$.path') AS path,
+        ROW_NUMBER() OVER (
+          PARTITION BY json_extract(a.storage_config, '$.path')
+          ORDER BY
+            (SELECT COUNT(*) FROM session_artifacts sa WHERE sa.artifact_id = a.id) DESC,
+            a.created_at DESC
+        ) AS rn
+      FROM artifacts a
+      WHERE a.removed_at IS NULL
+        AND a.storage_kind = 'filesystem'
+        AND json_extract(a.storage_config, '$.path') IS NOT NULL
+    )
+    SELECT loser.id AS loser_id, winner.id AS winner_id
+      FROM ranked loser
+      JOIN ranked winner ON winner.path = loser.path AND winner.rn = 1
+     WHERE loser.rn > 1;
+  `);
+  // Drop loser-side links that would duplicate a (session_id, role) the
+  // winner already owns — session_artifacts has a surrogate id PK so
+  // naive UPDATE would otherwise multiply the same touch.
+  db.exec(`
+    DELETE FROM session_artifacts
+     WHERE artifact_id IN (SELECT loser_id FROM artefact_dedup_winners)
+       AND EXISTS (
+         SELECT 1
+           FROM session_artifacts sa
+           JOIN artefact_dedup_winners m ON m.winner_id = sa.artifact_id
+          WHERE sa.session_id = session_artifacts.session_id
+            AND sa.role = session_artifacts.role
+            AND m.loser_id = session_artifacts.artifact_id
+       );
+    UPDATE session_artifacts
+       SET artifact_id = (SELECT winner_id FROM artefact_dedup_winners WHERE loser_id = session_artifacts.artifact_id)
+     WHERE artifact_id IN (SELECT loser_id FROM artefact_dedup_winners);
+    UPDATE artifacts SET removed_at = datetime('now')
+     WHERE id IN (SELECT loser_id FROM artefact_dedup_winners);
+    DROP TABLE artefact_dedup_winners;
+  `);
 
   // One-time canonical-form migration for paths and cwds. The longest-prefix
   // binding SQL compares `sessions.cwd` against `sources.path` via substr

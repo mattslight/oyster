@@ -54,6 +54,25 @@ describe("initDb artefact tombstone recovery", () => {
     db.close();
   });
 
+  it("undeletes a tombstone whose ORIGINAL path is now back on disk (no path change needed)", () => {
+    // Common case: the file moved away then came back at the same path
+    // (e.g. user reverted a rename). Self-heal had soft-deleted on the
+    // gap; the migration should just undelete with the existing path
+    // and stamp project_id via the ancestor walk.
+    let db = initDb(userland);
+    mkdirSync(join(oldDir, "docs"), { recursive: true });
+    writeFileSync(join(oldDir, "docs", "back.md"), "ok");
+    seedTombstone(db, "art-back", join(oldDir, "docs", "back.md"));
+    db.close();
+
+    db = initDb(userland);
+    const row = db.prepare("SELECT removed_at, storage_config, project_id FROM artifacts WHERE id = 'art-back'").get() as { removed_at: string | null; storage_config: string; project_id: string | null };
+    expect(row.removed_at).toBeNull();
+    expect(JSON.parse(row.storage_config)).toEqual({ path: join(oldDir, "docs", "back.md") });
+    expect(row.project_id).toBe(PROJ_ID);
+    db.close();
+  });
+
   it("leaves a tombstone alone when the file is not recoverable", () => {
     let db = initDb(userland);
     // newDir exists but doesn't contain the relative remainder
