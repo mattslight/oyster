@@ -330,6 +330,9 @@
       letter-spacing: 0;
       font-size: 12px;
     }
+    @media (max-width: 600px) {
+      .hero-hint { display: none; }
+    }
 
     /* Hero device frame — tight rim glow (à la GitHub Copilot) */
     .hero-stage {
@@ -1156,6 +1159,7 @@
   <div class="cosmos" aria-hidden="true">
     <div class="stars stars-far" id="stars-far"></div>
     <div class="stars stars-near" id="stars-near"></div>
+    <div class="comet" style="--y: 22%;"></div>
   </div>
 
   <!-- NAV -->
@@ -1276,7 +1280,7 @@
                 <span class="hm-status hm-status-r"></span>
                 <div class="hm-tile-body">
                   <div class="hm-tile-title">Investigate API latency</div>
-                  <div class="hm-tile-meta">claude-code · acme-app</div>
+                  <div class="hm-tile-meta">codex · acme-app</div>
                 </div>
                 <span class="hm-tile-time">1h ago</span>
               </div>
@@ -1284,7 +1288,7 @@
                 <span class="hm-status hm-status-d"></span>
                 <div class="hm-tile-body">
                   <div class="hm-tile-title">Weekly retro write-up</div>
-                  <div class="hm-tile-meta">claude-code · field-notes</div>
+                  <div class="hm-tile-meta">opencode · field-notes</div>
                 </div>
                 <span class="hm-tile-time">yesterday</span>
               </div>
@@ -1752,6 +1756,7 @@
 
   <div class="footer">
     <p>Built with <span class="heart">&hearts;</span> by <a href="https://github.com/mattslight">Matthew Slight</a></p>
+    <p class="signoff">End of transmission</p>
   </div>
 
   <script>
@@ -1783,8 +1788,8 @@
       }
       const far = document.getElementById('stars-far');
       const near = document.getElementById('stars-near');
-      if (far) makeStars(far, 110, { twinkle: false });
-      if (near) makeStars(near, 28, { twinkle: true });
+      if (far) makeStars(far, 200, { twinkle: false });
+      if (near) makeStars(near, 60, { twinkle: true });
     })();
 
     // ============================================
@@ -1809,9 +1814,9 @@
       window.addEventListener('mousemove', (e) => {
         const x = (e.clientX / window.innerWidth - 0.5);
         const y = (e.clientY / window.innerHeight - 0.5);
-        if (farLayer) farLayer.style.transform = `translate3d(${x * -8}px, ${y * -8}px, 0)`;
-        if (nearLayer) nearLayer.style.transform = `translate3d(${x * -28}px, ${y * -28}px, 0)`;
-        if (pearl) pearl.style.transform = `translateX(calc(-50% + ${x * 24}px)) translateY(${y * 18}px)`;
+        if (farLayer) farLayer.style.transform = `translate3d(${x * -16}px, ${y * -12}px, 0)`;
+        if (nearLayer) nearLayer.style.transform = `translate3d(${x * -52}px, ${y * -36}px, 0)`;
+        if (pearl) pearl.style.transform = `translateX(calc(-50% + ${x * 40}px)) translateY(${y * 28}px)`;
       });
     }
 

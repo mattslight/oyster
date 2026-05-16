@@ -116,7 +116,12 @@
 /* Section heads + sessions */
 .hm-section-head {
   display: flex; align-items: baseline; justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-bottom: 10px;
+}
+@media (max-width: 520px) {
+  .hm-section-head { flex-direction: column; align-items: flex-start; }
 }
 .hm-section-name {
   font-family: 'Barlow', sans-serif;
