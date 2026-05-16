@@ -122,10 +122,11 @@ export interface TranscriptHit {
 
 export async function searchTranscripts(
   query: string,
-  opts: { limit?: number; signal?: AbortSignal } = {},
+  opts: { limit?: number; spaceId?: string | null; signal?: AbortSignal } = {},
 ): Promise<TranscriptHit[]> {
   const params = new URLSearchParams({ q: query });
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.spaceId) params.set("space_id", opts.spaceId);
   return getJson<TranscriptHit[]>(`/api/sessions/search?${params.toString()}`, opts.signal);
 }
 
