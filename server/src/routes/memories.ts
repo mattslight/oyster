@@ -76,6 +76,33 @@ export async function tryHandleMemoryRoute(
     return true;
   }
 
+  // GET /api/memories/search?q=…&space_id=…&limit=…
+  // FTS5 search over memories. Side-effect-free (does NOT update
+  // access counts or write memory_recalls). Local-origin only.
+  if (req.method === "GET" && memoriesPath === "/api/memories/search") {
+    if (rejectIfNonLocalOrigin()) return true;
+    const parsed = new URL(req.url ?? "/", "http://localhost");
+    const q = parsed.searchParams.get("q") ?? "";
+    const spaceId = parsed.searchParams.get("space_id");
+    const limitRaw = parsed.searchParams.get("limit");
+    let limit: number | undefined;
+    if (limitRaw !== null) {
+      const n = Number(limitRaw);
+      if (Number.isFinite(n) && n >= 1) limit = Math.min(50, Math.floor(n));
+    }
+    try {
+      const hits = await memoryProvider.search({
+        query: q,
+        space_id: spaceId ?? undefined,
+        limit,
+      });
+      sendJson(hits);
+    } catch (err) {
+      sendError(err);
+    }
+    return true;
+  }
+
   // GET /api/memories — list memories, optionally scoped to a space.
   // Strip the query string before path-matching (same trap the events
   // route had — `$`-anchored regex would silently reject `?space_id=…`).
