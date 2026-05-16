@@ -16,6 +16,62 @@
       padding: 170px 28px 0;
       text-align: center;
     }
+
+    /* Constellation — quiet space accent, off-axis so it doesn't fight the headline */
+    .constellation {
+      position: absolute;
+      top: 140px;
+      right: -20px;
+      width: 200px;
+      height: 240px;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.85;
+    }
+    .constellation .link {
+      stroke: rgba(255, 255, 255, 0.22);
+      stroke-width: 1;
+      stroke-dasharray: 3 6;
+      fill: none;
+    }
+    .constellation .star {
+      fill: #fff;
+      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.45));
+    }
+    .constellation .star.glow {
+      fill: var(--accent-2);
+      filter: drop-shadow(0 0 10px var(--accent-2));
+    }
+    .constellation .star.warm {
+      fill: var(--star);
+      filter: drop-shadow(0 0 8px var(--star));
+    }
+    .constellation .label {
+      fill: var(--ink-4);
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .constellation .twinkle {
+      animation: hero-twinkle var(--dur, 4s) ease-in-out infinite;
+      animation-delay: var(--delay, 0s);
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    @keyframes hero-twinkle {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .constellation .twinkle { animation: none; }
+    }
+    @media (max-width: 900px) {
+      .constellation { opacity: 0.6; width: 150px; height: 180px; top: 80px; }
+    }
+    @media (max-width: 640px) {
+      .constellation { display: none; }
+    }
     h1 {
       font-family: var(--sans);
       font-size: clamp(48px, 8vw, 96px);
@@ -68,12 +124,12 @@
     }
     .pro-eyebrow {
       font-family: var(--mono);
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--star);
-      margin-bottom: 14px;
+      margin-bottom: 16px;
     }
     .hero-strong-tight {
       font-family: var(--sans);
@@ -81,7 +137,7 @@
       font-weight: 500;
       line-height: 1.25;
       letter-spacing: -0.015em;
-      color: var(--ink);
+      color: var(--ink-2);
       margin-bottom: 14px;
     }
     .hero-strong-tight .accent {
@@ -91,6 +147,7 @@
       letter-spacing: -0.005em;
       color: var(--accent-2);
     }
+    .hero-strong-tight .bright { color: var(--ink); font-weight: 600; }
     .subtitle {
       font-size: 16px;
       line-height: 1.65;
@@ -496,12 +553,34 @@
   </nav>
 
   <section class="hero">
+    <!-- Ursa Minor — the Little Dipper. Polaris (the North Star) is the
+         brightest, top-right; Kochab marks the bottom-right of the bowl.
+         A guiding-star metaphor for "mission control". -->
+    <svg class="constellation" viewBox="0 0 200 240" aria-hidden="true">
+      <!-- Handle: Polaris → Yildun → Epsilon → Zeta -->
+      <path class="link" d="M 170 40 L 145 80"/>
+      <path class="link" d="M 145 80 L 120 120"/>
+      <path class="link" d="M 120 120 L 100 160"/>
+      <!-- Bowl: Zeta → Eta → Kochab → Pherkad → Zeta -->
+      <path class="link" d="M 100 160 L 50 150"/>
+      <path class="link" d="M 50 150 L 40 210"/>
+      <path class="link" d="M 40 210 L 90 215"/>
+      <path class="link" d="M 90 215 L 100 160"/>
+      <!-- Stars: Polaris = accent glow; Kochab = warm; rest white -->
+      <circle class="star glow twinkle" style="--dur: 4s;" cx="170" cy="40" r="3.5"/>
+      <circle class="star twinkle" style="--dur: 5.5s; --delay: 1.2s;" cx="145" cy="80" r="1.8"/>
+      <circle class="star twinkle" style="--dur: 4.5s; --delay: 0.6s;" cx="120" cy="120" r="2"/>
+      <circle class="star twinkle" style="--dur: 6s; --delay: 1.8s;" cx="100" cy="160" r="2.2"/>
+      <circle class="star twinkle" style="--dur: 5s; --delay: 2.4s;" cx="50" cy="150" r="2"/>
+      <circle class="star twinkle" style="--dur: 5.5s; --delay: 0.9s;" cx="40" cy="210" r="1.6"/>
+      <circle class="star warm twinkle" style="--dur: 4.2s; --delay: 1.5s;" cx="90" cy="215" r="2.8"/>
+    </svg>
     <h1>Free <span class="accent">without</span> limits.</h1>
     <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
     <div class="pro-stanza">
       <div class="pro-eyebrow">Oyster Pro</div>
-      <p class="hero-strong-tight">Smarter work — <span class="accent">anywhere</span>, any device, any agent.</p>
-      <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
+      <p class="hero-strong-tight">Smarter work — <span class="accent">anywhere</span>, <span class="bright">any device, any agent.</span></p>
+      <p class="subtitle">Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
     </div>
   </section>
 
@@ -599,7 +678,7 @@
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Universal memory (local)</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Plugins &amp; MCP integration</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Bring any AI</li>
-          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Local-only mode</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Local-first — your data stays on your machine</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>All your data, exportable</li>
         </ul>
         <a href="/#install" class="tier-cta tier-cta--ghost">Install</a>
