@@ -1308,7 +1308,9 @@
           <span class="hero-mock-chrome-title">Oyster</span>
         </div>
 
-        <!-- Easter egg: red/yellow buttons launch the rocket; green restores. -->
+        <!-- Easter egg: red/yellow buttons launch the rocket; green restores.
+             aria-hidden is toggled on launch/shutoff so the iframe is reachable
+             to assistive tech only when visible. -->
         <div class="hero-mock-rocket" aria-hidden="true">
           <iframe data-src="rocket-ship.html" title="Rocket Ship" loading="lazy"></iframe>
         </div>
@@ -1513,7 +1515,7 @@
                 </div>
                 <span class="hm-art-label">Launch list</span>
               </div>
-              <div class="hm-art-cell hm-art-cell-launchable" data-artefact="rocket" title="Launch the rocket — easter egg">
+              <div class="hm-art-cell hm-art-cell-launchable" data-artefact="rocket" role="button" tabindex="0" aria-label="Launch the rocket ship easter-egg game" title="Launch the rocket — easter egg">
                 <div class="hm-art" style="background: linear-gradient(150deg, #1e1b4b 0%, #4c1d95 45%, #7c3aed 100%);">
                   <!-- Mini rocket — clickable easter egg launcher -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -2003,16 +2005,19 @@
         setTimeout(() => {
           mock.classList.remove('is-launched');
           mock.classList.remove('is-shutting-down');
+          if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'true');
           killIframe();
           shuttingDown = false;
         }, SHUTOFF_MS);
       }
 
+      const rocketOverlay = mock.querySelector('.hero-mock-rocket');
       function launchRocket() {
         if (shuttingDown) return;
         if (mock.classList.contains('is-launched')) return;
         if (frame) frame.src = frame.dataset.src;
         mock.classList.add('is-launched');
+        if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'false');
       }
 
       mock.querySelectorAll('.hero-mock-chrome .dot').forEach(dot => {
@@ -2029,13 +2034,23 @@
         });
       });
 
-      // Rocket-ship artefact tile is a second launch path
+      // Rocket-ship artefact tile is a second launch path — keyboard + click
       mock.querySelectorAll('.hm-art-cell-launchable').forEach(cell => {
-        cell.addEventListener('click', (e) => {
+        function activate(e) {
           e.stopPropagation();
+          e.preventDefault();
           if (mock.classList.contains('is-launched')) { shutoff(); return; }
           launchRocket();
+        }
+        cell.addEventListener('click', activate);
+        cell.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') activate(e);
         });
+      });
+
+      // ESC from inside the iframe → parent receives a postMessage and shuts off
+      window.addEventListener('message', (e) => {
+        if (e && e.data && e.data.type === 'oyster-rocket-close') shutoff();
       });
       // ESC also triggers shutoff
       document.addEventListener('keydown', (e) => {

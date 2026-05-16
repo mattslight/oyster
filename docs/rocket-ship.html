@@ -72,7 +72,7 @@
     top: 0;
     width: 100%;
     height: 100%;
-    background-image: url('https://s3-us-west-2.amazonaws.com/s.cdpn.io/86186/crt.png');
+    background-image: url('assets/crt.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
     content: "";
@@ -295,8 +295,8 @@
     padding: 0;
     margin: 0;
     display: grid;
-    grid-template-columns: auto auto auto;
-    gap: 6px 22px;
+    grid-template-columns: auto auto auto auto;
+    gap: 6px 18px;
     font-size: clamp(10px, 1.5vw, 14px);
     letter-spacing: 0.14em;
     align-items: center;
@@ -307,6 +307,12 @@
   .leaderboard .lb-rank { color: #ff3aa1; text-align: right; }
   .leaderboard .lb-initials { color: #2dd4ff; text-align: left; letter-spacing: 0.2em; }
   .leaderboard .lb-score { color: #ffd84a; text-align: right; }
+  .leaderboard .lb-since {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.78em;
+    letter-spacing: 0.1em;
+    text-align: left;
+  }
   .leaderboard .lb-empty {
     font-size: clamp(10px, 1.4vw, 12px);
     color: rgba(255, 255, 255, 0.55);
@@ -700,29 +706,31 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-// Touch controls
+// Touch controls — passive: false so preventDefault is honoured everywhere
 let touchThrust = false;
 let touchX = null;
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   touchThrust = true;
   touchX = e.touches[0].clientX;
-});
+}, { passive: false });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
   touchX = e.touches[0].clientX;
-});
-canvas.addEventListener('touchend', e => {
-  touchThrust = false;
-  touchX = null;
-});
+}, { passive: false });
+canvas.addEventListener('touchend', () => { touchThrust = false; touchX = null; });
+canvas.addEventListener('touchcancel', () => { touchThrust = false; touchX = null; });
 
-// Mouse control
+// Mouse control — release tracked on window (and window blur) so a drag
+// that ends outside the canvas / iframe still clears the steering state.
 let mouseDown = false;
 let mouseX = null;
 canvas.addEventListener('mousedown', e => { mouseDown = true; mouseX = e.clientX; });
-canvas.addEventListener('mousemove', e => { if (mouseDown) mouseX = e.clientX; });
-canvas.addEventListener('mouseup', () => { mouseDown = false; mouseX = null; });
+window.addEventListener('mousemove', e => { if (mouseDown) mouseX = e.clientX; });
+function clearMouseDrag() { mouseDown = false; mouseX = null; }
+window.addEventListener('mouseup', clearMouseDrag);
+window.addEventListener('blur', clearMouseDrag);
+window.addEventListener('mouseleave', clearMouseDrag);
 
 function drawRocket(x, y, angle, thrusting) {
   ctx.save();
@@ -1146,23 +1154,32 @@ function draw() {
   }
 
   // === CRT static noise overlay (à la CodePen komrad/dyBExVZ) ===
+  // Reuse a single ImageData buffer + refresh only every N frames so this
+  // doesn't allocate / churn every frame at 60fps (mobile CPU/GPU cost).
   if (!draw.noiseCanvas) {
     draw.noiseCanvas = document.createElement('canvas');
     draw.noiseCtx = draw.noiseCanvas.getContext('2d');
+    draw.noiseFrame = 0;
   }
   const nw = Math.ceil(W / 4);
   const nh = Math.ceil(H / 4);
   if (draw.noiseCanvas.width !== nw || draw.noiseCanvas.height !== nh) {
     draw.noiseCanvas.width = nw;
     draw.noiseCanvas.height = nh;
+    draw.noiseImgData = null; // size changed → reallocate
   }
-  const nCtx = draw.noiseCtx;
-  const imgData = nCtx.createImageData(nw, nh);
-  const buf = new Uint32Array(imgData.data.buffer);
-  for (let i = 0, len = buf.length; i < len; i++) {
-    buf[i] = ((28 * Math.random()) | 0) << 24;
+  if (!draw.noiseImgData) {
+    draw.noiseImgData = draw.noiseCtx.createImageData(nw, nh);
+    draw.noiseBuf = new Uint32Array(draw.noiseImgData.data.buffer);
   }
-  nCtx.putImageData(imgData, 0, 0);
+  // Re-roll noise every 4th frame (~15 fps) — invisible difference, ¼ the cost.
+  if ((draw.noiseFrame++ & 3) === 0) {
+    const buf = draw.noiseBuf;
+    for (let i = 0, len = buf.length; i < len; i++) {
+      buf[i] = ((28 * Math.random()) | 0) << 24;
+    }
+    draw.noiseCtx.putImageData(draw.noiseImgData, 0, 0);
+  }
   ctx.drawImage(draw.noiseCanvas, 0, 0, W, H);
 }
 
@@ -1233,10 +1250,17 @@ function showCelebration() {
 }
 
 // ============================================
-// LEADERBOARD — top 10, localStorage-backed
+// LEADERBOARD — top 10, ranked by score DESC then created_at ASC (oldest wins ties).
+// Local mirror in localStorage; cloud source-of-truth via Cloudflare Worker.
 // ============================================
 const LB_KEY = 'oyster-rocket-leaderboard';
 const LB_SIZE = 10;
+const LB_API = '/api/leaderboard';
+// Comparator: highest score first; ties broken by who got there first.
+function lbSort(a, b) {
+  if (b.score !== a.score) return b.score - a.score;
+  return (a.created_at || 0) - (b.created_at || 0);
+}
 function readLeaderboard() {
   try {
     const raw = localStorage.getItem(LB_KEY);
@@ -1245,7 +1269,9 @@ function readLeaderboard() {
     if (!Array.isArray(v)) return [];
     return v
       .filter(e => e && typeof e.score === 'number' && typeof e.initials === 'string')
-      .sort((a, b) => b.score - a.score)
+      // Back-compat: pre-date entries get the current time so they sort sanely
+      .map(e => ({ score: e.score, initials: e.initials, created_at: e.created_at || Date.now() }))
+      .sort(lbSort)
       .slice(0, LB_SIZE);
   } catch (_) { return []; }
 }
@@ -1254,17 +1280,55 @@ function writeLeaderboard(list) {
 }
 function addToLeaderboard(score, initials) {
   const list = readLeaderboard();
-  const entry = { score, initials };
+  const entry = { score, initials, created_at: Date.now() };
   list.push(entry);
-  list.sort((a, b) => b.score - a.score);
+  list.sort(lbSort);
   const trimmed = list.slice(0, LB_SIZE);
   writeLeaderboard(trimmed);
-  // 1-indexed rank; 0 if for some reason it didn't make the list
-  return trimmed.findIndex(e => e === entry || (e.score === score && e.initials === initials)) + 1;
+  // Best-effort cloud sync (don't block the UI on it)
+  fetch(LB_API, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ score, initials, created_at: entry.created_at }),
+  }).then(r => r.ok && r.json()).then(data => {
+    if (data && Array.isArray(data.list)) {
+      writeLeaderboard(data.list.slice(0, LB_SIZE));
+      paintSplashHighScore();
+      paintLeaderboard();
+    }
+  }).catch(() => {});
+  return trimmed.findIndex(e => e === entry || (e.score === score && e.initials === initials && e.created_at === entry.created_at)) + 1;
+}
+// Refresh from cloud on load — replaces local mirror if server returns a list
+(function refreshFromCloud() {
+  fetch(LB_API, { method: 'GET' })
+    .then(r => r.ok && r.json())
+    .then(data => {
+      if (data && Array.isArray(data.list)) {
+        writeLeaderboard(data.list.slice(0, LB_SIZE));
+        paintSplashHighScore();
+        paintLeaderboard();
+      }
+    })
+    .catch(() => { /* offline / worker not deployed yet — local mirror is fine */ });
+})();
+
+// Humanised "since" — "today", "2d", "3w", "5mo" etc
+function sincePhrase(ts) {
+  if (!ts) return '';
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if (days < 1) return 'today';
+  if (days === 1) return '1d';
+  if (days < 7) return days + 'd';
+  if (days < 30) return Math.floor(days / 7) + 'w';
+  if (days < 365) return Math.floor(days / 30) + 'mo';
+  return Math.floor(days / 365) + 'y';
 }
 function qualifiesForLeaderboard(score) {
   if (score <= 0) return false;
   const list = readLeaderboard();
+  // Room on the board: anyone with a positive score gets in (ties OK).
+  // Full board: must STRICTLY beat the lowest existing score — ties don't bump.
   return list.length < LB_SIZE || score > list[list.length - 1].score;
 }
 function getHighScore() {
@@ -1290,7 +1354,8 @@ function paintLeaderboard() {
   ol.innerHTML = list.map((e, i) => {
     const rank = String(i + 1).padStart(2, '0');
     const score = String(e.score).padStart(3, '0');
-    return `<li><span class="lb-rank">${rank}.</span><span class="lb-initials">${e.initials}</span><span class="lb-score">${score}</span></li>`;
+    const since = sincePhrase(e.created_at);
+    return `<li><span class="lb-rank">${rank}.</span><span class="lb-initials">${e.initials}</span><span class="lb-score">${score}</span><span class="lb-since">${since}</span></li>`;
   }).join('');
 }
 paintSplashHighScore();
@@ -1312,7 +1377,6 @@ const Splash = (function () {
 
   // Lifecycle: 'booting' → 'title' → 'playing' → 'attract' → 'title' …
   let phase = 'booting';
-  let bootedAt = Date.now();
   let cycleTimer = null;
 
   function setView(idx) {
@@ -1336,7 +1400,18 @@ const Splash = (function () {
   function startTitleMusic() {
     if (!bgm) return;
     bgm.currentTime = 0;
-    bgm.play().catch(() => {});
+    bgm.play().catch(() => {
+      // Browser blocked autoplay — fall back to first user gesture inside the iframe
+      const onGesture = () => {
+        bgm.play().catch(() => {});
+        window.removeEventListener('keydown', onGesture);
+        window.removeEventListener('mousedown', onGesture);
+        window.removeEventListener('touchstart', onGesture);
+      };
+      window.addEventListener('keydown', onGesture);
+      window.addEventListener('mousedown', onGesture);
+      window.addEventListener('touchstart', onGesture, { passive: true });
+    });
   }
   function stopTitleMusic() { if (bgm) bgm.pause(); }
   function startGameMusic() {
@@ -1362,14 +1437,19 @@ const Splash = (function () {
   setTimeout(() => {
     if (phase !== 'booting') return;
     phase = 'title';
-    bootedAt = 0; // dismiss allowed once title is up
     startTitleMusic();
     startCycle(0);
   }, BOOT_MS);
 
   // Global dismiss listener
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') return; // ESC reserved for outer "restore"
+    // ESC inside the iframe → ask the parent to close. Keyboard events
+    // don't bubble out of an iframe, so without postMessage the outer
+    // ESC-to-shutoff listener never fires while focus is in the game.
+    if (e.key === 'Escape') {
+      try { window.parent.postMessage({ type: 'oyster-rocket-close' }, '*'); } catch (_) {}
+      return;
+    }
     tryDismiss();
   });
   window.addEventListener('mousedown', tryDismiss);
@@ -1380,7 +1460,6 @@ const Splash = (function () {
     enterAttractMode() {
       gameActive = false; // freeze the game world while attract is up
       phase = 'title';
-      bootedAt = 0;
       splash.classList.remove('is-hidden');
       if (tube) tube.classList.remove('is-ready');
       if (bootEl) bootEl.style.display = 'none';
