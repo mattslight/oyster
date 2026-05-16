@@ -8,6 +8,11 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - **Top bar is now one sticky pill.** Account and space switcher share a single bar pinned to the top of every view. Signed-in shows an avatar (email + sign-out in the click-menu); signed-out shows a *Sign in* pill in the same slot.
 
+### Fixed
+
+- **Artefacts survive folder renames.** When a file's folder moves, Oyster now reattaches the artefact to its new location via the project's other known paths instead of removing it from the surface. On first start after upgrading, artefacts that were previously dropped this way are restored automatically.
+- **Sessions that wrote a file before it became an artefact are now linked.** Registering an artefact backfills *created / modified / read* links from recent session activity, so the surface attributes provenance correctly even when the file was written via raw tools first and registered later.
+
 ## [0.9.0] - 2026-05-16
 
 A project's identity now lives in a `.oyster/id` file inside its folder. Renaming, moving, or `git push`ing the folder no longer orphans its sessions — the marker travels with the folder and is recognised everywhere. Eleven sessions across three beta cycles (0.9.0-beta.0/1/2) collapsed into this release.
