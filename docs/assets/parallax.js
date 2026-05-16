@@ -11,11 +11,33 @@
 
   var far = document.querySelector('.stars-far');
   var near = document.querySelector('.stars-near');
-  if (!far && !near) return;
+  var orbit = document.querySelector('.orbit-svg');
+  var heroMock = document.querySelector('.hero-mock');
+  if (!far && !near && !orbit) return;
+
+  // Page-Y of the hero-mock's bottom edge. Used to fade the orbit
+  // from opacity 1 (page top) to opacity 0 (hero-mock fully past
+  // viewport top). Recomputed on resize since the hero-mock height
+  // depends on viewport width.
+  var heroFadeRange = 0;
+  function recalcHeroFade() {
+    if (!heroMock) return;
+    var rect = heroMock.getBoundingClientRect();
+    heroFadeRange = Math.max(1, rect.bottom + window.scrollY);
+  }
+  recalcHeroFade();
+  window.addEventListener('resize', recalcHeroFade, { passive: true });
+  window.addEventListener('load', recalcHeroFade, { passive: true });
 
   // Mouse-parallax: max shift in px when cursor is at a viewport edge.
   var FAR_MAX = 10;
   var NEAR_MAX = 24;
+  // Orbit sits between stars and content depth-wise.
+  var ORBIT_MOUSE_X = 18;
+  var ORBIT_MOUSE_Y = 12;
+  // Orbit lags the document scroll by this fraction (0 = moves with page,
+  // 1 = stays fixed). Higher = deeper in the background.
+  var ORBIT_SCROLL_RATE = 0.6;
   // Lerp factor per frame for the eased cursor follow.
   var EASE = 0.08;
 
@@ -31,6 +53,7 @@
 
   if (far) far.style.willChange = 'transform';
   if (near) near.style.willChange = 'transform';
+  if (orbit) orbit.style.willChange = 'transform';
 
   window.addEventListener('mousemove', function (e) {
     var w = window.innerWidth || 1;
@@ -59,6 +82,19 @@
 
     if (far) far.style.transform = 'translate3d(' + fx + 'px,' + fy + 'px,0)';
     if (near) near.style.transform = 'translate3d(' + nx + 'px,' + ny + 'px,0)';
+
+    if (orbit) {
+      // Orbit transform composes via CSS vars so it doesn't clobber the
+      // inline translateX(-50%) centering on the SVG.
+      var scrollY = window.scrollY;
+      var ox = (-cx * ORBIT_MOUSE_X).toFixed(2);
+      var oy = (-cy * ORBIT_MOUSE_Y + scrollY * ORBIT_SCROLL_RATE).toFixed(2);
+      orbit.style.setProperty('--parallax-x', ox + 'px');
+      orbit.style.setProperty('--parallax-y', oy + 'px');
+      // Fade out as the hero-mock scrolls past viewport top.
+      var op = heroMock ? Math.max(0, 1 - scrollY / heroFadeRange) : 1;
+      orbit.style.opacity = op.toFixed(3);
+    }
 
     requestAnimationFrame(tick);
   }

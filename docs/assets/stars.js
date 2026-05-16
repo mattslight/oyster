@@ -13,26 +13,34 @@
 
   function makeStars(el, count, opts) {
     if (!el) return;
-    var twinkle = opts && opts.twinkle;
-    var minOp = twinkle ? 0.05 : 0.015;
-    var maxOp = twinkle ? 0.62 : 0.30;
-    var skew = twinkle ? 2.2 : 3.4;
-    var sizeBase = twinkle ? 0.9 : 0.7;
-    var sizeJitter = twinkle ? 1.6 : 1.0;
+    var bright = opts && opts.twinkle;
+    var minOp = bright ? 0.05 : 0.015;
+    var maxOp = bright ? 0.62 : 0.30;
+    var skew = bright ? 2.2 : 3.4;
+    var sizeBase = bright ? 0.9 : 0.7;
+    var sizeJitter = bright ? 1.6 : 1.0;
+    // Fraction of stars that twinkle — both layers, less on far.
+    var twinkleRate = bright ? 0.30 : 0.10;
 
     var frag = document.createDocumentFragment();
     for (var i = 0; i < count; i++) {
       var d = document.createElement('div');
       d.style.left = (rand() * 100).toFixed(2) + '%';
       d.style.top = (rand() * 100).toFixed(2) + '%';
-      d.style.opacity = (minOp + Math.pow(rand(), skew) * (maxOp - minOp)).toFixed(3);
+      var op = minOp + Math.pow(rand(), skew) * (maxOp - minOp);
+      d.style.opacity = op.toFixed(3);
       var size = (sizeBase + rand() * sizeJitter).toFixed(2) + 'px';
       d.style.width = size;
       d.style.height = size;
-      if (twinkle && rand() < 0.15) {
+      if (rand() < twinkleRate) {
         d.classList.add('star-twinkle');
-        d.style.setProperty('--dur', (2.5 + rand() * 4).toFixed(2) + 's');
-        d.style.setProperty('--delay', (rand() * 5).toFixed(2) + 's');
+        // Trough fraction varies wildly so some stars flicker, some
+        // fade subtly. CSS keyframe reads --peak/--trough.
+        var troughFrac = 0.05 + rand() * 0.6;
+        d.style.setProperty('--peak', op.toFixed(3));
+        d.style.setProperty('--trough', (op * troughFrac).toFixed(3));
+        d.style.setProperty('--dur', (1.5 + rand() * 6).toFixed(2) + 's');
+        d.style.setProperty('--delay', (rand() * 8).toFixed(2) + 's');
       }
       frag.appendChild(d);
     }

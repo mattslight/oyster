@@ -50,6 +50,23 @@
 
     /* .cosmos, .cosmos::after, .stars, .star-twinkle live in assets/oyster.css */
 
+    /* Film grain — fixed SVG noise overlay above the cosmos/stars but
+       below the content. Mix-blend-mode keeps the text crisp. */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.55'/></svg>");
+      background-size: 220px 220px;
+      opacity: 0.1;
+      mix-blend-mode: overlay;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      body::before { opacity: 0.07; }
+    }
+
     /* Orbital arcs — the visual signature. SVG placed absolute, very low opacity. */
     .orbit-svg {
       position: absolute;
@@ -61,8 +78,8 @@
     }
     .orbit-svg circle, .orbit-svg ellipse {
       fill: none;
-      stroke: rgba(255, 255, 255, 0.10);
-      stroke-width: 1;
+      stroke: rgba(255, 255, 255, 0.06);
+      stroke-width: 1.6;
     }
     .orbit-svg .orbit-dashed {
       stroke-dasharray: 3 6;
@@ -1276,10 +1293,10 @@
 
     <!-- Orbital arcs — the visual signature of the page -->
     <svg class="orbit-svg" aria-hidden="true" width="1600" height="900" viewBox="-800 -450 1600 900"
-         style="top: 80px; left: 50%; transform: translateX(-50%); width: 1600px; height: 900px;">
-      <ellipse cx="0" cy="120" rx="620" ry="260" class="orbit-dashed" stroke="rgba(169,158,255,0.22)"/>
-      <ellipse cx="0" cy="180" rx="820" ry="340" stroke="rgba(255,255,255,0.10)"/>
-      <ellipse cx="0" cy="100" rx="440" ry="180" stroke="rgba(139,118,255,0.20)"/>
+         style="top: 80px; left: 50%; transform: translateX(-50%) translate3d(var(--parallax-x, 0px), var(--parallax-y, 0px), 0); width: 1600px; height: 900px;">
+      <ellipse cx="0" cy="120" rx="620" ry="260" class="orbit-dashed" stroke="rgba(169,158,255,0.14)"/>
+      <ellipse cx="0" cy="180" rx="820" ry="340" stroke="rgba(255,255,255,0.06)"/>
+      <ellipse cx="0" cy="100" rx="440" ry="180" stroke="rgba(139,118,255,0.12)"/>
       <!-- orbital satellites along the arcs -->
       <g class="orbit-rotate" style="--dur: 60s;">
         <circle cx="620" cy="120" r="4" class="orbit-dot"/>
