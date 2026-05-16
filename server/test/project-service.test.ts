@@ -615,6 +615,27 @@ describe("ProjectService.attachFolder", () => {
     rmSync(folder, { recursive: true, force: true });
   });
 
+  it("expands a leading `~` to the home directory before reading/writing/caching the path", () => {
+    // UI accepts entries like `~/Dev/foo`; the old source-path normaliser
+    // expanded the tilde. Without this, attachFolder caches the literal
+    // `~/...` in project_paths, writes nothing to disk, and `claimOrphan`
+    // finds no sessions matching the literal `~` cwd. The marker, the
+    // cache, the orphan sweep — all silently broken.
+    const home = require("node:os").homedir();
+    const real = mkdtempSync(join(home, ".oyster-tilde-test-"));
+    const tilde = real.replace(home, "~");
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd) VALUES ('s', 'claude-code', 'done', ?)").run(real);
+
+    const { project, claimed } = service.attachFolder({ spaceId: "work", path: tilde });
+
+    expect(claimed).toBe(1); // matched the real-path session, not the tilde literal
+    const cached = db.prepare("SELECT path FROM project_paths WHERE project_id = ?").get(project.id) as { path: string };
+    expect(cached.path).toBe(real); // expanded form cached
+    expect(readFileSync(join(real, ".oyster", "id"), "utf8").trim()).toBe(project.id);
+
+    rmSync(real, { recursive: true, force: true });
+  });
+
   it("re-attaching under a DIFFERENT space moves the undeleted project to the new space (and reclaims sessions there)", () => {
     const folder = mkdtempSync(join(tmpdir(), "oyster-attach-cross-space-"));
     db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('personal', 'Personal', '#111', 'none')`);

@@ -8,7 +8,19 @@
 import type Database from "better-sqlite3";
 import { basename, join } from "node:path";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { readOysterId, writeOysterId } from "./oyster-id.js";
+
+// `~/foo` and `~` → `<home>/foo` / `<home>`. The UI accepts tilde paths
+// in the "Add project" form; without this expansion the marker, the
+// project_paths cache, and claimOrphan would all operate on the literal
+// `~` string. Only leading `~` is expanded — no `~user` lookup, which is
+// POSIX-only and a CVE-shape we don't need.
+function expandTilde(path: string): string {
+  if (path === "~") return homedir();
+  if (path.startsWith("~/") || path.startsWith("~\\")) return homedir() + path.slice(1);
+  return path;
+}
 
 export interface Project {
   id: string;
@@ -150,8 +162,9 @@ export class ProjectService {
   //   3. Else → create a fresh project + write the marker.
   // Finishes by claiming orphan sessions (exact + descendant cwds).
   attachFolder(args: { spaceId: string; path: string; name?: string }): { project: Project; claimed: number } {
-    const fallbackName = args.name ?? basename(args.path);
-    const existing = readOysterId(args.path);
+    const path = expandTilde(args.path);
+    const fallbackName = args.name ?? basename(path);
+    const existing = readOysterId(path);
     let project: Project;
 
     if (existing.status === "valid") {
@@ -186,21 +199,21 @@ export class ProjectService {
            WHERE pp.path = ?
            LIMIT 2
         `)
-        .all(args.path) as Array<ProjectRow & { removed_at: string | null }>;
+        .all(path) as Array<ProjectRow & { removed_at: string | null }>;
       if (cached.length === 1) {
         const row = cached[0];
         if (row.removed_at || row.space_id !== args.spaceId) {
           this.relocateProjectToSpace(row.id, args.spaceId);
           row.space_id = args.spaceId;
         }
-        tryWriteOysterId(args.path, row.id);
+        tryWriteOysterId(path, row.id);
         project = rowToProject(row);
       } else {
         // Either nothing cached, or ambiguous (2+ projects claim this path).
         // Mint fresh in both cases — ambiguity is the user's signal to pick
         // a different attach name.
         project = this.createProject({ spaceId: args.spaceId, name: fallbackName });
-        tryWriteOysterId(args.path, project.id);
+        tryWriteOysterId(path, project.id);
       }
     }
 
@@ -212,8 +225,8 @@ export class ProjectService {
         `INSERT INTO project_paths (project_id, path) VALUES (?, ?)
          ON CONFLICT(project_id, path) DO UPDATE SET last_seen_at = datetime('now')`,
       )
-      .run(project.id, args.path);
-    const { claimed } = this.claimOrphan({ cwd: args.path, projectId: project.id });
+      .run(project.id, path);
+    const { claimed } = this.claimOrphan({ cwd: path, projectId: project.id });
     return { project, claimed };
   }
 

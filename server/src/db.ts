@@ -470,12 +470,15 @@ export function initDb(userlandDir: string): Database.Database {
   // installs go straight to the projects model.
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Drop the legacy sources surface. Idempotent — try/catch each ALTER so
-  // already-dropped state on fresh installs is a no-op.
+  // Drop the legacy sources surface. Order matters: SQLite refuses
+  // ALTER TABLE DROP COLUMN while an index references the column, so
+  // indexes go FIRST. Each step is idempotent — try/catch the ALTERs so
+  // already-dropped state on fresh installs is a no-op, and IF EXISTS
+  // on the DROP INDEX / TABLE handles both states.
   // ─────────────────────────────────────────────────────────────────────────
+  db.exec("DROP INDEX IF EXISTS sessions_source_id");
   try { db.exec("ALTER TABLE sessions DROP COLUMN source_id"); } catch { /* already dropped or never existed */ }
   try { db.exec("ALTER TABLE artifacts DROP COLUMN source_id"); } catch { /* already dropped or never existed */ }
-  db.exec("DROP INDEX IF EXISTS sessions_source_id");
   db.exec("DROP TABLE IF EXISTS sources");
 
   // One-time canonical-form migration for paths and cwds. The longest-prefix
