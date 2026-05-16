@@ -7,6 +7,7 @@ import type { SpaceStore } from "./space-store.js";
 import type { Artifact, ArtifactKind, ArtifactStatus } from "../../shared/types.js";
 import { isPortOpen, isStarting, clearStarting, getGeneratedArtifactEntries } from "./process-manager.js";
 import { resolveArtifactPathViaProjects } from "./resolve-artifact-path.js";
+import { artifactTouchFromToolUse } from "./watchers/claude-code.js";
 import { slugify, inferKindFromPath, toArtifactKind } from "./utils.js";
 import { debug, debugEnabled } from "./debug.js";
 
@@ -374,6 +375,14 @@ export class ArtifactService {
       source_ref: null,
     });
 
+    // Backfill session→artefact links. The watcher's live touch-detection
+    // only fires when the artefact already exists in the DB at tool_use
+    // time. Artefacts created via raw `Write` then registered later miss
+    // every session that touched them. Scan recent assistant events for
+    // tool_use blocks at this path and create matching session_artifacts
+    // rows.
+    this.backfillTouchesForNewArtefact(id, absPath);
+
     return {
       id,
       label: params.label,
@@ -386,6 +395,45 @@ export class ArtifactService {
       createdAt: new Date().toISOString(),
       groupName: params.group_name || undefined,
     };
+  }
+
+  // Look back at recent assistant events for tool_use blocks at this
+  // path; for each, insert a session_artifacts row with the role implied
+  // by the tool (Write → create, Edit → modify, Read → read). Deduped on
+  // (session_id, role) so we don't multiply duplicate touches when the
+  // same session called Write three times. Bounded to 30 days to keep
+  // the scan cheap; very old artefacts won't backfill, which is fine —
+  // the value is closing the loop for fresh creations.
+  private backfillTouchesForNewArtefact(artifactId: string, absPath: string): void {
+    const events = this.db
+      .prepare(
+        `SELECT session_id, raw
+           FROM session_events
+          WHERE role = 'assistant'
+            AND raw IS NOT NULL
+            AND raw LIKE ?
+            AND ts > datetime('now', '-30 days')`,
+      )
+      .all("%" + absPath + "%") as Array<{ session_id: string; raw: string }>;
+    const seen = new Set<string>(); // `${session_id}:${role}` keys already inserted
+    const insert = this.db.prepare(
+      "INSERT INTO session_artifacts (session_id, artifact_id, role) VALUES (?, ?, ?)",
+    );
+    for (const row of events) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(row.raw); } catch { continue; }
+      const content = (parsed as { message?: { content?: unknown[] } })?.message?.content;
+      if (!Array.isArray(content)) continue;
+      for (const block of content) {
+        const touch = artifactTouchFromToolUse(block);
+        if (!touch || touch.path !== absPath) continue;
+        const key = `${row.session_id}:${touch.role}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        try { insert.run(row.session_id, artifactId, touch.role); }
+        catch { /* FK to sessions might fail if session was deleted; ignore */ }
+      }
+    }
   }
 
   // ── Creation ──
