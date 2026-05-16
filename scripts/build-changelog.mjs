@@ -446,6 +446,7 @@ const html = `<!DOCTYPE html>
   <div class="cosmos" aria-hidden="true">
     <div class="stars stars-far" id="stars-far"></div>
     <div class="stars stars-near" id="stars-near"></div>
+    <div class="comet" style="--y: 26%;"></div>
   </div>
 
   <nav class="nav">
@@ -513,8 +514,8 @@ ${cleanedRendered}
         }
         el.appendChild(frag);
       }
-      makeStars(document.getElementById('stars-far'), 80, false);
-      makeStars(document.getElementById('stars-near'), 22, true);
+      makeStars(document.getElementById('stars-far'), 200, false);
+      makeStars(document.getElementById('stars-near'), 60, true);
     })();
   </script>
 </body>
