@@ -5,7 +5,7 @@
 // Folder paths are *advisory cache* in `project_paths`, never authority.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
@@ -269,6 +269,120 @@ describe("ProjectService.deleteProject", () => {
   it("throws when the project doesn't exist", () => {
     expect(() => service.deleteProject("nope")).toThrow();
   });
+});
+
+describe("ProjectService.mergeProjects", () => {
+  let dir: string;
+  let db: Database.Database;
+  let service: ProjectService;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-ps-merge-"));
+    db = initDb(dir);
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('work', 'Work', '#000', 'none')`);
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('home', 'Home', '#111', 'none')`);
+    service = new ProjectService(db);
+  });
+  afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  function insertSession(id: string, projectId: string | null, cwd: string | null) {
+    db.prepare(
+      "INSERT INTO sessions (id, agent, state, cwd, project_id) VALUES (?, 'claude-code', 'done', ?, ?)",
+    ).run(id, cwd, projectId);
+  }
+
+  it("migrates sessions, artefacts, and project_paths from `from` to `into`, then soft-deletes `from`", () => {
+    const into = service.createProject({ spaceId: "work", name: "Canonical" });
+    const from = service.createProject({ spaceId: "work", name: "Duplicate" });
+    insertSession("s1", from.id, "/foo/dup");
+    insertSession("s-already-on-target", into.id, "/foo/canonical");
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(from.id, "/foo/dup");
+
+    const result = service.mergeProjects({ intoId: into.id, fromId: from.id });
+    expect(result.sessionsMoved).toBe(1);
+    expect(result.pathsMoved).toBe(1);
+
+    const sess = db.prepare("SELECT project_id FROM sessions WHERE id = 's1'").get() as { project_id: string };
+    expect(sess.project_id).toBe(into.id);
+
+    const paths = db.prepare("SELECT path FROM project_paths WHERE project_id = ?").all(into.id) as Array<{ path: string }>;
+    expect(paths.map((p) => p.path)).toContain("/foo/dup");
+
+    expect(service.listForSpace("work").map((p) => p.id)).toEqual([into.id]); // from is gone
+  });
+
+  it("rewrites .oyster/id on each `from` folder that exists on disk, so future sessions there bind to `into`", () => {
+    const into = service.createProject({ spaceId: "work", name: "Canonical" });
+    const from = service.createProject({ spaceId: "work", name: "Duplicate" });
+    const live = mkdtempSync(join(tmpdir(), "oyster-merge-live-"));
+    mkdirSync(join(live, ".oyster"));
+    writeFileSync(join(live, ".oyster", "id"), from.id);
+    const missing = "/tmp/oyster-merge-gone-" + Math.random();
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(from.id, live);
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(from.id, missing);
+
+    service.mergeProjects({ intoId: into.id, fromId: from.id });
+
+    // Live folder's marker rewritten.
+    expect(readFileSync(join(live, ".oyster", "id"), "utf8").trim()).toBe(into.id);
+    // Missing path: no folder materialised (the bug fix from earlier).
+    expect(existsSync(missing)).toBe(false);
+
+    rmSync(live, { recursive: true, force: true });
+  });
+
+  it("collapses duplicate project_paths rows when the same path is cached against both projects", () => {
+    const into = service.createProject({ spaceId: "work", name: "Canonical" });
+    const from = service.createProject({ spaceId: "work", name: "Duplicate" });
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(into.id, "/shared/path");
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(from.id, "/shared/path");
+
+    service.mergeProjects({ intoId: into.id, fromId: from.id });
+
+    const rows = db.prepare("SELECT project_id, path FROM project_paths WHERE path = '/shared/path'").all();
+    expect(rows).toHaveLength(1);
+    expect((rows[0] as { project_id: string }).project_id).toBe(into.id);
+  });
+
+  it("cross-space merge: `from` migrates into the target's space", () => {
+    const into = service.createProject({ spaceId: "home", name: "Canonical" });
+    const from = service.createProject({ spaceId: "work", name: "Duplicate" });
+    insertSession("s", from.id, "/foo");
+    db.prepare("UPDATE sessions SET space_id = 'work' WHERE id = 's'").run();
+
+    service.mergeProjects({ intoId: into.id, fromId: from.id });
+
+    const sess = db.prepare("SELECT project_id, space_id FROM sessions WHERE id = 's'").get() as { project_id: string; space_id: string };
+    expect(sess.project_id).toBe(into.id);
+    expect(sess.space_id).toBe("home");
+  });
+
+  it("refuses to merge a project into itself", () => {
+    const p = service.createProject({ spaceId: "work", name: "Self" });
+    expect(() => service.mergeProjects({ intoId: p.id, fromId: p.id })).toThrow(/itself/);
+  });
+
+  it("throws when either project doesn't exist or is soft-deleted", () => {
+    const into = service.createProject({ spaceId: "work", name: "Live" });
+    const from = service.createProject({ spaceId: "work", name: "Gone" });
+    service.deleteProject(from.id);
+    expect(() => service.mergeProjects({ intoId: into.id, fromId: from.id })).toThrow(/not found/);
+    expect(() => service.mergeProjects({ intoId: "nope", fromId: into.id })).toThrow(/not found/);
+  });
+});
+
+describe("ProjectService.deleteProject — children handling (continued)", () => {
+  let dir: string;
+  let db: Database.Database;
+  let service: ProjectService;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-ps-del-cont-"));
+    db = initDb(dir);
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('work', 'Work', '#000', 'none')`);
+    service = new ProjectService(db);
+  });
+  afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
 
   it("clears project_id on bound sessions so they don't end up FK'd to a tombstone", () => {
     // The FK is ON DELETE SET NULL but only fires on hard deletes; soft-

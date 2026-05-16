@@ -72,6 +72,28 @@ export async function tryHandleProjectsRoute(
     return true;
   }
 
+  const absorbMatch = pathname.match(/^\/api\/projects\/([^/]+)\/absorb$/);
+  if (absorbMatch && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return true;
+    try {
+      const intoId = safeDecode(absorbMatch[1]!);
+      if (intoId === null) {
+        sendJson({ error: "Invalid URL encoding" }, 400);
+        return true;
+      }
+      const body = await readJsonBody();
+      const fromId = typeof body.from === "string" ? body.from : null;
+      if (!fromId) {
+        sendJson({ error: "from is required" }, 400);
+        return true;
+      }
+      const result = projectService.mergeProjects({ intoId, fromId });
+      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+      sendJson(result);
+    } catch (err) { sendError(err); }
+    return true;
+  }
+
   if (pathname === "/api/projects/attach-folder" && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
     try {

@@ -221,6 +221,70 @@ export class ProjectService {
     return rowToProject(row);
   }
 
+  // Merge `from` into `into`: migrate sessions/artefacts/project_paths,
+  // rewrite `.oyster/id` on each of from's live folders so future sessions
+  // there bind to `into`, then soft-delete `from`. Cross-space is allowed
+  // — the result lives in `into`'s space.
+  //
+  // DB updates run in a transaction. The marker rewrites happen after
+  // commit because they're filesystem side-effects that can fail (missing
+  // folder / read-only fs) without corrupting the DB; `writeOysterId`
+  // refuses to materialise non-existent folders so this is safe.
+  mergeProjects(args: { intoId: string; fromId: string }): { sessionsMoved: number; artefactsMoved: number; pathsMoved: number } {
+    if (args.intoId === args.fromId) throw new Error("Cannot merge a project into itself");
+    const into = this.db
+      .prepare("SELECT id, space_id FROM projects WHERE id = ? AND removed_at IS NULL")
+      .get(args.intoId) as { id: string; space_id: string } | undefined;
+    if (!into) throw new Error(`Project "${args.intoId}" not found`);
+    const from = this.db
+      .prepare("SELECT id FROM projects WHERE id = ? AND removed_at IS NULL")
+      .get(args.fromId) as { id: string } | undefined;
+    if (!from) throw new Error(`Project "${args.fromId}" not found`);
+
+    // Snapshot from's paths before the move so we can rewrite their markers.
+    const fromPaths = this.db
+      .prepare("SELECT path FROM project_paths WHERE project_id = ?")
+      .all(args.fromId) as Array<{ path: string }>;
+
+    const counts = this.db.transaction(() => {
+      const sessions = this.db
+        .prepare("UPDATE sessions SET project_id = ?, space_id = ? WHERE project_id = ?")
+        .run(into.id, into.space_id, args.fromId);
+      const artefacts = this.db
+        .prepare("UPDATE artifacts SET project_id = ?, space_id = ? WHERE project_id = ?")
+        .run(into.id, into.space_id, args.fromId);
+      // De-dup PK conflicts (same path cached against both projects) by
+      // dropping the loser's row before the bulk update.
+      this.db
+        .prepare(
+          `DELETE FROM project_paths
+            WHERE project_id = ?
+              AND path IN (SELECT path FROM project_paths WHERE project_id = ?)`,
+        )
+        .run(args.fromId, into.id);
+      const paths = this.db
+        .prepare("UPDATE project_paths SET project_id = ? WHERE project_id = ?")
+        .run(into.id, args.fromId);
+      this.db
+        .prepare("UPDATE projects SET removed_at = datetime('now') WHERE id = ?")
+        .run(args.fromId);
+      return {
+        sessionsMoved: Number(sessions.changes),
+        artefactsMoved: Number(artefacts.changes),
+        pathsMoved: Number(paths.changes),
+      };
+    })();
+
+    // Rewrite the marker on each formerly-`from` folder that exists on
+    // disk. `writeOysterId` throws on missing folders (won't resurrect
+    // ghosts), `tryWriteOysterId` swallows that gracefully.
+    for (const { path } of fromPaths) {
+      tryWriteOysterId(path, into.id);
+    }
+
+    return counts;
+  }
+
   // Soft-delete. Sessions / artefacts bound to this project are demoted
   // to true orphans (project_id → NULL) so they surface under the space
   // vault instead of getting FK-stuck to a hidden tombstone. The row

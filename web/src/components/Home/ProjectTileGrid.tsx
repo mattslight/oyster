@@ -90,6 +90,7 @@ export function ProjectTileGrid({
             isLastProject={projects.length === 1}
             spaceTotalSessions={totalCounts.all}
             onSpaceDelete={onSpaceDelete}
+            otherProjects={sortedProjects.filter((o) => o.id !== p.id)}
           />
         ))}
 

@@ -45,6 +45,19 @@ export async function attachFolder(
   return postJson("/api/projects/attach-folder", { space_id: spaceId, path, name });
 }
 
+// Merge `from` into `into`: migrate sessions/artefacts/cached paths,
+// rewrite `.oyster/id` on each of from's live folders so future sessions
+// there bind to `into`, soft-delete `from`. Cross-space allowed — the
+// result lives in `into`'s space. Use for collapsing duplicate tiles
+// (legacy migration residue, accidental re-attaches, sibling worktrees
+// the user considers one project).
+export async function absorbProject(
+  intoId: string,
+  fromId: string,
+): Promise<{ sessionsMoved: number; artefactsMoved: number; pathsMoved: number }> {
+  return postJson(`/api/projects/${encodeURIComponent(intoId)}/absorb`, { from: fromId });
+}
+
 // Bulk-tag every session whose `cwd === args.cwd` and is not yet bound
 // to a project. Used by the orphan-recovery flow: pick an existing project
 // or create one, then sweep orphans into it. Returns the number claimed.
