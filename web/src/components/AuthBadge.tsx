@@ -45,6 +45,13 @@ export function AuthBadge() {
       timeoutRef.current = null;
     }
   };
+  // Tracks the in-flight /api/auth/login fetch for the current sign-in
+  // attempt. Lets handleCancelSignIn and a restart from handleSignIn
+  // abort the old fetch + ignore any stale response so a late-arriving
+  // body can't reanimate a cancelled flow (or override a successful
+  // newer one). Each attempt also captures its own controller so the
+  // device_code timer can no-op if it's superseded.
+  const signInAbortRef = useRef<AbortController | null>(null);
 
   // Initial whoami + SSE subscription. The server emits `auth_changed`
   // when the device-flow poll resolves or sign-out completes; we
@@ -74,6 +81,8 @@ export function AuthBadge() {
       cancelled = true;
       unsub();
       clearAbortTimeout();
+      signInAbortRef.current?.abort();
+      signInAbortRef.current = null;
     };
   }, []);
 
@@ -124,27 +133,40 @@ export function AuthBadge() {
   }, [menuOpen]);
 
   const handleSignIn = async () => {
-    // If a previous flow is still pending, restart cleanly. The local
-    // server's startSignIn() also aborts the old poll on its end.
+    // Abort any previous attempt's fetch + timer. The local server's
+    // startSignIn() also aborts the old poll on its end. The controller
+    // is captured per-attempt so a late response from a superseded
+    // attempt can no-op without touching the new one's state.
+    signInAbortRef.current?.abort();
     clearAbortTimeout();
+    const controller = new AbortController();
+    signInAbortRef.current = controller;
     setPhase("signing-in");
     setPending(null);
     setSignOutError(null);
     setMenuOpen(true); // surface the hint+cancel popover immediately
     try {
-      const res = await fetch("/api/auth/login", { method: "POST" });
+      const res = await fetch("/api/auth/login", { method: "POST", signal: controller.signal });
       if (!res.ok) throw new Error(String(res.status));
       const body = (await res.json()) as SignInPending;
+      // Defence-in-depth: even if the abort raced past the network
+      // layer, drop the body if this attempt has been superseded.
+      if (controller.signal.aborted || signInAbortRef.current !== controller) return;
       setPending(body);
       // Mirror the server-side device_code TTL on the client. If the
       // poll ages out or the cloud 410s, no auth_changed event will
-      // fire; this timer is what flips the UI back to signed-out.
+      // fire; this timer is what flips the UI back to signed-out. The
+      // controller-identity guard makes the callback a no-op if a
+      // later attempt or sign-out has already moved on.
       timeoutRef.current = setTimeout(() => {
+        if (signInAbortRef.current !== controller) return;
         setPhase("signed-out");
         setPending(null);
         setMenuOpen(false);
       }, body.expires_in * 1000);
     } catch (err) {
+      // AbortError = explicit cancel/restart, never a real failure.
+      if (controller.signal.aborted) return;
       console.error("[auth] login failed:", err);
       setPhase("signed-out");
       setMenuOpen(false);
@@ -152,6 +174,8 @@ export function AuthBadge() {
   };
 
   const handleCancelSignIn = () => {
+    signInAbortRef.current?.abort();
+    signInAbortRef.current = null;
     clearAbortTimeout();
     setPending(null);
     setPhase("signed-out");

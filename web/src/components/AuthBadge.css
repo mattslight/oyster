@@ -155,10 +155,3 @@
   font-size: 11px;
   color: #f87171;
 }
-
-/* Divider slot kept for ARIA / DOM stability but visually hidden —
-   the pill gap between auth chip and space pills is enough to
-   separate identity from navigation. */
-.home-breadcrumb-divider {
-  display: none;
-}

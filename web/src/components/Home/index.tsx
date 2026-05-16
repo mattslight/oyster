@@ -651,11 +651,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             identity + navigation share one sticky bar at the top of
             every view. Always renders, so the Sign-in CTA is reachable
             even on a brand-new workspace with no spaces yet. */}
-        <nav className="home-breadcrumb" aria-label="Spaces">
+        <nav className="home-breadcrumb" aria-label="Account and spaces">
             <LayoutGroup id="home-breadcrumb">
             <div className="home-breadcrumb-inner">
             <AuthBadge />
-            <span className="home-breadcrumb-divider" aria-hidden="true" />
             <button
               type="button"
               className={`home-breadcrumb-pill home-breadcrumb-pill--home${isHomeView && !showElsewhere && !showVault ? " selected" : ""}`}
