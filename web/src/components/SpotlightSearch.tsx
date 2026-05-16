@@ -201,6 +201,23 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
     ...memoryHits.map((m): SpotlightHit => ({ kind: "memory", memory: m })),
   ], [artefactHits, transcriptHits, memoryHits]);
 
+  // Empty-query feed: most-recently-touched artefacts. The Artifact type
+  // has no separate "last modified" — createdAt is the closest signal,
+  // and pinnedAt (when set) is a strictly more recent user touch, so we
+  // take the max of the two. Renders only when there's no query and no
+  // chips active. Sessions/memories deliberately not included in v1.
+  const recentFeed = useMemo(() => {
+    if (query.trim() || filter.type || filter.spaceId) return [];
+    return artifacts
+      .slice()
+      .sort((a, b) => {
+        const ta = Math.max(a.pinnedAt ?? 0, Date.parse(a.createdAt) || 0);
+        const tb = Math.max(b.pinnedAt ?? 0, Date.parse(b.createdAt) || 0);
+        return tb - ta;
+      })
+      .slice(0, 10);
+  }, [query, filter.type, filter.spaceId, artifacts]);
+
   useEffect(() => {
     // Reset highlighted result when the query changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -296,7 +313,7 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
 
   return (
     <div className="spotlight-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={`spotlight-panel${showResults || showEmpty || (activeAc && acOptions.length > 0) ? " spotlight-panel--expanded" : ""}`}>
+      <div className={`spotlight-panel${showResults || showEmpty || (activeAc && acOptions.length > 0) || recentFeed.length > 0 ? " spotlight-panel--expanded" : ""}`}>
         <div className="spotlight-input-row">
           <svg className="spotlight-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -437,6 +454,27 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
 
         {showEmpty && (
           <div className="spotlight-empty">No results for "{query}"</div>
+        )}
+
+        {!showResults && !showEmpty && recentFeed.length > 0 && (
+          <div className="spotlight-results">
+            <div className="spotlight-section-label">Recent</div>
+            {recentFeed.map((a) => {
+              const cfg = typeConfig[a.artifactKind] ?? typeConfig.app;
+              return (
+                <div
+                  key={`r-${a.id}`}
+                  className="spotlight-result"
+                  onClick={() => { onOpen(a); onClose(); }}
+                >
+                  <span className="spotlight-result-dot" style={{ background: cfg.color }} />
+                  <span className="spotlight-result-label">{a.label}</span>
+                  <span className="spotlight-result-badge">{a.artifactKind}</span>
+                  <span className="spotlight-result-space" style={{ color: spaceColor(a.spaceId), background: `${spaceColor(a.spaceId)}18` }}>{a.spaceId}</span>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
