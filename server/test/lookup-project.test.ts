@@ -87,4 +87,16 @@ describe("lookupProject", () => {
 
     expect(lookupProject(db, cwd)).toEqual({ projectId: null, spaceId: null });
   });
+
+  it("walks parent directories — a session in a subdirectory of an attached project still tags correctly", () => {
+    // Old source-shaped binding matched any cwd whose prefix was a registered
+    // source path. The new model must too: a session at `<project>/web/src`
+    // should resolve via the marker at `<project>/.oyster/id`.
+    db.prepare("INSERT INTO projects (id, space_id, name) VALUES (?, ?, ?)").run(A_UUID, "work", "Proj");
+    writeOysterIdAt(cwd, A_UUID);
+    const subdir = join(cwd, "web", "src");
+    mkdirSync(subdir, { recursive: true });
+
+    expect(lookupProject(db, subdir)).toEqual({ projectId: A_UUID, spaceId: "work" });
+  });
 });

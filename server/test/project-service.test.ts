@@ -122,6 +122,26 @@ describe("ProjectService.claimOrphan", () => {
   it("throws when projectId doesn't exist", () => {
     expect(() => service.claimOrphan({ cwd: "/foo", projectId: "nope" })).toThrow();
   });
+
+  it("claims sessions whose cwd is a descendant of the project's path (subdirectories)", () => {
+    // Old source-shaped binding claimed exact + descendant cwds. The new
+    // model must too — sessions started in `<project>/web/src` should
+    // attribute to the project attached at `<project>`.
+    const project = service.createProject({ spaceId: "work", name: "Proj" });
+    insertSession("s-exact", "/foo/bar");
+    insertSession("s-sub", "/foo/bar/web");
+    insertSession("s-deep", "/foo/bar/web/src");
+    insertSession("s-sibling", "/foo/bar-other"); // must NOT match (no slash boundary)
+
+    const result = service.claimOrphan({ cwd: "/foo/bar", projectId: project.id });
+
+    expect(result.claimed).toBe(3);
+    const rows = db.prepare("SELECT id, project_id FROM sessions ORDER BY id").all() as Array<{ id: string; project_id: string | null }>;
+    expect(rows.find((r) => r.id === "s-exact")?.project_id).toBe(project.id);
+    expect(rows.find((r) => r.id === "s-sub")?.project_id).toBe(project.id);
+    expect(rows.find((r) => r.id === "s-deep")?.project_id).toBe(project.id);
+    expect(rows.find((r) => r.id === "s-sibling")?.project_id).toBeNull();
+  });
 });
 
 describe("ProjectService.deleteProject", () => {
@@ -174,6 +194,12 @@ describe("ProjectService.updateProject", () => {
   it("rejects an empty name", () => {
     const p = service.createProject({ spaceId: "work", name: "Old" });
     expect(() => service.updateProject(p.id, { name: "  " })).toThrow();
+  });
+
+  it("throws when the project is soft-deleted (so renames don't silently target tombstones)", () => {
+    const p = service.createProject({ spaceId: "work", name: "Old" });
+    service.deleteProject(p.id);
+    expect(() => service.updateProject(p.id, { name: "New" })).toThrow();
   });
 });
 
@@ -258,6 +284,54 @@ describe("ProjectService.attachFolder", () => {
     expect(sessionRow.project_id).toBe(existing.id);
 
     rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("adopts an existing project via project_paths cache when no .oyster/id marker is present (no duplicate)", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-cached-"));
+    const existing = service.createProject({ spaceId: "work", name: "Pre" });
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(existing.id, folder);
+    // No .oyster/id on disk — only the cache row.
+
+    const { project } = service.attachFolder({ spaceId: "work", path: folder });
+
+    // Adopts the existing project rather than creating a new one.
+    expect(project.id).toBe(existing.id);
+    expect(service.listForSpace("work")).toHaveLength(1);
+    // Self-heals the marker for next time.
+    const written = readFileSync(join(folder, ".oyster", "id"), "utf8").trim();
+    expect(written).toBe(existing.id);
+
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("adopts the UUID from .oyster/id even when no matching project row exists locally (cross-device clone)", () => {
+    // Scenario: another machine wrote `.oyster/id` (e.g. via git push of the
+    // folder); this machine clones the repo, sees the marker, but has no
+    // project row with that id. Must NOT mint a new UUID + overwrite the
+    // marker — that severs cross-device identity. Adopts the existing id.
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-foreign-marker-"));
+    const FOREIGN_ID = "deadbeef-cafe-babe-1234-aabbccddeeff";
+    mkdirSync(join(folder, ".oyster"));
+    writeFileSync(join(folder, ".oyster", "id"), FOREIGN_ID);
+
+    const { project } = service.attachFolder({ spaceId: "work", path: folder });
+
+    expect(project.id).toBe(FOREIGN_ID);
+    // Marker file unchanged.
+    expect(readFileSync(join(folder, ".oyster", "id"), "utf8").trim()).toBe(FOREIGN_ID);
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("survives a missing folder (writeOysterId failure is non-fatal — project still created)", () => {
+    const missing = join(tmpdir(), "oyster-attach-never-existed-" + Math.random());
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd) VALUES ('s1', 'claude-code', 'done', ?)").run(missing);
+
+    const { project, claimed } = service.attachFolder({ spaceId: "work", path: missing });
+
+    expect(project.spaceId).toBe("work");
+    expect(claimed).toBe(1);
+    // No marker on disk (folder doesn't exist) — that's expected, attach
+    // succeeded anyway so the orphan-recovery flow has a project to bind to.
   });
 
   it("re-attaching under a DIFFERENT space moves the undeleted project to the new space (and reclaims sessions there)", () => {
