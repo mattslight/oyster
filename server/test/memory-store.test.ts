@@ -223,17 +223,20 @@ describe("SqliteFtsMemoryProvider", () => {
       const a = await provider.remember({ content: "auth middleware notes", space_id: "tokinvest" });
       await provider.remember({ content: "completely unrelated note about cooking", space_id: "tokinvest" });
 
-      const beforeRow = (provider as unknown as { db: { prepare: (s: string) => { get: (...args: unknown[]) => { access_count: number } } } })
-        .db.prepare("SELECT access_count FROM memories WHERE id = ?").get(a.id);
+      // Prime access_count to a non-zero baseline. Without this the test
+      // passes vacuously: access_count defaults to 0 and remember() does
+      // not bump it, so before === after === 0 even if search() were
+      // calling postRecallTxn.
+      const db = (provider as unknown as { db: import("better-sqlite3").Database }).db;
+      db.prepare("UPDATE memories SET access_count = 5 WHERE id = ?").run(a.id);
 
       const hits = await provider.search({ query: "auth" });
 
       expect(hits.map(h => h.id)).toContain(a.id);
       expect(hits.length).toBe(1);
 
-      const afterRow = (provider as unknown as { db: { prepare: (s: string) => { get: (...args: unknown[]) => { access_count: number } } } })
-        .db.prepare("SELECT access_count FROM memories WHERE id = ?").get(a.id);
-      expect(afterRow.access_count).toBe(beforeRow.access_count);
+      const after = db.prepare("SELECT access_count FROM memories WHERE id = ?").get(a.id) as { access_count: number };
+      expect(after.access_count).toBe(5);
     });
 
     it("scopes to a space when space_id is set, plus globals", async () => {
