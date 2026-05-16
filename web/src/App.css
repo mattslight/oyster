@@ -1744,6 +1744,28 @@ body {
   font-family: var(--font-mono);
 }
 
+.spotlight-token-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid;
+  margin-right: 6px;
+  user-select: none;
+}
+.spotlight-token-chip--type   { color: #4d9aff; background: #3a86ff22; border-color: #3a86ff44; }
+.spotlight-token-chip--space  { color: #a78bfa; background: #8b5cf622; border-color: #a78bfa44; }
+.spotlight-token-chip .x {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: #6e7280;
+  padding: 0 0 0 2px;
+}
+.spotlight-token-chip .x:hover { color: #d4d6db; }
+
 /* ── Hardcore Gate Modal ── */
 
 .hardcore-gate-overlay {

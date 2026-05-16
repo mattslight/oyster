@@ -33,7 +33,11 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
   const [transcriptsLoading, setTranscriptsLoading] = useState(false);
   const [memoryHits, setMemoryHits] = useState<Memory[]>([]);
   const [memoriesLoading, setMemoriesLoading] = useState(false);
-  const [filter, setFilter] = useState<SpotlightFilter>({ type: null, spaceId: null });
+  const [filter, setFilter] = useState<SpotlightFilter & { order: ('type' | 'space')[] }>({
+    type: null,
+    spaceId: null,
+    order: [],
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -57,9 +61,9 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
 
   // Debounced transcript search. AbortController cancels the request,
   // but a fetch that has already resolved before we abort can still
-  // run its .then() with stale results. The reqIdRef guard rejects any
+  // run its .then() with stale results. The transcriptReqIdRef guard rejects any
   // result that doesn't match the most recently issued request.
-  const reqIdRef = useRef(0);
+  const transcriptReqIdRef = useRef(0);
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -73,17 +77,17 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
       return;
     }
     setTranscriptsLoading(true);
-    const reqId = ++reqIdRef.current;
+    const reqId = ++transcriptReqIdRef.current;
     const ac = new AbortController();
     const timer = setTimeout(() => {
       searchTranscripts(trimmed, { limit: TRANSCRIPTS_LIMIT, spaceId: filter.spaceId, signal: ac.signal })
         .then((hits) => {
-          if (reqId !== reqIdRef.current) return;
+          if (reqId !== transcriptReqIdRef.current) return;
           setTranscriptHits(hits);
           setTranscriptsLoading(false);
         })
         .catch((err) => {
-          if (ac.signal.aborted || reqId !== reqIdRef.current) return;
+          if (ac.signal.aborted || reqId !== transcriptReqIdRef.current) return;
           console.warn("[Spotlight] transcript search failed:", err);
           setTranscriptHits([]);
           setTranscriptsLoading(false);
@@ -97,7 +101,7 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
 
   // Debounced memory search — mirrors the transcript effect:
   // request id + abort controller protect against stale resolutions.
-  const memReqIdRef = useRef(0);
+  const memoryReqIdRef = useRef(0);
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -111,23 +115,26 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
       return;
     }
     setMemoriesLoading(true);
-    const reqId = ++memReqIdRef.current;
+    const reqId = ++memoryReqIdRef.current;
     const ac = new AbortController();
     const timer = setTimeout(() => {
       searchMemories(trimmed, { limit: MEMORIES_LIMIT, spaceId: filter.spaceId, signal: ac.signal })
         .then((hits) => {
-          if (reqId !== memReqIdRef.current) return;
+          if (reqId !== memoryReqIdRef.current) return;
           setMemoryHits(hits);
           setMemoriesLoading(false);
         })
         .catch((err) => {
-          if (ac.signal.aborted || reqId !== memReqIdRef.current) return;
+          if (ac.signal.aborted || reqId !== memoryReqIdRef.current) return;
           console.warn("[Spotlight] memory search failed:", err);
           setMemoryHits([]);
           setMemoriesLoading(false);
         });
     }, DEBOUNCE_MS);
-    return () => { ac.abort(); clearTimeout(timer); };
+    return () => {
+      ac.abort();
+      clearTimeout(timer);
+    };
   }, [query, filter]);
 
   // Flat ordered list — used by keyboard nav. Artefacts first, then
@@ -176,6 +183,17 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Backspace" && query === "" && filter.order.length > 0) {
+      const last = filter.order[filter.order.length - 1];
+      setFilter(f => ({
+        ...f,
+        type: last === 'type' ? null : f.type,
+        spaceId: last === 'space' ? null : f.spaceId,
+        order: f.order.slice(0, -1),
+      }));
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Escape") { onClose(); return; }
     // Arrow keys are no-ops on an empty list — without this guard,
     // ArrowDown's Math.min(s+1, -1) would set selected to -1.
@@ -210,10 +228,30 @@ export function SpotlightSearch({ artifacts, onOpen, onClose }: Props) {
           <svg className="spotlight-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
+          {filter.type && (
+            <span className="spotlight-token-chip spotlight-token-chip--type">
+              @{filter.type}
+              <span className="x" onClick={() => setFilter(f => ({
+                ...f,
+                type: null,
+                order: f.order.filter(o => o !== 'type'),
+              }))}>×</span>
+            </span>
+          )}
+          {filter.spaceId && (
+            <span className="spotlight-token-chip spotlight-token-chip--space">
+              #{filter.spaceId}
+              <span className="x" onClick={() => setFilter(f => ({
+                ...f,
+                spaceId: null,
+                order: f.order.filter(o => o !== 'space'),
+              }))}>×</span>
+            </span>
+          )}
           <input
             ref={inputRef}
             className="spotlight-input"
-            placeholder="Search artefacts, transcripts…"
+            placeholder="Search artefacts, sessions, memories — type @ to filter"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
