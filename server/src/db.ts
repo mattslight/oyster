@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { join } from "node:path";
+import { resolveArtifactPathViaProjects } from "./resolve-artifact-path.js";
 
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -517,6 +518,33 @@ export function initDb(userlandDir: string): Database.Database {
             AND (artifacts.space_id IS NULL OR artifacts.space_id != p.space_id)
        );
   `);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Tombstone recovery: artefacts the OLD self-heal tombstoned because
+  // their folder happened to be renamed. For each soft-deleted row, try
+  // the resolver — if the file is reachable under another cached path of
+  // the same project, undelete + update path + stamp project_id. Truly
+  // missing files stay tombstoned. JS-side because it needs filesystem
+  // checks; safe to run on every boot — recovered rows are no longer
+  // selected on subsequent passes (`removed_at IS NOT NULL` filter).
+  // ─────────────────────────────────────────────────────────────────────────
+  const tombstones = db
+    .prepare("SELECT id, storage_config FROM artifacts WHERE removed_at IS NOT NULL AND storage_kind = 'filesystem'")
+    .all() as Array<{ id: string; storage_config: string }>;
+  if (tombstones.length > 0) {
+    const update = db.prepare(
+      "UPDATE artifacts SET removed_at = NULL, storage_config = ?, project_id = ?, updated_at = datetime('now') WHERE id = ?",
+    );
+    for (const row of tombstones) {
+      let oldPath: string | undefined;
+      try { oldPath = (JSON.parse(row.storage_config) as { path?: string }).path; } catch { /* malformed config, skip */ }
+      if (!oldPath) continue;
+      const recovered = resolveArtifactPathViaProjects(db, oldPath);
+      if (recovered) {
+        update.run(JSON.stringify({ path: recovered.newPath }), recovered.projectId, row.id);
+      }
+    }
+  }
 
   // One-time canonical-form migration for paths and cwds. The longest-prefix
   // binding SQL compares `sessions.cwd` against `sources.path` via substr
