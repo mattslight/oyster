@@ -481,6 +481,43 @@ export function initDb(userlandDir: string): Database.Database {
   try { db.exec("ALTER TABLE artifacts DROP COLUMN source_id"); } catch { /* already dropped or never existed */ }
   db.exec("DROP TABLE IF EXISTS sources");
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Repair: heal sessions / artefacts whose space_id is out of sync with
+  // their project's space. Source of the drift: an earlier ad-hoc dedup
+  // SQL with a UPDATE-FROM order bug left some rows with a valid
+  // project_id but space_id NULL — those then render as orphans in the
+  // home view even though they belong to a real project. Idempotent: only
+  // touches rows whose project is live AND whose space_id disagrees.
+  // ─────────────────────────────────────────────────────────────────────────
+  db.exec(`
+    UPDATE sessions
+       SET space_id = (
+         SELECT p.space_id FROM projects p
+          WHERE p.id = sessions.project_id AND p.removed_at IS NULL
+       )
+     WHERE project_id IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM projects p
+          WHERE p.id = sessions.project_id
+            AND p.removed_at IS NULL
+            AND (sessions.space_id IS NULL OR sessions.space_id != p.space_id)
+       );
+  `);
+  db.exec(`
+    UPDATE artifacts
+       SET space_id = (
+         SELECT p.space_id FROM projects p
+          WHERE p.id = artifacts.project_id AND p.removed_at IS NULL
+       )
+     WHERE project_id IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM projects p
+          WHERE p.id = artifacts.project_id
+            AND p.removed_at IS NULL
+            AND (artifacts.space_id IS NULL OR artifacts.space_id != p.space_id)
+       );
+  `);
+
   // One-time canonical-form migration for paths and cwds. The longest-prefix
   // binding SQL compares `sessions.cwd` against `sources.path` via substr
   // equality, which requires identical separator conventions and no trailing

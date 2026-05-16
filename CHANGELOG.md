@@ -2,6 +2,13 @@
 
 All notable changes to Oyster are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0-beta.1] - 2026-05-16
+
+### Fixed
+
+- **Boot migration order on existing installs.** `ALTER TABLE sessions DROP COLUMN source_id` was running before `DROP INDEX sessions_source_id`, which SQLite refuses; the column drop was caught silently and the legacy column persisted with a phantom FK to the dropped `sources` table. The index drop now runs first.
+- **Tilde paths in the "Add project" form.** `~/Dev/foo` no longer attaches a literal `~`; the leading tilde expands to the home directory before the marker is written, the cache is seeded, and orphan sessions are claimed.
+
 ## [0.9.0-beta.0] - 2026-05-16
 
 ### Added
