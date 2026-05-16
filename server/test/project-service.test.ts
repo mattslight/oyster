@@ -216,6 +216,18 @@ describe("ProjectService.attachFolder", () => {
   });
   afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
 
+  it("seeds project_paths immediately so a follow-up attach of the same folder dedupes via cache", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-cache-seed-"));
+    const { project } = service.attachFolder({ spaceId: "work", path: folder });
+
+    const cached = db
+      .prepare("SELECT project_id, path FROM project_paths WHERE project_id = ?")
+      .all(project.id) as Array<{ project_id: string; path: string }>;
+    expect(cached).toEqual([{ project_id: project.id, path: folder }]);
+
+    rmSync(folder, { recursive: true, force: true });
+  });
+
   it("creates a project named after the folder basename, writes .oyster/id, and claims orphans", () => {
     const folder = mkdtempSync(join(tmpdir(), "oyster-attach-target-"));
     db.prepare("INSERT INTO sessions (id, agent, state, cwd) VALUES ('s1', 'claude-code', 'done', ?)").run(folder);

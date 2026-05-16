@@ -218,11 +218,23 @@ export class SqliteSessionStore implements SessionStore {
         )
         ON CONFLICT(id) DO UPDATE SET
           -- Watcher upserts NEVER overwrite the user's manual classification.
-          -- For 'auto' rows we let the watcher refresh space/project from the
-          -- latest cwd resolution; for 'manual' rows the user pinned it, so
-          -- the existing values stay.
-          space_id      = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.space_id ELSE excluded.space_id END,
-          project_id    = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.project_id ELSE excluded.project_id END,
+          -- For 'auto' rows we refresh from the watcher's latest lookup —
+          -- BUT only when the new value is non-null. A NULL from lookupProject
+          -- means "I couldn't resolve a binding right now" (no .oyster/id,
+          -- no cache row), NOT "this session is now an orphan". Clobbering
+          -- a previously-bound row with NULL on every boot scan was the
+          -- source of post-restart session orphaning + the duplicate-project
+          -- footgun (user re-attaches → new project).
+          space_id      = CASE
+            WHEN sessions.assignment_mode = 'manual' THEN sessions.space_id
+            WHEN excluded.space_id IS NOT NULL THEN excluded.space_id
+            ELSE sessions.space_id
+          END,
+          project_id    = CASE
+            WHEN sessions.assignment_mode = 'manual' THEN sessions.project_id
+            WHEN excluded.project_id IS NOT NULL THEN excluded.project_id
+            ELSE sessions.project_id
+          END,
           cwd           = COALESCE(excluded.cwd, sessions.cwd),
           -- jsonl_path: prefer the new value when the watcher knows where
           -- the file is. The watcher always passes the real path on every

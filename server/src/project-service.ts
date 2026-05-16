@@ -138,6 +138,15 @@ export class ProjectService {
       }
     }
 
+    // Seed the cache for this device so a follow-up attach of the same
+    // folder (or a session ingested after restart whose folder still has no
+    // marker on disk) resolves via cache instead of creating a duplicate.
+    this.db
+      .prepare(
+        `INSERT INTO project_paths (project_id, path) VALUES (?, ?)
+         ON CONFLICT(project_id, path) DO UPDATE SET last_seen_at = datetime('now')`,
+      )
+      .run(project.id, args.path);
     const { claimed } = this.claimOrphan({ cwd: args.path, projectId: project.id });
     return { project, claimed };
   }
