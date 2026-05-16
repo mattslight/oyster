@@ -223,6 +223,20 @@ describe("ProjectService.claimOrphan", () => {
     expect(row.project_id).toBeNull();
   });
 
+  it("claims sessions on Windows-style paths (backslash separator) too", () => {
+    const project = service.createProject({ spaceId: "work", name: "Win" });
+    insertSession("s-exact", "C:\\Users\\m\\Dev\\proj");
+    insertSession("s-sub", "C:\\Users\\m\\Dev\\proj\\web");
+    insertSession("s-deep", "C:\\Users\\m\\Dev\\proj\\web\\src");
+    insertSession("s-sibling", "C:\\Users\\m\\Dev\\proj-other"); // must NOT match
+
+    const result = service.claimOrphan({ cwd: "C:\\Users\\m\\Dev\\proj", projectId: project.id });
+
+    expect(result.claimed).toBe(3);
+    const sib = db.prepare("SELECT project_id FROM sessions WHERE id = 's-sibling'").get() as { project_id: string | null };
+    expect(sib.project_id).toBeNull();
+  });
+
   it("claims sessions whose cwd is a descendant of the project's path (subdirectories)", () => {
     // Old source-shaped binding claimed exact + descendant cwds. The new
     // model must too — sessions started in `<project>/web/src` should
@@ -573,6 +587,32 @@ describe("ProjectService.attachFolder", () => {
     expect(claimed).toBe(1);
     // No marker on disk (folder doesn't exist) — that's expected, attach
     // succeeded anyway so the orphan-recovery flow has a project to bind to.
+  });
+
+  it("cross-space adoption also migrates ALL bound sessions + artefacts to the new space, not just orphans at the cwd", () => {
+    // Scenario: a project has sessions at multiple cached paths, all in
+    // space A. User re-attaches one of its folders under space B. The
+    // project moves to space B — but if we only `claimOrphan` at the
+    // re-attach cwd, sessions at the OTHER cached paths stay stranded
+    // in space A's tile (which now doesn't even own this project).
+    const folder = mkdtempSync(join(tmpdir(), "oyster-attach-multi-"));
+    db.exec(`INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('personal', 'Personal', '#111', 'none')`);
+    const proj = service.createProject({ spaceId: "work", name: "Multi" });
+    mkdirSync(join(folder, ".oyster"));
+    writeFileSync(join(folder, ".oyster", "id"), proj.id);
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(proj.id, "/other/path");
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd, project_id, space_id) VALUES ('s-here', 'claude-code', 'done', ?, ?, 'work')").run(folder, proj.id);
+    db.prepare("INSERT INTO sessions (id, agent, state, cwd, project_id, space_id) VALUES ('s-elsewhere', 'claude-code', 'done', '/other/path', ?, 'work')").run(proj.id);
+
+    service.attachFolder({ spaceId: "personal", path: folder });
+
+    // BOTH sessions should now be in space "personal", not just the one at the cwd.
+    const here = db.prepare("SELECT space_id FROM sessions WHERE id = 's-here'").get() as { space_id: string };
+    const elsewhere = db.prepare("SELECT space_id FROM sessions WHERE id = 's-elsewhere'").get() as { space_id: string };
+    expect(here.space_id).toBe("personal");
+    expect(elsewhere.space_id).toBe("personal");
+
+    rmSync(folder, { recursive: true, force: true });
   });
 
   it("re-attaching under a DIFFERENT space moves the undeleted project to the new space (and reclaims sessions there)", () => {

@@ -88,6 +88,20 @@ describe("lookupProject", () => {
     expect(lookupProject(db, cwd)).toEqual({ projectId: null, spaceId: null });
   });
 
+  it("cache fallback also walks parent dirs — sessions in subdirectories adopt the ancestor's cached project", () => {
+    // Scenario: user attached `<root>` (so project_paths has it), then
+    // either rm'd the marker or never had one written. A session at
+    // `<root>/web/src` should still find the project via cache, since
+    // the cache claims an ancestor of cwd — not just the exact cwd.
+    db.prepare("INSERT INTO projects (id, space_id, name) VALUES (?, ?, ?)").run(A_UUID, "work", "Proj");
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(A_UUID, cwd);
+    const subdir = join(cwd, "web", "src");
+    mkdirSync(subdir, { recursive: true });
+    // No .oyster/id anywhere; only the cache row at the ancestor.
+
+    expect(lookupProject(db, subdir)).toEqual({ projectId: A_UUID, spaceId: "work" });
+  });
+
   it("walks parent directories — a session in a subdirectory of an attached project still tags correctly", () => {
     // Old source-shaped binding matched any cwd whose prefix was a registered
     // source path. The new model must too: a session at `<project>/web/src`

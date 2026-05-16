@@ -55,21 +55,34 @@ export function lookupProject(db: Database.Database, cwd: string | null): Projec
     dir = parent;
   }
 
-  // 2. Cache fallback for the exact cwd.
-  const cached = db
-    .prepare(
-      `SELECT p.id, p.space_id
-         FROM project_paths pp
-         JOIN projects p ON p.id = pp.project_id
-        WHERE pp.path = ? AND p.removed_at IS NULL
-        LIMIT 2`,
-    )
-    .all(cwd) as Array<{ id: string; space_id: string }>;
-  if (cached.length === 1) {
-    const row = cached[0];
-    try { writeOysterId(cwd, row.id); } catch { /* permissions / read-only fs — fallback still resolves */ }
-    cachePath(db, row.id, cwd);
-    return { projectId: row.id, spaceId: row.space_id };
+  // 2. Cache fallback — walk parent dirs looking for ANY ancestor whose
+  // path is in project_paths. A session at `<root>/web/src` with no
+  // marker anywhere should still resolve to the project attached at
+  // `<root>`. Stops at the first ancestor with exactly one live cache
+  // hit (ambiguous hits = abstain). Self-heals by writing the marker
+  // at the original cwd (not the ancestor) so future ingests are
+  // direct, and re-caches the exact cwd so this walk is one-shot.
+  let cacheDir = cwd;
+  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
+    const cached = db
+      .prepare(
+        `SELECT p.id, p.space_id
+           FROM project_paths pp
+           JOIN projects p ON p.id = pp.project_id
+          WHERE pp.path = ? AND p.removed_at IS NULL
+          LIMIT 2`,
+      )
+      .all(cacheDir) as Array<{ id: string; space_id: string }>;
+    if (cached.length === 1) {
+      const row = cached[0];
+      try { writeOysterId(cwd, row.id); } catch { /* permissions / read-only fs — fallback still resolves */ }
+      cachePath(db, row.id, cwd);
+      return { projectId: row.id, spaceId: row.space_id };
+    }
+    if (cached.length > 1) break; // ambiguous at this level — abstain
+    const parent = dirname(cacheDir);
+    if (parent === cacheDir) break;
+    cacheDir = parent;
   }
   return NONE;
 }

@@ -101,32 +101,42 @@ export class ProjectService {
       .prepare("SELECT space_id FROM projects WHERE id = ? AND removed_at IS NULL")
       .get(args.projectId) as { space_id: string } | undefined;
     if (!project) throw new Error(`Project "${args.projectId}" not found`);
-    // Strip a trailing slash so the boundary pattern below doesn't double up.
-    // If the cwd is just slashes ("/" / "//"), root becomes empty — fall
-    // back to exact-match-only to avoid a runaway `LIKE '/%'` that would
-    // claim every absolute-path session.
-    const root = args.cwd.replace(/\/+$/, "");
-    const info = root
-      ? this.db
-          .prepare(
-            `UPDATE sessions
-                SET project_id = @projectId, space_id = @spaceId
-              WHERE (cwd = @root OR cwd LIKE @prefix ESCAPE '\\')
-                AND project_id IS NULL`,
+    // Strip trailing path separators. If the cwd is just separators
+    // ("/" / "\\" / "//"), root becomes empty — fall back to exact-match
+    // only to avoid claiming every session.
+    const root = args.cwd.replace(/[\\/]+$/, "");
+    if (!root) {
+      const info = this.db
+        .prepare(
+          `UPDATE sessions
+              SET project_id = @projectId, space_id = @spaceId
+            WHERE cwd = @cwd AND project_id IS NULL`,
+        )
+        .run({ projectId: args.projectId, spaceId: project.space_id, cwd: args.cwd });
+      return { claimed: Number(info.changes) };
+    }
+    // Descendant match via substr instead of LIKE so we sidestep
+    // wildcard injection (`_`/`%` in folder names) AND handle both
+    // separators (`/` on POSIX, `\` on Windows) without escape gymnastics.
+    // The `+ 1` is the boundary separator, so `<root>` does NOT swallow
+    // `<root>-other` (no separator between them).
+    const info = this.db
+      .prepare(
+        `UPDATE sessions
+            SET project_id = @projectId, space_id = @spaceId
+          WHERE (
+            cwd = @root
+            OR substr(cwd, 1, @bound) = @root || '/'
+            OR substr(cwd, 1, @bound) = @root || '\\'
           )
-          .run({
-            projectId: args.projectId,
-            spaceId: project.space_id,
-            root,
-            prefix: escapeLikePattern(root) + "/%",
-          })
-      : this.db
-          .prepare(
-            `UPDATE sessions
-                SET project_id = @projectId, space_id = @spaceId
-              WHERE cwd = @cwd AND project_id IS NULL`,
-          )
-          .run({ projectId: args.projectId, spaceId: project.space_id, cwd: args.cwd });
+            AND project_id IS NULL`,
+      )
+      .run({
+        projectId: args.projectId,
+        spaceId: project.space_id,
+        root,
+        bound: root.length + 1,
+      });
     return { claimed: Number(info.changes) };
   }
 
@@ -150,11 +160,12 @@ export class ProjectService {
         .get(existing.id) as (ProjectRow & { removed_at: string | null }) | undefined;
       if (row) {
         // Local row exists: adopt; undelete + move space if the caller
-        // wants a different home.
+        // wants a different home. The space migration must ALSO sweep
+        // sessions/artefacts bound to this project at OTHER cached
+        // paths, otherwise they stay stranded in the old space's tile
+        // (which no longer owns this project).
         if (row.removed_at || row.space_id !== args.spaceId) {
-          this.db
-            .prepare("UPDATE projects SET removed_at = NULL, space_id = ? WHERE id = ?")
-            .run(args.spaceId, row.id);
+          this.relocateProjectToSpace(row.id, args.spaceId);
           row.space_id = args.spaceId;
         }
         project = rowToProject(row);
@@ -179,9 +190,7 @@ export class ProjectService {
       if (cached.length === 1) {
         const row = cached[0];
         if (row.removed_at || row.space_id !== args.spaceId) {
-          this.db
-            .prepare("UPDATE projects SET removed_at = NULL, space_id = ? WHERE id = ?")
-            .run(args.spaceId, row.id);
+          this.relocateProjectToSpace(row.id, args.spaceId);
           row.space_id = args.spaceId;
         }
         tryWriteOysterId(args.path, row.id);
@@ -206,6 +215,22 @@ export class ProjectService {
       .run(project.id, args.path);
     const { claimed } = this.claimOrphan({ cwd: args.path, projectId: project.id });
     return { project, claimed };
+  }
+
+  // Move a project + its bound sessions/artefacts into a new space, in
+  // one transaction. Used by attachFolder's undelete-or-rebase branch
+  // when the caller's spaceId differs from the row's stored space_id.
+  // Without the cascade, sessions at cached paths other than the
+  // attach cwd would stay in the old space and render in the wrong
+  // tile.
+  private relocateProjectToSpace(projectId: string, spaceId: string): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare("UPDATE projects SET removed_at = NULL, space_id = ? WHERE id = ?")
+        .run(spaceId, projectId);
+      this.db.prepare("UPDATE sessions SET space_id = ? WHERE project_id = ?").run(spaceId, projectId);
+      this.db.prepare("UPDATE artifacts SET space_id = ? WHERE project_id = ?").run(spaceId, projectId);
+    })();
   }
 
   createProject(args: { spaceId: string; name: string; id?: string }): Project {
