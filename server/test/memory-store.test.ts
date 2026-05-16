@@ -217,6 +217,43 @@ describe("SqliteFtsMemoryProvider", () => {
       expect(recalled).toHaveLength(0);
     });
   });
+
+  describe("search", () => {
+    it("returns FTS-ranked rows without bumping recall stats", async () => {
+      const a = await provider.remember({ content: "auth middleware notes", space_id: "tokinvest" });
+      await provider.remember({ content: "completely unrelated note about cooking", space_id: "tokinvest" });
+
+      const beforeRow = (provider as unknown as { db: { prepare: (s: string) => { get: (...args: unknown[]) => { access_count: number } } } })
+        .db.prepare("SELECT access_count FROM memories WHERE id = ?").get(a.id);
+
+      const hits = await provider.search({ query: "auth" });
+
+      expect(hits.map(h => h.id)).toContain(a.id);
+      expect(hits.length).toBe(1);
+
+      const afterRow = (provider as unknown as { db: { prepare: (s: string) => { get: (...args: unknown[]) => { access_count: number } } } })
+        .db.prepare("SELECT access_count FROM memories WHERE id = ?").get(a.id);
+      expect(afterRow.access_count).toBe(beforeRow.access_count);
+    });
+
+    it("scopes to a space when space_id is set, plus globals", async () => {
+      const inSpace = await provider.remember({ content: "scoped finding", space_id: "tokinvest" });
+      const global = await provider.remember({ content: "global finding" });
+      await provider.remember({ content: "other space finding", space_id: "other" });
+
+      const hits = await provider.search({ query: "finding", space_id: "tokinvest" });
+      const ids = hits.map(h => h.id);
+      expect(ids).toContain(inSpace.id);
+      expect(ids).toContain(global.id);
+      expect(ids.length).toBe(2);
+    });
+
+    it("returns empty array when query has no usable terms", async () => {
+      await provider.remember({ content: "anything" });
+      expect(await provider.search({ query: "" })).toEqual([]);
+      expect(await provider.search({ query: "?!" })).toEqual([]);
+    });
+  });
 });
 
 describe("schema migration — memory_events + memory_payloads", () => {
