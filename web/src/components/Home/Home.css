@@ -1431,11 +1431,16 @@
  * page (one canonical inter-space nav, two surfaces).
  */
 .home-breadcrumb {
-  position: relative;
-  z-index: 1;
+  /* Sticky at the top of the scroll container so the bar (auth chip +
+     space switcher) stays pinned as the feed scrolls under it. The
+     padding-top adds the same breathing room the breadcrumb used to
+     have before it pinned. */
+  position: sticky;
+  top: 0;
+  z-index: 4;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 32px 32px 0;
+  padding: 16px 32px 12px;
   display: flex;
   align-items: center;
 }

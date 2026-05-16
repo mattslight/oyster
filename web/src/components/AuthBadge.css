@@ -1,103 +1,164 @@
-.auth-badge {
-  position: absolute;
-  top: 12px;
-  left: 16px;
-  z-index: 5;
-  font-family: var(--font-mono);
-  font-size: 12px;
+/* Account chip — leftmost element of the home-breadcrumb pill bar.
+   Sized to align with the breadcrumb pills (5px vertical padding,
+   9999px radius). No absolute positioning — the chip flows inline. */
+
+.auth-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
 
-.auth-badge--pending {
+.auth-chip--ghost {
+  /* Loading slot — same width as the avatar pill so the bar doesn't
+     reflow when whoami resolves. */
+  width: 30px;
+  height: 28px;
+}
+
+.auth-chip__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border: none;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.auth-chip__pill:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.auth-chip__pill--signin {
+  padding: 5px 12px;
+}
+
+.auth-chip__pill--avatar {
+  /* Initial-as-glyph — matches the home/shield icon pills in shape and
+     weight so the bar reads as one row of equal-height tokens. */
+  padding: 5px 9px;
+  min-width: 28px;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text);
+  user-select: none;
+}
+
+.auth-chip__pill--pending {
+  padding: 4px 10px 4px 6px;
+  color: var(--text);
+}
+
+.auth-chip__pending-label {
+  font-size: 0.72rem;
+}
+
+.auth-chip__spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent-bright);
+  animation: auth-chip-spin 0.8s linear infinite;
+}
+
+@keyframes auth-chip-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Menu popover — anchored under the chip. Matches breadcrumb glass
+   treatment but with a solid surface for legibility. */
+.auth-chip__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 220px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 12px;
-  background: var(--window-chrome);
-  backdrop-filter: blur(var(--glass-blur));
+  background: rgba(13, 14, 26, 0.92);
   border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  color: var(--text-dim);
-  max-width: 280px;
+  border-radius: 10px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
-.auth-badge__hint {
+.auth-chip__menu-email {
+  padding: 6px 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--text);
+  border-bottom: 1px solid var(--glass-border);
+  word-break: break-all;
 }
 
-.auth-badge__link {
+.auth-chip__menu-hint {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.auth-chip__menu-link {
+  display: block;
+  padding: 6px 10px;
+  font-size: 11px;
   color: var(--accent-bright);
   text-decoration: none;
-  font-size: 11px;
-}
-
-.auth-badge__link:hover {
-  text-decoration: underline;
-}
-
-.auth-badge__chip {
-  font-family: inherit;
-  font-size: inherit;
-  padding: 6px 10px;
-  background: var(--window-chrome);
-  backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
   border-radius: 6px;
-  color: var(--text);
-  cursor: pointer;
-  transition: background 120ms ease;
 }
 
-.auth-badge__chip:hover {
+.auth-chip__menu-link:hover {
+  text-decoration: underline;
   background: var(--icon-hover);
 }
 
-.auth-badge__menu {
-  margin-top: 4px;
-  background: var(--window-body);
-  backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: 6px;
-  overflow: hidden;
-  min-width: 120px;
-}
-
-.auth-badge__menu-item {
+.auth-chip__menu-item {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 10px;
   background: transparent;
   border: 0;
+  border-radius: 6px;
   text-align: left;
-  font-family: inherit;
-  font-size: inherit;
+  font-family: var(--font-body);
+  font-size: 13px;
   color: var(--text);
   cursor: pointer;
 }
 
-.auth-badge__menu-item:hover {
+.auth-chip__menu-item:hover {
   background: var(--icon-hover);
 }
 
-.auth-badge__cancel {
-  margin-top: 4px;
-  padding: 4px 8px;
-  background: transparent;
-  border: 1px solid var(--glass-border);
-  border-radius: 4px;
-  color: var(--text-dim);
-  font-family: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  align-self: flex-start;
+.auth-chip__menu-item--danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
 }
 
-.auth-badge__cancel:hover {
-  color: var(--text);
-  background: var(--icon-hover);
-}
-
-.auth-badge__error {
-  margin-top: 4px;
+.auth-chip__menu-error {
+  padding: 6px 10px;
   font-size: 11px;
   color: #f87171;
+}
+
+/* Divider slot kept for ARIA / DOM stability but visually hidden —
+   the pill gap between auth chip and space pills is enough to
+   separate identity from navigation. */
+.home-breadcrumb-divider {
+  display: none;
 }

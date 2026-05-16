@@ -9,6 +9,7 @@ import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
 import { useMyDeviceId } from "../../hooks/useMyDeviceId";
 import { useSpaceProjects } from "../../hooks/useSpaceProjects";
 import { parseTimestamp } from "../../utils/parseTimestamp";
+import { AuthBadge } from "../AuthBadge";
 import { Desktop } from "../Desktop";
 import { InspectorPanel, type ActivePanel } from "../InspectorPanel";
 import { SessionInspector } from "../SessionInspector";
@@ -645,11 +646,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             badges for non-zero active/waiting/disconnected counts so the
             at-a-glance dashboard info lives in the nav itself; no need
             for a separate "Spaces" content section that would just
-            duplicate the same data. */}
-        {(realSpaces.length > 0 || orphanCounts.total > 0) && (
-          <nav className="home-breadcrumb" aria-label="Spaces">
+            duplicate the same data. The leftmost slot is the account
+            chip (avatar when signed-in / "Sign in" when signed-out) so
+            identity + navigation share one sticky bar at the top of
+            every view. Always renders, so the Sign-in CTA is reachable
+            even on a brand-new workspace with no spaces yet. */}
+        <nav className="home-breadcrumb" aria-label="Spaces">
             <LayoutGroup id="home-breadcrumb">
             <div className="home-breadcrumb-inner">
+            <AuthBadge />
+            <span className="home-breadcrumb-divider" aria-hidden="true" />
             <button
               type="button"
               className={`home-breadcrumb-pill home-breadcrumb-pill--home${isHomeView && !showElsewhere && !showVault ? " selected" : ""}`}
@@ -753,7 +759,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             </div>
             </LayoutGroup>
           </nav>
-        )}
 
         {showVaultPage ? (
           <VaultInfo />
