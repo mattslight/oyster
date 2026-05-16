@@ -2,7 +2,13 @@
 
 All notable changes to Oyster are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.1]
+## [0.9.1] - 2026-05-16
+
+### Added
+
+- **Filter cmd+K by type or space.** Type `@session`, `@artefact`, or `@memory` to scope by type; `#<space>` to scope by space. Filters appear as removable chips inside the input; Backspace at an empty input pops the most-recent chip.
+- **Memory is searchable from cmd+K.** Saved memories appear alongside sessions and artefacts in Spotlight results.
+- **Recent artefacts in empty cmd+K.** Opening Spotlight without typing shows your most-recent artefacts under *Recent* — a quick jump back when you can't remember the name.
 
 ### Changed
 
