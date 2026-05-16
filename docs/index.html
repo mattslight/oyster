@@ -27,8 +27,13 @@
   <link rel="stylesheet" href="assets/oyster.css">
   <link rel="stylesheet" href="assets/hero-mock.css">
   <script>
-    // Set before paint so .section hidden state is in effect before sections render.
-    if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // Set before paint so the [data-reveal] hidden state is in effect
+    // before the marked elements render. Gated on IntersectionObserver
+    // support so browsers without it never hide the content.
+    if (
+      'IntersectionObserver' in window &&
+      (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    ) {
       document.documentElement.classList.add('js-reveal');
     }
   </script>

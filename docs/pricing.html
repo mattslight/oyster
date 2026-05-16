@@ -7,7 +7,10 @@
   <meta name="description" content="Oyster is free without limits — no sign-up, no strings. Oyster Pro is optional and adds Sync, Memory, and Publish — anywhere, any device, any agent.">
   <link rel="stylesheet" href="assets/oyster.css">
   <script>
-    if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (
+      'IntersectionObserver' in window &&
+      (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    ) {
       document.documentElement.classList.add('js-reveal');
     }
   </script>

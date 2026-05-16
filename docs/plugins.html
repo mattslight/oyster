@@ -7,7 +7,10 @@
   <meta name="description" content="Community plugins for Oyster. Static apps, tools, and widgets that run on your workspace surface.">
   <link rel="stylesheet" href="assets/oyster.css">
   <script>
-    if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (
+      'IntersectionObserver' in window &&
+      (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    ) {
       document.documentElement.classList.add('js-reveal');
     }
   </script>
