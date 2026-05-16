@@ -2,6 +2,18 @@
 
 All notable changes to Oyster are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Rocket Ship title screen got an 80s arcade glow-up.** Chunky pixel-art rocket with a flickering flame hovers above the *ROCKET SHIP* title, the controls panel uses an enlarged ★ and a plain `!` for asteroids, the HUD reads `SCORE: N`, and the CRT bezel corners are more pronounced.
+- **Post-game flow: flag → name → leaderboard → title → new game.** A new #1 high score celebrates with the flag *before* the initials prompt, and the attract sequence is steppable — a key on the leaderboard view advances to the title-card; only the title-card starts a new game.
+
+### Fixed
+
+- **Title music plays during the title screen** when the page is loaded directly. Previously the autoplay-blocked path either dropped the title theme or stacked it on top of the game music.
+- **In-game hint stays until you actually fly.** The *Arrow keys / WASD…* overlay persists at full opacity until the player provides any thrust/turn input, then eases out smoothly instead of timing out after 5 seconds.
+
 ## [0.9.1] - 2026-05-16
 
 ### Added
