@@ -20,6 +20,16 @@ export async function fetchMemories(spaceId?: string | null, signal?: AbortSigna
   return getJson<Memory[]>(url, signal);
 }
 
+export async function searchMemories(
+  query: string,
+  opts: { spaceId?: string | null; limit?: number; signal?: AbortSignal } = {},
+): Promise<Memory[]> {
+  const params = new URLSearchParams({ q: query });
+  if (opts.spaceId) params.set("space_id", opts.spaceId);
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  return getJson<Memory[]>(`/api/memories/search?${params.toString()}`, opts.signal);
+}
+
 export interface CreateMemoryInput {
   content: string;
   space_id?: string | null;

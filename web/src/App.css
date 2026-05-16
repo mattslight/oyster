@@ -1744,6 +1744,64 @@ body {
   font-family: var(--font-mono);
 }
 
+.spotlight-token-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid;
+  margin-right: 6px;
+  user-select: none;
+}
+.spotlight-token-chip--type   { color: #4d9aff; background: #3a86ff22; border-color: #3a86ff44; }
+.spotlight-token-chip--space  { color: #a78bfa; background: #8b5cf622; border-color: #a78bfa44; }
+.spotlight-token-chip .x {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: #6e7280;
+  padding: 0 0 0 2px;
+}
+.spotlight-token-chip .x:hover { color: #d4d6db; }
+
+.spotlight-ac {
+  padding: 4px 8px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.18);
+}
+.spotlight-ac-hint {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6e7280;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid #2a2d33;
+  margin-bottom: 4px;
+}
+.spotlight-ac-hint--bottom { border-bottom: 0; border-top: 1px solid #2a2d33; margin: 4px 0 0; padding: 6px 8px 4px; }
+.spotlight-ac-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #d4d6db;
+  justify-content: space-between;
+}
+.spotlight-ac-item--sel { background: #2a2d33; }
+.spotlight-ac-prefix { color: #4d9aff; }
+.spotlight-ac-swatch { width: 8px; height: 8px; border-radius: 2px; }
+.spotlight-ac-left { display: flex; gap: 8px; align-items: center; }
+.spotlight-ac-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: #6e7280;
+}
+
 /* ── Hardcore Gate Modal ── */
 
 .hardcore-gate-overlay {

@@ -266,7 +266,7 @@ export async function tryHandleSessionRoute(
     return true;
   }
 
-  // GET /api/sessions/search?q=…&session_id=…&limit=…
+  // GET /api/sessions/search?q=…&session_id=…&space_id=…&limit=…
   // R2 verbatim recall (#311). FTS5 over session_events.text. Mirrors the
   // MCP `recall_transcripts` tool surface for the web UI.
   // Local-origin only — transcripts are private user content.
@@ -277,6 +277,7 @@ export async function tryHandleSessionRoute(
       const parsed = new URL(req.url ?? "/", "http://localhost");
       const q = parsed.searchParams.get("q") ?? "";
       const scopeSession = parsed.searchParams.get("session_id") ?? undefined;
+      const scopeSpace = parsed.searchParams.get("space_id") ?? undefined;
       const limitRaw = parsed.searchParams.get("limit");
       // Validate before clamping — Number("foo") is NaN, which Math.min/max
       // propagate. Treat anything non-finite or non-positive as "use the
@@ -289,7 +290,7 @@ export async function tryHandleSessionRoute(
         }
       }
       try {
-        const hits = sessionStore.searchEvents(q, { sessionId: scopeSession, limit });
+        const hits = sessionStore.searchEvents(q, { sessionId: scopeSession, spaceId: scopeSpace, limit });
         // Rename `id` → `event_id` for the wire format (the web UI's
         // ambient `id` is artefact id; explicit naming avoids confusion).
         sendJson(hits.map((h) => ({

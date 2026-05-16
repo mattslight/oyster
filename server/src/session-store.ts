@@ -144,7 +144,7 @@ export interface SessionStore {
   /** R2 verbatim recall (#311): FTS5 search across all session_events.text.
    *  `query` is natural language; tokenised to OR-joined terms inside the
    *  implementation. `sessionId` optionally scopes to one session. */
-  searchEvents(query: string, opts?: { limit?: number; sessionId?: string }): SessionEventSearchHit[];
+  searchEvents(query: string, opts?: { limit?: number; sessionId?: string; spaceId?: string }): SessionEventSearchHit[];
 }
 
 // ── SQLite implementation ──
@@ -421,7 +421,7 @@ export class SqliteSessionStore implements SessionStore {
 
   searchEvents(
     query: string,
-    opts: { limit?: number; sessionId?: string } = {},
+    opts: { limit?: number; sessionId?: string; spaceId?: string } = {},
   ): SessionEventSearchHit[] {
     // Two query shapes:
     //   - Single plain alphanumeric word → prefix match, so an
@@ -461,23 +461,20 @@ export class SqliteSessionStore implements SessionStore {
     const cols = `e.id, e.session_id, e.role, e.ts,
                   s.title AS session_title,
                   snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet`;
-    const sql = opts.sessionId
-      ? `SELECT ${cols}
-         FROM session_events e
-         JOIN session_events_fts fts ON e.id = fts.rowid
-         JOIN sessions s             ON s.id = e.session_id
-         WHERE session_events_fts MATCH ? AND e.session_id = ?
-         ORDER BY fts.rank
-         LIMIT ?`
-      : `SELECT ${cols}
-         FROM session_events e
-         JOIN session_events_fts fts ON e.id = fts.rowid
-         JOIN sessions s             ON s.id = e.session_id
-         WHERE session_events_fts MATCH ?
-         ORDER BY fts.rank
-         LIMIT ?`;
 
-    const params = opts.sessionId ? [ftsQuery, opts.sessionId, limit] : [ftsQuery, limit];
+    const where: string[] = ["session_events_fts MATCH ?"];
+    const params: unknown[] = [ftsQuery];
+    if (opts.sessionId) { where.push("e.session_id = ?"); params.push(opts.sessionId); }
+    if (opts.spaceId)   { where.push("s.space_id = ?");   params.push(opts.spaceId); }
+
+    const sql = `SELECT ${cols}
+                 FROM session_events e
+                 JOIN session_events_fts fts ON e.id = fts.rowid
+                 JOIN sessions s             ON s.id = e.session_id
+                 WHERE ${where.join(" AND ")}
+                 ORDER BY fts.rank
+                 LIMIT ?`;
+    params.push(limit);
     return this.db.prepare(sql).all(...params) as SessionEventSearchHit[];
   }
 }

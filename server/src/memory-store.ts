@@ -48,6 +48,11 @@ export interface MemoryProvider {
   init(): Promise<void>;
   remember(input: RememberInput): Promise<Memory>;
   recall(input: RecallInput): Promise<Memory[]>;
+  /** Side-effect-free FTS search. Like recall() but does NOT bump
+   *  access_count or write memory_recalls rows. Used by the cmd+K
+   *  spotlight where "searching" is not the same as "the agent
+   *  recalled it for use". */
+  search(input: { query: string; space_id?: string | null; limit?: number }): Promise<Memory[]>;
   /** Marks a memory as forgotten. Returns true if a row was updated, false if
    *  the id doesn't exist — callers can map false → 404. */
   forget(id: string, cloud_owner_id?: string | null): Promise<boolean>;
@@ -635,6 +640,41 @@ export class SqliteFtsMemoryProvider implements MemoryProvider {
     // per recall so a 50-row result is one fsync, not 100.
     this.postRecallTxn(rows, input.recalling_session_id ?? null);
 
+    return rows.map(rowToMemory);
+  }
+
+  async search(input: { query: string; space_id?: string | null; limit?: number }): Promise<Memory[]> {
+    const limit = input.limit ?? 10;
+    const spaceId = input.space_id ?? null;
+
+    const terms = input.query
+      .replace(/[^\w\s]/g, "")
+      .split(/\s+/)
+      .filter((t) => t.length > 1);
+    if (terms.length === 0) return [];
+    const ftsQuery = terms.join(" OR ");
+
+    let sql: string;
+    let params: unknown[];
+
+    if (spaceId) {
+      sql = `SELECT m.* FROM memories m
+             JOIN memories_fts fts ON m.rowid = fts.rowid
+             WHERE memories_fts MATCH ? AND m.superseded_by IS NULL
+               AND (m.space_id = ? OR m.space_id IS NULL)
+             ORDER BY fts.rank
+             LIMIT ?`;
+      params = [ftsQuery, spaceId, limit];
+    } else {
+      sql = `SELECT m.* FROM memories m
+             JOIN memories_fts fts ON m.rowid = fts.rowid
+             WHERE memories_fts MATCH ? AND m.superseded_by IS NULL
+             ORDER BY fts.rank
+             LIMIT ?`;
+      params = [ftsQuery, limit];
+    }
+
+    const rows = this.db.prepare(sql).all(...params) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
