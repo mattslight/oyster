@@ -6,6 +6,14 @@
   <title>Pricing — Oyster</title>
   <meta name="description" content="Oyster is free without limits — no sign-up, no strings. Oyster Pro is optional and adds Sync, Memory, and Publish — anywhere, any device, any agent.">
   <link rel="stylesheet" href="assets/oyster.css">
+  <script>
+    if (
+      'IntersectionObserver' in window &&
+      (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    ) {
+      document.documentElement.classList.add('js-reveal');
+    }
+  </script>
   <style>
     /* Hero */
     .hero {
@@ -655,7 +663,7 @@
 
   </section>
 
-  <section class="pricing" id="pricing">
+  <section class="pricing" id="pricing" data-reveal>
     <div class="pricing-head">
       <h2 class="pricing-h2">Two plans, <span class="accent">one</span> Oyster.</h2>
       <p class="pricing-sub"><strong>Oyster stays free, forever.</strong> Pro adds Sync, Memory, and Publish for users who want their work to follow them.</p>
@@ -834,5 +842,6 @@
       });
     })();
   </script>
+  <script src="assets/reveal.js" defer></script>
 </body>
 </html>
