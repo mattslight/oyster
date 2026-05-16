@@ -341,7 +341,7 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
           <input
             ref={inputRef}
             className="spotlight-input"
-            placeholder="Search artefacts, sessions, memories — type @ to filter"
+            placeholder="Search artefacts, sessions, memories — type @ or # to filter"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
