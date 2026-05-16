@@ -1956,38 +1956,6 @@
 
   <script>
     // ============================================
-    // STARFIELD GENERATOR
-    // ============================================
-    (function () {
-      function seed(seed) {
-        return function () {
-          seed = (seed * 9301 + 49297) % 233280;
-          return seed / 233280;
-        };
-      }
-      const rand = seed(42);
-      function makeStars(el, count, opts) {
-        const frag = document.createDocumentFragment();
-        for (let i = 0; i < count; i++) {
-          const s = document.createElement('div');
-          s.style.left = (rand() * 100).toFixed(2) + '%';
-          s.style.top = (rand() * 100).toFixed(2) + '%';
-          if (opts.twinkle && rand() < 0.18) {
-            s.classList.add('star-twinkle');
-            s.style.setProperty('--dur', (2.5 + rand() * 4).toFixed(2) + 's');
-            s.style.setProperty('--delay', (rand() * 5).toFixed(2) + 's');
-          }
-          frag.appendChild(s);
-        }
-        el.appendChild(frag);
-      }
-      const far = document.getElementById('stars-far');
-      const near = document.getElementById('stars-near');
-      if (far) makeStars(far, 200, { twinkle: false });
-      if (near) makeStars(near, 60, { twinkle: true });
-    })();
-
-    // ============================================
     // EASTER EGG — red/yellow launch the rocket-ship game,
     // green restores the surface. Iframe is lazy-loaded.
     // ============================================
@@ -2261,6 +2229,7 @@
   </script>
   <script src="assets/hero-mock.js" defer></script>
   <script src="assets/reveal.js" defer></script>
+  <script src="assets/stars.js" defer></script>
   <script src="assets/parallax.js" defer></script>
 </body>
 </html>
