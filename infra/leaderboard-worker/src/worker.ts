@@ -14,8 +14,11 @@ export interface Env {
 
 const ALLOWED_ORIGINS = new Set(["https://oyster.to", "https://www.oyster.to"]);
 const INITIALS_RE = /^[A-Z0-9.\-]{1,3}$/;
-const MAX_SCORE = 99_999;
+// Realistic ceiling on a hand-flown rocket. Anything higher is obvious tampering.
+const MAX_SCORE = 999;
 const TOP_N = 10;
+// Soft cap to keep the table bounded — prune rows ranked beyond this on insert.
+const RETAIN_N = 100;
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
@@ -49,10 +52,14 @@ export default {
     if (url.pathname !== "/api/leaderboard") return new Response("Not found", { status: 404 });
 
     const origin = req.headers.get("origin");
-    // Same-origin GET from oyster.to (no Origin header on simple top-level
-    // navigations) is fine; for cross-origin (browser fetch) we require an
-    // allowed origin so this can't be hot-linked from anywhere.
-    if (origin !== null && !isAllowedOrigin(origin)) {
+    // For mutating verbs we REQUIRE an allowed origin — a missing/empty
+    // header (curl, server-to-server) is rejected so writes can't bypass
+    // the allowlist. GET stays lenient so the page can fetch on load
+    // (simple navigations don't always send Origin).
+    const isMutation = req.method === "POST" || req.method === "OPTIONS";
+    if (isMutation) {
+      if (!isAllowedOrigin(origin)) return new Response("Forbidden", { status: 403 });
+    } else if (origin !== null && !isAllowedOrigin(origin)) {
       return new Response("Forbidden", { status: 403 });
     }
     const corsHeaders: Record<string, string> = origin
@@ -115,6 +122,17 @@ export default {
           "INSERT INTO scores (initials, score, created_at, ip_country, user_agent) VALUES (?, ?, ?, ?, ?)"
         )
         .bind(initials, score, created_at, ip_country, user_agent)
+        .run();
+      // Prune rows ranked below RETAIN_N so the table can't grow without
+      // bound under spam. We keep more than TOP_N so brief abuse spikes
+      // don't immediately evict legitimate entries.
+      await env.DB
+        .prepare(
+          `DELETE FROM scores WHERE id NOT IN (
+             SELECT id FROM scores ORDER BY score DESC, created_at ASC LIMIT ?
+           )`
+        )
+        .bind(RETAIN_N)
         .run();
       // Return the freshly-recomputed top-10 so the client can sync without
       // a second round-trip.

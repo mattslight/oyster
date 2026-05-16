@@ -1261,6 +1261,9 @@ function lbSort(a, b) {
   if (b.score !== a.score) return b.score - a.score;
   return (a.created_at || 0) - (b.created_at || 0);
 }
+// Same shape as the server-side guard so we never trust strings we read
+// out of localStorage (or the cloud) any more than we trust user input.
+const INITIALS_OK = /^[A-Z0-9.\-]{1,3}$/;
 function readLeaderboard() {
   try {
     const raw = localStorage.getItem(LB_KEY);
@@ -1268,7 +1271,11 @@ function readLeaderboard() {
     const v = JSON.parse(raw);
     if (!Array.isArray(v)) return [];
     return v
-      .filter(e => e && typeof e.score === 'number' && typeof e.initials === 'string')
+      .filter(e =>
+        e &&
+        typeof e.score === 'number' && e.score > 0 && e.score < 100000 &&
+        typeof e.initials === 'string' && INITIALS_OK.test(e.initials)
+      )
       // Back-compat: pre-date entries get the current time so they sort sanely
       .map(e => ({ score: e.score, initials: e.initials, created_at: e.created_at || Date.now() }))
       .sort(lbSort)
@@ -1347,16 +1354,34 @@ function paintLeaderboard() {
   const list = readLeaderboard();
   const ol = document.getElementById('lb-list');
   if (!ol) return;
+  // Clear safely
+  ol.textContent = '';
   if (!list.length) {
-    ol.innerHTML = '<li><span class="lb-empty">NO SCORES YET — BE THE FIRST</span></li>';
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.className = 'lb-empty';
+    span.textContent = 'NO SCORES YET — BE THE FIRST';
+    li.appendChild(span);
+    ol.appendChild(li);
     return;
   }
-  ol.innerHTML = list.map((e, i) => {
-    const rank = String(i + 1).padStart(2, '0');
-    const score = String(e.score).padStart(3, '0');
-    const since = sincePhrase(e.created_at);
-    return `<li><span class="lb-rank">${rank}.</span><span class="lb-initials">${e.initials}</span><span class="lb-score">${score}</span><span class="lb-since">${since}</span></li>`;
-  }).join('');
+  // Build via DOM nodes so user-provided initials can't be interpreted as HTML.
+  list.forEach((e, i) => {
+    const li = document.createElement('li');
+    const cols = [
+      ['lb-rank', String(i + 1).padStart(2, '0') + '.'],
+      ['lb-initials', e.initials],
+      ['lb-score', String(e.score).padStart(3, '0')],
+      ['lb-since', sincePhrase(e.created_at)],
+    ];
+    for (const [cls, text] of cols) {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      li.appendChild(span);
+    }
+    ol.appendChild(li);
+  });
 }
 paintSplashHighScore();
 paintLeaderboard();

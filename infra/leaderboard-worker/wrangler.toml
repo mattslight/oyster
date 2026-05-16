@@ -7,7 +7,7 @@ compatibility_date = "2026-04-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "oyster-leaderboard"
-database_id = "REPLACE_ME_AFTER_CREATE"
+database_id = "ae5ea426-d959-4f19-8eba-7959eff29d72"
 
 # Route the Worker at both oyster.to/api/leaderboard and www.oyster.to/api/leaderboard.
 [[routes]]

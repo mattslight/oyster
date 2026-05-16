@@ -2048,9 +2048,14 @@
         });
       });
 
-      // ESC from inside the iframe → parent receives a postMessage and shuts off
+      // ESC from inside the iframe → parent receives a postMessage and shuts off.
+      // Verify the event source is the rocket iframe and origin matches the page
+      // so unrelated frames/scripts can't trigger shutoff by posting the same shape.
       window.addEventListener('message', (e) => {
-        if (e && e.data && e.data.type === 'oyster-rocket-close') shutoff();
+        if (!e || !e.data || e.data.type !== 'oyster-rocket-close') return;
+        if (frame && e.source !== frame.contentWindow) return;
+        if (e.origin && e.origin !== location.origin) return;
+        shutoff();
       });
       // ESC also triggers shutoff
       document.addEventListener('keydown', (e) => {
