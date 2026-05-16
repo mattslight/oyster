@@ -767,6 +767,7 @@ let trail = [];
 // then fades smoothly using movedAt as the fade start time.
 let hasMoved = false;
 let movedAt = 0;
+const HINT_FADE_MS = 1200;
 
 // Controls
 const keys = {};
@@ -1222,8 +1223,7 @@ function draw() {
   ctx.fillText(`speed: ${spd.toFixed(1)}`, 20, 50);
 
   // Instructions — full opacity until the player starts flying, then fade
-  // smoothly out over ~1.2s instead of snapping away.
-  const HINT_FADE_MS = 1200;
+  // smoothly out over HINT_FADE_MS instead of snapping away.
   let hintAlpha = 0.7;
   if (hasMoved) {
     const t = (performance.now() - movedAt) / HINT_FADE_MS;
@@ -1578,9 +1578,17 @@ const Splash = (function () {
     }
     // If autoplay was blocked, this gesture unlocks audio — use it to start
     // the title music instead of dismissing. The next gesture dismisses.
+    // Only clear the awaiting flag on a successful play(); if play rejects
+    // again (media not ready / transient failure), keep the flag set so the
+    // next gesture retries instead of silently dismissing without music.
     if (titleMusicAwaitingGesture) {
-      titleMusicAwaitingGesture = false;
-      if (bgm) bgm.play().catch(() => {});
+      if (bgm) {
+        bgm.play()
+          .then(() => { titleMusicAwaitingGesture = false; })
+          .catch(() => {});
+      } else {
+        titleMusicAwaitingGesture = false;
+      }
       return;
     }
     phase = 'playing';
