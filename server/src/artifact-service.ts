@@ -405,16 +405,27 @@ export class ArtifactService {
   // the scan cheap; very old artefacts won't backfill, which is fine —
   // the value is closing the loop for fresh creations.
   private backfillTouchesForNewArtefact(artifactId: string, absPath: string): void {
+    // - `role IN ('assistant', 'tool')` — the watcher stores pure
+    //   tool-call turns as `tool` (see renderEvent in
+    //   watchers/claude-code.ts), not `assistant`. The old
+    //   `role = 'assistant'` filter missed the common case.
+    // - `instr(raw, ?) > 0` instead of `raw LIKE '%' || ? || '%'` —
+    //   sidesteps `_` / `%` wildcards in file paths that would
+    //   false-match unrelated events.
+    // - LIMIT 10000 + ORDER BY id DESC — bounded scan against
+    //   potentially-huge session_events. 10000 is plenty for the
+    //   "I just wrote this file" case the backfill targets.
     const events = this.db
       .prepare(
         `SELECT session_id, raw
            FROM session_events
-          WHERE role = 'assistant'
+          WHERE role IN ('assistant', 'tool')
             AND raw IS NOT NULL
-            AND raw LIKE ?
-            AND ts > datetime('now', '-30 days')`,
+            AND instr(raw, ?) > 0
+          ORDER BY id DESC
+          LIMIT 10000`,
       )
-      .all("%" + absPath + "%") as Array<{ session_id: string; raw: string }>;
+      .all(absPath) as Array<{ session_id: string; raw: string }>;
     const seen = new Set<string>(); // `${session_id}:${role}` keys already inserted
     const insert = this.db.prepare(
       "INSERT INTO session_artifacts (session_id, artifact_id, role) VALUES (?, ?, ?)",

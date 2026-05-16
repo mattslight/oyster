@@ -110,6 +110,26 @@ describe("resolveArtifactPathViaProjects", () => {
     rmSync(innerNew, { recursive: true, force: true });
   });
 
+  it("abstains when the ancestor is cached against two live projects (ambiguous owner)", () => {
+    // Two live projects both claim the same path in project_paths.
+    // findProjectAtAncestor + the resolver must NOT pick arbitrarily —
+    // doing so would silently route the artefact to the wrong project.
+    const B_UUID = "22222222-2222-2222-2222-222222222222";
+    db.prepare(`INSERT INTO projects (id, space_id, name) VALUES (?, 'work', 'Other')`).run(B_UUID);
+    const shared = mkdtempSync(join(tmpdir(), "oyster-rapvp-shared-"));
+    const newA = mkdtempSync(join(tmpdir(), "oyster-rapvp-newA-"));
+    writeFileSync(join(newA, "x.md"), "ok");
+    seedPath(A_UUID, shared);
+    seedPath(B_UUID, shared); // same path, two projects
+    seedPath(A_UUID, newA);
+
+    const result = resolveArtifactPathViaProjects(db, join(shared, "x.md"));
+    expect(result).toBeNull();
+
+    rmSync(shared, { recursive: true, force: true });
+    rmSync(newA, { recursive: true, force: true });
+  });
+
   it("skips soft-deleted projects when resolving", () => {
     const oldFolder = mkdtempSync(join(tmpdir(), "oyster-rapvp-sd-old-"));
     const newFolder = mkdtempSync(join(tmpdir(), "oyster-rapvp-sd-new-"));

@@ -63,16 +63,58 @@ describe("ArtifactService.registerArtifact — session→creation link backfill"
     expect(link).toEqual({ session_id: "sess-1", role: "create" });
   });
 
-  it("does not create duplicate links when register is called twice in quick succession", async () => {
+  it("does not duplicate links when register is called a second time (resurrect path skips backfill)", async () => {
     const filePath = join(folder, "x.md");
     writeFileSync(filePath, "ok");
     recordWriteEvent("sess-1", filePath);
 
+    // First call: inserts + backfills → 1 link.
     const art = await service.registerArtifact({ path: filePath, space_id: "work", label: "x", id: "fixed-id" }, [folder]);
-    // Same id → registerArtifact's "resurrect" path; we shouldn't backfill again.
-    // Simulate by inserting a manual session_artifacts row pre-second-call.
-    const before = db.prepare("SELECT COUNT(*) AS c FROM session_artifacts WHERE artifact_id = ?").get(art.id) as { c: number };
-    expect(before.c).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM session_artifacts WHERE artifact_id = ?").get(art.id) as { c: number }).c).toBe(1);
+
+    // Soft-delete + re-register: hits the resurrect branch (existing
+    // row with removed_at set). That branch must NOT re-run the
+    // backfill — the original link is still there, so adding another
+    // would produce a duplicate touch.
+    db.prepare("UPDATE artifacts SET removed_at = datetime('now') WHERE id = ?").run("fixed-id");
+    await service.registerArtifact({ path: filePath, space_id: "work", label: "x", id: "fixed-id" }, [folder]);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM session_artifacts WHERE artifact_id = ?").get(art.id) as { c: number }).c).toBe(1);
+  });
+
+  it("backfills from role='tool' events too (the watcher stores pure tool-call turns as role='tool')", async () => {
+    const filePath = join(folder, "tool-only.md");
+    writeFileSync(filePath, "ok");
+    // No prose text — a pure tool-call assistant turn that the watcher
+    // would store as role='tool' rather than 'assistant'.
+    db.prepare("INSERT INTO session_events (session_id, role, text, raw) VALUES ('sess-1', 'tool', '[Write]', ?)").run(
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: filePath } }] } }),
+    );
+
+    const art = await service.registerArtifact({ path: filePath, space_id: "work", label: "tool" }, [folder]);
+
+    const link = db.prepare("SELECT session_id, role FROM session_artifacts WHERE artifact_id = ?").get(art.id) as { session_id: string; role: string };
+    expect(link).toEqual({ session_id: "sess-1", role: "create" });
+  });
+
+  it("doesn't false-match when the file path contains LIKE wildcards (`%`, `_`)", async () => {
+    // A real folder with an underscore in the name. Without instr-based
+    // matching (or escape on LIKE), `_` would wildcard a single char and
+    // the backfill could match an unrelated event.
+    const wildPath = join(folder, "report_v1.md");
+    writeFileSync(wildPath, "ok");
+    // Event mentions a DIFFERENT file whose path matches the LIKE
+    // pattern `report_v1.md` if `_` is wildcarded: `reportXv1.md`.
+    // The raw JSON contains "reportXv1.md" — would match `%report_v1%`
+    // under naive LIKE.
+    db.prepare("INSERT INTO session_events (session_id, role, text, raw) VALUES ('sess-1', 'assistant', '', ?)").run(
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: join(folder, "reportXv1.md") } }] } }),
+    );
+
+    const art = await service.registerArtifact({ path: wildPath, space_id: "work", label: "wild" }, [folder]);
+
+    // No false match — the event mentions reportXv1.md, not report_v1.md.
+    const count = db.prepare("SELECT COUNT(*) AS c FROM session_artifacts WHERE artifact_id = ?").get(art.id) as { c: number };
+    expect(count.c).toBe(0);
   });
 
   it("does nothing when no recent session_events mention this path", async () => {

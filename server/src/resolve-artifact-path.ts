@@ -9,11 +9,29 @@
 // `store.remove(id)`) and by a one-shot boot migration that heals
 // tombstones produced by the old self-heal.
 
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type Database from "better-sqlite3";
 
 const MAX_WALK_DEPTH = 32;
+
+// True iff the path definitely doesn't exist (ENOENT / ENOTDIR). Any
+// other stat error — permissions, slow drive timeout — re-throws or
+// returns true (we treat transient IO failures as "still here" so we
+// don't tombstone artefacts whose backing drives are temporarily slow).
+function pathExistsOrThrow(path: string): boolean {
+  try {
+    statSync(path);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    // Anything else (EACCES, EIO, EBUSY, etc.) is a transient or
+    // permission issue. Treat as "exists, can't tell" so we don't
+    // false-tombstone or false-recover.
+    return true;
+  }
+}
 
 export interface ArtifactPathResolution {
   newPath: string;
@@ -32,16 +50,20 @@ export function findProjectAtAncestor(
 ): string | null {
   let dir = dirname(path);
   for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    const row = db
+    // LIMIT 2 + abstain on multi-match — if two live projects share a
+    // cached path (rare but possible from a buggy attach), picking
+    // arbitrarily would silently route the artefact to the wrong one.
+    const rows = db
       .prepare(
-        `SELECT pp.project_id
+        `SELECT DISTINCT pp.project_id
            FROM project_paths pp
            JOIN projects p ON p.id = pp.project_id
           WHERE pp.path = ? AND p.removed_at IS NULL
-          LIMIT 1`,
+          LIMIT 2`,
       )
-      .get(dir) as { project_id: string } | undefined;
-    if (row) return row.project_id;
+      .all(dir) as Array<{ project_id: string }>;
+    if (rows.length === 1) return rows[0].project_id;
+    if (rows.length > 1) return null; // ambiguous — abstain
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -61,20 +83,21 @@ export function resolveArtifactPathViaProjects(
   let owningProjectId: string | null = null;
   let owningAncestor: string | null = null;
   for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    const row = db
+    const rows = db
       .prepare(
-        `SELECT pp.project_id
+        `SELECT DISTINCT pp.project_id
            FROM project_paths pp
            JOIN projects p ON p.id = pp.project_id
           WHERE pp.path = ? AND p.removed_at IS NULL
-          LIMIT 1`,
+          LIMIT 2`,
       )
-      .get(dir) as { project_id: string } | undefined;
-    if (row) {
-      owningProjectId = row.project_id;
+      .all(dir) as Array<{ project_id: string }>;
+    if (rows.length === 1) {
+      owningProjectId = rows[0].project_id;
       owningAncestor = dir;
       break;
     }
+    if (rows.length > 1) return null; // ambiguous owner — abstain
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -91,7 +114,10 @@ export function resolveArtifactPathViaProjects(
   const matches: string[] = [];
   for (const { path: candidate } of others) {
     const candidatePath = join(candidate, rel);
-    if (existsSync(candidatePath)) matches.push(candidatePath);
+    // Stat-based check: only ENOENT/ENOTDIR counts as missing. A
+    // permission glitch or busy drive returns "exists, can't tell" so
+    // we don't silently miss a real candidate.
+    if (pathExistsOrThrow(candidatePath)) matches.push(candidatePath);
   }
   if (matches.length !== 1) return null;
   return { newPath: matches[0], projectId: owningProjectId };
