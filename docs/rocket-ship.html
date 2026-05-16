@@ -54,13 +54,16 @@
   }
 
   /* CRT scanlines + RGB sub-pixel overlay */
+  /* CRT layers sit ABOVE the splash/gameover/celebrate panels so the scanlines
+     + vignette read on every screen, not just gameplay. pointer-events:none
+     means they don't intercept input from the panels below. */
   .overlay {
     height: 100%;
     left: 0;
     position: absolute;
     top: 0;
     width: 100%;
-    z-index: 1;
+    z-index: 10;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -90,7 +93,7 @@
       rgba(0, 0, 0, 0.22) 80%,
       rgba(0, 0, 0, 0.45) 100%);
     pointer-events: none;
-    z-index: 2;
+    z-index: 11;
     border-radius: 14px;
   }
 
