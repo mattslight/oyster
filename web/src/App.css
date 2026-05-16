@@ -1766,18 +1766,10 @@ body {
 }
 .spotlight-token-chip .x:hover { color: #d4d6db; }
 
-.spotlight-panel { position: relative; }
 .spotlight-ac {
-  position: absolute;
-  top: 48px;
-  left: 36px;
-  z-index: 6000;
-  min-width: 220px;
-  padding: 4px;
-  background: #181a1d;
-  border: 1px solid #3a3d44;
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+  padding: 4px 8px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.18);
 }
 .spotlight-ac-hint {
   font-size: 10px;
