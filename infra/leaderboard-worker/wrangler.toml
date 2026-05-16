@@ -1,0 +1,25 @@
+name = "oyster-leaderboard"
+main = "src/worker.ts"
+compatibility_date = "2026-04-01"
+
+# Bind the D1 database. Run `wrangler d1 create oyster-leaderboard` once,
+# then paste the returned database_id here.
+[[d1_databases]]
+binding = "DB"
+database_name = "oyster-leaderboard"
+database_id = "ae5ea426-d959-4f19-8eba-7959eff29d72"
+
+# Route the Worker at both oyster.to/api/leaderboard* and www.oyster.to/api/leaderboard*.
+# The wildcards cover the score POST + the /start token-mint endpoint.
+[[routes]]
+pattern = "oyster.to/api/leaderboard*"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "www.oyster.to/api/leaderboard*"
+zone_name = "oyster.to"
+
+# Per-IP rate limit is enforced in the worker against a D1 table
+# (see migrations/0002_rate_limit.sql) — keyed on a hashed IP, 60s
+# window. Marketing-site arcade, so legit back-to-back games are still
+# fine (the GET on the title screen isn't limited).

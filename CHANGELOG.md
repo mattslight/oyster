@@ -9,10 +9,12 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Filter cmd+K by type or space.** Type `@session`, `@artefact`, or `@memory` to scope by type; `#<space>` to scope by space. Filters appear as removable chips inside the input; Backspace at an empty input pops the most-recent chip.
 - **Memory is searchable from cmd+K.** Saved memories appear alongside sessions and artefacts in Spotlight results.
 - **Recent artefacts in empty cmd+K.** Opening Spotlight without typing shows your most-recent artefacts under *Recent* — a quick jump back when you can't remember the name.
+- **Rocket Ship easter egg on oyster.to.** Clicking the red or yellow window dot — or the new Rocket Ship artefact tile — boots a hidden 8-bit arcade game inside the hero device. Title splash with loading bar, top-10 leaderboard, 3-letter initial entry, CRT power-off when you close it.
 
 ### Changed
 
 - **Redesigned oyster.to.** New editorial typography (Sora + Instrument Serif italic), cosmic background with orbital arcs, refreshed hero with luminous device frame, and a stronger "Pearl in Orbit" look across the homepage, pricing, plugins, MCP, and changelog pages.
+- **Hero device mock refinements.** Darkened the device chrome so the inside content + rim glow pop against the cosmic background, and replaced the generic centered-icon artefacts with miniature content previews (kanban board, slide deck with bar chart, node diagram, settings window, checklist, rocket ship).
 - **Top bar is now one sticky pill.** Account and space switcher share a single bar pinned to the top of every view. Signed-in shows an avatar (email + sign-out in the click-menu); signed-out shows a *Sign in* pill in the same slot.
 
 ### Fixed
