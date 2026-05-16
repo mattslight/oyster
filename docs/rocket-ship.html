@@ -31,18 +31,19 @@
       inset 0 -2px 6px rgba(0, 0, 0, 0.6);
   }
 
-  /* The tube — inset darker than the bezel, slight rounded glass corners */
+  /* The tube — inset darker than the bezel, pronounced rounded glass corners
+     for that bulbous old-CRT look. */
   .tube {
     position: relative;
     width: 100%;
     height: 100%;
     overflow: hidden;
     background: #000;
-    border-radius: 14px;
+    border-radius: 36px;
     box-shadow:
       /* deep inner shadow makes the bezel look thick around the tube */
       inset 0 0 0 1px rgba(0, 0, 0, 0.9),
-      inset 0 0 28px rgba(0, 0, 0, 0.8),
+      inset 0 0 40px rgba(0, 0, 0, 0.85),
       0 0 0 2px rgba(0, 0, 0, 0.7);
   }
 
@@ -94,7 +95,7 @@
       rgba(0, 0, 0, 0.45) 100%);
     pointer-events: none;
     z-index: 11;
-    border-radius: 14px;
+    border-radius: 36px;
   }
 
   /* Hide the game canvas until the title splash is dismissed.
@@ -212,6 +213,32 @@
       6px 6px 0 #2dd4ff,
       0 0 18px rgba(255, 216, 74, 0.45);
   }
+
+  /* Chunky pixel-art rocket above the title — crisp edges, flickering flame */
+  .title-rocket {
+    display: block;
+    width: clamp(72px, 13vw, 120px);
+    height: auto;
+    margin: 0 auto;
+    filter: drop-shadow(0 0 10px rgba(255, 216, 74, 0.35));
+    animation: title-rocket-hover 2.4s ease-in-out infinite;
+  }
+  .title-rocket rect { shape-rendering: crispEdges; }
+  .title-rocket .flame { animation: flame-flicker 0.18s steps(2) infinite; }
+  .title-rocket .flame-2 { animation-duration: 0.14s; animation-delay: -0.05s; }
+  .title-rocket .flame-3 { animation-duration: 0.22s; animation-delay: -0.09s; }
+  .title-rocket .flame-4 { animation-duration: 0.12s; animation-delay: -0.04s; }
+  @keyframes flame-flicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  @keyframes title-rocket-hover {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-4px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .title-rocket, .title-rocket .flame { animation: none; }
+  }
   .splash .start {
     font-size: clamp(11px, 2vw, 16px);
     letter-spacing: 0.16em;
@@ -234,6 +261,10 @@
   .splash .controls .key {
     color: #2dd4ff;
     text-align: right;
+  }
+  .splash .controls .key-star {
+    font-size: 1.5em;
+    line-height: 0.9;
   }
   .splash .controls .desc {
     color: #fff;
@@ -546,13 +577,44 @@
       <div class="splash-main">
         <!-- Two views auto-cycle on the title: card → leaderboard → card → ... -->
         <div class="title-card splash-view is-active">
+          <svg class="title-rocket" viewBox="0 0 22 30" aria-hidden="true">
+            <!-- Nose cone (red) -->
+            <rect x="10" y="0" width="2" height="2" fill="#ff4444"/>
+            <rect x="9"  y="2" width="4" height="2" fill="#ff4444"/>
+            <rect x="8"  y="4" width="6" height="2" fill="#ff4444"/>
+            <!-- Body (white, with right-side shadow strip) -->
+            <rect x="7"  y="6"  width="8"  height="8" fill="#ffffff"/>
+            <rect x="13" y="6"  width="2"  height="8" fill="#c8c8c8"/>
+            <rect x="6"  y="14" width="10" height="4" fill="#ffffff"/>
+            <rect x="14" y="14" width="2"  height="4" fill="#c8c8c8"/>
+            <!-- Porthole window (cyan with highlight) -->
+            <rect x="9"  y="8"  width="4" height="4" fill="#2dd4ff"/>
+            <rect x="10" y="9"  width="2" height="1" fill="#aef0ff"/>
+            <!-- Magenta stripe -->
+            <rect x="6"  y="16" width="10" height="1" fill="#ff3aa1"/>
+            <!-- Fins (red, stepped for chunky pixel feel) -->
+            <rect x="3"  y="14" width="3" height="2" fill="#ff4444"/>
+            <rect x="2"  y="16" width="4" height="2" fill="#ff4444"/>
+            <rect x="0"  y="18" width="4" height="2" fill="#ff4444"/>
+            <rect x="16" y="14" width="3" height="2" fill="#ff4444"/>
+            <rect x="16" y="16" width="4" height="2" fill="#ff4444"/>
+            <rect x="18" y="18" width="4" height="2" fill="#ff4444"/>
+            <!-- Engine nozzle (dark grey) -->
+            <rect x="7"  y="18" width="8" height="2" fill="#555555"/>
+            <rect x="8"  y="20" width="6" height="1" fill="#333333"/>
+            <!-- Flame (animated flicker) -->
+            <rect class="flame flame-1" x="8"  y="21" width="6" height="2" fill="#ffd84a"/>
+            <rect class="flame flame-2" x="9"  y="23" width="4" height="2" fill="#ff8800"/>
+            <rect class="flame flame-3" x="9"  y="25" width="4" height="2" fill="#ffd84a"/>
+            <rect class="flame flame-4" x="10" y="27" width="2" height="2" fill="#ffffff"/>
+          </svg>
           <div class="title">ROCKET<br>SHIP</div>
           <div class="start">INSERT COIN TO PLAY</div>
           <div class="controls">
             <div class="key">↑ / W</div><div class="desc">THRUST</div>
             <div class="key">← →</div><div class="desc">TURN</div>
-            <div class="key">★</div><div class="desc">COLLECT THE STARS</div>
-            <div class="key">⚠</div><div class="desc">AVOID THE ASTEROIDS</div>
+            <div class="key key-star">★</div><div class="desc">COLLECT THE STARS</div>
+            <div class="key">!</div><div class="desc">AVOID THE ASTEROIDS</div>
           </div>
           <div class="hiscore-row" id="hiscore-row">HIGH SCORE <span class="hs-val" id="hs-val-splash">000</span> <span class="hs-initials" id="hs-initials-splash">---</span></div>
           <div class="credit">© OYSTER 2026 — PRESS ANY KEY</div>
@@ -700,6 +762,12 @@ let gameOver = false;
 let gameActive = false; // true only while gameplay is running (splash dismissed)
 let score = 0;
 let trail = [];
+// True once the player has provided any thrust/turn input. Drives the in-game
+// hint overlay — it stays up until the rocket actually starts being flown,
+// then fades smoothly using movedAt as the fade start time.
+let hasMoved = false;
+let movedAt = 0;
+const HINT_FADE_MS = 1200;
 
 // Controls
 const keys = {};
@@ -883,11 +951,11 @@ function triggerGameOver() {
     ));
   }
   setTimeout(() => {
-    const ov = document.getElementById('gameover');
     const sc = document.getElementById('go-score-val');
     if (sc) sc.textContent = score;
-    if (ov) ov.classList.add('is-visible');
     playLose();
+    // The handler decides whether to show the gameover overlay directly,
+    // or to celebrate a new top score with the flag first.
     if (typeof window.__rocketShowGameOver === 'function') window.__rocketShowGameOver(score);
   }, 700);
 }
@@ -910,6 +978,8 @@ function restartGame() {
     c.y = Math.random() * (H - 100) + 50;
   });
   gameOver = false;
+  hasMoved = false;
+  movedAt = 0;
   update.lastThrusting = false;
   const ov = document.getElementById('gameover');
   if (ov) ov.classList.remove('is-visible');
@@ -935,6 +1005,10 @@ function update() {
   update.lastThrusting = thrusting;
   const left = keys['ArrowLeft'] || keys['a'] || keys['A'];
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
+  if (thrusting || left || right) {
+    if (!hasMoved) movedAt = performance.now();
+    hasMoved = true;
+  }
 
   // Touch/mouse steering
   if ((touchThrust && touchX !== null) || (mouseDown && mouseX !== null)) {
@@ -1141,17 +1215,22 @@ function draw() {
   // HUD
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.font = '16px monospace';
-  ctx.fillText(`★ ${score}`, 20, 30);
+  ctx.fillText(`SCORE: ${score}`, 20, 30);
 
   const spd = Math.sqrt(rocket.vx ** 2 + rocket.vy ** 2);
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.font = '12px monospace';
   ctx.fillText(`speed: ${spd.toFixed(1)}`, 20, 50);
 
-  // Instructions
-  if (time < 5) {
-    const fade = time < 4 ? 1 : 1 - (time - 4);
-    ctx.fillStyle = `rgba(255,255,255,${(fade * 0.7).toFixed(2)})`;
+  // Instructions — full opacity until the player starts flying, then fade
+  // smoothly out over HINT_FADE_MS instead of snapping away.
+  let hintAlpha = 0.7;
+  if (hasMoved) {
+    const t = (performance.now() - movedAt) / HINT_FADE_MS;
+    hintAlpha = t >= 1 ? 0 : 0.7 * (1 - t);
+  }
+  if (hintAlpha > 0.001) {
+    ctx.fillStyle = `rgba(255,255,255,${hintAlpha.toFixed(3)})`;
     ctx.font = '14px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('Arrow keys / WASD to fly • Collect the stars!', W / 2, H - 40);
@@ -1229,7 +1308,7 @@ function playThruster() {
 // ============================================
 // CELEBRATION — pixel flag on #1 high score
 // ============================================
-function showCelebration() {
+function showCelebration(onAdvance) {
   const cel = document.getElementById('celebrate');
   if (!cel) return;
   cel.classList.add('is-active');
@@ -1240,16 +1319,19 @@ function showCelebration() {
     dismissed = true;
     cel.classList.remove('is-active');
     cel.setAttribute('aria-hidden', 'true');
-    document.removeEventListener('keydown', onKey);
-    document.removeEventListener('mousedown', advance);
-    Splash.enterAttractMode();
+    window.removeEventListener('keydown', onKey);
+    window.removeEventListener('mousedown', advance);
+    if (typeof onAdvance === 'function') onAdvance();
+    else Splash.enterAttractMode();
   }
   function onKey(e) { if (e.key !== 'Escape') advance(); }
-  // Allow a tiny grace window so the keystroke that saved the initials
-  // doesn't immediately dismiss the flag.
+  // Grace window so the gesture that triggered the flag doesn't also dismiss
+  // it. Listeners are on `window` (not `document`) so they fire AFTER the
+  // splash IIFE's tryDismiss listener — at celebration time phase is still
+  // 'playing', so tryDismiss is inert and can't stack with this advance.
   setTimeout(() => {
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', advance);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', advance);
   }, 250);
   // Auto-advance after 6s if untouched
   setTimeout(advance, 6000);
@@ -1462,23 +1544,20 @@ const Splash = (function () {
   }
   function stopCycle() { if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; } }
 
+  // True while we're waiting for a user gesture to unlock title-music playback.
+  // Every gesture that unlocks audio also fires tryDismiss, so we use the
+  // first gesture to START the music (not dismiss); the user presses again
+  // to actually enter the game.
+  let titleMusicAwaitingGesture = false;
   function startTitleMusic() {
     if (!bgm) return;
     bgm.currentTime = 0;
-    bgm.play().catch(() => {
-      // Browser blocked autoplay — fall back to first user gesture inside the iframe
-      const onGesture = () => {
-        bgm.play().catch(() => {});
-        window.removeEventListener('keydown', onGesture);
-        window.removeEventListener('mousedown', onGesture);
-        window.removeEventListener('touchstart', onGesture);
-      };
-      window.addEventListener('keydown', onGesture);
-      window.addEventListener('mousedown', onGesture);
-      window.addEventListener('touchstart', onGesture, { passive: true });
-    });
+    bgm.play().catch(() => { titleMusicAwaitingGesture = true; });
   }
-  function stopTitleMusic() { if (bgm) bgm.pause(); }
+  function stopTitleMusic() {
+    if (bgm) bgm.pause();
+    titleMusicAwaitingGesture = false;
+  }
   function startGameMusic() {
     if (!bgmGame) return;
     bgmGame.volume = 0.4;
@@ -1488,6 +1567,30 @@ const Splash = (function () {
 
   function tryDismiss() {
     if (phase !== 'title') return; // ignore input during boot or active gameplay
+    // Only the title-card view launches gameplay. On the leaderboard view,
+    // a key advances to the title-card (and freezes the cycle so the user
+    // is in control from here on).
+    const views = mainEl && mainEl.querySelectorAll('.splash-view');
+    if (views && views.length === 2 && views[1].classList.contains('is-active')) {
+      stopCycle();
+      setView(0);
+      return;
+    }
+    // If autoplay was blocked, this gesture unlocks audio — use it to start
+    // the title music instead of dismissing. The next gesture dismisses.
+    // Only clear the awaiting flag on a successful play(); if play rejects
+    // again (media not ready / transient failure), keep the flag set so the
+    // next gesture retries instead of silently dismissing without music.
+    if (titleMusicAwaitingGesture) {
+      if (bgm) {
+        bgm.play()
+          .then(() => { titleMusicAwaitingGesture = false; })
+          .catch(() => {});
+      } else {
+        titleMusicAwaitingGesture = false;
+      }
+      return;
+    }
     phase = 'playing';
     splash.classList.add('is-hidden');
     if (tube) tube.classList.add('is-ready');
@@ -1566,9 +1669,23 @@ const Splash = (function () {
   }
 
   let pendingScore = 0;
+  function isNewBest(score) {
+    const list = readLeaderboard();
+    if (!list.length) return score > 0;
+    return score > list[0].score; // strictly beat the current top (ties keep the older entry)
+  }
   function showGameOverWith(score) {
     pendingScore = score;
     const beat = qualifiesForLeaderboard(score);
+    // New #1 → flag goes up first; initials prompt appears on dismissal.
+    if (beat && isNewBest(score)) {
+      showCelebration(() => paintGameOverOverlay(true));
+    } else {
+      paintGameOverOverlay(beat);
+    }
+  }
+  function paintGameOverOverlay(beat) {
+    ov.classList.add('is-visible');
     initialsBox.hidden = !beat;
     promptEl.hidden = beat;
     const hs = getHighScore();
@@ -1602,14 +1719,12 @@ const Splash = (function () {
       } else if (e.key === 'ArrowLeft') {
         activeSlot = Math.max(0, activeSlot - 1);
       } else if (e.key === 'Enter' || e.key === ' ') {
-        const rank = addToLeaderboard(pendingScore, letters.join(''));
+        addToLeaderboard(pendingScore, letters.join(''));
         enteringInitials = false;
         ov.classList.remove('is-visible');
-        if (rank === 1) {
-          showCelebration();
-        } else {
-          Splash.enterAttractMode();
-        }
+        // Celebration (if any) already happened before this prompt — always
+        // proceed to the leaderboard → title-card flow.
+        Splash.enterAttractMode();
       } else if (e.key.length === 1) {
         // Typed letter: shortcut input
         const c = e.key.toUpperCase();
