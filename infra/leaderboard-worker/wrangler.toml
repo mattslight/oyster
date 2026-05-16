@@ -19,11 +19,7 @@ zone_name = "oyster.to"
 pattern = "www.oyster.to/api/leaderboard*"
 zone_name = "oyster.to"
 
-# Per-IP rate limit on POST — 1 submission every 60s. Marketing-site arcade,
-# so legit back-to-back games are still fine (the GET on the title screen
-# isn't limited).
-[[unsafe.bindings]]
-name = "POST_LIMITER"
-type = "ratelimit"
-namespace_id = "100"
-simple = { limit = 1, period = 60 }
+# Per-IP rate limit is enforced in the worker against a D1 table
+# (see migrations/0002_rate_limit.sql) — keyed on a hashed IP, 60s
+# window. Marketing-site arcade, so legit back-to-back games are still
+# fine (the GET on the title screen isn't limited).

@@ -8,8 +8,8 @@
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
     "db:create": "wrangler d1 create oyster-leaderboard",
-    "db:migrate": "wrangler d1 execute oyster-leaderboard --file=migrations/0001_init.sql --remote",
-    "db:migrate:local": "wrangler d1 execute oyster-leaderboard --file=migrations/0001_init.sql --local",
+    "db:migrate": "wrangler d1 execute oyster-leaderboard --file=migrations/0001_init.sql --remote && wrangler d1 execute oyster-leaderboard --file=migrations/0002_rate_limit.sql --remote",
+    "db:migrate:local": "wrangler d1 execute oyster-leaderboard --file=migrations/0001_init.sql --local && wrangler d1 execute oyster-leaderboard --file=migrations/0002_rate_limit.sql --local",
     "db:dump": "wrangler d1 execute oyster-leaderboard --remote --command=\"SELECT initials, score, datetime(created_at/1000,'unixepoch') AS dt FROM scores ORDER BY score DESC, created_at ASC LIMIT 50\""
   },
   "devDependencies": {

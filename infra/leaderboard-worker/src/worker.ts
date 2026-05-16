@@ -23,7 +23,6 @@
 export interface Env {
   DB: D1Database;
   HMAC_SECRET: string; // set via `wrangler secret put HMAC_SECRET`
-  POST_LIMITER?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
 }
 
 const ALLOWED_ORIGINS = new Set(["https://oyster.to", "https://www.oyster.to"]);
@@ -32,6 +31,7 @@ const MAX_SCORE = 999;
 const TOP_N = 10;
 const RETAIN_N = 100;
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour — enough for a long grinding session toward 999
+const RATE_LIMIT_MS = 60 * 1000;     // 1 submission per minute per IP
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
@@ -186,17 +186,28 @@ export default {
       return new Response("Method not allowed", { status: 405, headers: corsHeaders });
     }
 
-    // Per-IP rate limit — 1 POST per 60s.
-    if (env.POST_LIMITER) {
-      try {
-        const result = await env.POST_LIMITER.limit({ key: ipHash });
-        if (!result.success) {
-          return json({ error: "rate_limited" }, 429, corsHeaders);
-        }
-      } catch (err) {
-        // Don't fail-open silently — log and continue. The HMAC token is still required.
-        console.error("rate_limit_failed", err);
+    // Per-IP rate limit — D1-backed, 1 POST per RATE_LIMIT_MS per IP.
+    // Atomic CAS-style upsert so a flurry of concurrent requests can't slip
+    // through: only update the row when the previous timestamp is outside
+    // the window. `meta.changes === 0` means we were inside the window.
+    try {
+      const now = Date.now();
+      const since = now - RATE_LIMIT_MS;
+      const res = await env.DB
+        .prepare(
+          `INSERT INTO rate_limit (key, last_at) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET last_at = excluded.last_at
+           WHERE rate_limit.last_at < ?`
+        )
+        .bind(ipHash, now, since)
+        .run();
+      if ((res.meta?.changes ?? 0) === 0) {
+        return json({ error: "rate_limited" }, 429, corsHeaders);
       }
+    } catch (err) {
+      console.error("rate_limit_failed", err);
+      // Fail closed — better to reject than silently let abuse through.
+      return json({ error: "rate_limit_unavailable" }, 503, corsHeaders);
     }
 
     let payload: { initials?: unknown; score?: unknown; token?: unknown };
