@@ -91,7 +91,10 @@ export function ProjectTile({
 
   return (
     <>
-      <div className={`home-space-card home-project-tile${selected ? " selected" : ""}`}>
+      <div
+        className={`home-space-card home-project-tile${selected ? " selected" : ""}`}
+        style={menuOpen ? { zIndex: 20 } : undefined}
+      >
         <button
           type="button"
           className="home-project-tile-body"
