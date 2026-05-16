@@ -5,89 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Changelog — Oyster</title>
   <meta name="description" content="Every shipped change to Oyster, newest first.">
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/oyster.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { scroll-behavior: smooth; scroll-padding-top: 24px; }
-    body {
-      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #0a0b14;
-      color: #e0e0e0;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    .bg {
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(ellipse at 30% 20%, rgba(88, 60, 180, 0.25) 0%, transparent 60%),
-                  radial-gradient(ellipse at 70% 80%, rgba(40, 50, 160, 0.2) 0%, transparent 60%),
-                  #0a0b14;
-      z-index: 0;
-    }
-    .back-nav {
-      position: fixed;
-      top: 16px;
-      left: 0;
-      right: 0;
-      z-index: 10;
-      display: flex;
-      justify-content: center;
-    }
-    .back-bar {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 20px;
-      background: rgba(20, 22, 40, 0.9);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 9999px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-    }
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 500;
-      color: rgba(255,255,255,0.5);
-      text-decoration: none;
-      transition: color 0.15s;
-    }
-    .back-link:hover { color: #fff; }
-
     .hero {
       position: relative;
-      z-index: 1;
-      max-width: 820px;
+      z-index: 2;
+      max-width: 880px;
       margin: 0 auto;
-      padding: 120px 24px 0;
+      padding: 160px 28px 0;
       text-align: center;
     }
     h1 {
-      font-family: 'Barlow', sans-serif;
-      font-size: clamp(32px, 5vw, 48px);
-      font-weight: 700;
-      line-height: 1.15;
-      color: #fff;
-      margin-bottom: 16px;
+      font-family: var(--sans);
+      font-size: clamp(40px, 6.5vw, 88px);
+      font-weight: 800;
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+      margin-bottom: 22px;
+    }
+    h1 .accent {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      background: linear-gradient(180deg, #fff 0%, var(--accent-2) 50%, var(--signal) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
     .subtitle {
       font-size: 18px;
-      line-height: 1.7;
-      color: rgba(255, 255, 255, 0.5);
-      max-width: 560px;
+      line-height: 1.55;
+      color: var(--ink-2);
+      max-width: 540px;
       margin: 0 auto;
+      letter-spacing: -0.005em;
     }
 
     .version-pills {
       position: relative;
-      z-index: 1;
+      z-index: 2;
       max-width: 820px;
-      margin: 48px auto 0;
-      padding: 0 24px;
+      margin: 56px auto 0;
+      padding: 0 28px;
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
@@ -97,49 +58,49 @@
       display: inline-flex;
       align-items: center;
       padding: 6px 14px;
-      font-family: 'IBM Plex Mono', monospace;
+      font-family: var(--mono);
       font-size: 11px;
       font-weight: 500;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.55);
-      background: rgba(20, 22, 40, 0.7);
-      border: 1px solid rgba(124, 107, 255, 0.18);
+      letter-spacing: 0.06em;
+      color: var(--ink-3);
+      background: rgba(20, 23, 44, 0.6);
+      border: 1px solid rgba(139, 118, 255, 0.16);
       border-radius: 9999px;
       text-decoration: none;
       transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
     }
     .version-pill:hover {
-      color: #fff;
-      border-color: rgba(124, 107, 255, 0.45);
-      background: rgba(124, 107, 255, 0.12);
+      color: var(--ink);
+      border-color: rgba(139, 118, 255, 0.45);
+      background: rgba(139, 118, 255, 0.14);
       transform: translateY(-1px);
     }
 
     .entries {
       position: relative;
-      z-index: 1;
+      z-index: 2;
       max-width: 760px;
       margin: 0 auto;
-      padding: 48px 24px 120px;
+      padding: 56px 28px 120px;
     }
     .entries h2 {
       display: flex;
       align-items: baseline;
-      gap: 12px;
+      gap: 14px;
       flex-wrap: wrap;
-      margin: 64px 0 24px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid rgba(124, 107, 255, 0.18);
-      scroll-margin-top: 24px;
+      margin: 72px 0 26px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(139, 118, 255, 0.20);
+      scroll-margin-top: 80px;
     }
     .entries h2:first-child { margin-top: 0; }
     .release-version {
-      font-family: 'Barlow', sans-serif;
-      font-size: 28px;
+      font-family: var(--sans);
+      font-size: 32px;
       font-weight: 700;
-      color: #fff;
-      letter-spacing: -0.5px;
+      color: var(--ink);
+      letter-spacing: -0.025em;
+      line-height: 1.05;
     }
     .release-version-link {
       text-decoration: none;
@@ -147,50 +108,55 @@
       transition: opacity 0.15s;
     }
     .release-version-link:hover .release-version {
-      color: #a99eff;
+      color: var(--accent-2);
     }
     .release-date {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 12px;
+      font-family: var(--mono);
+      font-size: 11px;
       font-weight: 500;
-      letter-spacing: 1px;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: rgba(169, 158, 255, 0.7);
+      color: var(--accent-2);
     }
     .entries h3 {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px;
+      font-family: var(--mono);
+      font-size: 10px;
       font-weight: 600;
-      letter-spacing: 2px;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      color: rgba(169, 158, 255, 0.85);
-      margin: 28px 0 12px;
+      color: var(--star);
+      margin: 32px 0 14px;
     }
     .entries h4 {
-      font-family: 'Barlow', sans-serif;
-      font-size: 18px;
-      font-weight: 700;
-      color: #fff;
-      margin: 20px 0 8px;
+      font-family: var(--sans);
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--ink);
+      margin: 22px 0 8px;
+      letter-spacing: -0.01em;
     }
     .entries p {
+      font-family: var(--sans);
       font-size: 15px;
-      line-height: 1.7;
-      color: rgba(255, 255, 255, 0.62);
+      line-height: 1.65;
+      color: var(--ink-2);
       margin-bottom: 10px;
+      letter-spacing: -0.005em;
     }
     .entries ul {
       list-style: none;
       padding: 0;
-      margin: 0 0 16px;
+      margin: 0 0 18px;
     }
     .entries li {
       position: relative;
       padding-left: 20px;
       margin-bottom: 8px;
+      font-family: var(--sans);
       font-size: 15px;
-      line-height: 1.65;
-      color: rgba(255, 255, 255, 0.62);
+      line-height: 1.6;
+      color: var(--ink-2);
+      letter-spacing: -0.005em;
     }
     .entries li::before {
       content: "";
@@ -200,116 +166,126 @@
       width: 4px;
       height: 4px;
       border-radius: 50%;
-      background: rgba(124, 107, 255, 0.6);
+      background: var(--accent);
+      opacity: 0.7;
     }
-    .entries li > ul {
-      margin: 8px 0 0;
-    }
+    .entries li > ul { margin: 8px 0 0; }
     .entries strong {
-      color: rgba(255, 255, 255, 0.82);
+      color: var(--ink);
       font-weight: 600;
     }
     .entries code {
-      font-family: 'IBM Plex Mono', monospace;
+      font-family: var(--mono);
       font-size: 13px;
-      background: rgba(124, 107, 255, 0.1);
-      color: #a99eff;
+      background: rgba(139, 118, 255, 0.12);
+      color: var(--accent-2);
       padding: 2px 6px;
       border-radius: 4px;
     }
     .entries a {
-      color: #a99eff;
+      color: var(--accent-2);
       text-decoration: none;
       border-bottom: 1px dotted rgba(169, 158, 255, 0.4);
     }
-    .entries a:hover { color: #fff; border-bottom-color: #fff; }
+    .entries a:hover { color: var(--ink); border-bottom-color: var(--ink); }
 
     .install-section {
       position: relative;
-      z-index: 1;
+      z-index: 2;
       max-width: 640px;
       margin: 0 auto;
-      padding: 0 24px 100px;
+      padding: 0 28px 80px;
       text-align: center;
     }
     .install-label {
-      font-family: 'Barlow', sans-serif;
+      font-family: var(--sans);
       font-size: 28px;
       font-weight: 700;
-      color: #fff;
+      letter-spacing: -0.02em;
+      color: var(--ink);
       margin-bottom: 24px;
     }
+    .terminal-frame {
+      position: relative;
+      max-width: 480px;
+      margin: 0 auto;
+      isolation: isolate;
+    }
+    .terminal-frame::before {
+      content: '';
+      position: absolute;
+      inset: -30px -40px;
+      background:
+        radial-gradient(ellipse 60% 60% at 50% 100%, rgba(139, 118, 255, 0.45) 0%, transparent 65%),
+        radial-gradient(ellipse 50% 50% at 50% 0%, rgba(123, 231, 255, 0.20) 0%, transparent 65%);
+      filter: blur(36px);
+      z-index: -1;
+      pointer-events: none;
+    }
     .terminal {
-      background: rgba(8, 9, 18, 0.95);
-      border: 2px solid rgba(124, 107, 255, 0.14);
-      border-radius: 12px;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      background: rgba(13, 16, 36, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
       overflow: hidden;
+      backdrop-filter: blur(14px);
       text-align: left;
     }
     .terminal-bar {
       display: flex;
       align-items: center;
-      padding: 12px 16px;
-      background: rgba(0, 0, 0, 0.25);
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
       position: relative;
     }
     .terminal-dots { display: flex; gap: 6px; }
     .terminal-dots span { width: 10px; height: 10px; border-radius: 50%; }
     .terminal-title {
       position: absolute; left: 0; right: 0; text-align: center;
-      font-size: 11px; color: rgba(255,255,255,0.25);
-      font-family: 'IBM Plex Mono', monospace; pointer-events: none;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-4);
+      letter-spacing: 0.06em;
+      pointer-events: none;
     }
     .terminal-body {
-      padding: 20px 24px 24px;
+      padding: 22px 24px;
       display: flex; flex-direction: column; gap: 10px;
     }
-    .terminal-line .prompt { color: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-size: 14px; }
+    .terminal-line .prompt { color: var(--ink-4); font-family: var(--mono); font-size: 14px; }
     .terminal-line code {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: clamp(16px, 2.5vw, 20px);
-      color: #a99eff;
+      font-family: var(--mono);
+      font-size: clamp(15px, 2.2vw, 18px);
+      color: var(--accent-2);
       background: none;
       padding: 0;
     }
 
-    .footer {
-      position: relative;
-      z-index: 1;
-      text-align: center;
-      font-size: 13px;
-      color: rgba(255, 255, 255, 0.3);
-      padding: 0 24px 60px;
-    }
-    .footer .heart { color: #e25555; }
-    .footer a { color: rgba(255, 255, 255, 0.4); text-decoration: none; }
-    .footer a:hover { color: rgba(255, 255, 255, 0.6); }
-
     @media (max-width: 600px) {
-      .hero { padding-top: 100px; }
-      .entries { padding-top: 48px; }
+      .hero { padding-top: 110px; }
+      .entries { padding-top: 40px; }
     }
   </style>
 </head>
 <body>
-  <div class="bg"></div>
-
-  <div class="back-nav">
-    <div class="back-bar">
-      <a class="back-link" href="/">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
-        </svg>
-        oyster.to
-      </a>
-    </div>
+  <div class="cosmos" aria-hidden="true">
+    <div class="stars stars-far" id="stars-far"></div>
+    <div class="stars stars-near" id="stars-near"></div>
   </div>
 
-  <div class="hero">
-    <h1>Changelog</h1>
-    <p class="subtitle">Every shipped change, newest first.</p>
-  </div>
+  <nav class="nav">
+    <a href="/"><img src="logo.png" alt="Oyster" class="nav-logo" /></a>
+    <a href="/#install">Install</a>
+    <a href="/plugins">Plugins</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/changelog" class="active">Changelog</a>
+  </nav>
+
+  <section class="hero">
+    <h1><span class="accent">Every</span> shipped change.</h1>
+    <p class="subtitle">Newest first. The full release log of what's shipping in Oyster.</p>
+  </section>
 
   <nav class="version-pills" aria-label="Jump to version">
       <a class="version-pill" href="#v-0-9-1">0.9</a>
@@ -328,6 +304,7 @@
 <h2 id="v-0-9-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.9.0...v0.9.1" rel="noopener noreferrer"><span class="release-version">0.9.1</span></a></h2>
 <h3>Changed</h3>
 <ul>
+<li><strong>Redesigned oyster.to.</strong> New editorial typography (Sora + Instrument Serif italic), cosmic background with orbital arcs, refreshed hero with luminous device frame, and a stronger &quot;Pearl in Orbit&quot; look across the homepage, pricing, plugins, MCP, and changelog pages.</li>
 <li><strong>Top bar is now one sticky pill.</strong> Account and space switcher share a single bar pinned to the top of every view. Signed-in shows an avatar (email + sign-out in the click-menu); signed-out shows a <em>Sign in</em> pill in the same slot.</li>
 </ul>
 <h3>Fixed</h3>
@@ -959,26 +936,53 @@
 
   </main>
 
-  <div class="install-section">
+  <section class="install-section">
     <div class="install-label">Don't have Oyster yet?</div>
-    <div class="terminal">
-      <div class="terminal-bar">
-        <div class="terminal-dots">
-          <span style="background: #ff5f57;"></span>
-          <span style="background: #febc2e;"></span>
-          <span style="background: #28c840;"></span>
+    <div class="terminal-frame">
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dots">
+            <span style="background: #ff5f57;"></span>
+            <span style="background: #febc2e;"></span>
+            <span style="background: #28c840;"></span>
+          </div>
+          <span class="terminal-title">terminal</span>
         </div>
-        <span class="terminal-title">terminal</span>
-      </div>
-      <div class="terminal-body">
-        <div class="terminal-line"><span class="prompt">$ </span><code>npm install -g oyster-os</code></div>
-        <div class="terminal-line"><span class="prompt">$ </span><code>oyster</code></div>
+        <div class="terminal-body">
+          <div class="terminal-line"><span class="prompt">$ </span><code>npm install -g oyster-os</code></div>
+          <div class="terminal-line"><span class="prompt">$ </span><code>oyster</code></div>
+        </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <div class="footer">
+  <div class="site-footer">
     <p>Built with <span class="heart">&hearts;</span> by <a href="https://github.com/mattslight">Matthew Slight</a></p>
   </div>
+
+  <script>
+    (function () {
+      function seed(s) { return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
+      const rand = seed(42);
+      function makeStars(el, count, twinkle) {
+        if (!el) return;
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < count; i++) {
+          const d = document.createElement('div');
+          d.style.left = (rand() * 100).toFixed(2) + '%';
+          d.style.top = (rand() * 100).toFixed(2) + '%';
+          if (twinkle && rand() < 0.18) {
+            d.classList.add('star-twinkle');
+            d.style.setProperty('--dur', (2.5 + rand() * 4).toFixed(2) + 's');
+            d.style.setProperty('--delay', (rand() * 5).toFixed(2) + 's');
+          }
+          frag.appendChild(d);
+        }
+        el.appendChild(frag);
+      }
+      makeStars(document.getElementById('stars-far'), 80, false);
+      makeStars(document.getElementById('stars-near'), 22, true);
+    })();
+  </script>
 </body>
 </html>

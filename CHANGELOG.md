@@ -6,6 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Changed
 
+- **Redesigned oyster.to.** New editorial typography (Sora + Instrument Serif italic), cosmic background with orbital arcs, refreshed hero with luminous device frame, and a stronger "Pearl in Orbit" look across the homepage, pricing, plugins, MCP, and changelog pages.
 - **Top bar is now one sticky pill.** Account and space switcher share a single bar pinned to the top of every view. Signed-in shows an avatar (email + sign-out in the click-menu); signed-out shows a *Sign in* pill in the same slot.
 
 ### Fixed

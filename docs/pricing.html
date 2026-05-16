@@ -5,145 +5,173 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing — Oyster</title>
   <meta name="description" content="Oyster is free without limits — no sign-up, no strings. Oyster Pro is optional and adds Sync, Memory, and Publish — anywhere, any device, any agent.">
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/oyster.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #0a0b14;
-      color: #e0e0e0;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    .bg {
-      position: fixed; inset: 0;
-      background:
-        radial-gradient(ellipse at 30% 20%, rgba(88, 60, 180, 0.25) 0%, transparent 60%),
-        radial-gradient(ellipse at 70% 80%, rgba(40, 50, 160, 0.2) 0%, transparent 60%),
-        #0a0b14;
-      z-index: 0;
-    }
-
-    /* Back nav */
-    .back-nav { position: fixed; top: 16px; left: 0; right: 0; z-index: 10; display: flex; justify-content: center; }
-    .back-bar {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 20px;
-      background: rgba(20, 22, 40, 0.9);
-      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 9999px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-    }
-    .back-link {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-family: inherit; font-size: 13px; font-weight: 500;
-      color: rgba(255, 255, 255, 0.5);
-      text-decoration: none; transition: color 0.15s;
-    }
-    .back-link:hover { color: #fff; }
-
     /* Hero */
     .hero {
-      position: relative; z-index: 1;
-      max-width: 760px; margin: 0 auto;
-      padding: 140px 24px 0;
+      position: relative;
+      z-index: 2;
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 170px 28px 0;
       text-align: center;
     }
-    .eyebrow {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
-      color: #fbbf24;
-      margin-bottom: 18px;
+
+    /* Constellation — quiet space accent, off-axis so it doesn't fight the headline */
+    .constellation {
+      position: absolute;
+      top: 140px;
+      right: -20px;
+      width: 200px;
+      height: 240px;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.85;
     }
-    .eyebrow-pill {
-      padding: 2px 8px; border-radius: 999px;
-      background: rgba(124, 107, 255, 0.18);
-      color: #a99eff;
-      font-size: 9px; font-weight: 600; letter-spacing: 0.06em;
+    .constellation .link {
+      stroke: rgba(255, 255, 255, 0.22);
+      stroke-width: 1;
+      stroke-dasharray: 3 6;
+      fill: none;
+    }
+    .constellation .star {
+      fill: #fff;
+      filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.45));
+    }
+    .constellation .star.glow {
+      fill: var(--accent-2);
+      filter: drop-shadow(0 0 10px var(--accent-2));
+    }
+    .constellation .star.warm {
+      fill: var(--star);
+      filter: drop-shadow(0 0 8px var(--star));
+    }
+    .constellation .label {
+      fill: var(--ink-4);
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .constellation .twinkle {
+      animation: hero-twinkle var(--dur, 4s) ease-in-out infinite;
+      animation-delay: var(--delay, 0s);
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    @keyframes hero-twinkle {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .constellation .twinkle { animation: none; }
+    }
+    @media (max-width: 900px) {
+      .constellation { opacity: 0.6; width: 150px; height: 180px; top: 80px; }
+    }
+    @media (max-width: 640px) {
+      .constellation { display: none; }
     }
     h1 {
-      font-family: 'Barlow', sans-serif;
-      font-size: clamp(48px, 8vw, 80px);
-      font-weight: 700; line-height: 1.05;
-      color: #fff; margin-bottom: 18px;
-      letter-spacing: -0.02em;
+      font-family: var(--sans);
+      font-size: clamp(48px, 8vw, 96px);
+      font-weight: 800;
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+      margin-bottom: 22px;
     }
-    /* Slogan accent — chunky purple underline under the headline phrase,
-       à la Obsidian's green underline. Marks the line as a brand promise
-       rather than a feature claim. */
-    .headline-mark {
-      display: inline-block;
-      padding-bottom: 6px;
-      border-bottom: 5px solid #7c6bff;
-      border-radius: 2px;
+    h1 .accent {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      background: linear-gradient(180deg, #fff 0%, var(--accent-2) 50%, var(--signal) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
     .hero-strong {
-      font-family: 'Barlow', sans-serif;
-      font-size: clamp(20px, 3vw, 28px);
-      font-weight: 700; line-height: 1.35;
-      color: #fff;
-      margin-bottom: 0;
-    }
-    .hero-strong-tight {
-      font-family: 'Barlow', sans-serif;
-      font-size: clamp(18px, 2.4vw, 22px);
-      font-weight: 600; line-height: 1.4;
-      color: #fff;
-      margin-bottom: 10px;
+      font-family: var(--sans);
+      font-size: clamp(20px, 2.4vw, 24px);
+      font-weight: 500;
+      line-height: 1.45;
+      color: var(--ink);
+      letter-spacing: -0.01em;
     }
     .pro-stanza {
-      margin-top: 80px;
+      position: relative;
+      margin-top: 56px;
+      padding-top: 48px;
     }
-    .pro-eyebrow-plain {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
-      color: #fbbf24;
-      margin-bottom: 12px;
+    .pro-stanza::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 280px; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(139, 118, 255, 0.4), transparent);
     }
+    .pro-stanza::after {
+      content: '';
+      position: absolute;
+      top: -3px; left: 50%;
+      transform: translateX(-50%);
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+    .pro-eyebrow {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--star);
+      margin-bottom: 16px;
+    }
+    .hero-strong-tight {
+      font-family: var(--sans);
+      font-size: clamp(18px, 2.3vw, 24px);
+      font-weight: 500;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+      color: var(--ink-2);
+      margin-bottom: 14px;
+    }
+    .hero-strong-tight .accent {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      color: var(--accent-2);
+    }
+    .hero-strong-tight .bright { color: var(--ink); font-weight: 600; }
     .subtitle {
-      font-size: 16px; line-height: 1.65;
-      color: rgba(255, 255, 255, 0.55);
-      max-width: 560px; margin: 0 auto;
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      max-width: 560px;
+      margin: 0 auto;
     }
-    .subtitle strong { color: rgba(255, 255, 255, 0.8); font-weight: 600; }
-    .hero-ctas { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-    .cta {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 12px 22px; border-radius: 9999px;
-      font-family: inherit; font-size: 14px; font-weight: 600;
-      text-decoration: none; cursor: pointer;
-      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
-      border: 1px solid transparent;
-    }
-    .cta--primary {
-      background: #7c6bff; color: #fff;
-      box-shadow: 0 4px 20px rgba(124, 107, 255, 0.3);
-      opacity: 0.7; cursor: not-allowed;
-    }
-    .cta--secondary {
-      background: transparent; color: #fff;
-      border-color: rgba(255, 255, 255, 0.18);
-    }
-    .cta--secondary:hover {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(255, 255, 255, 0.32);
-    }
+    .subtitle strong { color: var(--ink); font-weight: 600; }
 
-    /* Primitives — Sync / Memory / Publish */
+    /* Primitive sticky cards */
     .primitives {
-      position: relative; z-index: 1;
+      position: relative; z-index: 2;
       max-width: 980px; margin: 0 auto;
-      padding: 160px 24px 0;
+      padding: 140px 28px 0;
     }
     .primitive {
       background: rgba(17, 19, 34, 0.96);
       backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-      border: 1px solid rgba(124, 107, 255, 0.18);
+      border: 1px solid rgba(139, 118, 255, 0.18);
       border-radius: 22px;
       padding: 48px 44px;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 0 rgba(255, 255, 255, 0.03) inset;
+      box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.55),
+        inset 0 2px 0 rgba(255, 255, 255, 0.03);
       display: grid;
       grid-template-columns: 56px 1fr;
       gap: 28px;
@@ -154,9 +182,9 @@
       margin-bottom: 140px;
       transition: transform 0.3s ease-out;
     }
-    .primitive:nth-child(1) { top: 100px; }
-    .primitive:nth-child(2) { top: 144px; }
-    .primitive:nth-child(3) { top: 188px; }
+    .primitive:nth-child(1) { top: 80px; }
+    .primitive:nth-child(2) { top: 116px; }
+    .primitive:nth-child(3) { top: 152px; }
     .primitive:last-child { margin-bottom: 0; }
     .primitive-pro-tag {
       position: absolute;
@@ -164,38 +192,52 @@
       display: inline-flex; align-items: center;
       padding: 5px 11px;
       border-radius: 999px;
-      background: rgba(125, 249, 255, 0.08);
-      border: 1px solid rgba(125, 249, 255, 0.32);
-      color: #7df9ff;
-      font-family: 'IBM Plex Mono', monospace;
+      background: rgba(123, 231, 255, 0.08);
+      border: 1px solid rgba(123, 231, 255, 0.32);
+      color: var(--signal);
+      font-family: var(--mono);
       font-size: 10px;
-      font-weight: 600;
+      font-weight: 500;
       letter-spacing: 0.16em;
       text-transform: uppercase;
     }
     .primitive-icon {
       width: 56px; height: 56px;
       border-radius: 14px;
-      background: rgba(124, 107, 255, 0.14);
-      border: 1px solid rgba(124, 107, 255, 0.28);
+      background: rgba(139, 118, 255, 0.14);
+      border: 1px solid rgba(139, 118, 255, 0.28);
       display: inline-flex; align-items: center; justify-content: center;
-      color: #a99eff;
+      color: var(--accent-2);
     }
     .primitive-name {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-      color: #fbbf24; margin-bottom: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--star);
+      margin-bottom: 8px;
     }
     .primitive h2 {
-      font-family: 'Barlow', sans-serif;
-      font-size: 28px; font-weight: 700;
-      color: #fff; margin-bottom: 14px;
-      letter-spacing: -0.01em;
+      font-family: var(--sans);
+      font-size: clamp(28px, 3.4vw, 36px);
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 14px;
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+    }
+    .primitive h2 .accent {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      color: var(--accent-2);
     }
     .primitive-desc {
-      font-size: 15px; line-height: 1.7;
-      color: rgba(255, 255, 255, 0.6);
-      margin-bottom: 20px;
+      font-size: 15px; line-height: 1.65;
+      color: var(--ink-2);
+      margin-bottom: 22px;
       max-width: 560px;
     }
     .primitive-bullets {
@@ -207,13 +249,13 @@
     .primitive-bullets li {
       display: flex; align-items: center; gap: 10px;
       font-size: 14px;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--ink-2);
     }
     .primitive-bullets li::before {
       content: ""; flex: none;
       width: 4px; height: 4px;
       border-radius: 50%;
-      background: #7c6bff; opacity: 0.7;
+      background: var(--accent); opacity: 0.7;
     }
     @media (max-width: 640px) {
       .primitives { padding-top: 96px; }
@@ -226,29 +268,35 @@
       .primitive-pro-tag { top: 16px; right: 16px; }
     }
 
-    /* Pricing */
+    /* Pricing tiers */
     .pricing {
-      position: relative; z-index: 1;
+      position: relative; z-index: 2;
       max-width: 980px; margin: 96px auto 120px;
-      padding: 0 24px;
+      padding: 0 28px;
     }
-    .pricing-head {
-      text-align: center;
-      margin-bottom: 36px;
+    .pricing-head { text-align: center; margin-bottom: 40px; }
+    .pricing-h2 {
+      font-family: var(--sans);
+      font-size: clamp(34px, 4.5vw, 56px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.02;
+      color: var(--ink);
+      margin-bottom: 14px;
     }
-    .pricing-label {
-      font-family: 'Barlow', sans-serif;
-      font-size: 13px; font-weight: 600;
-      letter-spacing: 2.5px; text-transform: uppercase;
-      color: #7c6bff;
-      margin-bottom: 12px;
+    .pricing-h2 .accent {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      color: var(--accent-2);
     }
     .pricing-sub {
-      font-size: 15px; line-height: 1.6;
-      color: rgba(255, 255, 255, 0.55);
+      font-size: 16px; line-height: 1.6;
+      color: var(--ink-2);
       max-width: 540px; margin: 0 auto;
     }
-    .pricing-sub strong { color: #fff; font-weight: 700; }
+    .pricing-sub strong { color: var(--ink); font-weight: 600; }
     .pricing-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -259,158 +307,166 @@
     }
     .tier {
       position: relative;
-      background: rgba(17, 19, 34, 0.88);
+      background: linear-gradient(180deg, rgba(20, 23, 44, 0.92) 0%, rgba(14, 16, 34, 0.92) 100%);
       backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 18px;
       padding: 32px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
     .tier--featured {
-      background: #111322;
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      border-color: rgba(125, 249, 255, 0.7);
+      border-color: rgba(123, 231, 255, 0.5);
       box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-        0 0 0 1px rgba(125, 249, 255, 0.4),
-        0 0 10px rgba(125, 249, 255, 0.5),
-        0 0 24px rgba(125, 249, 255, 0.28),
-        0 0 50px rgba(125, 249, 255, 0.14),
-        0 12px 40px rgba(0, 0, 0, 0.5);
-    }
-    .tier:not(.tier--featured) {
-      z-index: 2;
+        inset 0 1px 0 rgba(255, 255, 255, 0.10),
+        0 0 0 1px rgba(123, 231, 255, 0.3),
+        0 0 24px rgba(123, 231, 255, 0.2),
+        0 0 60px rgba(123, 231, 255, 0.10),
+        0 16px 50px rgba(0, 0, 0, 0.5);
     }
     .tier-name {
-      font-family: 'Barlow', sans-serif;
-      font-size: 34px; font-weight: 700;
-      color: #fff;
-      letter-spacing: -0.02em;
-      line-height: 1.1;
+      font-family: var(--sans);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.025em;
+      line-height: 1.05;
     }
     .tier-tagline {
-      font-size: 19px; color: rgba(255, 255, 255, 0.7);
-      margin-top: 8px;
-      margin-bottom: 32px;
+      font-family: var(--sans);
+      font-size: 18px;
+      color: var(--ink-2);
+      margin-top: 6px;
+      margin-bottom: 28px;
     }
     .tier-price {
       display: flex; align-items: baseline; gap: 8px;
       margin-bottom: 16px;
     }
     .tier-price-amount {
-      font-family: 'Barlow', sans-serif;
+      font-family: var(--sans);
       font-size: 56px; font-weight: 700;
-      color: #fff; line-height: 1;
+      color: var(--ink); line-height: 1;
+      letter-spacing: -0.03em;
     }
     .tier-price-amount::first-letter {
       font-size: 0.55em;
-      font-weight: 600;
+      font-weight: 500;
       vertical-align: 0.45em;
       margin-right: 2px;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--ink-2);
     }
     .tier-price-unit {
-      font-family: 'IBM Plex Mono', monospace;
+      font-family: var(--mono);
       font-size: 12px;
-      color: rgba(255, 255, 255, 0.4);
+      color: var(--ink-4);
     }
     .tier-price-note {
-      font-family: 'IBM Plex Mono', monospace;
+      font-family: var(--mono);
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.4);
+      color: var(--ink-4);
       margin-bottom: 22px;
       letter-spacing: 0.04em;
     }
     .tier-pledge {
       display: flex; flex-wrap: wrap;
       gap: 0 14px;
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 13px; font-weight: 600;
-      color: #a99eff;
+      font-family: var(--sans);
+      font-size: 13px; font-weight: 500;
+      color: var(--accent-2);
       margin-bottom: 22px;
-      letter-spacing: 0.01em;
     }
-    .tier-pledge .sep {
-      color: rgba(169, 158, 255, 0.45);
-    }
+    .tier-pledge .sep { color: rgba(169, 158, 255, 0.45); }
     .tier-coming {
       display: inline-flex; align-items: center;
       padding: 4px 10px; border-radius: 999px;
-      background: rgba(124, 107, 255, 0.18);
-      color: #a99eff;
-      font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+      background: rgba(139, 118, 255, 0.18);
+      color: var(--accent-2);
+      font-family: var(--mono);
+      font-size: 10px; font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       margin-bottom: 18px;
     }
     .tier-features {
       list-style: none;
       display: flex; flex-direction: column; gap: 10px;
-      margin-bottom: 24px;
+      margin-bottom: 26px;
     }
     .tier-features li {
       display: flex; align-items: flex-start; gap: 10px;
       font-size: 14px; line-height: 1.5;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--ink-2);
     }
-    .tier-features svg { flex: none; margin-top: 3px; color: #7c6bff; }
-    .tier-features li.tier-features-plus { font-weight: 500; color: #fff; }
-    .tier-features li.tier-features-add svg { color: #fbbf24; }
+    .tier-features svg { flex: none; margin-top: 3px; color: var(--accent); }
+    .tier-features li.tier-features-plus { font-weight: 500; color: var(--ink); }
+    .tier-features li.tier-features-add svg { color: var(--star); }
     .tier-feature-primitive-name {
-      font-family: 'IBM Plex Mono', monospace;
+      font-family: var(--mono);
       font-size: 11px;
-      letter-spacing: 0.16em;
+      font-weight: 600;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: #fbbf24;
+      color: var(--star);
     }
     .tier-cta {
       display: inline-flex; align-items: center; gap: 8px;
-      padding: 11px 22px; border-radius: 9999px;
-      font-family: inherit; font-size: 13px; font-weight: 600;
+      padding: 12px 24px; border-radius: 9999px;
+      font-family: var(--sans); font-size: 13px; font-weight: 500;
       text-decoration: none; cursor: pointer;
       border: 1px solid transparent;
       transition: background 0.15s, border-color 0.15s, transform 0.15s;
     }
     .tier-cta--ghost {
       background: rgba(255, 255, 255, 0.04);
-      color: rgba(255, 255, 255, 0.6);
+      color: var(--ink-2);
       border-color: rgba(255, 255, 255, 0.12);
       cursor: default;
     }
+    .tier-cta--ghost:hover { background: rgba(255, 255, 255, 0.08); color: var(--ink); }
     .tier-cta--primary {
-      background: #7c6bff; color: #fff;
-      box-shadow: 0 4px 20px rgba(124, 107, 255, 0.3);
+      background: linear-gradient(180deg, #9d8cff 0%, #8b76ff 100%);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(139, 118, 255, 0.4);
       cursor: pointer;
-      transition: background 0.15s, transform 0.05s, box-shadow 0.15s;
     }
     .tier-cta--primary:hover {
-      background: #8d7eff;
-      box-shadow: 0 6px 24px rgba(124, 107, 255, 0.4);
+      box-shadow: 0 6px 28px rgba(139, 118, 255, 0.5);
+      transform: translateY(-1px);
     }
     .tier-cta--primary:active { transform: scale(0.98); }
+    .tier-fineprint {
+      display: block;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ink-4);
+      margin-top: 12px;
+      letter-spacing: 0.04em;
+    }
 
     /* Waitlist modal */
     .waitlist-modal {
-      position: fixed; inset: 0; z-index: 100;
+      position: fixed; inset: 0; z-index: 200;
       display: flex; align-items: center; justify-content: center;
       padding: 24px;
     }
     .waitlist-modal[hidden] { display: none; }
     .waitlist-modal-backdrop {
       position: absolute; inset: 0;
-      background: rgba(5, 8, 16, 0.72);
+      background: rgba(4, 6, 13, 0.78);
       backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     }
     .waitlist-modal-card {
       position: relative;
-      background: #111322;
-      border: 1px solid rgba(125, 249, 255, 0.4);
+      background: linear-gradient(180deg, rgba(20, 23, 44, 0.96) 0%, rgba(14, 16, 34, 0.96) 100%);
+      border: 1px solid rgba(123, 231, 255, 0.32);
       border-radius: 18px;
       padding: 32px 30px 28px;
       max-width: 440px; width: 100%;
       box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-        0 0 0 1px rgba(125, 249, 255, 0.2),
-        0 0 24px rgba(125, 249, 255, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 0 24px rgba(123, 231, 255, 0.22),
         0 24px 80px rgba(0, 0, 0, 0.6);
       animation: waitlist-rise 0.22s ease-out;
     }
@@ -422,22 +478,20 @@
       position: absolute; top: 10px; right: 12px;
       width: 32px; height: 32px;
       background: transparent; border: none;
-      color: rgba(255, 255, 255, 0.5);
+      color: var(--ink-3);
       font-family: inherit; font-size: 22px; line-height: 1;
       cursor: pointer; border-radius: 999px;
       transition: color 0.15s, background 0.15s;
     }
-    .waitlist-modal-close:hover {
-      color: #fff; background: rgba(255, 255, 255, 0.06);
-    }
+    .waitlist-modal-close:hover { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
     .waitlist-modal-card h3 {
-      font-family: 'Barlow', sans-serif;
-      font-size: 22px; font-weight: 700; color: #fff;
+      font-family: var(--sans);
+      font-size: 22px; font-weight: 700; color: var(--ink);
       margin-bottom: 8px; letter-spacing: -0.01em;
     }
     .waitlist-modal-blurb {
       font-size: 14px; line-height: 1.5;
-      color: rgba(255, 255, 255, 0.55);
+      color: var(--ink-2);
       margin-bottom: 22px;
     }
     .waitlist-modal-form { display: flex; gap: 8px; }
@@ -448,69 +502,85 @@
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 9999px;
       font-family: inherit; font-size: 14px;
-      color: #fff; outline: none;
+      color: var(--ink); outline: none;
       transition: border-color 0.15s, background 0.15s;
     }
-    .waitlist-modal-form input[type=email]::placeholder { color: rgba(255, 255, 255, 0.3); }
+    .waitlist-modal-form input[type=email]::placeholder { color: var(--ink-4); }
     .waitlist-modal-form input[type=email]:focus {
-      border-color: rgba(125, 249, 255, 0.6);
+      border-color: rgba(123, 231, 255, 0.6);
       background: rgba(255, 255, 255, 0.06);
     }
     .waitlist-submit {
       padding: 12px 22px;
-      background: #7df9ff; color: #050810;
+      background: var(--signal); color: #050810;
       border: none; border-radius: 9999px;
-      font-family: inherit; font-size: 14px; font-weight: 600;
+      font-family: var(--sans); font-size: 14px; font-weight: 600;
       cursor: pointer; white-space: nowrap;
       transition: background 0.15s, transform 0.05s;
     }
     .waitlist-submit:hover { background: #a5fbff; }
     .waitlist-submit:active { transform: scale(0.98); }
     .waitlist-submit:disabled {
-      background: rgba(125, 249, 255, 0.35);
+      background: rgba(123, 231, 255, 0.35);
       color: rgba(5, 8, 16, 0.6);
       cursor: not-allowed;
     }
     .waitlist-modal-status {
       margin-top: 14px;
       font-size: 13px; line-height: 1.5;
-      color: rgba(255, 255, 255, 0.6);
+      color: var(--ink-2);
     }
-    .waitlist-modal-status.is-success { color: #7df9ff; }
-    .waitlist-modal-status.is-error { color: #ff8a8a; }
+    .waitlist-modal-status.is-success { color: var(--signal); }
+    .waitlist-modal-status.is-error { color: var(--bad); }
     @media (max-width: 480px) {
       .waitlist-modal-form { flex-direction: column; }
       .waitlist-submit { width: 100%; }
     }
-    .tier-fineprint {
-      display: block;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.35);
-      margin-top: 10px;
-      letter-spacing: 0.04em;
-    }
   </style>
 </head>
 <body>
-  <div class="bg"></div>
+  <div class="cosmos" aria-hidden="true">
+    <div class="stars stars-far" id="stars-far"></div>
+    <div class="stars stars-near" id="stars-near"></div>
+  </div>
 
-  <nav class="back-nav">
-    <div class="back-bar">
-      <a href="/" class="back-link">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        Back to Oyster
-      </a>
-    </div>
+  <nav class="nav">
+    <a href="/"><img src="logo.png" alt="Oyster" class="nav-logo" /></a>
+    <a href="/#install">Install</a>
+    <a href="/plugins">Plugins</a>
+    <a href="/pricing" class="active">Pricing</a>
+    <a href="/changelog">Changelog</a>
   </nav>
 
   <section class="hero">
-    <h1><span class="headline-mark">Free without limits.</span></h1>
+    <!-- Ursa Minor — the Little Dipper. Polaris (the North Star) is the
+         brightest, top-right; Kochab marks the bottom-right of the bowl.
+         A guiding-star metaphor for "mission control". -->
+    <svg class="constellation" viewBox="0 0 200 240" aria-hidden="true">
+      <!-- Handle: Polaris → Yildun → Epsilon → Zeta -->
+      <path class="link" d="M 170 40 L 145 80"/>
+      <path class="link" d="M 145 80 L 120 120"/>
+      <path class="link" d="M 120 120 L 100 160"/>
+      <!-- Bowl: Zeta → Eta → Kochab → Pherkad → Zeta -->
+      <path class="link" d="M 100 160 L 50 150"/>
+      <path class="link" d="M 50 150 L 40 210"/>
+      <path class="link" d="M 40 210 L 90 215"/>
+      <path class="link" d="M 90 215 L 100 160"/>
+      <!-- Stars: Polaris = accent glow; Kochab = warm; rest white -->
+      <circle class="star glow twinkle" style="--dur: 4s;" cx="170" cy="40" r="3.5"/>
+      <circle class="star twinkle" style="--dur: 5.5s; --delay: 1.2s;" cx="145" cy="80" r="1.8"/>
+      <circle class="star twinkle" style="--dur: 4.5s; --delay: 0.6s;" cx="120" cy="120" r="2"/>
+      <circle class="star twinkle" style="--dur: 6s; --delay: 1.8s;" cx="100" cy="160" r="2.2"/>
+      <circle class="star twinkle" style="--dur: 5s; --delay: 2.4s;" cx="50" cy="150" r="2"/>
+      <circle class="star twinkle" style="--dur: 5.5s; --delay: 0.9s;" cx="40" cy="210" r="1.6"/>
+      <circle class="star warm twinkle" style="--dur: 4.2s; --delay: 1.5s;" cx="90" cy="215" r="2.8"/>
+    </svg>
+    <h1>Free <span class="accent">without</span> limits.</h1>
     <p class="hero-strong">No sign-up. No strings. Yours to keep.</p>
     <div class="pro-stanza">
-      <div class="pro-eyebrow-plain">Oyster Pro</div>
-      <p class="hero-strong-tight">Smarter work — anywhere, any device, any agent.</p>
-      <p class="subtitle">Optional. Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
+      <div class="pro-eyebrow">Oyster Pro</div>
+      <p class="hero-strong-tight">Smarter work — <span class="accent">anywhere</span>, <span class="bright">any device, any agent.</span></p>
+      <p class="subtitle">Adds <strong>Sync</strong>, <strong>Memory</strong>, and <strong>Publish</strong>.</p>
     </div>
   </section>
 
@@ -523,7 +593,7 @@
       </span>
       <div>
         <div class="primitive-name">Sync</div>
-        <h2>Your Oyster, every device.</h2>
+        <h2>Your Oyster, <span class="accent">every</span> device.</h2>
         <p class="primitive-desc">
           Start a conversation on your laptop. Pick it up on your iPad. Your spaces, artifacts,
           and live sessions follow you between devices — switch mid-thought, no manual
@@ -545,7 +615,7 @@
       </span>
       <div>
         <div class="primitive-name">Memory</div>
-        <h2>One brain, every agent.</h2>
+        <h2>One brain, <span class="accent">every</span> agent.</h2>
         <p class="primitive-desc">
           Claude, Cursor, Codex, the next one — every agent you use shares the same memory of your work.
           Pick up a session anywhere, switch tools mid-thought, and your AI keeps the context.
@@ -567,7 +637,7 @@
       </span>
       <div>
         <div class="primitive-name">Publish</div>
-        <h2>Your artifacts, ready to share.</h2>
+        <h2>Your artifacts, <span class="accent">ready</span> to share.</h2>
         <p class="primitive-desc">
           Turn any artifact into a shareable link in one click — a deck, a wireframe, a finished piece of work.
           Public, unlisted, or password-protected. Send it to a client, post it on social, hand off
@@ -586,7 +656,7 @@
 
   <section class="pricing" id="pricing">
     <div class="pricing-head">
-      <div class="pricing-label">Pricing</div>
+      <h2 class="pricing-h2">Two plans, <span class="accent">one</span> Oyster.</h2>
       <p class="pricing-sub"><strong>Oyster stays free, forever.</strong> Pro adds Sync, Memory, and Publish for users who want their work to follow them.</p>
     </div>
     <div class="pricing-grid">
@@ -599,10 +669,8 @@
           <span class="tier-price-unit">/ month</span>
         </div>
         <div class="tier-pledge">
-          <span>No sign-up</span>
-          <span class="sep">·</span>
-          <span>No strings</span>
-          <span class="sep">·</span>
+          <span>No sign-up</span><span class="sep">·</span>
+          <span>No strings</span><span class="sep">·</span>
           <span>Yours to keep</span>
         </div>
         <ul class="tier-features">
@@ -610,7 +678,7 @@
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Universal memory (local)</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Plugins &amp; MCP integration</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Bring any AI</li>
-          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Local-only mode</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Local-first — your data stays on your machine</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>All your data, exportable</li>
         </ul>
         <a href="/#install" class="tier-cta tier-cta--ghost">Install</a>
@@ -654,91 +722,116 @@
     </div>
   </div>
 
+  <div class="site-footer">
+    <p>Built with <span class="heart">&hearts;</span> by <a href="https://github.com/mattslight">Matthew Slight</a></p>
+  </div>
+
   <script>
-  (function () {
-    const trigger = document.querySelector('[data-waitlist-open]');
-    const modal = document.querySelector('.waitlist-modal');
-    if (!trigger || !modal) return;
-    const form = modal.querySelector('#waitlist-form');
-    const input = form.querySelector('input[name=email]');
-    const submit = form.querySelector('.waitlist-submit');
-    const status = modal.querySelector('.waitlist-modal-status');
-    const closers = modal.querySelectorAll('[data-waitlist-close]');
-
-    function setStatus(message, kind) {
-      status.hidden = !message;
-      status.className = 'waitlist-modal-status' + (kind ? ' is-' + kind : '');
-      status.textContent = message || '';
-    }
-    function reset() {
-      setStatus('', '');
-      submit.disabled = false;
-      submit.textContent = 'Join';
-      input.disabled = false;
-      form.hidden = false;
-      input.value = '';
-    }
-    function open() {
-      reset();
-      modal.hidden = false;
-      modal.setAttribute('aria-hidden', 'false');
-      requestAnimationFrame(() => input.focus());
-    }
-    function close() {
-      modal.hidden = true;
-      modal.setAttribute('aria-hidden', 'true');
-    }
-
-    trigger.addEventListener('click', open);
-    closers.forEach((c) => c.addEventListener('click', close));
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !modal.hidden) close();
-    });
-
-    // Open the modal automatically when arriving via #waitlist
-    // (e.g. the in-app "Join the waitlist" CTA links here).
-    if (window.location.hash === '#waitlist') open();
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = input.value.trim();
-      if (!email) {
-        setStatus('Please enter your email address.', 'error');
-        input.focus();
-        return;
-      }
-
-      submit.disabled = true;
-      submit.textContent = 'Joining…';
-      setStatus('', '');
-
-      try {
-        const res = await fetch('/api/waitlist', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ email, source: 'pricing-page' }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          if (data.error === 'invalid_email') {
-            setStatus("That doesn't look like a valid email.", 'error');
-          } else {
-            setStatus('Something went wrong. Please try again.', 'error');
+    // Sparse starfield
+    (function () {
+      function seed(s) { return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
+      const rand = seed(42);
+      function makeStars(el, count, twinkle) {
+        if (!el) return;
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < count; i++) {
+          const d = document.createElement('div');
+          d.style.left = (rand() * 100).toFixed(2) + '%';
+          d.style.top = (rand() * 100).toFixed(2) + '%';
+          if (twinkle && rand() < 0.18) {
+            d.classList.add('star-twinkle');
+            d.style.setProperty('--dur', (2.5 + rand() * 4).toFixed(2) + 's');
+            d.style.setProperty('--delay', (rand() * 5).toFixed(2) + 's');
           }
-          submit.disabled = false;
-          submit.textContent = 'Join';
-          return;
+          frag.appendChild(d);
         }
-        form.hidden = true;
-        setStatus("You're on the list. Check your email for confirmation.", 'success');
-      } catch (err) {
-        setStatus('Network error. Please try again.', 'error');
+        el.appendChild(frag);
+      }
+      makeStars(document.getElementById('stars-far'), 80, false);
+      makeStars(document.getElementById('stars-near'), 22, true);
+    })();
+
+    (function () {
+      const trigger = document.querySelector('[data-waitlist-open]');
+      const modal = document.querySelector('.waitlist-modal');
+      if (!trigger || !modal) return;
+      const form = modal.querySelector('#waitlist-form');
+      const input = form.querySelector('input[name=email]');
+      const submit = form.querySelector('.waitlist-submit');
+      const status = modal.querySelector('.waitlist-modal-status');
+      const closers = modal.querySelectorAll('[data-waitlist-close]');
+
+      function setStatus(message, kind) {
+        status.hidden = !message;
+        status.className = 'waitlist-modal-status' + (kind ? ' is-' + kind : '');
+        status.textContent = message || '';
+      }
+      function reset() {
+        setStatus('', '');
         submit.disabled = false;
         submit.textContent = 'Join';
+        input.disabled = false;
+        form.hidden = false;
+        input.value = '';
       }
-    });
-  })();
-  </script>
+      function open() {
+        reset();
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        requestAnimationFrame(() => input.focus());
+      }
+      function close() {
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+      }
 
+      trigger.addEventListener('click', open);
+      closers.forEach((c) => c.addEventListener('click', close));
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.hidden) close();
+      });
+
+      if (window.location.hash === '#waitlist') open();
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = input.value.trim();
+        if (!email) {
+          setStatus('Please enter your email address.', 'error');
+          input.focus();
+          return;
+        }
+
+        submit.disabled = true;
+        submit.textContent = 'Joining…';
+        setStatus('', '');
+
+        try {
+          const res = await fetch('/api/waitlist', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ email, source: 'pricing-page' }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            if (data.error === 'invalid_email') {
+              setStatus("That doesn't look like a valid email.", 'error');
+            } else {
+              setStatus('Something went wrong. Please try again.', 'error');
+            }
+            submit.disabled = false;
+            submit.textContent = 'Join';
+            return;
+          }
+          form.hidden = true;
+          setStatus("You're on the list. Check your email for confirmation.", 'success');
+        } catch (err) {
+          setStatus('Network error. Please try again.', 'error');
+          submit.disabled = false;
+          submit.textContent = 'Join';
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
