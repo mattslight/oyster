@@ -382,7 +382,7 @@
 .hm-side {
   position: absolute;
   top: 36px; right: 0; bottom: 0;
-  width: 56%;
+  width: 44%;
   padding: 22px 24px;
   background: rgba(20, 21, 40, 0.97);
   backdrop-filter: blur(20px);

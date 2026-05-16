@@ -82,22 +82,23 @@ body {
   mix-blend-mode: overlay;
   opacity: 0.4;
 }
-.stars { position: absolute; inset: 0; }
+/* Overscan so parallax.js drift + mouse offset (peaks ~74px on near) never
+   exposes a starless edge inside the cosmos container. */
+.stars { position: absolute; inset: -120px; }
 .stars div {
   position: absolute;
-  width: 1px; height: 1px;
   background: #fff;
   border-radius: 50%;
+  /* width/height/opacity are set per-star by assets/stars.js so the
+     field has natural brightness and size variation. */
 }
-.stars-far div { opacity: 0.35; }
-.stars-near div { width: 1.5px; height: 1.5px; opacity: 0.7; }
 .star-twinkle {
   animation: oy-twinkle var(--dur, 6s) ease-in-out infinite;
   animation-delay: var(--delay, 0s);
 }
 @keyframes oy-twinkle {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 0.15; }
+  0%, 100% { opacity: var(--peak, 0.65); }
+  50% { opacity: var(--trough, 0.12); }
 }
 @media (prefers-reduced-motion: reduce) {
   .star-twinkle { animation: none; }
@@ -108,9 +109,21 @@ body {
   position: absolute;
   top: var(--y, 18%);
   left: -12vw;
-  width: 160px; height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0) 40%, rgba(255,255,255,0.5) 90%, #fff 100%);
-  filter: drop-shadow(0 0 4px rgba(255, 217, 122, 0.45));
+  width: 220px; height: 3px;
+  /* Warm streak: long faint tail, building through orange/yellow to a
+     bright white head — like a meteor burning through atmosphere. */
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 200, 130, 0.04) 20%,
+    rgba(255, 210, 140, 0.18) 55%,
+    rgba(255, 230, 180, 0.55) 85%,
+    rgba(255, 250, 230, 0.95) 98%,
+    #fff 100%
+  );
+  border-radius: 999px;
+  /* Slight horizontal blur softens the edges so it doesn't read as a hard line. */
+  filter: blur(0.6px) drop-shadow(0 0 8px rgba(255, 200, 120, 0.55));
   animation: comet-fly 35s linear infinite;
   animation-delay: var(--delay, 0s);
   opacity: 0;
@@ -119,19 +132,39 @@ body {
 .comet::after {
   content: '';
   position: absolute;
-  right: -1px; top: -1px;
-  width: 2.5px; height: 2.5px;
-  background: var(--star);
+  right: -3px; top: 50%;
+  transform: translateY(-50%);
+  width: 4px; height: 4px;
+  background: #fff;
   border-radius: 50%;
-  box-shadow: 0 0 8px var(--star), 0 0 16px rgba(255, 217, 122, 0.4);
+  /* Layered glow: tight white core, warm yellow halo, soft orange diffuse. */
+  box-shadow:
+    0 0 6px #fff,
+    0 0 14px rgba(255, 220, 140, 0.75),
+    0 0 28px rgba(255, 180, 100, 0.4);
 }
 @keyframes comet-fly {
-  0%, 5% { transform: translate(0, 0) rotate(12deg); opacity: 0; }
-  10% { opacity: 0.9; }
-  35% { opacity: 0.9; }
-  /* Long invisible tail of the cycle so only ~12s of every 35s shows the comet — feels rare, not constant. */
-  40% { transform: translate(125vw, 30vh) rotate(12deg); opacity: 0; }
-  100% { transform: translate(125vw, 30vh) rotate(12deg); opacity: 0; }
+  /* Parabolic arc — comet enters nearly horizontal, accelerates down
+     as it crosses, exits steeply. Rotation at each step matches the
+     tangent of the curve so the tail follows the path. Only ~12s of
+     every 35s shows the comet — feels rare, not constant. */
+  /* X advances at a steady rate so the comet doesn't appear to slow
+     as it fades. Y follows a parabola of X so the curve still bends
+     gradually — but each keyframe covers the same horizontal distance. */
+  0%, 5% { transform: translate(0, 0) rotate(2deg); opacity: 0; }
+  8% { transform: translate(8vw, 0.2vh) rotate(3deg); opacity: 0.5; }
+  11% { transform: translate(16vw, 0.9vh) rotate(6deg); opacity: 0.9; }
+  14% { transform: translate(24vw, 2vh) rotate(9deg); opacity: 0.9; }
+  17% { transform: translate(33vw, 3.7vh) rotate(11deg); opacity: 0.9; }
+  20% { transform: translate(41vw, 5.8vh) rotate(14deg); opacity: 0.9; }
+  23% { transform: translate(49vw, 8.3vh) rotate(17deg); opacity: 0.88; }
+  26% { transform: translate(57vw, 11.2vh) rotate(20deg); opacity: 0.78; }
+  29% { transform: translate(65vw, 14.5vh) rotate(22deg); opacity: 0.62; }
+  32% { transform: translate(73vw, 18vh) rotate(25deg); opacity: 0.42; }
+  35% { transform: translate(81vw, 22vh) rotate(27deg); opacity: 0.22; }
+  38% { transform: translate(89vw, 26vh) rotate(29deg); opacity: 0.08; }
+  40% { transform: translate(95vw, 28vh) rotate(30deg); opacity: 0; }
+  100% { transform: translate(95vw, 28vh) rotate(30deg); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .comet { display: none; }

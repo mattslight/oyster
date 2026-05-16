@@ -480,31 +480,8 @@
     <p>Built with <span class="heart">&hearts;</span> by <a href="https://github.com/mattslight">Matthew Slight</a></p>
   </div>
 
+  <script src="assets/stars.js" defer></script>
   <script>
-    // Sparse starfield
-    (function () {
-      function seed(s) { return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
-      const rand = seed(42);
-      function makeStars(el, count, twinkle) {
-        if (!el) return;
-        const frag = document.createDocumentFragment();
-        for (let i = 0; i < count; i++) {
-          const d = document.createElement('div');
-          d.style.left = (rand() * 100).toFixed(2) + '%';
-          d.style.top = (rand() * 100).toFixed(2) + '%';
-          if (twinkle && rand() < 0.18) {
-            d.classList.add('star-twinkle');
-            d.style.setProperty('--dur', (2.5 + rand() * 4).toFixed(2) + 's');
-            d.style.setProperty('--delay', (rand() * 5).toFixed(2) + 's');
-          }
-          frag.appendChild(d);
-        }
-        el.appendChild(frag);
-      }
-      makeStars(document.getElementById('stars-far'), 200, false);
-      makeStars(document.getElementById('stars-near'), 60, true);
-    })();
-
     function showTab(e, name) {
       document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
       document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
@@ -525,5 +502,6 @@
     }
   </script>
   <script src="assets/reveal.js" defer></script>
+  <script src="assets/parallax.js" defer></script>
 </body>
 </html>

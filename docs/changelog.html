@@ -6,6 +6,14 @@
   <title>Changelog — Oyster</title>
   <meta name="description" content="Every shipped change to Oyster, newest first.">
   <link rel="stylesheet" href="assets/oyster.css">
+  <script>
+    if (
+      'IntersectionObserver' in window &&
+      (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    ) {
+      document.documentElement.classList.add('js-reveal');
+    }
+  </script>
   <style>
     .hero {
       position: relative;
@@ -302,7 +310,7 @@
       <a class="version-pill" href="#v-0-0-x">0.0</a>
   </nav>
 
-  <main class="entries">
+  <main class="entries" data-reveal>
 <h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.9.1...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
 <h3>Changed</h3>
 <ul>
@@ -957,7 +965,7 @@
 
   </main>
 
-  <section class="install-section">
+  <section class="install-section" data-reveal>
     <div class="install-label">Don't have Oyster yet?</div>
     <div class="terminal-frame">
       <div class="terminal">
@@ -981,29 +989,8 @@
     <p>Built with <span class="heart">&hearts;</span> by <a href="https://github.com/mattslight">Matthew Slight</a></p>
   </div>
 
-  <script>
-    (function () {
-      function seed(s) { return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
-      const rand = seed(42);
-      function makeStars(el, count, twinkle) {
-        if (!el) return;
-        const frag = document.createDocumentFragment();
-        for (let i = 0; i < count; i++) {
-          const d = document.createElement('div');
-          d.style.left = (rand() * 100).toFixed(2) + '%';
-          d.style.top = (rand() * 100).toFixed(2) + '%';
-          if (twinkle && rand() < 0.18) {
-            d.classList.add('star-twinkle');
-            d.style.setProperty('--dur', (2.5 + rand() * 4).toFixed(2) + 's');
-            d.style.setProperty('--delay', (rand() * 5).toFixed(2) + 's');
-          }
-          frag.appendChild(d);
-        }
-        el.appendChild(frag);
-      }
-      makeStars(document.getElementById('stars-far'), 200, false);
-      makeStars(document.getElementById('stars-near'), 60, true);
-    })();
-  </script>
+  <script src="assets/reveal.js" defer></script>
+  <script src="assets/stars.js" defer></script>
+  <script src="assets/parallax.js" defer></script>
 </body>
 </html>
