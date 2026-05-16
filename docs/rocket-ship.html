@@ -730,7 +730,9 @@ window.addEventListener('mousemove', e => { if (mouseDown) mouseX = e.clientX; }
 function clearMouseDrag() { mouseDown = false; mouseX = null; }
 window.addEventListener('mouseup', clearMouseDrag);
 window.addEventListener('blur', clearMouseDrag);
-window.addEventListener('mouseleave', clearMouseDrag);
+// mouseleave on window isn't reliably dispatched — bind on document instead
+// so a drag that exits the iframe/document still clears mouseDown.
+document.addEventListener('mouseleave', clearMouseDrag);
 
 function drawRocket(x, y, angle, thrusting) {
   ctx.save();
@@ -933,7 +935,8 @@ function update() {
 
   // Touch/mouse steering
   if ((touchThrust && touchX !== null) || (mouseDown && mouseX !== null)) {
-    const tx = touchX || mouseX;
+    // Nullish — `||` would treat a perfectly valid touch at clientX=0 as missing.
+    const tx = touchX !== null ? touchX : mouseX;
     const center = W / 2;
     const diff = (tx - center) / (W / 2);
     rocket.angle += diff * 0.06;
@@ -1295,7 +1298,10 @@ function readLeaderboard() {
     return v
       .filter(e =>
         e &&
-        typeof e.score === 'number' && e.score > 0 && e.score < 100000 &&
+        // Keep this aligned with the worker's MAX_SCORE (currently 999) so a
+        // local entry that exceeds the server cap doesn't fool qualifiesForLeaderboard
+        // or sit forever unable to sync.
+        typeof e.score === 'number' && e.score > 0 && e.score <= 999 &&
         typeof e.initials === 'string' && INITIALS_OK.test(e.initials)
       )
       // Back-compat: pre-date entries get the current time so they sort sanely
@@ -1506,7 +1512,10 @@ const Splash = (function () {
     // don't bubble out of an iframe, so without postMessage the outer
     // ESC-to-shutoff listener never fires while focus is in the game.
     if (e.key === 'Escape') {
-      try { window.parent.postMessage({ type: 'oyster-rocket-close' }, '*'); } catch (_) {}
+      // Target the current origin explicitly — never broadcast the close
+      // signal to a cross-origin parent (matters if the game is ever
+      // embedded elsewhere).
+      try { window.parent.postMessage({ type: 'oyster-rocket-close' }, location.origin); } catch (_) {}
       return;
     }
     tryDismiss();
