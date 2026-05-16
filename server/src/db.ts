@@ -37,8 +37,7 @@ export function initDb(userlandDir: string): Database.Database {
   const dbPath = join(userlandDir, "oyster.db");
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
-  // FK enforcement is required for sources.space_id ON DELETE CASCADE and
-  // artifacts.source_id ON DELETE SET NULL to actually fire.
+  // FK enforcement is required for projects.space_id ON DELETE CASCADE to fire.
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
 
@@ -88,36 +87,7 @@ export function initDb(userlandDir: string): Database.Database {
     )
   `);
 
-  // sources — typed rows for external folders (and future cloud sources)
-  // attached to a space. `removed_at` enables soft-delete cascade: detach
-  // soft-deletes the source AND artifacts where source_id = ?, leaving the
-  // FK chain intact and making reattach a simple "restore in place".
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS sources (
-      id          TEXT PRIMARY KEY,
-      space_id    TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
-      type        TEXT NOT NULL CHECK(type IN ('local_folder')),
-      path        TEXT NOT NULL,
-      label       TEXT,
-      added_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      removed_at  TEXT
-    );
-    CREATE INDEX IF NOT EXISTS sources_space_id ON sources(space_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS sources_path_active
-      ON sources(path) WHERE removed_at IS NULL;
-  `);
-
-  // Add the artifacts.source_id FK *after* the sources table exists. SQLite
-  // tolerates forward FK references at ALTER time (the FK only validates at
-  // write time), but explicit ordering is less surprising.
-  // ON DELETE SET NULL covers the rare case where a space is hard-deleted —
-  // cascade hard-deletes its sources via sources.space_id, and artifacts
-  // left behind become unattributed orphans rather than dangling FKs.
-  try {
-    db.exec("ALTER TABLE artifacts ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
-  } catch { /* already exists */ }
-
-  // #208 ships as a manual one-shot migration for the maintainer's DB. No
+// #208 ships as a manual one-shot migration for the maintainer's DB. No
   // other users currently have pre-#208 data (confirmed). Fresh installs
   // never populate `space_paths`. So no embedded upgrade backfill is needed —
   // if a user with old data ever surfaces, we'll do their migration by hand
@@ -440,19 +410,6 @@ export function initDb(userlandDir: string): Database.Database {
   // recreates the sessions table from scratch) can't drop it on
   // installs that trigger needsMigrate.
   try {
-    db.exec("ALTER TABLE sessions ADD COLUMN source_id TEXT REFERENCES sources(id) ON DELETE SET NULL");
-  } catch { /* already exists */ }
-  // Index creation lives in its own try so an already-applied ALTER
-  // (which throws above) doesn't skip indexing on installs that
-  // pre-date this migration.
-  db.exec("CREATE INDEX IF NOT EXISTS sessions_source_id ON sessions(source_id)");
-
-  // cwd added so we can rebuild the resume command (`cd <cwd> && claude
-  // --resume <id>`) and surface a useful label for orphan sessions
-  // (cwd outside any registered source). Watcher already tracks cwd
-  // in memory; this just persists it. Same post-rebuild placement as
-  // source_id above.
-  try {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   } catch { /* already exists */ }
 
@@ -466,16 +423,100 @@ export function initDb(userlandDir: string): Database.Database {
   } catch { /* already exists */ }
   db.exec("CREATE INDEX IF NOT EXISTS sessions_auto_cwd ON sessions(cwd) WHERE assignment_mode = 'auto'");
 
-  // portable_id: cross-machine identifier sourced from <path>/.oyster/id.
-  // Non-unique on purpose — worktrees and sibling checkouts share an id.
-  // `sources.id` (local PK) is NEVER derived from this column.
-  // See docs/superpowers/specs/2026-05-15-oyster-id-portable-identity-design.md
-  try {
-    db.exec("ALTER TABLE sources ADD COLUMN portable_id TEXT NULL");
-  } catch { /* already exists */ }
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS sources_portable_id ON sources(portable_id) WHERE portable_id IS NOT NULL"
-  );
+  // ─────────────────────────────────────────────────────────────────────────
+  // projects + project_paths — the simplified identity model that supersedes
+  // `sources`. A project's id is its `.oyster/id` UUID (or a fresh UUID for
+  // pre-existing sources without one). Sessions bind to projects directly via
+  // `sessions.project_id`; the watcher tags them at ingest by reading
+  // `<cwd>/.oyster/id`. No longest-prefix path matching, no async rebind, no
+  // "Update folder location" — folder renames are filesystem ops that don't
+  // touch Oyster's identity layer.
+  //
+  // `project_paths` is a per-machine cache of "where this project lives on
+  // disk right now" — populated lazily by the watcher and used for affordances
+  // like "Reveal in Finder". Worktrees and sibling checkouts share a project
+  // id and contribute multiple rows. Authoritative identity is `projects.id`,
+  // never the path.
+  // ─────────────────────────────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id          TEXT PRIMARY KEY,
+      space_id    TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      removed_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS projects_space_id ON projects(space_id) WHERE removed_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS project_paths (
+      project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      path          TEXT NOT NULL,
+      last_seen_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (project_id, path)
+    );
+    CREATE INDEX IF NOT EXISTS project_paths_path ON project_paths(path);
+  `);
+
+  try { db.exec("ALTER TABLE sessions ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL"); }
+  catch { /* already exists */ }
+  db.exec("CREATE INDEX IF NOT EXISTS sessions_project_id ON sessions(project_id) WHERE project_id IS NOT NULL");
+
+  try { db.exec("ALTER TABLE artifacts ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL"); }
+  catch { /* already exists */ }
+  db.exec("CREATE INDEX IF NOT EXISTS artifacts_project_id ON artifacts(project_id) WHERE project_id IS NOT NULL");
+
+  // Sources → projects backfill was a one-shot for pre-rewrite installs;
+  // it has already run on the only DB it ever needed to migrate. Fresh
+  // installs go straight to the projects model.
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Drop the legacy sources surface. Order matters: SQLite refuses
+  // ALTER TABLE DROP COLUMN while an index references the column, so
+  // indexes go FIRST. Each step is idempotent — try/catch the ALTERs so
+  // already-dropped state on fresh installs is a no-op, and IF EXISTS
+  // on the DROP INDEX / TABLE handles both states.
+  // ─────────────────────────────────────────────────────────────────────────
+  db.exec("DROP INDEX IF EXISTS sessions_source_id");
+  try { db.exec("ALTER TABLE sessions DROP COLUMN source_id"); } catch { /* already dropped or never existed */ }
+  try { db.exec("ALTER TABLE artifacts DROP COLUMN source_id"); } catch { /* already dropped or never existed */ }
+  db.exec("DROP TABLE IF EXISTS sources");
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Repair: heal sessions / artefacts whose space_id is out of sync with
+  // their project's space. Source of the drift: an earlier ad-hoc dedup
+  // SQL with a UPDATE-FROM order bug left some rows with a valid
+  // project_id but space_id NULL — those then render as orphans in the
+  // home view even though they belong to a real project. Idempotent: only
+  // touches rows whose project is live AND whose space_id disagrees.
+  // ─────────────────────────────────────────────────────────────────────────
+  db.exec(`
+    UPDATE sessions
+       SET space_id = (
+         SELECT p.space_id FROM projects p
+          WHERE p.id = sessions.project_id AND p.removed_at IS NULL
+       )
+     WHERE project_id IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM projects p
+          WHERE p.id = sessions.project_id
+            AND p.removed_at IS NULL
+            AND (sessions.space_id IS NULL OR sessions.space_id != p.space_id)
+       );
+  `);
+  db.exec(`
+    UPDATE artifacts
+       SET space_id = (
+         SELECT p.space_id FROM projects p
+          WHERE p.id = artifacts.project_id AND p.removed_at IS NULL
+       )
+     WHERE project_id IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM projects p
+          WHERE p.id = artifacts.project_id
+            AND p.removed_at IS NULL
+            AND (artifacts.space_id IS NULL OR artifacts.space_id != p.space_id)
+       );
+  `);
 
   // One-time canonical-form migration for paths and cwds. The longest-prefix
   // binding SQL compares `sessions.cwd` against `sources.path` via substr
@@ -500,14 +541,6 @@ export function initDb(userlandDir: string): Database.Database {
       THEN replace($col, '\\', '/')
     ELSE rtrim(replace($col, '\\', '/'), '/')
   END`;
-  db.exec(`
-    UPDATE sources
-       SET path = ${canonicalisePath.replace(/\$col/g, "path")}
-     WHERE path LIKE '%\\%'
-        OR (length(path) > 1
-            AND substr(path, length(path), 1) = '/'
-            AND NOT (length(path) = 3 AND substr(path, 2, 2) = ':/'));
-  `);
   db.exec(`
     UPDATE sessions
        SET cwd = ${canonicalisePath.replace(/\$col/g, "cwd")}

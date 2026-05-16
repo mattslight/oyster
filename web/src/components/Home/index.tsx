@@ -7,7 +7,7 @@ import { useSessions } from "../../hooks/useSessions";
 import { useMemories } from "../../hooks/useMemories";
 import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
 import { useMyDeviceId } from "../../hooks/useMyDeviceId";
-import { useSpaceSources } from "../../hooks/useSpaceSources";
+import { useSpaceProjects } from "../../hooks/useSpaceProjects";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 import { Desktop } from "../Desktop";
 import { InspectorPanel, type ActivePanel } from "../InspectorPanel";
@@ -27,7 +27,7 @@ import { MemoryCard } from "./MemoryCard";
 import { VaultInfo } from "./VaultInfo";
 import { homeRelative, renderPipCounts, stateColor } from "./utils";
 import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./types";
-import { addSpaceSource } from "../../data/spaces-api";
+import { attachFolder } from "../../data/projects-api";
 import { deleteMemory, type Memory } from "../../data/memories-api";
 import { ApiError } from "../../data/http";
 import "./Home.css";
@@ -142,17 +142,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // / All / Archived don't have a single source list. Identifies the
   // "zero sources attached" pitfall (#266) at a glance.
   const isMetaScope = activeSpace === "home" || activeSpace === "__all__" || activeSpace === "__archived__";
-  const sourcesSpaceId = !isMetaScope ? activeSpace : null;
+  const projectsSpaceId = !isMetaScope ? activeSpace : null;
   const {
-    sources: spaceSources,
-    loading: spaceSourcesLoading,
-    error: spaceSourcesError,
-    refresh: refreshSpaceSources,
-  } = useSpaceSources(sourcesSpaceId);
+    projects: spaceProjects,
+    loading: spaceProjectsLoading,
+    error: spaceProjectsError,
+    refresh: refreshSpaceProjects,
+  } = useSpaceProjects(projectsSpaceId);
   const [showAttachForm, setShowAttachForm] = useState(false);
   // Reset the attach form whenever scope changes so it doesn't carry
   // across spaces.
-  useEffect(() => { setShowAttachForm(false); }, [sourcesSpaceId]);
+  useEffect(() => { setShowAttachForm(false); }, [projectsSpaceId]);
   const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [sessionsView, setSessionsView] = useStickyView("oyster.home.sessionsView", "table");
   const [artefactsView, setArtefactsView] = useStickyView("oyster.home.artefactsView", "icons");
@@ -184,7 +184,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   const [artefactsLimit, setArtefactsLimit] = useState(ARTEFACTS_PREVIEW);
   // Elsewhere project-tile filter: orphan tiles aren't backed by a
   // source row, so they're keyed by cwd instead of source_id. Lives
-  // alongside selectedFolderId; resets when scope changes.
+  // alongside selectedProjectId; resets when scope changes.
   const [selectedOrphanCwd, setSelectedOrphanCwd] = useState<string | null>(null);
   // Cwd of the orphan tile currently mid-promotion (or mid-attach). Disables
   // every FolderPlus button so a slow server response can't kick off a
@@ -204,7 +204,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // Project-tile filter: null = "All" (no folder scope), "__vault__" =
   // native artefacts, otherwise a source_id. The tile grid is the canonical
   // surface for switching between folders; selection is exclusive.
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   const isHomeView = activeSpace === "home";
   const isAllView = activeSpace === "__all__";
@@ -244,10 +244,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     setSessionsLimit(SESSIONS_PREVIEW);
     setArtefactSource("all");
     if (pendingFolderSelection.current) {
-      setSelectedFolderId(pendingFolderSelection.current);
+      setSelectedProjectId(pendingFolderSelection.current);
       pendingFolderSelection.current = null;
     } else {
-      setSelectedFolderId(null);
+      setSelectedProjectId(null);
     }
     setSelectedOrphanCwd(null);
   }, [scopedSpace, showElsewhere, isHomeView]);
@@ -275,10 +275,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     if (showElsewhere && isHomeView && selectedOrphanCwd) {
       return scopedSessions.filter((s) => s.cwd === selectedOrphanCwd);
     }
-    if (selectedFolderId === VAULT) return scopedSessions.filter((s) => !s.sourceId);
-    if (selectedFolderId) return scopedSessions.filter((s) => s.sourceId === selectedFolderId);
+    if (selectedProjectId === VAULT) return scopedSessions.filter((s) => !s.projectId);
+    if (selectedProjectId) return scopedSessions.filter((s) => s.projectId === selectedProjectId);
     return scopedSessions;
-  }, [scopedSessions, selectedFolderId, selectedOrphanCwd, showElsewhere, isHomeView]);
+  }, [scopedSessions, selectedProjectId, selectedOrphanCwd, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
     const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
@@ -315,31 +315,32 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total };
   }, [sessions]);
 
-  // Active projects on Home: collapse sessions by sourceId, count
+  // Active projects on Home: collapse sessions by projectId, count
   // non-done states, drop projects with no live activity. Each entry
   // becomes a tile in the "Active projects" section so the user can
   // jump straight to the project that's currently in flight.
   const activeProjects = useMemo(() => {
     if (!isHomeView || showElsewhere) return [];
     const map = new Map<string, {
-      sourceId: string;
+      projectId: string;
       spaceId: string;
       label: string;
       counts: { active: number; waiting: number; disconnected: number };
       lastEventAt: number;
     }>();
     for (const s of sessions) {
-      if (!s.sourceId || !s.spaceId || s.state === "done") continue;
-      let entry = map.get(s.sourceId);
+      if (!s.projectId || !s.spaceId || s.state === "done") continue;
+      let entry = map.get(s.projectId);
       if (!entry) {
+        const cwdBasename = s.cwd ? s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
         entry = {
-          sourceId: s.sourceId,
+          projectId: s.projectId,
           spaceId: s.spaceId,
-          label: s.sourceLabel ?? s.sourceId,
+          label: cwdBasename ?? s.projectId,
           counts: { active: 0, waiting: 0, disconnected: 0 },
           lastEventAt: 0,
         };
-        map.set(s.sourceId, entry);
+        map.set(s.projectId, entry);
       }
       if (s.state === "active") entry.counts.active++;
       else if (s.state === "waiting") entry.counts.waiting++;
@@ -350,18 +351,18 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return [...map.values()].sort((a, b) => b.lastEventAt - a.lastEventAt);
   }, [sessions, isHomeView, showElsewhere]);
 
-  // Per-source live-session counts, keyed by source_id. Used by
-  // ProjectTileGrid so a folder tile can show "1 active · 1 waiting"
-  // alongside its artefact count when sessions are running there.
-  const sessionCountsBySource = useMemo(() => {
+  // Per-project live-session counts, keyed by project_id. Used by
+  // ProjectTileGrid so a project tile can show "1 active · 1 waiting"
+  // when sessions are running for that project.
+  const sessionCountsByProject = useMemo(() => {
     const out: Record<string, { active: number; waiting: number; disconnected: number }> = {};
     for (const s of sessions) {
-      if (!s.sourceId || s.state === "done") continue;
-      const c = out[s.sourceId] ?? { active: 0, waiting: 0, disconnected: 0 };
+      if (!s.projectId || s.state === "done") continue;
+      const c = out[s.projectId] ?? { active: 0, waiting: 0, disconnected: 0 };
       if (s.state === "active") c.active++;
       else if (s.state === "waiting") c.waiting++;
       else if (s.state === "disconnected") c.disconnected++;
-      out[s.sourceId] = c;
+      out[s.projectId] = c;
     }
     return out;
   }, [sessions]);
@@ -474,15 +475,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
-  // Per-source artefact counts for the project tile grid. "vault"
-  // collects everything without a source_id (manual + ai_generated tiles
-  // that didn't come from a linked folder). The tile grid itself drives
-  // the SELECTED_FOLDER filter, separate from the source-origin chips.
-  const folderArtefactCounts = useMemo(() => {
-    const counts: Record<string, number> = { [VAULT]: 0 };
+  // Per-project artefact counts for the tile badges. Includes the VAULT
+  // bucket (artefacts with no project binding) so ProjectTileGrid can
+  // render the Vault tile when there's anything in it. Returns {} only
+  // when the artefact list is empty.
+  const projectArtefactCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
     for (const a of effectiveDesktopProps.artifacts) {
-      if (a.sourceId) counts[a.sourceId] = (counts[a.sourceId] ?? 0) + 1;
-      else counts[VAULT]++;
+      const key = a.projectId ?? VAULT;
+      counts[key] = (counts[key] ?? 0) + 1;
     }
     return counts;
   }, [effectiveDesktopProps.artifacts]);
@@ -493,10 +494,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // below the fold.
   const filteredArtefacts = useMemo(() => {
     let list = effectiveDesktopProps.artifacts;
-    if (selectedFolderId === VAULT) {
-      list = list.filter((a) => !a.sourceId);
-    } else if (selectedFolderId) {
-      list = list.filter((a) => a.sourceId === selectedFolderId);
+    if (selectedProjectId === VAULT) {
+      list = list.filter((a) => !a.projectId);
+    } else if (selectedProjectId) {
+      list = list.filter((a) => a.projectId === selectedProjectId);
     }
     if (artefactSource === "published") {
       list = list.filter(isLivePublication);
@@ -519,7 +520,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
       return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
     });
     return list;
-  }, [effectiveDesktopProps.artifacts, artefactSource, selectedFolderId]);
+  }, [effectiveDesktopProps.artifacts, artefactSource, selectedProjectId]);
   const visibleArtefacts = useMemo(
     () => filteredArtefacts.slice(0, artefactsLimit),
     [filteredArtefacts, artefactsLimit],
@@ -792,16 +793,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             <div className="home-active-projects-grid">
               {activeProjects.map((p) => {
                 const space = spaces.find((s) => s.id === p.spaceId);
-                const isSelected = selectedFolderId === p.sourceId;
+                const isSelected = selectedProjectId === p.projectId;
                 return (
                   <div
-                    key={p.sourceId}
+                    key={p.projectId}
                     className={`home-active-project-tile${isSelected ? " selected" : ""}`}
                   >
                     <button
                       type="button"
                       className="home-active-project-tile-body"
-                      onClick={() => setSelectedFolderId(isSelected ? null : p.sourceId)}
+                      onClick={() => setSelectedProjectId(isSelected ? null : p.projectId)}
                       title={`Filter sessions to ${p.label}`}
                     >
                       <div className="home-active-project-meta">{space?.displayName ?? p.spaceId}</div>
@@ -817,7 +818,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       className="home-active-project-tile-jump"
                       onClick={(e) => {
                         e.stopPropagation();
-                        pendingFolderSelection.current = p.sourceId;
+                        pendingFolderSelection.current = p.projectId;
                         onSpaceChange(p.spaceId);
                       }}
                       aria-label={`Open ${space?.displayName ?? p.spaceId}`}
@@ -891,29 +892,28 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           </div>
         )}
 
-        {sourcesSpaceId && (
-          spaceSourcesError ? (
+        {projectsSpaceId && (
+          spaceProjectsError ? (
             <div className="home-spaces-section">
               <div className="home-spaces-grid">
                 <div className="home-empty" style={{ gridColumn: "1 / -1" }}>
-                  Couldn't load folders: {spaceSourcesError.message}
+                  Couldn't load projects: {spaceProjectsError.message}
                 </div>
               </div>
             </div>
-          ) : spaceSources.length === 0 && !spaceSourcesLoading ? (
+          ) : spaceProjects.length === 0 && !spaceProjectsLoading ? (
             <div className="home-spaces-section">
               <div className="home-folders-empty">
-                <strong>No folders attached to this space.</strong>{" "}
-                Sessions started in unattached folders land in Elsewhere,
-                and tile discovery relies on these.{" "}
+                <strong>No projects in this space yet.</strong>{" "}
+                Sessions started in unclaimed folders land in Elsewhere
+                until you claim them into a project.{" "}
                 <span className="home-folders-empty-hint">
-                  Use <code>/attach &lt;path&gt;</code> from the chat bar, or{" "}
                   <button
                     type="button"
                     className="home-folders-empty-link"
                     onClick={() => setShowAttachForm(true)}
                   >
-                    attach one now
+                    Add a project
                   </button>.
                   {onSpaceDelete && (
                     <>
@@ -921,7 +921,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       <button
                         type="button"
                         className="home-folders-empty-link"
-                        onClick={() => setSpaceToDelete(sourcesSpaceId)}
+                        onClick={() => setSpaceToDelete(projectsSpaceId)}
                       >
                         delete it
                       </button>.
@@ -931,10 +931,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               </div>
               {showAttachForm && (
                 <AttachFolderForm
-                  spaceId={sourcesSpaceId}
+                  spaceId={projectsSpaceId}
                   onAttached={() => {
                     setShowAttachForm(false);
-                    refreshSpaceSources();
+                    refreshSpaceProjects();
                   }}
                   onCancel={() => setShowAttachForm(false)}
                 />
@@ -942,17 +942,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             </div>
           ) : (
             <ProjectTileGrid
-              spaceId={sourcesSpaceId}
-              spaceDisplayName={spaces.find((s) => s.id === sourcesSpaceId)?.displayName ?? sourcesSpaceId}
-              sources={spaceSources}
-              folderArtefactCounts={folderArtefactCounts}
-              sessionCountsBySource={sessionCountsBySource}
-              selectedFolderId={selectedFolderId}
-              setSelectedFolderId={setSelectedFolderId}
+              spaceId={projectsSpaceId}
+              projects={spaceProjects}
+              projectArtefactCounts={projectArtefactCounts}
+              sessionCountsByProject={sessionCountsByProject}
+              selectedProjectId={selectedProjectId}
+              setSelectedProjectId={setSelectedProjectId}
               totalCounts={spaceCounts}
               showAttachForm={showAttachForm}
               setShowAttachForm={setShowAttachForm}
-              onSourcesChanged={refreshSpaceSources}
+              onProjectsChanged={refreshSpaceProjects}
               onSpaceDelete={onSpaceDelete}
             />
           )
@@ -1328,7 +1327,14 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               if (promotingCwd) throw new Error("Another attach is already in progress");
               setPromotingCwd(cwd);
               try {
-                await addSpaceSource(spaceId, cwd);
+                // Server-side attachFolder is idempotent: adopts an
+                // existing project by `.oyster/id` or by project_paths
+                // cache, undeletes a soft-deleted match, falls back to
+                // creating one only when nothing matches. Survives a
+                // missing folder (writeOysterId failure is non-fatal).
+                // Replaces the old createProject + claimOrphan pair
+                // that minted duplicates on every press.
+                await attachFolder(spaceId, cwd);
               } finally {
                 setPromotingCwd(null);
               }

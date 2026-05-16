@@ -64,7 +64,6 @@ export function ArtefactInspector({ artifact, onSwitchTo, onClose, onOpen }: Pro
             <div className="inspector-title">{artifact.label}</div>
             <div className="inspector-sub">
               {artifact.id}
-              {artifact.sourceLabel && ` · ${artifact.sourceLabel}`}
             </div>
           </div>
         </div>

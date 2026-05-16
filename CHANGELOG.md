@@ -2,30 +2,47 @@
 
 All notable changes to Oyster are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0-beta.2] - 2026-05-16
+
+### Fixed
+
+- **`.oyster/id` self-heals at the project root, not inside subdirs.** A session at `<project>/web/src` whose marker had been deleted used to drop a new `.oyster/id` inside the subdir while leaving the real project root unmarked. The repair now writes at the matched ancestor.
+- **`Session.projectId` in artefact-touches.** The embedded session payload on `/api/artifacts/:id/sessions` was missing `projectId`; other session endpoints already returned it. Restored.
+
+## [0.9.0-beta.1] - 2026-05-16
+
+### Fixed
+
+- **Sessions stay bound to their project after restart.** Stale `space_id` (NULL or pointing at the wrong space) on rows with a valid `project_id` would render as orphans in *Everything else* even though they belonged to a real project. Boot-time repair syncs `sessions.space_id` and `artifacts.space_id` from the project's space on every start (idempotent; skips tombstone projects).
+- **Boot migration order on existing installs.** `ALTER TABLE sessions DROP COLUMN source_id` was running before `DROP INDEX sessions_source_id`, which SQLite refuses; the column drop was caught silently and the legacy column persisted. The index drop now runs first.
+- **Tilde paths in the "Add project" form.** `~/Dev/foo` no longer attaches a literal `~`; the leading tilde expands to the home directory before the marker is written, the cache is seeded, and orphan sessions are claimed.
+
+## [0.9.0-beta.0] - 2026-05-16
 
 ### Added
 
-- **Move a session to a different folder, or back to "let Oyster decide".** When a session ran in the wrong folder or a folder gets renamed, you can now reassign it instead of being stuck with the original binding. Available to agents via the new `move_session` and `set_source_path` MCP tools, with the UI affordances landing alongside.
-- **Update a folder's path after you've renamed it on disk.** A new option on each folder tile points an existing source at its new location without losing artefacts or sessions. Works for unmounted drives too — the path is accepted even when the folder isn't currently reachable.
-- **Merge duplicate folders into one.** When *Update folder location* points at a path that's already attached in this space, Oyster offers to merge instead — sessions and artefacts move onto the existing folder, the old tile is removed. Agents can drive the same merge via the new `consolidate_sources` MCP tool.
+- **Project identity that survives renames and moves.** Each project's identity now lives in a `.oyster/id` file inside its folder (a UUID). Renaming, moving, or `git push`ing the folder to another machine no longer orphans its sessions — the marker travels with the folder and Oyster recognises it everywhere.
+- **Move a session to a different project.** When a session ran in the wrong cwd or got orphaned, the per-row menu reassigns it. Same operation is available to agents via the `move_session` MCP tool with `project_id`.
+- **Merge two project tiles into one.** The tile's actions menu now offers *Merge into…* — collapses duplicate tiles by moving sessions and artefacts onto the chosen target, rewriting `.oyster/id` on the source folders so they point at the kept project's UUID, and soft-deleting the source. Cross-space merges are allowed; the result lives in the target's space.
+- **Git-repo badge on project tiles.** A small icon prefixes the project name when its folder is a git repo (detected via `.git`). No status / dirty indicator — just legibility.
+- **"No folder" badge on orphaned tiles.** Projects whose cached folder is missing on this machine (renamed, unmounted) show an amber *no folder* chip. Tooltip shows the cached path so you can see where it used to live. Candidates for merging into a live project.
 
 ### Changed
 
-- **Attaching a folder is now instant on big databases.** Attaching (or updating the path of) a folder used to block the request behind a longest-prefix re-bind of every historical orphan session — a full scan of the `sessions` table that hit the 15s mutation timeout on installs with months of transcripts. The attach now returns as soon as the source row is inserted; the re-bind runs in the background in batches and a small *"Re-binding N sessions to <folder>…"* chip surfaces progress in the bottom-right corner until it finishes.
-- **One Oyster per machine.** Dev mode and the installed package now share a single workspace at `~/Oyster/` instead of dev getting its own `./userland/` copy. Starting a second Oyster against the same workspace is refused with a clear *"already running on port X (pid Y)"* message rather than racing against the first one on the SQLite DB and `.dev-port` file. Set `OYSTER_USERLAND=/some/path` if you genuinely want an isolated worktree (and a different `OYSTER_PORT`).
-- **Sessions bind to the most specific matching folder.** Attaching `~/Repo` then later `~/Repo/web` now moves sessions that ran in `~/Repo/web` over to the more specific source automatically. Manually-pinned sessions are immune.
-- **Attaching a folder no longer requires it to exist on disk.** The orphan-tile attach flow used to throw when the folder had been renamed since the sessions ran. Attach succeeds; the tile renders with the amber *Path missing* chip; the longest-prefix heuristic claims the matching sessions.
+- **"Folders" → "Projects".** The tiles you attach to a space are now projects, named after the folder by default. Identity-based instead of path-based; the underlying shape is the same.
+- **One Oyster per machine.** Dev mode and the installed package share a single workspace at `~/Oyster/`. Starting a second Oyster is refused with a clear *"already running on port X (pid Y)"* message. Set `OYSTER_USERLAND=/some/path` for an isolated worktree.
 
 ### Removed
 
+- **The legacy "fix-it-up" surface for folder paths.** *Update folder location*, *Merge duplicate folders*, the per-session *Let Oyster decide* item, and the *Re-binding N sessions to <folder>…* toast are all gone — folder renames are invisible to Oyster now, so none of those repair tools have a job.
+- **MCP: `detach_source`, `set_source_path`, `consolidate_sources`, `scan_space`.** The project model gathers up orphan sessions when you attach a folder (or via `move_session`); the source-shaped tools that managed path bindings are no longer needed.
 - **Sprint-2 demo builtins out.** *Zombie Horde* (a browser game) and *The World's Your Oyster* (a positioning deck that contradicted the current framing) no longer ship in fresh installs. Existing installs keep their copies in `~/Oyster/apps/` — archive them from the surface if you don't want them.
 
 ### Fixed
 
-- **Windows: same folder no longer shows as two orphan tiles.** A folder you've run sessions in on Windows used to appear twice in *Everything else.* — once as `C:/Users/...` and once as `C:\Users\...` — depending on whether the session was a local one or pulled back from another device. They now collapse into a single tile.
-- **Home's table view now matches the icon view for published artefacts.** Cloud-only published rows previously hid the artefact's real space behind a literal *"Cloud"* label and showed no published-status chip. The table now shows the underlying space (e.g. *tokinvest*) and renders the same *On cloud* / *Published* chip next to the title that the icon view shows below it — both views speak the same visual language.
-- **Sessions no longer get stuck pointing at a detached folder.** Previously, removing a folder left sessions silently linked to a deleted source; they now correctly fall back to the space vault.
+- **Sessions in a renamed folder no longer orphan.** The bug that motivated the project-identity refactor. Identity now lives in `.oyster/id` inside the folder; moving or renaming the folder takes the identity along with it.
+- **Windows: same folder no longer shows as two orphan tiles.** A folder used to appear twice in *Everything else.* — once as `C:/Users/...` and once as `C:\Users\...` — depending on whether the session was local or pulled from another device. They now collapse into a single tile.
+- **Home's table view matches the icon view for published artefacts.** Cloud-only rows previously hid the artefact's real space behind a literal *"Cloud"* label and showed no publish chip. The table now shows the underlying space and the same *On cloud* / *Published* chip the icon view does.
 
 ## [0.8.2] - 2026-05-14
 

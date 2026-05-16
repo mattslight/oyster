@@ -1,50 +1,44 @@
-// Project tile grid: All / Vault / one tile per linked folder / + Attach.
-// Extracted from Home/index.tsx.
+// Project tile grid: All / Vault / one tile per project / + Add.
+// Renamed from "linked folder" framing — projects don't have a path; folder
+// association is downstream via `.oyster/id` or claim_orphan.
 import { useMemo } from "react";
 import { Shield } from "lucide-react";
-import type { SpaceSource } from "../../data/spaces-api";
+import type { Project } from "../../data/projects-api";
 import { AttachFolderForm } from "./AttachFolderForm";
 import { ProjectTile } from "./ProjectTile";
 import { VAULT, type StateFilter } from "./types";
 
-// Project tile grid — same visual primitive as Home's space cards.
-// Renders one tile per attached folder (plus an "All" meta-tile, a
-// Vault tile for native artefacts, and a "+ Attach" tile). The
-// selected tile is exclusive: clicking another switches scope, clicking
-// the selected tile snaps back to All. Detach lives in a hover ⋯ menu
-// on linked tiles only — Vault can't be detached.
 export function ProjectTileGrid({
-  spaceId, spaceDisplayName, sources, folderArtefactCounts, sessionCountsBySource,
-  selectedFolderId, setSelectedFolderId,
-  totalCounts, showAttachForm, setShowAttachForm, onSourcesChanged, onSpaceDelete,
+  spaceId, projects, projectArtefactCounts, sessionCountsByProject,
+  selectedProjectId, setSelectedProjectId,
+  totalCounts, showAttachForm, setShowAttachForm, onProjectsChanged, onSpaceDelete,
 }: {
   spaceId: string;
-  spaceDisplayName: string;
-  sources: SpaceSource[];
-  // Sparse maps — sources with no artefacts / no live sessions have no
-  // entry. Callsites use `?? 0` and pass the lookup straight into
-  // ProjectTile's optional `sessionCounts?` prop.
-  folderArtefactCounts: Partial<Record<string, number>>;
-  sessionCountsBySource: Partial<Record<string, { active: number; waiting: number; disconnected: number }>>;
-  selectedFolderId: string | null;
-  setSelectedFolderId: (next: string | null) => void;
+  projects: Project[];
+  // Sparse maps — projects with no artefacts / no live sessions have no
+  // entry. Callsites use `?? 0` and pass the lookup into ProjectTile's
+  // optional `sessionCounts?` prop.
+  projectArtefactCounts: Partial<Record<string, number>>;
+  sessionCountsByProject: Partial<Record<string, { active: number; waiting: number; disconnected: number }>>;
+  selectedProjectId: string | null;
+  setSelectedProjectId: (next: string | null) => void;
   totalCounts: Record<StateFilter, number>;
   showAttachForm: boolean;
   setShowAttachForm: (v: boolean) => void;
-  onSourcesChanged: () => void;
+  onProjectsChanged: () => void;
   onSpaceDelete?: (spaceId: string) => Promise<void> | void;
 }) {
-  // Sort linked tiles by tile count desc — busiest folders first.
-  const sortedSources = useMemo(
-    () => [...sources].sort((a, b) =>
-      (folderArtefactCounts[b.id] ?? 0) - (folderArtefactCounts[a.id] ?? 0)
+  // Sort by artefact count desc — busiest projects first.
+  const sortedProjects = useMemo(
+    () => [...projects].sort((a, b) =>
+      (projectArtefactCounts[b.id] ?? 0) - (projectArtefactCounts[a.id] ?? 0)
     ),
-    [sources, folderArtefactCounts],
+    [projects, projectArtefactCounts],
   );
-  const vaultCount = folderArtefactCounts[VAULT] ?? 0;
+  const vaultCount = projectArtefactCounts[VAULT] ?? 0;
 
   function pickTile(id: string | null) {
-    setSelectedFolderId(selectedFolderId === id ? null : id);
+    setSelectedProjectId(selectedProjectId === id ? null : id);
   }
 
   return (
@@ -52,7 +46,7 @@ export function ProjectTileGrid({
       <div className="home-spaces-grid">
         <button
           type="button"
-          className={`home-space-card${selectedFolderId === null ? " selected" : ""}`}
+          className={`home-space-card${selectedProjectId === null ? " selected" : ""}`}
           onClick={() => pickTile(null)}
           title="All projects in this space"
         >
@@ -69,9 +63,9 @@ export function ProjectTileGrid({
         {vaultCount > 0 && (
           <button
             type="button"
-            className={`home-space-card home-project-tile--vault${selectedFolderId === VAULT ? " selected" : ""}`}
+            className={`home-space-card home-project-tile--vault${selectedProjectId === VAULT ? " selected" : ""}`}
             onClick={() => pickTile(VAULT)}
-            title="Native artefacts created in this space (not from a linked folder)"
+            title="Native artefacts created in this space (not from a project)"
           >
             <div className="home-space-card-name">
               <Shield size={12} strokeWidth={2} fill="currentColor" aria-hidden="true" className="home-project-glyph" />
@@ -84,19 +78,19 @@ export function ProjectTileGrid({
           </button>
         )}
 
-        {sortedSources.map((s) => (
+        {sortedProjects.map((p) => (
           <ProjectTile
-            key={s.id}
-            source={s}
-            artefactCount={folderArtefactCounts[s.id] ?? 0}
-            sessionCounts={sessionCountsBySource[s.id]}
-            selected={selectedFolderId === s.id}
-            onSelect={() => pickTile(s.id)}
-            onSourcesChanged={onSourcesChanged}
-            isLastSource={sources.length === 1}
-            spaceDisplayName={spaceDisplayName}
+            key={p.id}
+            project={p}
+            artefactCount={projectArtefactCounts[p.id] ?? 0}
+            sessionCounts={sessionCountsByProject[p.id]}
+            selected={selectedProjectId === p.id}
+            onSelect={() => pickTile(p.id)}
+            onChanged={onProjectsChanged}
+            isLastProject={projects.length === 1}
             spaceTotalSessions={totalCounts.all}
             onSpaceDelete={onSpaceDelete}
+            otherProjects={sortedProjects.filter((o) => o.id !== p.id)}
           />
         ))}
 
@@ -105,9 +99,9 @@ export function ProjectTileGrid({
           className="home-space-card home-project-tile--add"
           onClick={() => setShowAttachForm(true)}
         >
-          <div className="home-space-card-name">+ Attach folder</div>
+          <div className="home-space-card-name">+ Add project</div>
           <div className="home-space-card-counts">
-            <span className="signal signal-muted">link a repo or folder</span>
+            <span className="signal signal-muted">claim a folder of sessions</span>
           </div>
         </button>
       </div>
@@ -117,7 +111,7 @@ export function ProjectTileGrid({
           spaceId={spaceId}
           onAttached={() => {
             setShowAttachForm(false);
-            onSourcesChanged();
+            onProjectsChanged();
           }}
           onCancel={() => setShowAttachForm(false)}
         />

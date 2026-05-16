@@ -71,8 +71,7 @@ export async function tryHandleArtifactRoute(
           session: {
             id: s.id,
             spaceId: s.space_id,
-            sourceId: s.source_id ?? null,
-            sourceLabel: null,
+            projectId: s.project_id,
             cwd: s.cwd,
             agent: s.agent,
             title: s.title,

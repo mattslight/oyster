@@ -20,20 +20,6 @@ export interface SpaceRow {
   updated_at: string;
 }
 
-export interface Source {
-  id: string;
-  space_id: string;
-  type: "local_folder";
-  path: string;
-  label: string | null;
-  added_at: string;
-  removed_at: string | null;
-  // New field — cross-machine identity, sourced from <path>/.oyster/id.
-  // NULL is valid: the file may not exist yet, the path may not exist on
-  // disk, or a write may have failed. NULL is never imaginary state.
-  portable_id: string | null;
-}
-
 export interface SpaceStore {
   getAll(): SpaceRow[];
   getById(id: string): SpaceRow | undefined;
@@ -41,31 +27,6 @@ export interface SpaceStore {
   insert(row: Omit<SpaceRow, "created_at" | "updated_at" | "sync_dirty_at" | "cloud_synced_at" | "deleted_at">): void;
   update(id: string, fields: Partial<Omit<SpaceRow, "id" | "created_at">>): void;
   delete(id: string): void;
-  // sources
-  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null; portable_id: string | null }): void;
-  softDeleteSource(sourceId: string): void;
-  restoreSource(sourceId: string): void;
-  getSources(spaceId: string, opts?: { includeRemoved?: boolean }): Source[];
-  getSourceById(sourceId: string): Source | undefined;
-  /** Batched lookup for callers that already know the set of ids they need (e.g. resolving sources for a page of artifacts). One SQL roundtrip via WHERE id IN (...). */
-  getSourcesByIds(sourceIds: string[]): Source[];
-  getActiveSourceByPath(path: string): Source | undefined;
-  /** Find the most-specific active source whose `path` is a prefix of `cwd`
-   *  (or equals it). Returns undefined when no source matches. Read-only
-   *  companion to `rebindAutoSessionsForSource` — used by the watcher when
-   *  a new session first appears so it lands under the longest-matching
-   *  source straight away. */
-  getActiveSourceForCwd(cwd: string): Source | undefined;
-  getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined;
-  /** Replace a source's `path` (and/or `label`). No-op if both fields are
-   *  undefined. Callers must canonicalise the path through
-   *  `normaliseSourcePath` and check the partial unique index won't fire
-   *  (`getActiveSourceByPath` returning a different id) BEFORE calling — the
-   *  store enforces neither, it just runs the UPDATE. */
-  updateSource(sourceId: string, fields: { path?: string; label?: string | null }): void;
-  /** Single-row UPDATE of `sources.portable_id`. No cascade. Never touches
-   *  sessions or artifacts — they FK to `sources.id`, which is unchanged. */
-  updatePortableId(sourceId: string, portableId: string | null): void;
   /** Soft-delete a space. Sets deleted_at to the provided timestamp (or
    *  Date.now()). Idempotent — re-call on an already-deleted row is a no-op
    *  (preserves the original deleted_at). When applying a cross-device
@@ -104,16 +65,6 @@ export class SqliteSpaceStore implements SpaceStore {
     getById: Database.Statement;
     getByDisplayName: Database.Statement;
     insert: Database.Statement;
-    addSource: Database.Statement;
-    softDeleteSource: Database.Statement;
-    restoreSource: Database.Statement;
-    getSourcesActive: Database.Statement;
-    getSourcesAll: Database.Statement;
-    getSourceById: Database.Statement;
-    getActiveSourceByPath: Database.Statement;
-    getActiveSourceForCwd: Database.Statement;
-    getSoftDeletedSourceByPathForSpace: Database.Statement;
-    updatePortableId: Database.Statement;
     softDelete: Database.Statement;
     markSyncDirty: Database.Statement;
     getDirtyRows: Database.Statement;
@@ -139,46 +90,6 @@ export class SqliteSpaceStore implements SpaceStore {
           @ai_job_status, @ai_job_error, @summary_title, @summary_content
         )
       `),
-      addSource: db.prepare(`
-        INSERT INTO sources (id, space_id, type, path, label, portable_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `),
-      softDeleteSource: db.prepare("UPDATE sources SET removed_at = datetime('now') WHERE id = ? AND removed_at IS NULL"),
-      restoreSource: db.prepare("UPDATE sources SET removed_at = NULL WHERE id = ?"),
-      getSourcesActive: db.prepare("SELECT * FROM sources WHERE space_id = ? AND removed_at IS NULL ORDER BY added_at"),
-      getSourcesAll: db.prepare("SELECT * FROM sources WHERE space_id = ? ORDER BY added_at"),
-      getSourceById: db.prepare("SELECT * FROM sources WHERE id = ?"),
-      getActiveSourceByPath: db.prepare("SELECT * FROM sources WHERE path = ? AND removed_at IS NULL"),
-      // Longest-prefix lookup. ORDER BY length(path) DESC means a session
-      // whose cwd matches both `~/Oyster` and `~/Oyster/web` lands under
-      // the more specific source. Comparison is literal substr-based, not
-      // LIKE: SQL LIKE treats `_` and `%` as wildcards, and `_` shows up
-      // in nearly every codebase (`node_modules`, `my_repo`, …) — using
-      // LIKE here would silently mis-bind. The trailing-`/` substr check
-      // anchors at a directory boundary so `~/Oyster` doesn't capture a
-      // cwd of `~/Oyster-old`.
-      //
-      // Root-path special case: when `path` itself ends with `/` (POSIX
-      // root `/`, Windows drive root `C:/`), the boundary is already
-      // anchored by the path's own trailing separator — there's no extra
-      // `/` after the prefix in the cwd to find. Without this branch a
-      // root source could never bind any of its descendants.
-      getActiveSourceForCwd: db.prepare(
-        `SELECT * FROM sources
-          WHERE removed_at IS NULL
-            AND (
-              @cwd = path
-              OR (substr(@cwd, 1, length(path)) = path
-                  AND (substr(path, length(path), 1) = '/'
-                       OR substr(@cwd, length(path) + 1, 1) = '/'))
-            )
-          ORDER BY length(path) DESC
-          LIMIT 1`,
-      ),
-      getSoftDeletedSourceByPathForSpace: db.prepare(
-        "SELECT * FROM sources WHERE space_id = ? AND path = ? AND removed_at IS NOT NULL ORDER BY added_at DESC LIMIT 1"
-      ),
-      updatePortableId: db.prepare("UPDATE sources SET portable_id = ? WHERE id = ?"),
       softDelete: db.prepare("UPDATE spaces SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL"),
       markSyncDirty: db.prepare("UPDATE spaces SET sync_dirty_at = ? WHERE id = ?"),
       getDirtyRows: db.prepare(`
@@ -204,47 +115,8 @@ export class SqliteSpaceStore implements SpaceStore {
     this.stmts.insert.run(row);
   }
   delete(id: string): void {
-    // Cascade: sources.space_id ON DELETE CASCADE → sources rows hard-deleted,
-    // which fires artifacts.source_id ON DELETE SET NULL on their artifacts.
     this.db.prepare("DELETE FROM space_paths WHERE space_id = ?").run(id);
     this.db.prepare("DELETE FROM spaces WHERE id = ?").run(id);
-  }
-
-  addSource(args: { id: string; space_id: string; type: Source["type"]; path: string; label?: string | null; portable_id: string | null }): void {
-    this.stmts.addSource.run(args.id, args.space_id, args.type, args.path, args.label ?? null, args.portable_id);
-  }
-  softDeleteSource(sourceId: string): void { this.stmts.softDeleteSource.run(sourceId); }
-  restoreSource(sourceId: string): void { this.stmts.restoreSource.run(sourceId); }
-  getSources(spaceId: string, opts?: { includeRemoved?: boolean }): Source[] {
-    const stmt = opts?.includeRemoved ? this.stmts.getSourcesAll : this.stmts.getSourcesActive;
-    return stmt.all(spaceId) as Source[];
-  }
-  getSourceById(sourceId: string): Source | undefined { return this.stmts.getSourceById.get(sourceId) as Source | undefined; }
-  getSourcesByIds(sourceIds: string[]): Source[] {
-    if (sourceIds.length === 0) return [];
-    // Dynamic placeholder list — better-sqlite3 has no native array binding,
-    // and we'd rather one prepared statement per call than N getById hits.
-    const placeholders = sourceIds.map(() => "?").join(",");
-    return this.db.prepare(`SELECT * FROM sources WHERE id IN (${placeholders})`).all(...sourceIds) as Source[];
-  }
-  getActiveSourceByPath(path: string): Source | undefined { return this.stmts.getActiveSourceByPath.get(path) as Source | undefined; }
-  getActiveSourceForCwd(cwd: string): Source | undefined {
-    return this.stmts.getActiveSourceForCwd.get({ cwd }) as Source | undefined;
-  }
-  getSoftDeletedSourceByPathForSpace(spaceId: string, path: string): Source | undefined {
-    return this.stmts.getSoftDeletedSourceByPathForSpace.get(spaceId, path) as Source | undefined;
-  }
-  updateSource(sourceId: string, fields: { path?: string; label?: string | null }): void {
-    const sets: string[] = [];
-    const values: unknown[] = [];
-    if (fields.path !== undefined) { sets.push("path = ?"); values.push(fields.path); }
-    if (fields.label !== undefined) { sets.push("label = ?"); values.push(fields.label); }
-    if (sets.length === 0) return;
-    values.push(sourceId);
-    this.db.prepare(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`).run(...values);
-  }
-  updatePortableId(sourceId: string, portableId: string | null): void {
-    this.stmts.updatePortableId.run(portableId, sourceId);
   }
 
   transaction<T>(fn: () => T): T {

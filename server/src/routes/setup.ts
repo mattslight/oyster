@@ -15,12 +15,14 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SpaceService } from "../space-service.js";
+import type { ProjectService } from "../project-service.js";
 import type { UiCommand, SetupApplyResult } from "../../../shared/types.js";
 import type { RouteCtx } from "../http-utils.js";
 import { slugify } from "../utils.js";
 
 export interface SetupRouteDeps {
   spaceService: SpaceService;
+  projectService: ProjectService;
   /** Broadcasts SSE so connected clients refetch the spaces / artefacts
    *  surface after batch-create. The panel itself also closes locally
    *  when apply succeeds; the broadcast is for any other open tabs. */
@@ -71,7 +73,7 @@ export async function tryHandleSetupRoute(
   deps: SetupRouteDeps,
 ): Promise<boolean> {
   const { sendJson, readJsonBody, rejectIfNonLocalOrigin } = ctx;
-  const { spaceService, broadcastUiEvent } = deps;
+  const { spaceService, projectService, broadcastUiEvent } = deps;
 
   if (url !== "/api/setup/apply" || req.method !== "POST") return false;
   if (rejectIfNonLocalOrigin()) return true;
@@ -143,34 +145,22 @@ export async function tryHandleSetupRoute(
     let anyAttached = false;
     for (const p of wanted.paths) {
       try {
-        spaceService.addSource(space.id, p);
+        projectService.attachFolder({ spaceId: space.id, path: p });
         pathReports.push({ path: p, status: "attached" });
         anyAttached = true;
       } catch (err) {
-        const msg = (err as Error).message;
-        const ownedElsewhere = /already attached/i.test(msg);
-        pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
+        pathReports.push({ path: p, status: "failed", error: (err as Error).message });
       }
     }
 
     if (anyAttached) {
-      // addSource backfills orphan sessions whose cwd matches the attached
-      // folder. Other attach flows broadcast `session_changed` so connected
-      // clients re-attribute those sessions immediately; without this here,
-      // newly-claimed sessions stay under Elsewhere until polling catches up.
+      // attachFolder claims orphan sessions whose cwd matches. Broadcast
+      // so other open tabs re-attribute those sessions immediately rather
+      // than waiting for the next watcher tick.
       broadcastUiEvent({
         version: 1,
         command: "session_changed",
         payload: { id: null, reason: "setup_apply" },
-      });
-
-      // Fire-and-forget scan. The user-facing attach-folder route does the
-      // same thing for the same reason: a serial await on every space's
-      // scan blocks the apply response and is much more likely to hit
-      // client/proxy timeouts on multi-space applies with large repos.
-      void spaceService.scanSpace(space.id).catch(() => {
-        // Scan failure isn't fatal — the space + sources exist; user can
-        // re-trigger via a manual scan.
       });
     }
 

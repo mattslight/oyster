@@ -37,12 +37,12 @@ export interface Artifact {
   plugin?: boolean;
   /** For plugin artifacts: the folder-name id under ~/.oyster/userland/ (e.g. "pomodoro"). Used by Uninstall since `id` is a UUID that doesn't map to a directory. */
   pluginId?: string;
-  /** Display label for the linked source folder (e.g. "oyster-os" — the leaf basename of the source path). Set when `artifacts.source_id` is non-null. Absolute paths intentionally stay server-side; full-path drilldown is a separate, locally-gated endpoint. Drives the "↗" provenance glyph and its tooltip. */
-  sourceLabel?: string | null;
-  /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan / linked source. `ai_generated` — produced by an agent. Drives the source filter on Home. */
+  /** Where the artefact originated. `manual` — user created it directly. `discovered` — surfaced by a folder scan. `ai_generated` — produced by an agent. */
   sourceOrigin?: "manual" | "discovered" | "ai_generated";
-  /** ID of the linked source folder this artefact came from. Null/undefined for native artefacts (manual / ai_generated). Drives per-folder filtering on the project-tile grid. */
-  sourceId?: string | null;
+  /** Project this artefact belongs to. Column exists; auto-population
+   *  on create/register is a follow-up — today the only writer is the
+   *  PATCH /api/artifacts/:id route (manual assignment). NULL until set. */
+  projectId?: string | null;
   /** Cloud publication state for this artefact. Omitted entirely when no
    *  share token has ever been minted. When present with `unpublishedAt: null`
    *  the artefact is currently public; when `unpublishedAt` is non-null the
@@ -86,15 +86,10 @@ export type SessionAgent = "claude-code" | "opencode" | "codex";
 export interface Session {
   id: string;
   spaceId: string | null;
-  /** Source (project / linked folder) within the space, when the session's
-   * cwd matched a registered source. Null for sessions in unattached cwds
-   * and for native (non-source-backed) work. */
-  sourceId: string | null;
-  /** Display label of the source — `source.label ?? basename(source.path)`.
-   * Resolved server-side via a batched join so the Home active-projects
-   * tiles don't need a per-row lookup. Null when sourceId is null or
-   * (rare) when the source has been hard-deleted. */
-  sourceLabel: string | null;
+  /** Project this session is bound to (post-rewrite identity model).
+   * Resolved by the watcher via `<cwd>/.oyster/id`, or by an explicit
+   * claim_orphan call. Null = orphan. */
+  projectId: string | null;
   /** Original working directory captured by the watcher. Persisted so
    * the UI can rebuild the resume command (`cd <cwd> && claude
    * --resume <id>`) and label orphan sessions whose cwd doesn't match
@@ -188,18 +183,6 @@ export interface SessionArtifactJoined extends SessionArtifact {
 /** API response shape: a SessionArtifact joined with its Session row (used by /api/artifacts/:id/sessions). */
 export interface SessionJoinedForArtifact extends SessionArtifact {
   session: Session;
-}
-
-export interface Source {
-  id: string;
-  space_id: string;
-  type: "local_folder";
-  path: string;
-  label: string | null;
-  // New field — cross-machine identity, sourced from <path>/.oyster/id.
-  // NULL is valid: the file may not exist yet, the path may not exist on
-  // disk, or a write may have failed. NULL is never imaginary state.
-  portable_id: string | null;
 }
 
 export interface Space {

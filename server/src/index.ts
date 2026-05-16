@@ -15,6 +15,7 @@ import {
 } from "./process-manager.js";
 import Database from "better-sqlite3";
 import { acquireLock, AlreadyRunningError, releaseLock, setLockPort } from "./single-instance-lock.js";
+import { lookupProject } from "./lookup-project.js";
 import { initDb } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
 import { SqliteSessionStore } from "./session-store.js";
@@ -28,6 +29,8 @@ import { makeRouteCtx } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
+import { tryHandleProjectsRoute } from "./routes/projects.js";
+import { ProjectService } from "./project-service.js";
 import { tryHandleSetupRoute } from "./routes/setup.js";
 import { tryHandleMemoryRoute } from "./routes/memories.js";
 import { tryHandleAuthRoute } from "./routes/auth.js";
@@ -67,7 +70,6 @@ import { attachWebSocket } from "./pty-manager.js";
 import { SqliteFtsMemoryProvider } from "./memory-store.js";
 import { AuthService } from "./auth-service.js";
 import { bootMark, bootTime, bootTimeAsync } from "./boot-timer.js";
-import { backfillPortableIds } from "./oyster-id-migration.js";
 
 bootMark("imports loaded");
 
@@ -267,7 +269,6 @@ delete cleanEnv["OPENAI_API_KEY"];
 // ── Artifact store ──
 
 const db = bootTime("initDb (migrations)", () => initDb(DB_DIR));
-backfillPortableIds(db);
 const store = new SqliteArtifactStore(db);
 const spaceStore = new SqliteSpaceStore(db);
 const sessionStore = new SqliteSessionStore(db);
@@ -287,8 +288,8 @@ const VIEWER_BASE = process.env.OYSTER_VIEWER_BASE
 
 // artifactService reads the dedicated icons dir at `<root>/icons/<id>/icon.png`
 // — that lives at OYSTER_HOME root (URL-addressable via /artifacts/icons/...),
-// not inside DB_DIR. spaceStore is passed in so rowToArtifact can resolve the
-// linked-source path for tiles whose `source_id` is non-null.
+// not inside DB_DIR. spaceStore is passed in so the service can enumerate
+// local spaces when filtering cloud-only publications.
 const artifactService = new ArtifactService(store, WORKER_BASE, VIEWER_BASE, OYSTER_HOME, spaceStore);
 
 const memoryProvider = new SqliteFtsMemoryProvider(DB_DIR);
@@ -552,11 +553,9 @@ const sessionSnapshotHandle = setInterval(() => {
 }, SESSION_SNAPSHOT_INTERVAL_MS);
 sessionSnapshotHandle.unref();
 
-const spaceService = new SpaceService(
-  spaceStore, store, artifactService, sessionStore, spaceSync,
-  (command, payload) => broadcastUiEvent({ version: 1, command, payload }),
-);
-const sessionService = new SessionService(db, sessionStore, spaceStore);
+const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
+const projectService = new ProjectService(db);
+const sessionService = new SessionService(db, sessionStore);
 const publishService = createPublishService({
   db,
   readArtifactBytes: async (artifactId) => {
@@ -782,16 +781,22 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     clearSeenArtifact, OYSTER_HOME, APPS_DIR, SPACES_DIR, publishService,
   })) return;
 
+  // /api/projects/* — projects identity surface (replaces /api/spaces/:id/sources*
+  // during the sources→projects cut).
+  if (await tryHandleProjectsRoute(req, res, url, ctx, {
+    projectService, broadcastUiEvent,
+  })) return;
+
   // /api/spaces/* — collapsed from the legacy spaces-routes.ts and the
   // inline /api/spaces/:id/sources* + /api/spaces/from-path handlers.
   if (await tryHandleSpaceRoute(req, res, url, ctx, {
-    spaceService, broadcastUiEvent,
+    spaceService, projectService, broadcastUiEvent,
   })) return;
 
   // /api/setup/apply — fans the user's confirmed SetupProposal out to
-  // onboard_space. Triggered by the SetupProposalPanel's Apply button.
+  // createSpace + attachFolder. Triggered by the SetupProposalPanel's Apply button.
   if (await tryHandleSetupRoute(req, res, url, ctx, {
-    spaceService, broadcastUiEvent,
+    spaceService, projectService, broadcastUiEvent,
   })) return;
 
   // /api/memories
@@ -820,7 +825,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   // and the OAuth discovery + redirect URLs must advertise the real port.
   if (await tryHandleOAuthMcpRoute(req, res, url, ctx, {
     port,
-    store, artifactService, spaceService, sessionService, memoryProvider,
+    store, artifactService, spaceService, projectService, sessionService, memoryProvider,
     sessionStore, pendingReveals, broadcastUiEvent,
     userlandDir: USERLAND_DIR,
     getNativeSourcePath,
@@ -1114,8 +1119,8 @@ httpServer.listen(port, "127.0.0.1", () => {
 
   const claudeCodeWatcher = new ClaudeCodeWatcher({
     sessionStore,
-    spaceStore,
     artifactStore: store,
+    lookupProject: (cwd) => lookupProject(db, cwd),
     emitSessionChanged: (id) => {
       broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
       // Cross-device session sync (#322): every session-row change marks the

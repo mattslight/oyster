@@ -3,7 +3,7 @@
 // See docs/superpowers/specs/2026-05-15-oyster-id-portable-identity-design.md
 // for the design rationale, invariants, and error-handling matrix.
 
-import { readFileSync, statSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { readFileSync, statSync, existsSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 // Matches the canonical lowercase UUID shape (8-4-4-4-12 hex). Note that
@@ -71,6 +71,14 @@ export function writeOysterId(root: string, id: string): void {
     // Defensive: callers shouldn't pass garbage but if they do we
     // refuse rather than write invalid disk state.
     throw new Error(`writeOysterId: refusing to write non-UUID value: ${id}`);
+  }
+  // Refuse to materialise the root. Without this, the lookup-project
+  // cache fallback resurrects deleted folders on every restart (mkdir
+  // recursive: true creates the parent just to drop a marker inside).
+  // The marker rides along with a real folder; the caller (lookupProject,
+  // attachFolder) catches this throw and degrades gracefully.
+  if (!existsSync(root)) {
+    throw new Error(`writeOysterId: folder does not exist: ${root}`);
   }
   const oysterPath = join(root, OYSTER_DIR);
   mkdirSync(oysterPath, { recursive: true });

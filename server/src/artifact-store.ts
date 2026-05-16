@@ -16,7 +16,7 @@ export interface ArtifactRow {
   removed_at: string | null;
   source_origin: "manual" | "discovered" | "ai_generated";
   source_ref: string | null;   // e.g. 'web/:app', 'README.md:notes'
-  source_id: string | null;    // FK to sources.id; NULL = not from a linked external source
+  project_id: string | null;   // FK to projects.id; NULL = not yet bound to a project
   created_at: string;
   updated_at: string;
   share_token: string | null;
@@ -30,10 +30,10 @@ export interface ArtifactRow {
 
 // ── Store interface ──
 
-export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "source_id" | "share_token" | "share_mode" | "share_password_hash" | "published_at" | "share_updated_at" | "unpublished_at" | "pinned_at"> & {
+export type InsertRow = Omit<ArtifactRow, "created_at" | "updated_at" | "removed_at" | "source_origin" | "source_ref" | "project_id" | "share_token" | "share_mode" | "share_password_hash" | "published_at" | "share_updated_at" | "unpublished_at" | "pinned_at"> & {
   source_origin?: "manual" | "discovered" | "ai_generated";
   source_ref?: string | null;
-  source_id?: string | null;
+  project_id?: string | null;
 };
 
 export interface ArtifactStore {
@@ -47,12 +47,6 @@ export interface ArtifactStore {
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void;
   resurface(id: string): void;
   remove(id: string): void;
-  removeBySourceId(sourceId: string): number;
-  /** Bulk-move every live artifact from one source to another, updating
-   *  source_id and space_id. Used by SpaceService.consolidateSource. */
-  reassignBySourceId(fromSourceId: string, toSourceId: string, toSpaceId: string): number;
-  /** Count of live (non-removed) artifacts bound to a source. */
-  countLiveBySource(sourceId: string): number;
   delete(id: string): void;
   pin(id: string, pinnedAt: number): void;
   unpin(id: string): void;
@@ -88,11 +82,11 @@ export class SqliteArtifactStore implements ArtifactStore {
         INSERT INTO artifacts (
           id, owner_id, space_id, label, artifact_kind,
           storage_kind, storage_config, runtime_kind, runtime_config,
-          group_name, source_origin, source_ref, source_id
+          group_name, source_origin, source_ref, project_id
         ) VALUES (
           @id, @owner_id, @space_id, @label, @artifact_kind,
           @storage_kind, @storage_config, @runtime_kind, @runtime_config,
-          @group_name, COALESCE(@source_origin, 'manual'), @source_ref, @source_id
+          @group_name, COALESCE(@source_origin, 'manual'), @source_ref, @project_id
         )
       `),
       delete: db.prepare("DELETE FROM artifacts WHERE id = ?"),
@@ -124,7 +118,7 @@ export class SqliteArtifactStore implements ArtifactStore {
   }
 
   insert(row: InsertRow): void {
-    this.stmts.insert.run({ source_id: null, ...row });
+    this.stmts.insert.run({ project_id: null, ...row });
   }
 
   resurface(id: string): void {
@@ -136,7 +130,7 @@ export class SqliteArtifactStore implements ArtifactStore {
   private static readonly UPDATABLE_COLUMNS = new Set([
     "owner_id", "space_id", "label", "artifact_kind",
     "storage_kind", "storage_config", "runtime_kind", "runtime_config",
-    "group_name", "removed_at", "source_origin", "source_ref", "source_id",
+    "group_name", "removed_at", "source_origin", "source_ref", "project_id",
   ]);
 
   update(id: string, fields: Partial<Omit<ArtifactRow, "id" | "created_at">>): void {
@@ -165,29 +159,6 @@ export class SqliteArtifactStore implements ArtifactStore {
 
   unpin(id: string): void {
     this.db.prepare("UPDATE artifacts SET pinned_at = NULL, updated_at = datetime('now') WHERE id = ?").run(id);
-  }
-
-  // Bulk soft-delete every live artifact tied to a given source. Used by the
-  // detach cascade in artifact-service.removeBySource().
-  removeBySourceId(sourceId: string): number {
-    const info = this.db.prepare(
-      "UPDATE artifacts SET removed_at = datetime('now') WHERE source_id = ? AND removed_at IS NULL"
-    ).run(sourceId);
-    return info.changes;
-  }
-
-  reassignBySourceId(fromSourceId: string, toSourceId: string, toSpaceId: string): number {
-    const info = this.db.prepare(
-      "UPDATE artifacts SET source_id = ?, space_id = ?, updated_at = datetime('now') WHERE source_id = ? AND removed_at IS NULL"
-    ).run(toSourceId, toSpaceId, fromSourceId);
-    return info.changes;
-  }
-
-  countLiveBySource(sourceId: string): number {
-    const row = this.db
-      .prepare("SELECT COUNT(*) AS c FROM artifacts WHERE source_id = ? AND removed_at IS NULL")
-      .get(sourceId) as { c: number } | undefined;
-    return row?.c ?? 0;
   }
 
   // All rows that have been soft-deleted — newest first, for the Archived view.

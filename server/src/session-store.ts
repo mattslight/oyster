@@ -22,7 +22,9 @@ export type SessionArtifactRole = "create" | "modify" | "read";
 export interface SessionRow {
   id: string;
   space_id: string | null;
-  source_id: string | null;
+  /** Set by the watcher at ingest by reading `<cwd>/.oyster/id`; or
+   *  explicitly via move_session / claim_orphan. NULL = orphan. */
+  project_id: string | null;
   cwd: string | null;
   /** Absolute on-disk path to the jsonl. NULL on rows that pre-date this
    *  column (back-compat) — pushBytes falls back to computing from cwd in
@@ -35,9 +37,9 @@ export interface SessionRow {
   ended_at: string | null;
   model: string | null;
   last_event_at: string;
-  /** Who owns the (space_id, source_id) classification. `'auto'` is open to
-   *  heuristic improvement as sources change; `'manual'` is pinned by the
-   *  user / an MCP-driven agent and is never overwritten by the heuristic. */
+  /** Who owns the (space_id, project_id) classification. `'auto'` lets the
+   *  watcher refresh on each ingest; `'manual'` is pinned by the user (or
+   *  an MCP-driven move_session) and is never overwritten by the watcher. */
   assignment_mode: AssignmentMode;
 }
 
@@ -78,7 +80,9 @@ export interface SessionEventSearchHit {
 export interface InsertSession {
   id: string;
   space_id: string | null;
-  source_id?: string | null;
+  /** Project this session belongs to, resolved by the watcher via
+   *  `<cwd>/.oyster/id`. NULL when the folder has no marker or is gone. */
+  project_id?: string | null;
   cwd?: string | null;
   /** Absolute path to the jsonl file on disk. The watcher knows this from
    *  its chokidar events; passing it on every upsert lets pushBytes locate
@@ -122,38 +126,6 @@ export interface SessionStore {
   upsertSession(row: InsertSession): void;
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void;
   updateSession(id: string, fields: Partial<Omit<SessionRow, "id" | "started_at">>): void;
-  /** Bind every `assignment_mode = 'auto'` session whose `cwd` is matched
-   *  by `path` (exact or proper subdirectory, compared literally via
-   *  substr — no LIKE-wildcard semantics) to this source, unless a
-   *  different active source has a strictly longer matching path, in
-   *  which case the longer source wins. Idempotent. Returns the number
-   *  of rows updated. Manual rows are immune. Already-bound auto rows
-   *  may be moved to a more specific source (the "improve" case) but
-   *  are never demoted to a less specific one. */
-  rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number;
-  /** Find up to `limit` candidate session ids that need rebinding to this
-   *  (space, source, path) under the longest-prefix rule. Excludes rows
-   *  already correctly bound. Returns ids in stable order; caller pages
-   *  through batches. Uses the indexable range form of the prefix predicate
-   *  so this stays fast on big DBs (substr() in the single-shot
-   *  rebindAutoSessionsForSource is unindexable). */
-  findAutoSessionsToRebind(spaceId: string, sourceId: string, path: string, limit: number): string[];
-  /** Bulk-apply the (space, source) binding to a list of session ids.
-   *  No scanning — PK update. Pair with findAutoSessionsToRebind. */
-  rebindSessionsByIds(spaceId: string, sourceId: string, ids: string[]): number;
-  /** Null out `source_id` on every session pointing at this source. Used by
-   *  `removeSource` to keep the binding consistent after a soft-delete —
-   *  the FK ON DELETE SET NULL never fires because the source row stays in
-   *  the table. `assignment_mode` is left as-is so a manual-pinned session
-   *  whose source vanishes becomes orphan-but-frozen (the user can choose
-   *  "Let Oyster decide" to recompute). */
-  detachSourceFromSessions(sourceId: string): number;
-  /** Bulk re-point every session bound to `fromSourceId` onto `toSourceId`,
-   *  setting space_id to the target's space. Used by consolidateSource. */
-  reassignSourceForSessions(fromSourceId: string, toSourceId: string, toSpaceId: string): number;
-  /** Count of sessions currently bound to a source. For the consolidate
-   *  preview dialog so the user sees how many rows will move. */
-  countBySource(sourceId: string): number;
   // session_events — bulk-friendly
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
@@ -216,9 +188,9 @@ export class SqliteSessionStore implements SessionStore {
         LIMIT 1
       `),
       insertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
+        INSERT INTO sessions (id, space_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
-          @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
+          @id, @space_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now')),
@@ -236,9 +208,9 @@ export class SqliteSessionStore implements SessionStore {
       // reconcileExistingFile), so the overwrite here keeps the column
       // shape consistent across rows.
       upsertSession: db.prepare(`
-        INSERT INTO sessions (id, space_id, source_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
+        INSERT INTO sessions (id, space_id, project_id, cwd, jsonl_path, agent, title, state, started_at, model, last_event_at, assignment_mode)
         VALUES (
-          @id, @space_id, @source_id, @cwd, @jsonl_path, @agent, @title, @state,
+          @id, @space_id, @project_id, @cwd, @jsonl_path, @agent, @title, @state,
           COALESCE(@started_at, datetime('now')),
           @model,
           COALESCE(@last_event_at, datetime('now')),
@@ -246,11 +218,23 @@ export class SqliteSessionStore implements SessionStore {
         )
         ON CONFLICT(id) DO UPDATE SET
           -- Watcher upserts NEVER overwrite the user's manual classification.
-          -- For 'auto' rows we let the watcher refresh space/source from the
-          -- latest cwd resolution; for 'manual' rows the user pinned it, so
-          -- the existing values stay.
-          space_id      = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.space_id ELSE excluded.space_id END,
-          source_id     = CASE WHEN sessions.assignment_mode = 'manual' THEN sessions.source_id ELSE excluded.source_id END,
+          -- For 'auto' rows we refresh from the watcher's latest lookup —
+          -- BUT only when the new value is non-null. A NULL from lookupProject
+          -- means "I couldn't resolve a binding right now" (no .oyster/id,
+          -- no cache row), NOT "this session is now an orphan". Clobbering
+          -- a previously-bound row with NULL on every boot scan was the
+          -- source of post-restart session orphaning + the duplicate-project
+          -- footgun (user re-attaches → new project).
+          space_id      = CASE
+            WHEN sessions.assignment_mode = 'manual' THEN sessions.space_id
+            WHEN excluded.space_id IS NOT NULL THEN excluded.space_id
+            ELSE sessions.space_id
+          END,
+          project_id    = CASE
+            WHEN sessions.assignment_mode = 'manual' THEN sessions.project_id
+            WHEN excluded.project_id IS NOT NULL THEN excluded.project_id
+            ELSE sessions.project_id
+          END,
           cwd           = COALESCE(excluded.cwd, sessions.cwd),
           -- jsonl_path: prefer the new value when the watcher knows where
           -- the file is. The watcher always passes the real path on every
@@ -334,7 +318,7 @@ export class SqliteSessionStore implements SessionStore {
       started_at: null,
       model: null,
       last_event_at: null,
-      source_id: null,
+      project_id: null,
       cwd: null,
       jsonl_path: null,
       assignment_mode: "auto",
@@ -348,7 +332,7 @@ export class SqliteSessionStore implements SessionStore {
       started_at: null,
       model: null,
       last_event_at: null,
-      source_id: null,
+      project_id: null,
       cwd: null,
       jsonl_path: null,
       assignment_mode: "auto",
@@ -361,7 +345,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   private static readonly UPDATABLE_SESSION_COLUMNS = new Set([
-    "space_id", "source_id", "cwd", "title", "state", "ended_at", "model", "last_event_at", "assignment_mode",
+    "space_id", "project_id", "cwd", "title", "state", "ended_at", "model", "last_event_at", "assignment_mode",
   ]);
 
   updateSession(
@@ -377,151 +361,6 @@ export class SqliteSessionStore implements SessionStore {
     }
     if (sets.length === 0) return;
     this.db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = @id`).run(values);
-  }
-
-  // Find up to `limit` auto-mode sessions that should bind to (spaceId,
-  // sourceId) under the longest-prefix rule, excluding rows already correctly
-  // bound. The outer prefix check is rewritten as a range scan on `cwd` so
-  // SQLite uses the partial index `sessions_auto_cwd` (db.ts) — substr() is
-  // unindexable and turned the legacy single UPDATE into a full table scan
-  // (15s+ on big DBs, which is exactly the timeout users hit when attaching).
-  // Inner NOT EXISTS still uses substr against `sources.path` because that
-  // table is small (handful of rows) and the outer set is already narrowed.
-  findAutoSessionsToRebind(
-    spaceId: string,
-    sourceId: string,
-    path: string,
-    limit: number,
-  ): string[] {
-    // Range bounds for "cwd starts with path[+'/']". '/' is 0x2F, '0' is 0x30,
-    // so [path||'/', path||'0') is exactly "starts with path+'/'".
-    // Root paths (ending in '/') need the trailing slash dropped before the
-    // upper-bound replace so '/' becomes '0', not '/0'.
-    const isRoot = path.endsWith("/");
-    const lower = isRoot ? path : path + "/";
-    const upper = isRoot ? path.slice(0, -1) + "0" : path + "0";
-    const rows = this.db.prepare(
-      `SELECT s.id FROM sessions s
-        WHERE s.assignment_mode = 'auto'
-          AND s.cwd IS NOT NULL
-          AND (s.cwd = @path OR (s.cwd >= @lower AND s.cwd < @upper))
-          AND (s.source_id IS NULL OR s.source_id <> @source_id)
-          AND NOT EXISTS (
-            SELECT 1 FROM sources t
-             WHERE t.removed_at IS NULL
-               AND t.id <> @source_id
-               AND length(t.path) > length(@path)
-               AND (
-                 s.cwd = t.path
-                 OR (substr(s.cwd, 1, length(t.path)) = t.path
-                     AND (substr(t.path, length(t.path), 1) = '/'
-                          OR substr(s.cwd, length(t.path) + 1, 1) = '/'))
-               )
-          )
-        ORDER BY s.id
-        LIMIT @limit`,
-    ).all({ path, lower, upper, source_id: sourceId, limit }) as Array<{ id: string }>;
-    return rows.map((r) => r.id);
-  }
-
-  // Bulk-apply a (spaceId, sourceId) binding to the given session ids. Pure
-  // primary-key UPDATE, no scanning. Caller is expected to have produced the
-  // ids via findAutoSessionsToRebind in the same logical batch.
-  rebindSessionsByIds(spaceId: string, sourceId: string, ids: string[]): number {
-    if (ids.length === 0) return 0;
-    const placeholders = ids.map(() => "?").join(",");
-    const info = this.db.prepare(
-      `UPDATE sessions
-          SET space_id = ?, source_id = ?
-        WHERE id IN (${placeholders})`,
-    ).run(spaceId, sourceId, ...ids);
-    return Number(info.changes);
-  }
-
-  rebindAutoSessionsForSource(spaceId: string, sourceId: string, path: string): number {
-    // Longest-prefix rebind. Touches `assignment_mode = 'auto'` rows only.
-    //
-    // Match condition: `cwd == path` (exact) OR `cwd` starts with
-    // `path + '/'`. Comparison is via `substr()` rather than `LIKE`
-    // because SQL LIKE treats `_` and `%` as wildcards, and `_` is
-    // unavoidable in real-world paths (`node_modules`, `my_repo`,
-    // snake-case directories generally) — LIKE would silently mis-bind
-    // wherever a path contains those characters. The substr form is
-    // literal and cheap.
-    //
-    // The NOT EXISTS clause makes longest-prefix work both ways:
-    //   - Orphan auto rows whose cwd matches this source bind here.
-    //   - Auto rows currently bound to a *less specific* source move up
-    //     to this one (the "improve" case — e.g. session was bound to
-    //     `~/Oyster` when only that source existed; now `~/Oyster/web`
-    //     is attached and the session's cwd is `~/Oyster/web/src`).
-    //   - Auto rows bound to a more specific source are never demoted —
-    //     NOT EXISTS finds the longer match and the row is skipped.
-    //   - Manual rows are immune via the assignment_mode filter.
-    // Root-path special case: when the path itself ends in `/` (POSIX
-    // root `/`, Windows drive root `C:/`) the trailing slash IS the
-    // boundary, so we don't need a second `/` in the cwd after the
-    // prefix. Without this branch a root source could never bind any
-    // of its descendants.
-    const info = this.db
-      .prepare(
-        `UPDATE sessions
-            SET space_id = @space_id, source_id = @source_id
-          WHERE assignment_mode = 'auto'
-            AND cwd IS NOT NULL
-            AND (
-              cwd = @path
-              OR (substr(cwd, 1, length(@path)) = @path
-                  AND (substr(@path, length(@path), 1) = '/'
-                       OR substr(cwd, length(@path) + 1, 1) = '/'))
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM sources s
-               WHERE s.removed_at IS NULL
-                 AND s.id <> @source_id
-                 AND length(s.path) > length(@path)
-                 AND (
-                   sessions.cwd = s.path
-                   OR (substr(sessions.cwd, 1, length(s.path)) = s.path
-                       AND (substr(s.path, length(s.path), 1) = '/'
-                            OR substr(sessions.cwd, length(s.path) + 1, 1) = '/'))
-                 )
-            )`,
-      )
-      .run({ space_id: spaceId, source_id: sourceId, path });
-    return Number(info.changes);
-  }
-
-  detachSourceFromSessions(sourceId: string): number {
-    // Soft-delete-aware detach companion: removeSource only flips
-    // `sources.removed_at`, so the FK ON DELETE SET NULL never fires.
-    // Without this update, `sessions.source_id` keeps pointing at a
-    // soft-deleted row — silently broken state. Mode is left as-is so a
-    // manually-pinned session whose source vanishes stays manual; the user
-    // can run "Let Oyster decide" to recompute via the heuristic.
-    const info = this.db
-      .prepare("UPDATE sessions SET source_id = NULL WHERE source_id = ?")
-      .run(sourceId);
-    return Number(info.changes);
-  }
-
-  countBySource(sourceId: string): number {
-    const row = this.db
-      .prepare("SELECT COUNT(*) AS c FROM sessions WHERE source_id = ?")
-      .get(sourceId) as { c: number } | undefined;
-    return row?.c ?? 0;
-  }
-
-  reassignSourceForSessions(fromSourceId: string, toSourceId: string, toSpaceId: string): number {
-    // Bulk-move every session bound to source A onto source B. Used by
-    // SpaceService.consolidateSource when the user merges two folder tiles
-    // (e.g. after a rename created duplicate sources). Preserves
-    // assignment_mode — a manually-pinned session on A stays pinned on B,
-    // mirroring the user's intent ("this work is mine to organise").
-    const info = this.db
-      .prepare("UPDATE sessions SET source_id = ?, space_id = ? WHERE source_id = ?")
-      .run(toSourceId, toSpaceId, fromSourceId);
-    return Number(info.changes);
   }
 
   insertEvent(row: InsertSessionEvent): number {

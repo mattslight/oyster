@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { ArtifactService } from "./artifact-service.js";
 import type { SpaceService } from "./space-service.js";
-import { SessionService, SessionNotFoundError, SourceNotFoundError } from "./session-service.js";
+import { SessionService, SessionNotFoundError, ProjectNotFoundError } from "./session-service.js";
 import type { MemoryProvider } from "./memory-store.js";
 import { registerMemoryTools } from "./memory-store.js";
 import type { SessionStore } from "./session-store.js";
@@ -122,6 +122,7 @@ interface McpDeps {
    */
   getNativeSourcePath: (spaceId: string) => string;
   spaceService: SpaceService;
+  projectService: import("./project-service.js").ProjectService;
   sessionService: SessionService;
   memoryProvider: MemoryProvider;
   sessionStore: SessionStore;
@@ -286,9 +287,8 @@ connected to real folders on disk.
 **Spaces** — named workspaces (tabs) the user switches between. Each space has an ID,
 display name, and scan status. Use \`list_spaces\` to enumerate them. Every workspace
 has a "home" space by default; the user adds others as they onboard projects. Spaces
-are logical groupings — they can optionally have one or more folders attached (scan
-sources). Use \`onboard_space\` to create a space (with or without paths), or
-\`scan_space\` to rescan folders already attached to a space.
+are logical groupings — they can optionally have one or more folders attached. Use
+\`onboard_space\` to create a space (with or without paths).
 
 **Artifact kinds**:
 - \`app\` — a local web app (React, Vite, etc.) that runs as a process on a port
@@ -308,10 +308,8 @@ sources). Use \`onboard_space\` to create a space (with or without paths), or
 
 **Onboarding a single project:**
 1. Call \`list_spaces\` — check if the space already exists (avoid duplicates).
-2. Call \`onboard_space\` with the project name and path — pass \`paths: ["/abs/path"]\` (array). Creates the space, attaches the path, scans for apps, docs, and diagrams.
-3. Call \`list_artifacts\` with the new space_id to see what was discovered.
-4. To rescan later (e.g. after new files are added), call \`scan_space\`.
-5. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
+2. Call \`onboard_space\` with the project name and path — pass \`paths: ["/abs/path"]\` (array). Creates the space and attaches the path as a project.
+3. Call \`gather_repo_context\` to read the repo's key files and get deterministic artifact suggestions — useful before generating summaries or creating new artifacts from repo content.
 
 **Onboarding a developer container (e.g. \`~/Dev\` with many repos):**
 
@@ -387,10 +385,10 @@ export function createMcpServer(deps: McpDeps): McpServer {
 
   tool(
     "onboard_space",
-    "Create a space (or extend one with the same name) as a logical grouping for work. Spaces are named workspaces the user switches between — they don't require filesystem paths. If `paths` are provided, each folder is attached and scanned for apps, docs, and diagrams; if not, the space is created empty as a logical grouping (summaries, memories, and artifacts can attach later). If a space with this name already exists, any given paths are attached to it — NOT duplicated into a new one. Returns `created: true` when a new space was made, `created: false` when an existing one was extended.",
+    "Create a space (or extend one with the same name) as a logical grouping for work. Spaces are named workspaces the user switches between — they don't require filesystem paths. If `paths` are provided, each folder is attached as a project under the space; if not, the space is created empty as a logical grouping (summaries, memories, and artifacts can attach later). If a space with this name already exists, any given paths are attached to it — NOT duplicated into a new one. Returns `created: true` when a new space was made, `created: false` when an existing one was extended.",
     {
       name: z.string().describe("Display name for the space (slugified to ID). If a space with this name already exists, it's extended — no duplicate."),
-      paths: z.array(z.string()).optional().describe("Optional. Absolute local paths to attach and scan. Omit for a logical grouping with no filesystem attachment."),
+      paths: z.array(z.string()).optional().describe("Optional. Absolute local paths to attach as projects. Each one becomes a project tile (existing `.oyster/id` is adopted, otherwise a fresh UUID is written). Omit for a logical grouping with no filesystem attachment."),
     },
     async ({ name, paths }) => {
       const resolvedPaths = paths && paths.length > 0 ? paths : [];
@@ -416,32 +414,17 @@ export function createMcpServer(deps: McpDeps): McpServer {
         }
       }
 
-      const pathReports: Array<{ path: string; status: "attached" | "owned-by-other-space" | "failed"; error?: string }> = [];
+      const pathReports: Array<{ path: string; status: "attached" | "failed"; error?: string }> = [];
       for (const p of resolvedPaths) {
         try {
-          deps.spaceService.addSource(space.id, p);
-          // `attached` covers newly added sources, restored-from-soft-delete
-          // sources, AND already-active sources for the same space (addSource
-          // is idempotent in those cases).
+          deps.projectService.attachFolder({ spaceId: space.id, path: p });
           pathReports.push({ path: p, status: "attached" });
         } catch (err) {
-          const msg = (err as Error).message;
-          // `addSource` only throws for paths that don't exist on disk OR
-          // paths already claimed by a DIFFERENT space (the conflict guard).
-          // The latter means THIS space still has no folders for that path,
-          // so we must not count it as attached for the scan-guard below.
-          const ownedElsewhere = /already attached/i.test(msg);
-          pathReports.push({ path: p, status: ownedElsewhere ? "owned-by-other-space" : "failed", error: msg });
+          pathReports.push({ path: p, status: "failed", error: (err as Error).message });
         }
       }
 
-      // Only scan when at least one path actually attached to THIS space.
-      // If every path failed (missing on disk, owned by another space),
-      // scanSpace would throw \"no folders\" and the agent would see a
-      // confusing scan error on top of per-path errors already in `paths`.
-      const anyAttached = pathReports.some((r) => r.status === "attached");
-      const scanResult = anyAttached ? await deps.spaceService.scanSpace(space.id) : null;
-      return { space_id: space.id, created, paths: pathReports, scan_summary: scanResult };
+      return { space_id: space.id, created, paths: pathReports };
     },
   );
 
@@ -509,114 +492,31 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
   );
 
-  // ── scan_space ──
-
-  tool(
-    "scan_space",
-    "Rescan an existing space's repo for new apps, docs, and diagrams. Already-registered artifacts are skipped (idempotent). Use this after adding new files to a repo that was previously onboarded.",
-    {
-      space_id: z.string().describe("ID of the space to scan"),
-    },
-    async ({ space_id }) => deps.spaceService.scanSpace(space_id),
-  );
-
-  // ── detach_source ──
-
-  tool(
-    "detach_source",
-    "Detach a previously-linked folder from a space. Soft-deletes the link AND any tiles that came from that folder. The folder itself is untouched on disk. Reversible — re-attaching the same path restores the link and resurfaces the tiles.",
-    {
-      space_id: z.string().describe("ID of the space the folder is attached to"),
-      path: z.string().describe("Absolute path of the linked folder to detach (~/ supported)"),
-    },
-    async ({ space_id, path: rawPath }) => {
-      const source = deps.spaceService.getActiveSourceByPath(rawPath);
-      if (!source || source.space_id !== space_id) {
-        throw new Error(`No folder at "${rawPath}" is currently attached to space "${space_id}".`);
-      }
-      deps.spaceService.removeSource(source.id);
-      return { detached: source.path, source_id: source.id, space_id: source.space_id };
-    },
-  );
-
   // ── move_session ──
 
   tool(
     "move_session",
-    "Reassign a session to a different source (folder), to the space vault (source_id: null), or back to auto-binding. Setting source_id flips the session to manual — heuristics will not re-bind it. Pass assignment_mode: 'auto' (with no source_id) to recompute via longest-prefix lookup on the session's cwd. Cross-space moves are allowed; the resulting space_id is derived from the target source.",
+    "Bind a session to a project (project_id) or clear the project binding (project_id: null). When binding, the session's space_id is derived from the project row.",
     {
       session_id: z.string().describe("ID of the session to reassign"),
-      source_id: z.string().nullable().optional().describe("Target source id; pass `null` to send to the space vault; omit to keep the current binding."),
-      space_id: z.string().optional().describe("Only honoured when source_id is null/omitted; ignored when source_id is set (derived from the source instead)."),
-      assignment_mode: z.enum(["auto", "manual"]).optional().describe("'auto' (with no source_id) triggers atomic recompute; 'manual' freezes the current binding."),
+      project_id: z.string().nullable().describe("Target project id; pass `null` to clear the project binding and leave the session in the space vault."),
     },
-    async ({ session_id, source_id, space_id, assignment_mode }) => {
+    async ({ session_id, project_id }) => {
       try {
-        const updated = deps.sessionService.moveSession({
-          session_id,
-          ...(source_id !== undefined ? { source_id } : {}),
-          ...(space_id !== undefined ? { space_id } : {}),
-          ...(assignment_mode !== undefined ? { assignment_mode } : {}),
-        });
+        const updated = deps.sessionService.moveSession({ session_id, project_id });
         deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: session_id } });
         return {
           session_id: updated.id,
           space_id: updated.space_id,
-          source_id: updated.source_id,
+          project_id: updated.project_id,
           assignment_mode: updated.assignment_mode,
         };
       } catch (err) {
-        if (err instanceof SessionNotFoundError || err instanceof SourceNotFoundError) {
+        if (err instanceof SessionNotFoundError || err instanceof ProjectNotFoundError) {
           throw new Error(err.message);
         }
         throw err;
       }
-    },
-  );
-
-  // ── set_source_path ──
-
-  tool(
-    "set_source_path",
-    "Update a source's filesystem path — e.g. after the user renamed or moved the folder on disk. Existing sessions bound to this source stay bound (source identity is its id, not its path); auto-orphans whose cwd matches the new path get rebound. Path existence is advisory: a non-existent path is accepted (useful for unmounted drives). If the new path is already attached to another source in the same space, throws — call consolidate_sources instead to merge.",
-    {
-      source_id: z.string().describe("ID of the source to update"),
-      path: z.string().describe("New absolute folder path (~/ supported)"),
-    },
-    async ({ source_id, path }) => {
-      const updated = deps.spaceService.updateSource(source_id, { path });
-      deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-      return {
-        source_id: updated.id,
-        space_id: updated.space_id,
-        path: updated.path,
-        label: updated.label,
-      };
-    },
-  );
-
-  // ── consolidate_sources ──
-
-  tool(
-    "consolidate_sources",
-    "Merge one source into another in the same space: bulk-reassign every session and artefact from the `from` source onto the `into` source, then soft-delete `from`. Use this when a folder rename or partial onboarding left multiple sources covering one logical project. Cross-space consolidation is not supported.",
-    {
-      from_source_id: z.string().describe("Source that will be merged away (soft-deleted at the end)"),
-      into_source_id: z.string().describe("Destination source that receives the sessions and artefacts"),
-    },
-    async ({ from_source_id, into_source_id }) => {
-      const result = deps.spaceService.consolidateSource(from_source_id, into_source_id);
-      deps.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
-      return {
-        sessions_moved: result.sessionsMoved,
-        artefacts_moved: result.artefactsMoved,
-        into: {
-          id: result.intoSource.id,
-          space_id: result.intoSource.space_id,
-          path: result.intoSource.path,
-          label: result.intoSource.label,
-        },
-      };
     },
   );
 

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "../../data/sessions-api";
 import { patchSession } from "../../data/sessions-api";
-import { fetchSpaceSources, type SpaceSource } from "../../data/spaces-api";
+import { fetchProjectsForSpace, type Project } from "../../data/projects-api";
 import type { Space } from "../../../../shared/types";
 import {
   AGENT_PIP_CLASS, activeWriterChipFor, formatRelative,
@@ -24,11 +24,11 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
     : session.state === "disconnected" ? `disconnected ${rel}`
     : rel;
   const title = session.title ?? "(no title yet)";
-  // Prefer the most specific label available: source (folder) > space >
-  // cwd basename for orphan sessions. Always tooltip the full cwd so
-  // the user can identify where the session was running.
+  // Prefer the most specific label available: space > cwd basename for
+  // orphan sessions. Always tooltip the full cwd so the user can identify
+  // where the session was running.
   const cwdBasename = session.cwd ? session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
-  const projectLabel = session.sourceLabel ?? spaceLabel ?? cwdBasename ?? "—";
+  const projectLabel = spaceLabel ?? cwdBasename ?? "—";
   const remoteChip = originDeviceChipFor(session, myDeviceId);
   const activeChip = activeWriterChipFor(session, myDeviceId);
   const isManual = session.assignmentMode === "manual";
@@ -38,49 +38,42 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
   // failure) doesn't lock subsequent opens out — if the user closes the
   // menu and re-opens it, or the session's space changes, the next open
   // refetches. `null` means "haven't tried for this space yet".
-  const [sourcesCache, setSourcesCache] = useState<{ spaceId: string | null; sources: SpaceSource[] } | null>(null);
-  const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [projectsCache, setProjectsCache] = useState<{ spaceId: string | null; projects: Project[] } | null>(null);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Lazy-load the available sources each time the menu opens for a space
-  // we haven't loaded yet (or whose spaceId has changed). Scoped to the
-  // session's current space — same-space moves are the common case;
-  // cross-space moves go through MCP for now.
-  //
-  // The dep list intentionally excludes `sourcesLoading` even though the
-  // effect mutates it: an earlier version listed it as a dep, which made
-  // setSourcesLoading(true) re-trigger the effect, which then aborted
-  // its own in-flight fetch and left the row stuck loading. Cancellation
-  // still works via the AbortController + `ignore` flag — only menuOpen,
-  // sourcesCache, and session.spaceId actually need to drive re-runs.
+  // Lazy-load the available projects each time the menu opens for a
+  // space we haven't loaded yet. Scoped to the session's current space —
+  // same-space moves are the common case; cross-space moves go through
+  // the orphan-attach popover or MCP.
   useEffect(() => {
     if (!menuOpen) return;
-    if (sourcesCache && sourcesCache.spaceId === session.spaceId) return;
+    if (projectsCache && projectsCache.spaceId === session.spaceId) return;
     if (!session.spaceId) {
-      setSourcesCache({ spaceId: null, sources: [] });
+      setProjectsCache({ spaceId: null, projects: [] });
       return;
     }
     const targetSpaceId = session.spaceId;
     const ctrl = new AbortController();
     let ignore = false;
-    setSourcesLoading(true);
-    fetchSpaceSources(targetSpaceId, ctrl.signal)
-      .then((sources) => { if (!ignore) setSourcesCache({ spaceId: targetSpaceId, sources }); })
-      .catch(() => { /* aborted or failed — leave cache null so the next open retries */ })
-      .finally(() => { if (!ignore) setSourcesLoading(false); });
+    setProjectsLoading(true);
+    fetchProjectsForSpace(targetSpaceId, ctrl.signal)
+      .then((projects) => { if (!ignore) setProjectsCache({ spaceId: targetSpaceId, projects }); })
+      .catch(() => { /* aborted or failed — next open retries */ })
+      .finally(() => { if (!ignore) setProjectsLoading(false); });
     return () => {
       ignore = true;
       ctrl.abort();
     };
-  }, [menuOpen, sourcesCache, session.spaceId]);
+  }, [menuOpen, projectsCache, session.spaceId]);
 
   // Reset the cache when the menu closes so a fresh open always sees the
-  // latest source list (a user might have just attached a new folder).
+  // latest project list (a user might have just created one).
   useEffect(() => {
-    if (!menuOpen) setSourcesCache(null);
+    if (!menuOpen) setProjectsCache(null);
   }, [menuOpen]);
 
-  const sourcesForSpace = sourcesCache?.sources ?? null;
+  const projectsForSpace = projectsCache?.projects ?? null;
 
   // Close on outside click — same pattern as ProjectTile.
   useEffect(() => {
@@ -158,46 +151,36 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
           role="menu"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="home-row-menu-section-label">Move to source</div>
-          {sourcesLoading ? (
+          <div className="home-row-menu-section-label">Move to project</div>
+          {projectsLoading ? (
             <div className="home-row-menu-hint">Loading…</div>
-          ) : sourcesForSpace && sourcesForSpace.length > 0 ? (
-            sourcesForSpace.map((s) => {
-              const isCurrent = s.id === session.sourceId;
-              const basename = s.path.split(/[\\/]/).filter(Boolean).pop() ?? s.path;
+          ) : projectsForSpace && projectsForSpace.length > 0 ? (
+            projectsForSpace.map((p) => {
+              const isCurrent = p.id === session.projectId;
               return (
                 <button
-                  key={s.id}
+                  key={p.id}
                   type="button"
                   className="home-row-menu-item"
                   disabled={busy || isCurrent}
-                  onClick={() => run(() => patchSession(session.id, { source_id: s.id }))}
+                  onClick={() => run(() => patchSession(session.id, { project_id: p.id }))}
                 >
-                  <span className="home-row-menu-item-label">{s.label ?? basename}</span>
+                  <span className="home-row-menu-item-label">{p.name}</span>
                   {isCurrent && <span className="home-row-menu-item-hint">current</span>}
                 </button>
               );
             })
           ) : (
-            <div className="home-row-menu-hint">No folders attached in this space.</div>
+            <div className="home-row-menu-hint">No projects in this space.</div>
           )}
           <div className="home-row-menu-divider" />
           <button
             type="button"
             className="home-row-menu-item"
-            disabled={busy || session.sourceId === null}
-            onClick={() => run(() => patchSession(session.id, { source_id: null }))}
+            disabled={busy || session.projectId === null}
+            onClick={() => run(() => patchSession(session.id, { project_id: null }))}
           >
             Send to space vault
-          </button>
-          <button
-            type="button"
-            className="home-row-menu-item"
-            disabled={busy || !isManual}
-            onClick={() => run(() => patchSession(session.id, { assignment_mode: "auto" }))}
-            title="Recompute the binding via longest-prefix match on this session's working directory."
-          >
-            Let Oyster decide
           </button>
         </div>
       )}
