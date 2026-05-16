@@ -75,8 +75,12 @@ export function lookupProject(db: Database.Database, cwd: string | null): Projec
       .all(cacheDir) as Array<{ id: string; space_id: string }>;
     if (cached.length === 1) {
       const row = cached[0];
-      try { writeOysterId(cwd, row.id); } catch { /* permissions / read-only fs — fallback still resolves */ }
-      cachePath(db, row.id, cwd);
+      // Self-heal at the MATCHED ANCESTOR, not at `cwd` — otherwise a
+      // session in `<project>/web/src` would drop a marker file inside
+      // the subdir and leave the real project root unmarked. The cache
+      // is updated to record this device has now seen the project root.
+      try { writeOysterId(cacheDir, row.id); } catch { /* permissions / read-only fs — fallback still resolves */ }
+      cachePath(db, row.id, cacheDir);
       return { projectId: row.id, spaceId: row.space_id };
     }
     if (cached.length > 1) break; // ambiguous at this level — abstain
