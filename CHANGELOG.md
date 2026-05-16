@@ -8,6 +8,9 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - **Project identity that survives renames and moves.** Each project's identity now lives in a `.oyster/id` file inside its folder (a UUID). Renaming, moving, or `git push`ing the folder to another machine no longer orphans its sessions — the marker travels with the folder and Oyster recognises it everywhere.
 - **Move a session to a different project.** When a session ran in the wrong cwd or got orphaned, the per-row menu reassigns it. Same operation is available to agents via the `move_session` MCP tool with `project_id`.
+- **Merge two project tiles into one.** The tile's actions menu now offers *Merge into…* — collapses duplicate tiles by moving sessions and artefacts onto the chosen target, rewriting `.oyster/id` on the source folders so they point at the kept project's UUID, and soft-deleting the source. Cross-space merges are allowed; the result lives in the target's space.
+- **Git-repo badge on project tiles.** A small icon prefixes the project name when its folder is a git repo (detected via `.git`). No status / dirty indicator — just legibility.
+- **"No folder" badge on orphaned tiles.** Projects whose cached folder is missing on this machine (renamed, unmounted) show an amber *no folder* chip. Tooltip shows the cached path so you can see where it used to live. Candidates for merging into a live project.
 
 ### Changed
 
