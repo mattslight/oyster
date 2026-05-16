@@ -1,8 +1,6 @@
-// Single project tile in a space view. Replaces the source-shaped tile that
-// shipped before the projects rewrite. Two actions only: rename + delete.
-// Path-related affordances ("Update folder location", "Consolidate folders")
-// are gone — projects don't have a path; folder renames are filesystem ops
-// the watcher recognises automatically via `.oyster/id`.
+// Single project tile in a space view. Two actions: rename + delete.
+// Projects don't have a path field — identity lives in `.oyster/id` inside
+// the folder, so renames + moves are invisible to Oyster.
 import { useEffect, useState } from "react";
 import type { Project } from "../../data/projects-api";
 import { renameProject, deleteProject } from "../../data/projects-api";

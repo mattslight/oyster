@@ -1,8 +1,9 @@
-// Manual folder-to-project form. Creates a project named after the folder's
-// basename in the chosen space, then claims any orphan sessions whose cwd
-// already matches the folder. Extracted from Home/index.tsx.
+// "Add project" form — turns a folder on disk into a project tile.
+// Hits the server's idempotent attach-folder endpoint which writes
+// .oyster/id, creates or adopts the project row, and claims orphan
+// sessions whose cwd matches.
 import { useState } from "react";
-import { createProject, claimOrphan } from "../../data/projects-api";
+import { attachFolder } from "../../data/projects-api";
 
 export function AttachFolderForm({
   spaceId, onAttached, onCancel,
@@ -21,10 +22,7 @@ export function AttachFolderForm({
     setSubmitting(true);
     setError(null);
     try {
-      const folder = path.trim();
-      const leaf = folder.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || folder;
-      const project = await createProject(spaceId, leaf);
-      await claimOrphan(project.id, folder);
+      await attachFolder(spaceId, path.trim());
       onAttached();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -45,7 +43,7 @@ export function AttachFolderForm({
       />
       <div className="home-memories-add-row">
         <span className="home-memories-add-error" style={{ flex: 1, color: "var(--text-dim)" }}>
-          The folder will be scanned in the background.
+          A `.oyster/id` marker will be written so the project survives renames + travels across machines.
         </span>
         <div className="home-memories-add-actions">
           <button type="button" className="home-memories-add-cancel" onClick={onCancel}>
@@ -56,7 +54,7 @@ export function AttachFolderForm({
             className="home-memories-add-save"
             disabled={!path.trim() || submitting}
           >
-            {submitting ? "Attaching…" : "Attach"}
+            {submitting ? "Adding…" : "Add project"}
           </button>
         </div>
       </div>

@@ -90,6 +90,47 @@ describe("routes/projects", () => {
     expect(projectService.createProject).not.toHaveBeenCalled();
   });
 
+  it("POST /api/projects/attach-folder calls projectService.attachFolder and broadcasts", async () => {
+    const broadcast = vi.fn();
+    const projectService = {
+      attachFolder: vi.fn().mockReturnValue({
+        project: { id: "p1", spaceId: "work", name: "Proj", createdAt: "2026-01-01" },
+        claimed: 2,
+      }),
+    };
+    const { ctx, captured } = fakeCtx({ space_id: "work", path: "/foo/bar", name: "Proj" });
+
+    await tryHandleProjectsRoute(
+      { method: "POST" } as any, {} as any,
+      "/api/projects/attach-folder",
+      ctx as any,
+      { projectService: projectService as any, broadcastUiEvent: broadcast },
+    );
+
+    expect(projectService.attachFolder).toHaveBeenCalledWith({ spaceId: "work", path: "/foo/bar", name: "Proj" });
+    expect(captured.status).toBe(201);
+    expect(captured.json).toEqual({
+      project: { id: "p1", spaceId: "work", name: "Proj", createdAt: "2026-01-01" },
+      claimed: 2,
+    });
+    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ command: "session_changed" }));
+  });
+
+  it("POST /api/projects/attach-folder rejects when space_id or path is missing", async () => {
+    const projectService = { attachFolder: vi.fn() };
+    const { ctx, captured } = fakeCtx({ space_id: "work" }); // missing path
+
+    await tryHandleProjectsRoute(
+      { method: "POST" } as any, {} as any,
+      "/api/projects/attach-folder",
+      ctx as any,
+      { projectService: projectService as any, broadcastUiEvent: vi.fn() },
+    );
+
+    expect(captured.status).toBe(400);
+    expect(projectService.attachFolder).not.toHaveBeenCalled();
+  });
+
   it("returns false for unmatched URLs (passes through to the next handler)", async () => {
     const { ctx } = fakeCtx();
     const handled = await tryHandleProjectsRoute(

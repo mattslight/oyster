@@ -1,10 +1,16 @@
 // /api/projects/* — the HTTP surface for the projects identity model.
 // Replaces /api/spaces/:id/sources* during the sources→projects cut.
 //
-// Three endpoints:
+// Endpoints:
 //   GET  /api/projects?space_id=X         list active projects in space X
 //   POST /api/projects                    create a project { space_id, name }
+//   POST /api/projects/attach-folder      idempotent attach { space_id, path,
+//                                          name? } — writes .oyster/id, claims
+//                                          orphans, undeletes a soft-deleted
+//                                          project whose UUID is on disk
 //   POST /api/projects/:id/claim          bulk-tag orphan sessions { cwd }
+//   PATCH /api/projects/:id               rename
+//   DELETE /api/projects/:id              soft-delete
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProjectService } from "../project-service.js";
@@ -62,6 +68,24 @@ export async function tryHandleProjectsRoute(
       // session attribution under existing tiles.
       broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
       sendJson(project, 201);
+    } catch (err) { sendError(err); }
+    return true;
+  }
+
+  if (pathname === "/api/projects/attach-folder" && req.method === "POST") {
+    if (rejectIfNonLocalOrigin()) return true;
+    try {
+      const body = await readJsonBody();
+      const spaceId = typeof body.space_id === "string" ? body.space_id : null;
+      const path = typeof body.path === "string" ? body.path.trim() : "";
+      const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined;
+      if (!spaceId || !path) {
+        sendJson({ error: "space_id and path are required" }, 400);
+        return true;
+      }
+      const result = projectService.attachFolder({ spaceId, path, name });
+      broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: "" } });
+      sendJson(result, 201);
     } catch (err) { sendError(err); }
     return true;
   }
