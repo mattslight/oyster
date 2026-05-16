@@ -6,6 +6,11 @@
   <title>Bring Your Own AI — Oyster</title>
   <meta name="description" content="Bring your own AI — connect Claude Code, Cursor, VS Code, Windsurf or any MCP-compatible tool to Oyster.">
   <link rel="stylesheet" href="assets/oyster.css">
+  <script>
+    if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('js-reveal');
+    }
+  </script>
   <style>
     .hero {
       position: relative;
@@ -340,7 +345,7 @@
     <p class="subtitle">Oyster is an MCP server. Any AI that speaks the protocol can control your workspace.</p>
   </section>
 
-  <section class="section">
+  <section class="section" data-reveal>
     <div class="section-label">Quick start</div>
 
     <div class="config-frame">
@@ -447,7 +452,7 @@
     <p class="note">Your AI can chain these together. Ask it to onboard a project, create a summary, and organise everything into spaces — all from one prompt.</p>
   </section>
 
-  <section class="install-section">
+  <section class="install-section" data-reveal>
     <div class="install-label">Don't have Oyster yet?</div>
     <div class="terminal-frame">
       <div class="terminal">
@@ -516,5 +521,6 @@
       });
     }
   </script>
+  <script src="assets/reveal.js" defer></script>
 </body>
 </html>

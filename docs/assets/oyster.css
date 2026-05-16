@@ -331,3 +331,25 @@ body {
 .site-footer .heart { color: var(--plasma); }
 .site-footer a { color: var(--ink-3); text-decoration: none; transition: color 0.2s; }
 .site-footer a:hover { color: var(--ink); }
+
+/* ============================================
+   REVEAL ON SCROLL
+   Children of [data-reveal] fade + lift in once when the
+   wrapper enters the lower portion of the viewport.
+   Activated only when JS sets .js-reveal on <html>
+   (the head script omits it under prefers-reduced-motion).
+   ============================================ */
+.js-reveal [data-reveal] > * {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s cubic-bezier(0.2, 0.4, 0.2, 1),
+              transform 0.8s cubic-bezier(0.2, 0.4, 0.2, 1);
+  will-change: opacity, transform;
+}
+.js-reveal [data-reveal] > *:nth-child(2) { transition-delay: 0.12s; }
+.js-reveal [data-reveal] > *:nth-child(3) { transition-delay: 0.24s; }
+.js-reveal [data-reveal] > *:nth-child(4) { transition-delay: 0.36s; }
+.js-reveal [data-reveal].is-visible > * {
+  opacity: 1;
+  transform: none;
+}

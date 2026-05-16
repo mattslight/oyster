@@ -26,6 +26,12 @@
 
   <link rel="stylesheet" href="assets/oyster.css">
   <link rel="stylesheet" href="assets/hero-mock.css">
+  <script>
+    // Set before paint so .section hidden state is in effect before sections render.
+    if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('js-reveal');
+    }
+  </script>
   <style>
     /* ============================================
        OYSTER v2 — Pearl in Orbit
@@ -1239,6 +1245,7 @@
       vertical-align: middle;
       animation: breathe 2.2s ease-in-out infinite;
     }
+
   </style>
 </head>
 <body>
@@ -1557,7 +1564,7 @@
 
   <!-- Feature 1: See your agent at work -->
   <section class="section" id="features">
-    <div class="feature">
+    <div class="feature" data-reveal>
       <div>
         <h2>See your <span class="accent">agents</span> at work.</h2>
         <p>Oyster watches your Claude Code sessions automatically — live transcripts, the files your agent edited, the memories it captured, all on Home and all searchable. No setup, no MCP wiring needed. Cursor, Codex and OpenCode watchers are next.</p>
@@ -1601,7 +1608,7 @@
 
   <!-- Feature 2: Work with full context -->
   <section class="section">
-    <div class="feature reverse">
+    <div class="feature reverse" data-reveal>
       <div>
         <h2>Work with <span class="accent">full</span> context.</h2>
         <p>Your AI sees every space, project, and artefact. Ask it to summarise across projects, find connections, or act on something specific — it has the full picture.</p>
@@ -1624,7 +1631,7 @@
 
   <!-- Feature 3: Switch context instantly -->
   <section class="section">
-    <div class="feature">
+    <div class="feature" data-reveal>
       <div>
         <h2>Switch context <span class="accent">instantly.</span></h2>
         <p>Jump between project spaces with a single shortcut. Your brain switches context — your agents should keep up.</p>
@@ -1648,7 +1655,7 @@
 
   <!-- Feature 4: Drop in a project -->
   <section class="section">
-    <div class="feature reverse">
+    <div class="feature reverse" data-reveal>
       <div>
         <h2>Drop in a project.<br><span class="accent">Get organised.</span></h2>
         <p>Point Oyster at any project and it picks up what's inside — sessions, documents, presentations, diagrams, apps. Your existing work lands on the surface automatically.</p>
@@ -1683,7 +1690,7 @@
 
   <!-- Feature 5: Act, not just chat -->
   <section class="section">
-    <div class="feature">
+    <div class="feature" data-reveal>
       <div>
         <h2><span class="accent">Act,</span> not just chat.</h2>
         <p>Oyster doesn't just answer questions. It opens artefacts, switches spaces, creates documents, and manages your workspace from the prompt bar.</p>
@@ -1711,7 +1718,7 @@
 
   <!-- Feature 6: Built on MCP -->
   <section class="section">
-    <div class="feature reverse">
+    <div class="feature reverse" data-reveal>
       <div>
         <h2>Built on MCP.<br><span class="accent">Bring your own</span> agents.</h2>
         <p>Oyster is an MCP server. That means any agent that speaks the protocol — Claude Code, Cursor, VS Code, Windsurf, or your own — can control your workspace. Create documents, organise spaces, open artefacts. One standard, every agent.</p>
@@ -1777,7 +1784,7 @@
 
   <!-- Feature 7: Brainstorm without clutter -->
   <section class="section">
-    <div class="feature">
+    <div class="feature" data-reveal>
       <div>
         <h2>Brainstorm <span class="accent">without</span> clutter.</h2>
         <p>Notes, decks, diagrams, mockups — the project work that doesn't belong in <code>git</code>. Oyster keeps it tied to your project but separate from your code. Visible, searchable, launchable.</p>
@@ -1817,7 +1824,7 @@
 
   <!-- Feature 8: Pro -->
   <section class="section">
-    <div class="feature reverse">
+    <div class="feature reverse" data-reveal>
       <div>
         <span class="coming-soon">T-Minus · Soon</span>
         <h2>Oyster Pro — <span class="accent">your work,</span> anywhere.</h2>
@@ -1898,7 +1905,7 @@
   </section>
 
   <!-- LAUNCHPAD (install) -->
-  <section class="launchpad" id="install">
+  <section class="launchpad" id="install" data-reveal>
     <h2>From zero to <span class="dim">work</span>space in <span class="accent">one command.</span></h2>
     <p>No sign-ups, no config files, no onboarding flow. Your surface opens in the browser, ready to go.</p>
 
@@ -2245,7 +2252,9 @@
       document.getElementById('mcp-' + name).style.display = 'block';
       e.target.classList.add('active');
     };
+
   </script>
   <script src="assets/hero-mock.js" defer></script>
+  <script src="assets/reveal.js" defer></script>
 </body>
 </html>

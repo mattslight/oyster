@@ -6,6 +6,11 @@
   <title>Changelog — Oyster</title>
   <meta name="description" content="Every shipped change to Oyster, newest first.">
   <link rel="stylesheet" href="assets/oyster.css">
+  <script>
+    if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('js-reveal');
+    }
+  </script>
   <style>
     .hero {
       position: relative;
@@ -301,7 +306,7 @@
       <a class="version-pill" href="#v-0-0-x">0.0</a>
   </nav>
 
-  <main class="entries">
+  <main class="entries" data-reveal>
 <h2 id="v-0-9-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.9.0...v0.9.1" rel="noopener noreferrer"><span class="release-version">0.9.1</span></a><span class="release-date"> — 2026-05-16</span></h2>
 <h3>Added</h3>
 <ul>
@@ -945,7 +950,7 @@
 
   </main>
 
-  <section class="install-section">
+  <section class="install-section" data-reveal>
     <div class="install-label">Don't have Oyster yet?</div>
     <div class="terminal-frame">
       <div class="terminal">
@@ -993,5 +998,6 @@
       makeStars(document.getElementById('stars-near'), 60, true);
     })();
   </script>
+  <script src="assets/reveal.js" defer></script>
 </body>
 </html>

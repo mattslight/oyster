@@ -6,6 +6,11 @@
   <title>Plugins — Oyster</title>
   <meta name="description" content="Community plugins for Oyster. Static apps, tools, and widgets that run on your workspace surface.">
   <link rel="stylesheet" href="assets/oyster.css">
+  <script>
+    if (!window.matchMedia || !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('js-reveal');
+    }
+  </script>
   <style>
     /* Page-specific styles */
     .hero {
@@ -357,14 +362,14 @@
     <p class="subtitle">Apps, tools, and widgets the community drops inside your shell. Install any with a single command.</p>
   </section>
 
-  <section class="section">
+  <section class="section" data-reveal>
     <div class="section-label">Available</div>
     <div id="plugins" class="plugins">
       <div class="state">Loading plugins&hellip;</div>
     </div>
   </section>
 
-  <section class="submit-section">
+  <section class="submit-section" data-reveal>
     <div class="submit-card">
       <div class="submit-title">Built a plugin?</div>
       <p class="submit-desc">The registry is an open repo. Submit a PR adding one entry to <code>community-plugins.json</code> and your plugin lands here.</p>
@@ -375,7 +380,7 @@
     </div>
   </section>
 
-  <section class="install-section">
+  <section class="install-section" data-reveal>
     <div class="install-label">Don't have Oyster yet?</div>
     <div class="terminal-frame">
       <div class="terminal">
@@ -592,5 +597,6 @@
 
     load();
   </script>
+  <script src="assets/reveal.js" defer></script>
 </body>
 </html>
