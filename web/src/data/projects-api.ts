@@ -10,11 +10,11 @@ export interface Project {
 }
 
 export async function fetchProjectsForSpace(spaceId: string, signal?: AbortSignal): Promise<Project[]> {
-  try {
-    return await getJson<Project[]>(`/api/projects?space_id=${encodeURIComponent(spaceId)}`, signal);
-  } catch {
-    return [];
-  }
+  // Errors propagate to the caller — `useSpaceProjects` surfaces them as
+  // `spaceProjectsError` so the UI can distinguish "no projects" from
+  // "projects failed to load". `useFetched` already ignores aborts, and
+  // SessionRow's inline caller has its own `.catch` for menu-open races.
+  return getJson<Project[]>(`/api/projects?space_id=${encodeURIComponent(spaceId)}`, signal);
 }
 
 export async function createProject(spaceId: string, name: string): Promise<Project> {

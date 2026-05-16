@@ -661,6 +661,7 @@ export class ArtifactService {
       createdAt: row.created_at,
       groupName: row.group_name || undefined,
       sourceOrigin: row.source_origin,
+      projectId: row.project_id,
       ...this.resolveIcon(row),
       ...(publication ? { publication } : {}),
       ...(row.pinned_at != null ? { pinnedAt: row.pinned_at } : {}),

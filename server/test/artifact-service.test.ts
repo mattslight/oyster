@@ -46,6 +46,7 @@ function seed(
     unpublished_at: number | null;
     pinned_at: number | null;
     removed_at: string | null;
+    project_id: string | null;
   }> = {},
 ) {
   const id = fields.id ?? "art_1";
@@ -53,9 +54,9 @@ function seed(
     `INSERT INTO artifacts
        (id, space_id, label, artifact_kind, storage_kind, storage_config,
         runtime_kind, runtime_config, share_token, share_mode, published_at,
-        share_updated_at, unpublished_at, pinned_at, removed_at)
+        share_updated_at, unpublished_at, pinned_at, removed_at, project_id)
      VALUES (?, 'home', 'Test artefact', 'notes', 'url', '{}',
-             'static_file', '{}', ?, ?, ?, ?, ?, ?, ?)`,
+             'static_file', '{}', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     fields.share_token ?? null,
@@ -65,6 +66,7 @@ function seed(
     fields.unpublished_at ?? null,
     fields.pinned_at ?? null,
     fields.removed_at ?? null,
+    fields.project_id ?? null,
   );
   return id;
 }
@@ -206,6 +208,33 @@ describe("artifact wire format — pin (#387)", () => {
     seed(db, { pinned_at: 1717000000000 });
     const [a] = await service.getAllArtifacts(() => {});
     expect((a as any).pinnedAt).toBe(1717000000000);
+  });
+});
+
+describe("artifact wire format — projectId", () => {
+  let db: Database.Database;
+  let service: ArtifactService;
+
+  beforeEach(() => {
+    db = makeDb();
+    service = new ArtifactService(new SqliteArtifactStore(db), "https://oyster.to", "https://share.oyster.to");
+  });
+
+  it("emits projectId on the static_file/redirect branch (Home tile counts depend on it)", async () => {
+    // Regression guard: the local_process branch returned projectId but the
+    // fallthrough static_file/redirect branch dropped it. Home's project
+    // filters + per-project badge counts read artifact.projectId, so notes /
+    // markdown / html artefacts bound to a project would be miscounted as
+    // unassigned without this field.
+    seed(db, { project_id: "proj_abc" });
+    const [a] = await service.getAllArtifacts(() => {});
+    expect((a as any).projectId).toBe("proj_abc");
+  });
+
+  it("emits null projectId when the row has no binding", async () => {
+    seed(db);
+    const [a] = await service.getAllArtifacts(() => {});
+    expect((a as any).projectId).toBeNull();
   });
 });
 

@@ -475,13 +475,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     return counts;
   }, [effectiveDesktopProps.artifacts]);
 
-  // Per-project artefact counts for the tile badges. Returns {} while
-  // artefacts haven't yet been tagged with project_id (during migration);
-  // becomes meaningful once the server-side backfill runs.
+  // Per-project artefact counts for the tile badges. Includes the VAULT
+  // bucket (artefacts with no project binding) so ProjectTileGrid can
+  // render the Vault tile when there's anything in it. Returns {} only
+  // when the artefact list is empty.
   const projectArtefactCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const a of effectiveDesktopProps.artifacts) {
-      if (a.projectId) counts[a.projectId] = (counts[a.projectId] ?? 0) + 1;
+      const key = a.projectId ?? VAULT;
+      counts[key] = (counts[key] ?? 0) + 1;
     }
     return counts;
   }, [effectiveDesktopProps.artifacts]);

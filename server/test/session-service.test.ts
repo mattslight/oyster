@@ -115,4 +115,31 @@ describe("SessionService.moveSession with project_id", () => {
     expect(() => env.service.moveSession({ session_id: "nope", project_id: "p1" }))
       .toThrow(SessionNotFoundError);
   });
+
+  it("binding pins assignment_mode = 'manual' so watcher upserts don't revert it", () => {
+    // Without manual pinning, the next watcher upsert at the session's cwd
+    // would re-bind whatever .oyster/id resolves there (sessions-store
+    // upsert CASE on assignment_mode = 'manual'). User intent must win.
+    seedSpace(env.db, "sp1");
+    seedProject(env.db, "p1", "sp1", "Proj");
+    seedSession(env.db, { id: "s" });
+    env.service.moveSession({ session_id: "s", project_id: "p1" });
+    const row = env.db
+      .prepare("SELECT assignment_mode FROM sessions WHERE id = 's'")
+      .get() as { assignment_mode: string };
+    expect(row.assignment_mode).toBe("manual");
+  });
+
+  it("clearing the binding also pins assignment_mode = 'manual'", () => {
+    seedSpace(env.db, "sp1");
+    seedProject(env.db, "p1", "sp1", "Proj");
+    seedSession(env.db, { id: "s", space_id: "sp1" });
+    env.db.prepare("UPDATE sessions SET project_id = 'p1' WHERE id = 's'").run();
+    env.service.moveSession({ session_id: "s", project_id: null });
+    const row = env.db
+      .prepare("SELECT project_id, assignment_mode FROM sessions WHERE id = 's'")
+      .get() as { project_id: string | null; assignment_mode: string };
+    expect(row.project_id).toBeNull();
+    expect(row.assignment_mode).toBe("manual");
+  });
 });

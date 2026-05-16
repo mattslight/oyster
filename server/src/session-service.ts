@@ -50,7 +50,13 @@ export class SessionService {
     }
 
     if (input.project_id === null) {
-      this.sessionStore.updateSession(input.session_id, { project_id: null });
+      // Pin as manual so the next watcher upsert doesn't re-bind this
+      // session via whatever .oyster/id resolves at cwd. Without this,
+      // a user-initiated "clear binding" would be silently reverted.
+      this.sessionStore.updateSession(input.session_id, {
+        project_id: null,
+        assignment_mode: "manual",
+      });
       return this.sessionStore.getById(input.session_id)!;
     }
 
@@ -61,6 +67,9 @@ export class SessionService {
     this.sessionStore.updateSession(input.session_id, {
       project_id: project.id,
       space_id: project.space_id,
+      // Manual moves win over watcher reconciliation — see session-store
+      // upsert CASE on `assignment_mode = 'manual'`.
+      assignment_mode: "manual",
     });
     return this.sessionStore.getById(input.session_id)!;
   }
