@@ -9,12 +9,11 @@ import { ProjectTile } from "./ProjectTile";
 import { VAULT, type StateFilter } from "./types";
 
 export function ProjectTileGrid({
-  spaceId, spaceDisplayName, projects, projectArtefactCounts, sessionCountsByProject,
+  spaceId, projects, projectArtefactCounts, sessionCountsByProject,
   selectedProjectId, setSelectedProjectId,
   totalCounts, showAttachForm, setShowAttachForm, onProjectsChanged, onSpaceDelete,
 }: {
   spaceId: string;
-  spaceDisplayName: string;
   projects: Project[];
   // Sparse maps — projects with no artefacts / no live sessions have no
   // entry. Callsites use `?? 0` and pass the lookup into ProjectTile's

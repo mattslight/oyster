@@ -124,7 +124,7 @@ export function ProjectTile({
         initialValue={project.name}
         placeholder="Project name"
         confirmLabel={busy ? "Renaming…" : "Rename"}
-        onConfirm={performRename}
+        onSubmit={performRename}
         onCancel={() => !busy && setRenameOpen(false)}
       />
       <ConfirmModal

@@ -941,7 +941,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           ) : (
             <ProjectTileGrid
               spaceId={projectsSpaceId}
-              spaceDisplayName={spaces.find((s) => s.id === projectsSpaceId)?.displayName ?? projectsSpaceId}
               projects={spaceProjects}
               projectArtefactCounts={projectArtefactCounts}
               sessionCountsByProject={sessionCountsByProject}
