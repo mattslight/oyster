@@ -494,10 +494,27 @@
          covers the hero text and buttons. */
       body.is-rocket-launched .hero { z-index: 999; }
       body.is-rocket-launched .hero-stage .hero-mock { z-index: 50; }
+      /* Lock body scroll so the page underneath doesn't peek through at
+         the bottom and the scrollbar disappears. position:fixed prevents
+         iOS rubber-banding from revealing the page edges. */
+      html.is-rocket-launched,
+      body.is-rocket-launched {
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      body.is-rocket-launched {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+      }
       .hero-mock.is-launched .hero-mock-rocket {
         position: fixed;
         inset: 0;
         z-index: 1000;
+        /* 100dvh tracks the dynamic viewport (mobile browsers shrink it
+           when the URL bar shows), preventing a thin letterbox at the
+           bottom that exposes the page chrome behind. */
+        height: 100dvh;
       }
     }
     /* Hide the surface while the rocket is up — but bring it BACK as
@@ -2078,6 +2095,7 @@
         setTimeout(() => {
           mock.classList.remove('is-launched');
           mock.classList.remove('is-shutting-down');
+          document.documentElement.classList.remove('is-rocket-launched');
           document.body.classList.remove('is-rocket-launched');
           if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'true');
           killIframe();
@@ -2091,9 +2109,11 @@
         if (mock.classList.contains('is-launched')) return;
         if (frame) frame.src = frame.dataset.src;
         mock.classList.add('is-launched');
-        // Flag body so the mobile fullscreen CSS can lift .hero above the
-        // nav's stacking context — without this the page chrome renders
-        // over the iframe even though the iframe is z-index 1000.
+        // Flag body+html so the mobile fullscreen CSS can lift .hero above
+        // the nav's stacking context AND lock page scroll. Without the
+        // stacking lift the page chrome renders over the iframe; without
+        // the scroll lock the page underneath peeks through at the edges.
+        document.documentElement.classList.add('is-rocket-launched');
         document.body.classList.add('is-rocket-launched');
         if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'false');
       }
