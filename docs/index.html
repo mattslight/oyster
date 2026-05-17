@@ -2082,6 +2082,13 @@
         if (frame) frame.src = 'about:blank';
       }
 
+      // Remembered across launch/shutoff so we can restore the user's
+      // scroll position. body { position: fixed } anchors the page at
+      // top:0 by default; we offset by -lockedScrollY while locked, then
+      // window.scrollTo() back to it on unlock so closing the rocket
+      // doesn't snap the user to the top of the page.
+      let lockedScrollY = 0;
+
       function shutoff() {
         if (shuttingDown || !mock.classList.contains('is-launched')) return;
         shuttingDown = true;
@@ -2097,6 +2104,8 @@
           mock.classList.remove('is-shutting-down');
           document.documentElement.classList.remove('is-rocket-launched');
           document.body.classList.remove('is-rocket-launched');
+          document.body.style.top = '';
+          window.scrollTo(0, lockedScrollY);
           if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'true');
           killIframe();
           shuttingDown = false;
@@ -2113,6 +2122,8 @@
         // the nav's stacking context AND lock page scroll. Without the
         // stacking lift the page chrome renders over the iframe; without
         // the scroll lock the page underneath peeks through at the edges.
+        lockedScrollY = window.scrollY;
+        document.body.style.top = `-${lockedScrollY}px`;
         document.documentElement.classList.add('is-rocket-launched');
         document.body.classList.add('is-rocket-launched');
         if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'false');
