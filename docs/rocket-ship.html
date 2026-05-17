@@ -1498,6 +1498,7 @@ function showCelebration(onAdvance) {
     cel.setAttribute('aria-hidden', 'true');
     window.removeEventListener('keydown', onKey);
     window.removeEventListener('mousedown', advance);
+    window.removeEventListener('touchstart', advance);
     if (typeof onAdvance === 'function') onAdvance();
     else Splash.enterAttractMode();
   }
@@ -1506,9 +1507,12 @@ function showCelebration(onAdvance) {
   // it. Listeners are on `window` (not `document`) so they fire AFTER the
   // splash IIFE's tryDismiss listener — at celebration time phase is still
   // 'playing', so tryDismiss is inert and can't stack with this advance.
+  // touchstart is needed alongside mousedown because iOS doesn't reliably
+  // synthesize mousedown from a tap.
   setTimeout(() => {
     window.addEventListener('keydown', onKey);
     window.addEventListener('mousedown', advance);
+    window.addEventListener('touchstart', advance, { passive: true });
   }, 250);
   // Auto-advance after 6s if untouched
   setTimeout(advance, 6000);
