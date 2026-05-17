@@ -12,6 +12,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - **Rocket Ship title screen got an 80s arcade glow-up.** Chunky pixel-art rocket with a flickering flame hovers above the *ROCKET SHIP* title, the controls panel uses an enlarged ★ and a plain `!` for asteroids, the HUD reads `SCORE: N`, and the CRT bezel corners are more pronounced.
 - **Post-game flow: flag → name → leaderboard → title → new game.** A new #1 high score celebrates with the flag *before* the initials prompt, and the attract sequence is steppable — a key on the leaderboard view advances to the title-card; only the title-card starts a new game.
+- **Four-pillar dividers feel intentional.** On the oyster.to homepage, the four benefits row now sits on a soft cyan-violet-pink gradient rail (matching the orbital arcs elsewhere), and the column separators are slightly more present so the divisions read as designed structure rather than near-invisible hairlines.
 
 ### Fixed
 

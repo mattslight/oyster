@@ -1005,16 +1005,29 @@
 
     /* 4-column benefit row */
     .benefit-row {
+      position: relative;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 0;
       padding: 28px 0 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
       margin-top: 32px;
+    }
+    /* top rail — same cyan→violet→pink gradient used for the orbit path above */
+    .benefit-row::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg,
+        rgba(123, 231, 255, 0) 0%,
+        rgba(123, 231, 255, 0.22) 18%,
+        rgba(169, 158, 255, 0.55) 50%,
+        rgba(255, 141, 224, 0.22) 82%,
+        rgba(255, 141, 224, 0) 100%);
     }
     .benefit {
       padding: 22px 28px;
-      border-left: 1px solid rgba(255, 255, 255, 0.06);
+      border-left: 1px solid rgba(255, 255, 255, 0.16);
     }
     .benefit:first-child { border-left: 0; }
     .benefit-icon {
@@ -1050,9 +1063,9 @@
     }
     @media (max-width: 820px) {
       .benefit-row { grid-template-columns: repeat(2, 1fr); gap: 0; }
-      .benefit { border-left: 0; padding: 18px 6px; border-top: 1px solid rgba(255,255,255,0.05); }
+      .benefit { border-left: 0; padding: 18px 6px; border-top: 1px solid rgba(255,255,255,0.14); }
       .benefit:first-child, .benefit:nth-child(2) { border-top: 0; }
-      .benefit:nth-child(odd) { border-right: 1px solid rgba(255,255,255,0.05); }
+      .benefit:nth-child(odd) { border-right: 1px solid rgba(255,255,255,0.14); }
     }
 
     .coming-soon {
