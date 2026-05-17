@@ -8,7 +8,6 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 - **Rocket Ship on mobile.** On-screen ◀ ▶ ▲ controls overlay the canvas during gameplay, the title-screen instructions swap to *TAP* labels, and launching from the homepage breaks the game out to fullscreen with a × close button in the top-right.
 - **Mute toggle on the Rocket Ship title screen.** Click the ♪ in the top-right to silence music and sound effects; the choice is remembered next time you boot the game.
-- **The oyster.to homepage mock is now interactive on touch.** Tap session tiles, memory cards or artefact thumbnails to drill in; tap a space pill to filter; toggle checklist items and settings switches. A full-width drawer with a *Back* button handles session/memory detail on small screens.
 
 ### Changed
 
