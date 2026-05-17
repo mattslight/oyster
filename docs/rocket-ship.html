@@ -23,6 +23,13 @@
     overflow: hidden;
     height: 100vh;
     width: 100vw;
+    /* Suppress iOS text selection / Copy popup when a tap drifts slightly
+       during gameplay or on the splash. Everything in the game is visual
+       — nothing should be selectable. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* Screen container — old CRT bezel (warm-gray molded plastic) */
