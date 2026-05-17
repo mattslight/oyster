@@ -1445,6 +1445,7 @@ if (window.self !== window.top) document.body.classList.add('is-embedded');
   if (!btn) return;
   function setMuted(m) {
     document.querySelectorAll('audio').forEach(a => { a.muted = m; });
+    if (typeof setSfxMuted === 'function') setSfxMuted(m);
     btn.classList.toggle('is-muted', m);
     btn.setAttribute('aria-pressed', String(m));
     try { localStorage.setItem(SOUND_KEY, m ? '1' : '0'); } catch (_) {}
@@ -1462,12 +1463,82 @@ if (window.self !== window.top) document.body.classList.add('is-embedded');
   });
 })();
 
-// 8-bit SFX — real samples; rewind+play so rapid re-triggers work.
+// 8-bit SFX via Web Audio. The previous <audio>-element approach hitched
+// on every shot because setting currentTime=0 to retrigger an MP3 forces
+// the browser to tear down and reinit its decoder on the main thread,
+// dropping a frame. Web Audio decodes each clip once into an AudioBuffer
+// and plays disposable BufferSources for each shot — no seek, no decode,
+// runs on the audio thread so it can't block paint.
+//
+// The <audio> elements in HTML stay as a fallback for the short window
+// between page load and first decode completing.
+const SFX_FILES = {
+  'sfx-powerup':   'sfx-powerup.mp3',
+  'sfx-explosion': 'sfx-explosion.mp3',
+  'sfx-lose':      'sfx-lose.mp3',
+  'sfx-thruster':  'sfx-thruster.mp3',
+  'sfx-glitch':    'sfx-glitch.mp3',
+};
+// `var` (not `let`) is deliberate: the sound-toggle IIFE above runs at
+// module init and calls setSfxMuted to apply the persisted muted state.
+// That call lands here before this line would have executed under `let`,
+// which would throw a TDZ ReferenceError, halt the script, and prevent
+// the splash IIFE further down from registering its click handlers.
+var audioCtx = null;
+var sfxMasterGain = null;
+var sfxBuffers = {};
+var sfxMuted = false;
+
+// Called from the first user gesture (see Splash IIFE). Idempotent —
+// creates the context, kicks off all decodes in parallel, and resumes
+// the context if iOS auto-suspended it. Fully try/catched: a throw here
+// would otherwise blow up the click handler that just unlocks audio and
+// dismisses the splash, leaving the player stuck on the title screen.
+function ensureAudioCtx() {
+  try {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
+      sfxMasterGain = audioCtx.createGain();
+      sfxMasterGain.gain.value = sfxMuted ? 0 : 1;
+      sfxMasterGain.connect(audioCtx.destination);
+      Object.entries(SFX_FILES).forEach(async ([id, src]) => {
+        try {
+          const resp = await fetch(src);
+          const arr = await resp.arrayBuffer();
+          sfxBuffers[id] = await audioCtx.decodeAudioData(arr);
+        } catch (_) {}
+      });
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  } catch (_) {}
+  return audioCtx;
+}
+
+function setSfxMuted(m) {
+  sfxMuted = m;
+  if (sfxMasterGain) sfxMasterGain.gain.value = m ? 0 : 1;
+}
+
 function playSfx(id, volume = 0.6) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.volume = volume;
-  try { el.currentTime = 0; el.play().catch(() => {}); } catch (_) {}
+  const ctx = audioCtx;
+  const buf = ctx && sfxBuffers[id];
+  if (!ctx || !buf) {
+    // Fallback path: <audio> element. Used only until the matching buffer
+    // finishes decoding, which is usually well before any in-game shot.
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.volume = sfxMuted ? 0 : volume;
+    try { el.currentTime = 0; el.play().catch(() => {}); } catch (_) {}
+    return;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const gain = ctx.createGain();
+  gain.gain.value = volume;
+  src.connect(gain).connect(sfxMasterGain);
+  try { src.start(0); } catch (_) {}
 }
 function playCoin()  { playSfx('sfx-powerup', 0.55); }
 function playCrash() { playSfx('sfx-explosion', 0.75); }
@@ -1476,10 +1547,7 @@ function playGlitch(vol = 0.4) { playSfx('sfx-glitch', vol); }
 // Thruster: fires on every fresh press (no debounce). Gated to post-splash gameplay.
 function playThruster() {
   if (!document.querySelector('.tube.is-ready')) return;
-  const el = document.getElementById('sfx-thruster');
-  if (!el) return;
-  el.volume = 0.4;
-  try { el.currentTime = 0; el.play().catch(() => {}); } catch (_) {}
+  playSfx('sfx-thruster', 0.4);
 }
 
 // ============================================
@@ -1762,6 +1830,10 @@ const Splash = (function () {
       bgm.play().catch(() => {});
     }
     titleMusicAwaitingGesture = false;
+    // Create the SFX AudioContext + kick off decodes on this same gesture
+    // so the buffers are ready by the time the player hits their first
+    // star / fires the thruster.
+    if (typeof ensureAudioCtx === 'function') ensureAudioCtx();
     phase = 'playing';
     splash.classList.add('is-hidden');
     if (tube) tube.classList.add('is-ready');
@@ -1815,6 +1887,7 @@ const Splash = (function () {
       if (phase !== 'title') return;
       if (titleMusicAwaitingGesture && bgm) bgm.play().catch(() => {});
       titleMusicAwaitingGesture = false;
+      if (typeof ensureAudioCtx === 'function') ensureAudioCtx();
       phase = 'playing';
       splash.classList.add('is-hidden');
       if (tube) tube.classList.add('is-ready');
