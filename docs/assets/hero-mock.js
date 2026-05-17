@@ -149,28 +149,44 @@
   }
 
   const mock = document.querySelector('.hero-mock');
+  const sidePanel = mock.querySelector('.hm-side');
+  const previewPanel = mock.querySelector('.hm-preview');
+  const sideBack = document.getElementById('hm-side-back');
+  // Remember which element opened the panel so we can restore focus on close — keyboard navigation
+  // shouldn't dump users back at the document root after dismissing.
+  let lastSideFocus = null;
+  let lastPreviewFocus = null;
 
   // Hover (desktop) renders content into the side panel transiently — CSS handles the reveal.
-  // Click (any device) pins the panel open: renders content AND adds .is-side-open to the mock,
+  // Click / Enter / Space pins the panel open: renders content AND adds .is-side-open to the mock,
   // so taps on touch devices work and desktop users can "pin" a session for closer reading.
   function clearActive() {
     mock.querySelectorAll('.hm-tile.is-active, .hm-mem.is-active').forEach(el => el.classList.remove('is-active'));
+  }
+  function openSide(originEl) {
+    if (!mock.classList.contains('is-side-open')) lastSideFocus = originEl || document.activeElement;
+    mock.classList.add('is-side-open');
+    if (sidePanel) sidePanel.setAttribute('aria-hidden', 'false');
+    if (sideBack) requestAnimationFrame(() => sideBack.focus());
   }
   function pinSession(tile) {
     clearActive();
     tile.classList.add('is-active');
     renderSession(tile.dataset.session);
-    mock.classList.add('is-side-open');
+    openSide(tile);
   }
   function pinMemory(mem) {
     clearActive();
     mem.classList.add('is-active');
     renderMemory(mem.dataset.memory);
-    mock.classList.add('is-side-open');
+    openSide(mem);
   }
   function closeSide() {
     mock.classList.remove('is-side-open');
+    if (sidePanel) sidePanel.setAttribute('aria-hidden', 'true');
     clearActive();
+    if (lastSideFocus && document.contains(lastSideFocus)) lastSideFocus.focus();
+    lastSideFocus = null;
   }
 
   // Hover is the transient "peek" — but stop swapping content once the user has pinned a panel,
@@ -181,6 +197,9 @@
       renderSession(tile.dataset.session);
     });
     tile.addEventListener('click', e => { e.stopPropagation(); pinSession(tile); });
+    tile.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pinSession(tile); }
+    });
   });
   document.querySelectorAll('.hm-mem[data-memory]').forEach(mem => {
     mem.addEventListener('mouseenter', () => {
@@ -188,9 +207,11 @@
       renderMemory(mem.dataset.memory);
     });
     mem.addEventListener('click', e => { e.stopPropagation(); pinMemory(mem); });
+    mem.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pinMemory(mem); }
+    });
   });
 
-  const sideBack = document.getElementById('hm-side-back');
   if (sideBack) sideBack.addEventListener('click', e => { e.stopPropagation(); closeSide(); });
 
   renderSession('s1');
@@ -245,12 +266,12 @@
       body: `<div class="pv-list">
         <h4>Launch checklist</h4>
         <ul>
-          <li class="done"><span class="pv-chk done">✓</span>Pricing page live</li>
-          <li class="done"><span class="pv-chk done">✓</span>Hero mock approved</li>
-          <li class="done"><span class="pv-chk done">✓</span>0.5.0-beta.1 published</li>
-          <li><span class="pv-chk"></span>Beta to Henry</li>
-          <li><span class="pv-chk"></span>Reddit announcement</li>
-          <li><span class="pv-chk"></span>HN post</li>
+          <li class="done" role="checkbox" aria-checked="true" tabindex="0"><span class="pv-chk done">✓</span>Pricing page live</li>
+          <li class="done" role="checkbox" aria-checked="true" tabindex="0"><span class="pv-chk done">✓</span>Hero mock approved</li>
+          <li class="done" role="checkbox" aria-checked="true" tabindex="0"><span class="pv-chk done">✓</span>0.5.0-beta.1 published</li>
+          <li role="checkbox" aria-checked="false" tabindex="0"><span class="pv-chk"></span>Beta to Henry</li>
+          <li role="checkbox" aria-checked="false" tabindex="0"><span class="pv-chk"></span>Reddit announcement</li>
+          <li role="checkbox" aria-checked="false" tabindex="0"><span class="pv-chk"></span>HN post</li>
         </ul>
       </div>`,
     },
@@ -267,10 +288,14 @@
   }
 
   function pinArtefact(cell) {
+    if (!mock.classList.contains('is-preview-open')) lastPreviewFocus = cell;
     mock.querySelectorAll('.hm-art-cell.is-active').forEach(el => el.classList.remove('is-active'));
     cell.classList.add('is-active');
     renderArtefact(cell);
     mock.classList.add('is-preview-open');
+    if (previewPanel) previewPanel.setAttribute('aria-hidden', 'false');
+    const closeBtn = document.getElementById('hm-preview-close');
+    if (closeBtn) requestAnimationFrame(() => closeBtn.focus());
   }
 
   document.querySelectorAll('.hm-art-cell[data-artefact]').forEach(cell => {
@@ -294,31 +319,42 @@
   });
 
   const previewClose = document.getElementById('hm-preview-close');
-  if (previewClose) previewClose.addEventListener('click', e => {
-    e.stopPropagation();
+  function closePreview() {
     mock.classList.remove('is-preview-open');
+    if (previewPanel) previewPanel.setAttribute('aria-hidden', 'true');
     mock.querySelectorAll('.hm-art-cell.is-active').forEach(el => el.classList.remove('is-active'));
-  });
+    if (lastPreviewFocus && document.contains(lastPreviewFocus)) lastPreviewFocus.focus();
+    lastPreviewFocus = null;
+  }
+  if (previewClose) previewClose.addEventListener('click', e => { e.stopPropagation(); closePreview(); });
 
   // Interactive preview content — event delegation so handlers survive content swaps.
+  function toggleListItem(li) {
+    const chk = li.querySelector('.pv-chk');
+    const nowDone = li.classList.toggle('done');
+    if (chk) {
+      chk.classList.toggle('done', nowDone);
+      chk.textContent = nowDone ? '✓' : '';
+    }
+    li.setAttribute('aria-checked', nowDone ? 'true' : 'false');
+  }
+  function togglePvToggle(toggle) {
+    const nowOn = toggle.classList.toggle('on');
+    toggle.setAttribute('aria-checked', nowOn ? 'true' : 'false');
+  }
   previewBody.addEventListener('click', e => {
     e.stopPropagation();
     const li = e.target.closest('.pv-list li');
-    if (li) {
-      const chk = li.querySelector('.pv-chk');
-      const nowDone = li.classList.toggle('done');
-      if (chk) {
-        chk.classList.toggle('done', nowDone);
-        chk.textContent = nowDone ? '✓' : '';
-      }
-      return;
-    }
+    if (li) { toggleListItem(li); return; }
     const toggle = e.target.closest('.pv-toggle');
-    if (toggle) {
-      const nowOn = toggle.classList.toggle('on');
-      toggle.setAttribute('aria-checked', nowOn ? 'true' : 'false');
-      return;
-    }
+    if (toggle) { togglePvToggle(toggle); return; }
+  });
+  previewBody.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const li = e.target.closest('.pv-list li');
+    if (li) { e.preventDefault(); toggleListItem(li); return; }
+    const toggle = e.target.closest('.pv-toggle');
+    if (toggle) { e.preventDefault(); togglePvToggle(toggle); return; }
   });
 
   // Space-filter pills: tap toggles the filter; tap again clears it.
