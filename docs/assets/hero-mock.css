@@ -14,12 +14,22 @@
   text-align: left;
   position: relative;
 }
-/* Items dim when their space isn't the one being hovered */
+/* Items dim when their space isn't the one being hovered (desktop) OR tap-selected (touch) */
 .hero-mock [data-space] { transition: opacity 0.18s ease; }
-.hero-mock:has(.hm-pill[data-space="acme-app"]:hover) [data-space]:not([data-space="acme-app"]):not(.hm-pill) { opacity: 0.25; }
-.hero-mock:has(.hm-pill[data-space="pitch-deck"]:hover) [data-space]:not([data-space="pitch-deck"]):not(.hm-pill) { opacity: 0.25; }
-.hero-mock:has(.hm-pill[data-space="field-notes"]:hover) [data-space]:not([data-space="field-notes"]):not(.hm-pill) { opacity: 0.25; }
-.hm-tile { transition: background 0.15s ease, transform 0.15s ease; }
+.hero-mock:has(.hm-pill[data-space="acme-app"]:hover) [data-space]:not([data-space="acme-app"]):not(.hm-pill),
+.hero-mock.is-filter-acme-app [data-space]:not([data-space="acme-app"]):not(.hm-pill) { opacity: 0.25; }
+.hero-mock:has(.hm-pill[data-space="pitch-deck"]:hover) [data-space]:not([data-space="pitch-deck"]):not(.hm-pill),
+.hero-mock.is-filter-pitch-deck [data-space]:not([data-space="pitch-deck"]):not(.hm-pill) { opacity: 0.25; }
+.hero-mock:has(.hm-pill[data-space="field-notes"]:hover) [data-space]:not([data-space="field-notes"]):not(.hm-pill),
+.hero-mock.is-filter-field-notes [data-space]:not([data-space="field-notes"]):not(.hm-pill) { opacity: 0.25; }
+/* Tap-active filter pill — lift it visually so the user can see what's engaged */
+.hero-mock .hm-pill[data-space].is-filter-on {
+  background: rgba(124, 107, 255, 0.16);
+  border-color: rgba(124, 107, 255, 0.4);
+  color: #a597ff;
+}
+/* cursor: pointer is load-bearing on iOS — without it, taps don't fire click events on non-button elements */
+.hm-tile { transition: background 0.15s ease, transform 0.15s ease; cursor: pointer; }
 .hm-tile:hover { background: rgba(255, 255, 255, 0.06); }
 .hero-mock-chrome {
   display: flex; align-items: center; gap: 8px;
@@ -181,6 +191,7 @@
   gap: 6px;
   min-width: 0;
   width: 100%;
+  cursor: pointer;
 }
 .hm-art {
   width: 100%;
@@ -285,10 +296,28 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
-.hero-mock:has(.hm-art-cell[data-artefact]:hover) .hm-preview {
+.hero-mock:has(.hm-art-cell[data-artefact]:hover) .hm-preview,
+.hero-mock.is-preview-open .hm-preview {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
 }
+/* Close affordance — only visible while the preview is tap-pinned. Proper tap target sized for touch (28×28) */
+.hm-preview-close {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  width: 28px; height: 28px;
+  font-size: 20px; line-height: 1;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  display: none;
+  border-radius: 6px;
+  padding: 0;
+}
+.hm-preview-close:hover,
+.hm-preview-close:active { color: #fff; background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.24); }
+.hero-mock.is-preview-open .hm-preview-close { display: inline-flex; align-items: center; justify-content: center; }
 .hm-preview-chrome {
   display: flex; align-items: center; gap: 7px;
   padding: 8px 12px;
@@ -366,17 +395,53 @@
 .pv-wire-bar.short { width: 40%; }
 .pv-list { font-family: 'Space Grotesk', sans-serif; }
 .pv-list h4 { font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-.pv-list ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
-.pv-list li { display: flex; align-items: center; gap: 8px; font-size: 11px; color: rgba(255, 255, 255, 0.78); }
+.pv-list ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.pv-list li {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: rgba(255, 255, 255, 0.78);
+  padding: 6px 6px; border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.pv-list li:hover, .pv-list li:active { background: rgba(255, 255, 255, 0.05); }
 .pv-chk {
-  width: 13px; height: 13px; border-radius: 3px;
+  width: 14px; height: 14px; border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 9px;
+  font-size: 10px;
   flex-shrink: 0;
 }
 .pv-chk.done { background: #4ade80; border-color: #4ade80; color: #0a0b14; font-weight: 700; }
 .pv-list li.done { color: rgba(255, 255, 255, 0.4); text-decoration: line-through; }
+
+/* Settings preview — actual rows instead of a wireframe so it reads on mobile */
+.pv-settings { display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+.pv-set-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  min-height: 36px;
+}
+.pv-set-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: rgba(255, 255, 255, 0.85); }
+.pv-set-value { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #a597ff; }
+.pv-toggle {
+  width: 28px; height: 16px; border-radius: 9px;
+  background: rgba(255, 255, 255, 0.18);
+  position: relative; flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pv-toggle::after {
+  content: ''; position: absolute;
+  top: 1.5px; left: 1.5px;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.pv-toggle.on { background: #4ade80; }
+.pv-toggle.on::after { transform: translateX(12px); }
 
 /* Slide-in side panel — preview when hovering a session */
 .hm-side {
@@ -396,9 +461,37 @@
   overflow-y: auto;
 }
 .hero-mock:has(.hm-tile:hover) .hm-side,
-.hero-mock:has(.hm-mem:hover) .hm-side { transform: translateX(0); }
+.hero-mock:has(.hm-mem:hover) .hm-side,
+.hero-mock.is-side-open .hm-side { transform: translateX(0); pointer-events: auto; }
+/* Back button — pill-shaped, accent-coloured so it reads as the primary action when the drawer is pinned */
+.hm-side-back {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  background: rgba(124, 107, 255, 0.14);
+  border: 1px solid rgba(124, 107, 255, 0.36);
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #c4b5fd;
+  padding: 7px 12px;
+  margin-right: 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hm-side-back:hover,
+.hm-side-back:active { background: rgba(124, 107, 255, 0.22); border-color: rgba(124, 107, 255, 0.55); color: #fff; }
+.hero-mock.is-side-open .hm-side-back { display: inline-flex; }
+/* Tap-pinned tile/mem gets a clear active marker */
+.hm-tile.is-active,
+.hm-mem.is-active { background: rgba(124, 107, 255, 0.10); box-shadow: inset 2px 0 0 #a597ff; }
+.hm-art-cell.is-active .hm-art { box-shadow: 0 0 0 2px rgba(165, 151, 255, 0.85); }
 .hm-mem { transition: background 0.15s ease; }
-.hm-mem:hover { background: rgba(255, 255, 255, 0.06); cursor: default; }
+.hm-mem { cursor: pointer; }
+.hm-mem:hover { background: rgba(255, 255, 255, 0.06); }
 .hm-status-mem {
   width: 10px; height: 10px; border-radius: 3px;
   background: #a597ff;
@@ -501,5 +594,45 @@
   .hero-mock-body { padding: 16px 16px; }
   .hm-art-grid { grid-template-columns: repeat(5, 1fr); }
   .hm-pill { font-size: 11px; padding: 5px 10px; }
+  /* Side panel: hidden by default on mobile, becomes a full-width drawer when tap-opened */
   .hm-side { display: none; }
+  .hero-mock.is-side-open .hm-side {
+    display: block;
+    top: 36px; left: 0; right: 0; bottom: 0;
+    width: 100%;
+    transform: translateX(0);
+    border-left: 0;
+    box-shadow: none;
+  }
+  /* Artefact preview: also full-width on mobile so the body content is readable */
+  .hero-mock.is-preview-open .hm-preview {
+    left: 0; right: 0; bottom: 0;
+    height: 60%;
+    border-radius: 10px 10px 0 0;
+  }
+  /* Preview content: stack horizontal layouts vertically so they fit narrow screens */
+  .pv-diag {
+    flex-direction: column;
+    gap: 8px;
+    justify-content: flex-start;
+    padding: 8px 0;
+  }
+  .pv-arrow {
+    width: 1px;
+    height: 14px;
+  }
+  .pv-arrow::after {
+    right: auto; top: auto;
+    left: -3px; bottom: -1px;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-top: 6px solid rgba(255, 255, 255, 0.4);
+    border-bottom: 0;
+  }
+  /* Onboarding 4-step grid → 2×2 on mobile */
+  .pv-app-grid { grid-template-columns: repeat(2, 1fr); }
+  /* Launch checklist → single column on mobile so items have room to breathe */
+  .pv-list ul { grid-template-columns: 1fr; gap: 2px; }
+  .pv-list li { padding: 9px 8px; font-size: 12px; }
+  .pv-chk { width: 16px; height: 16px; font-size: 11px; }
 }

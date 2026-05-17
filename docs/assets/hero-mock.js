@@ -148,12 +148,71 @@
     body.innerHTML = text + block('Written by', written) + block('Pulled by', pulled) + block('Linked artefacts', arts);
   }
 
+  const mock = document.querySelector('.hero-mock');
+  const sidePanel = mock.querySelector('.hm-side');
+  const previewPanel = mock.querySelector('.hm-preview');
+  const sideBack = document.getElementById('hm-side-back');
+  // Remember which element opened the panel so we can restore focus on close — keyboard navigation
+  // shouldn't dump users back at the document root after dismissing.
+  let lastSideFocus = null;
+  let lastPreviewFocus = null;
+
+  // Hover (desktop) renders content into the side panel transiently — CSS handles the reveal.
+  // Click / Enter / Space pins the panel open: renders content AND adds .is-side-open to the mock,
+  // so taps on touch devices work and desktop users can "pin" a session for closer reading.
+  function clearActive() {
+    mock.querySelectorAll('.hm-tile.is-active, .hm-mem.is-active').forEach(el => el.classList.remove('is-active'));
+  }
+  function openSide(originEl) {
+    if (!mock.classList.contains('is-side-open')) lastSideFocus = originEl || document.activeElement;
+    mock.classList.add('is-side-open');
+    if (sidePanel) sidePanel.setAttribute('aria-hidden', 'false');
+    if (sideBack) requestAnimationFrame(() => sideBack.focus());
+  }
+  function pinSession(tile) {
+    clearActive();
+    tile.classList.add('is-active');
+    renderSession(tile.dataset.session);
+    openSide(tile);
+  }
+  function pinMemory(mem) {
+    clearActive();
+    mem.classList.add('is-active');
+    renderMemory(mem.dataset.memory);
+    openSide(mem);
+  }
+  function closeSide() {
+    mock.classList.remove('is-side-open');
+    if (sidePanel) sidePanel.setAttribute('aria-hidden', 'true');
+    clearActive();
+    if (lastSideFocus && document.contains(lastSideFocus)) lastSideFocus.focus();
+    lastSideFocus = null;
+  }
+
+  // Hover is the transient "peek" — but stop swapping content once the user has pinned a panel,
+  // otherwise the active highlight on one tile would mismatch the content showing for another.
   document.querySelectorAll('.hm-tile').forEach(tile => {
-    tile.addEventListener('mouseenter', () => renderSession(tile.dataset.session));
+    tile.addEventListener('mouseenter', () => {
+      if (mock.classList.contains('is-side-open')) return;
+      renderSession(tile.dataset.session);
+    });
+    tile.addEventListener('click', e => { e.stopPropagation(); pinSession(tile); });
+    tile.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pinSession(tile); }
+    });
   });
   document.querySelectorAll('.hm-mem[data-memory]').forEach(mem => {
-    mem.addEventListener('mouseenter', () => renderMemory(mem.dataset.memory));
+    mem.addEventListener('mouseenter', () => {
+      if (mock.classList.contains('is-side-open')) return;
+      renderMemory(mem.dataset.memory);
+    });
+    mem.addEventListener('click', e => { e.stopPropagation(); pinMemory(mem); });
+    mem.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pinMemory(mem); }
+    });
   });
+
+  if (sideBack) sideBack.addEventListener('click', e => { e.stopPropagation(); closeSide(); });
 
   renderSession('s1');
 
@@ -193,20 +252,13 @@
       </div>`,
     },
     settings: {
-      title: 'Settings UI · wireframe',
-      body: `<div class="pv-wire">
-        <div class="pv-wire-side">
-          <div class="pv-wire-side-row active"></div>
-          <div class="pv-wire-side-row"></div>
-          <div class="pv-wire-side-row"></div>
-          <div class="pv-wire-side-row"></div>
-        </div>
-        <div class="pv-wire-main">
-          <div class="pv-wire-bar long"></div>
-          <div class="pv-wire-bar med"></div>
-          <div class="pv-wire-bar long"></div>
-          <div class="pv-wire-bar short"></div>
-        </div>
+      title: 'Settings · acme-app',
+      body: `<div class="pv-settings">
+        <div class="pv-set-row"><span class="pv-set-label">Notifications</span><span class="pv-toggle on" role="switch" aria-checked="true" tabindex="0"></span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Default agent</span><span class="pv-set-value">Claude Code</span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Theme</span><span class="pv-set-value">Dark</span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Auto-sync</span><span class="pv-toggle on" role="switch" aria-checked="true" tabindex="0"></span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Share usage data</span><span class="pv-toggle" role="switch" aria-checked="false" tabindex="0"></span></div>
       </div>`,
     },
     launch: {
@@ -214,12 +266,12 @@
       body: `<div class="pv-list">
         <h4>Launch checklist</h4>
         <ul>
-          <li class="done"><span class="pv-chk done">✓</span>Pricing page live</li>
-          <li class="done"><span class="pv-chk done">✓</span>Hero mock approved</li>
-          <li class="done"><span class="pv-chk done">✓</span>0.5.0-beta.1 published</li>
-          <li><span class="pv-chk"></span>Beta to Henry</li>
-          <li><span class="pv-chk"></span>Reddit announcement</li>
-          <li><span class="pv-chk"></span>HN post</li>
+          <li class="done" role="checkbox" aria-checked="true" tabindex="0"><span class="pv-chk done">✓</span>Pricing page live</li>
+          <li class="done" role="checkbox" aria-checked="true" tabindex="0"><span class="pv-chk done">✓</span>Hero mock approved</li>
+          <li class="done" role="checkbox" aria-checked="true" tabindex="0"><span class="pv-chk done">✓</span>0.5.0-beta.1 published</li>
+          <li role="checkbox" aria-checked="false" tabindex="0"><span class="pv-chk"></span>Beta to Henry</li>
+          <li role="checkbox" aria-checked="false" tabindex="0"><span class="pv-chk"></span>Reddit announcement</li>
+          <li role="checkbox" aria-checked="false" tabindex="0"><span class="pv-chk"></span>HN post</li>
         </ul>
       </div>`,
     },
@@ -228,12 +280,97 @@
   const previewTitle = document.getElementById('hm-preview-title');
   const previewBody = document.getElementById('hm-preview-body');
 
+  function renderArtefact(cell) {
+    const a = artefacts[cell.dataset.artefact];
+    if (!a) return;
+    previewTitle.textContent = a.title;
+    previewBody.innerHTML = a.body;
+  }
+
+  function pinArtefact(cell) {
+    if (!mock.classList.contains('is-preview-open')) lastPreviewFocus = cell;
+    mock.querySelectorAll('.hm-art-cell.is-active').forEach(el => el.classList.remove('is-active'));
+    cell.classList.add('is-active');
+    renderArtefact(cell);
+    mock.classList.add('is-preview-open');
+    if (previewPanel) previewPanel.setAttribute('aria-hidden', 'false');
+    const closeBtn = document.getElementById('hm-preview-close');
+    if (closeBtn) requestAnimationFrame(() => closeBtn.focus());
+  }
+
   document.querySelectorAll('.hm-art-cell[data-artefact]').forEach(cell => {
     cell.addEventListener('mouseenter', () => {
-      const a = artefacts[cell.dataset.artefact];
-      if (!a) return;
-      previewTitle.textContent = a.title;
-      previewBody.innerHTML = a.body;
+      if (mock.classList.contains('is-preview-open')) return;
+      renderArtefact(cell);
+    });
+    // The rocket-ship cell owns its own click handler (launches the easter egg) — don't shadow it.
+    if (cell.classList.contains('hm-art-cell-launchable')) return;
+    cell.addEventListener('click', e => { e.stopPropagation(); pinArtefact(cell); });
+    cell.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pinArtefact(cell); }
+    });
+    // Pointer-events safety net for touch: pointerup fires reliably for mouse/pen/touch even when
+    // Safari's hover-tap interpretation eats the click event. Idempotent with the click handler.
+    cell.addEventListener('pointerup', e => {
+      if (e.pointerType === 'mouse') return;
+      e.stopPropagation();
+      pinArtefact(cell);
+    });
+  });
+
+  const previewClose = document.getElementById('hm-preview-close');
+  function closePreview() {
+    mock.classList.remove('is-preview-open');
+    if (previewPanel) previewPanel.setAttribute('aria-hidden', 'true');
+    mock.querySelectorAll('.hm-art-cell.is-active').forEach(el => el.classList.remove('is-active'));
+    if (lastPreviewFocus && document.contains(lastPreviewFocus)) lastPreviewFocus.focus();
+    lastPreviewFocus = null;
+  }
+  if (previewClose) previewClose.addEventListener('click', e => { e.stopPropagation(); closePreview(); });
+
+  // Interactive preview content — event delegation so handlers survive content swaps.
+  function toggleListItem(li) {
+    const chk = li.querySelector('.pv-chk');
+    const nowDone = li.classList.toggle('done');
+    if (chk) {
+      chk.classList.toggle('done', nowDone);
+      chk.textContent = nowDone ? '✓' : '';
+    }
+    li.setAttribute('aria-checked', nowDone ? 'true' : 'false');
+  }
+  function togglePvToggle(toggle) {
+    const nowOn = toggle.classList.toggle('on');
+    toggle.setAttribute('aria-checked', nowOn ? 'true' : 'false');
+  }
+  previewBody.addEventListener('click', e => {
+    e.stopPropagation();
+    const li = e.target.closest('.pv-list li');
+    if (li) { toggleListItem(li); return; }
+    const toggle = e.target.closest('.pv-toggle');
+    if (toggle) { togglePvToggle(toggle); return; }
+  });
+  previewBody.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const li = e.target.closest('.pv-list li');
+    if (li) { e.preventDefault(); toggleListItem(li); return; }
+    const toggle = e.target.closest('.pv-toggle');
+    if (toggle) { e.preventDefault(); togglePvToggle(toggle); return; }
+  });
+
+  // Space-filter pills: tap toggles the filter; tap again clears it.
+  const FILTER_CLASSES = ['is-filter-acme-app', 'is-filter-pitch-deck', 'is-filter-field-notes'];
+  document.querySelectorAll('.hm-pill[data-space]').forEach(pill => {
+    pill.addEventListener('click', e => {
+      e.stopPropagation();
+      const space = pill.dataset.space;
+      const cls = 'is-filter-' + space;
+      const wasActive = mock.classList.contains(cls);
+      mock.classList.remove(...FILTER_CLASSES);
+      mock.querySelectorAll('.hm-pill[data-space].is-filter-on').forEach(p => p.classList.remove('is-filter-on'));
+      if (!wasActive) {
+        mock.classList.add(cls);
+        pill.classList.add('is-filter-on');
+      }
     });
   });
 })();

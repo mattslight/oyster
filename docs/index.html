@@ -1432,12 +1432,14 @@
             <span class="dot dot-y"></span>
             <span class="dot dot-g"></span>
             <span class="hm-preview-title" id="hm-preview-title">Preview</span>
+            <button type="button" class="hm-preview-close" id="hm-preview-close" aria-label="Close preview">×</button>
           </div>
           <div class="hm-preview-body" id="hm-preview-body"></div>
         </div>
 
         <div class="hm-side" aria-hidden="true">
           <div class="hm-side-head">
+            <button type="button" class="hm-side-back" id="hm-side-back" aria-label="Close detail panel">‹ Back</button>
             <span class="hm-status" id="hm-side-status"></span>
             <span class="hm-side-title" id="hm-side-title"></span>
           </div>
@@ -1465,7 +1467,7 @@
               </span>
             </div>
             <div class="hm-tiles">
-              <div class="hm-tile" data-space="acme-app" data-session="s1">
+              <div class="hm-tile" data-space="acme-app" data-session="s1" role="button" tabindex="0" aria-label="Open session: Refactor checkout flow">
                 <span class="hm-status hm-status-g"></span>
                 <div class="hm-tile-body">
                   <div class="hm-tile-title">Refactor checkout flow</div>
@@ -1473,7 +1475,7 @@
                 </div>
                 <span class="hm-tile-time">2m ago</span>
               </div>
-              <div class="hm-tile" data-space="pitch-deck" data-session="s2">
+              <div class="hm-tile" data-space="pitch-deck" data-session="s2" role="button" tabindex="0" aria-label="Open session: Stakeholder pitch v3">
                 <span class="hm-status hm-status-a"></span>
                 <div class="hm-tile-body">
                   <div class="hm-tile-title">Stakeholder pitch v3</div>
@@ -1481,7 +1483,7 @@
                 </div>
                 <span class="hm-tile-time">awaiting</span>
               </div>
-              <div class="hm-tile" data-space="acme-app" data-session="s3">
+              <div class="hm-tile" data-space="acme-app" data-session="s3" role="button" tabindex="0" aria-label="Open session: Investigate API latency">
                 <span class="hm-status hm-status-r"></span>
                 <div class="hm-tile-body">
                   <div class="hm-tile-title">Investigate API latency</div>
@@ -1489,7 +1491,7 @@
                 </div>
                 <span class="hm-tile-time">1h ago</span>
               </div>
-              <div class="hm-tile" data-space="field-notes" data-session="s4">
+              <div class="hm-tile" data-space="field-notes" data-session="s4" role="button" tabindex="0" aria-label="Open session: Weekly retro write-up">
                 <span class="hm-status hm-status-d"></span>
                 <div class="hm-tile-body">
                   <div class="hm-tile-title">Weekly retro write-up</div>
@@ -1506,7 +1508,7 @@
               <span class="hm-section-meta">23 · 4 pinned</span>
             </div>
             <div class="hm-mems">
-              <div class="hm-mem" data-space="acme-app" data-memory="m1">
+              <div class="hm-mem" data-space="acme-app" data-memory="m1" role="button" tabindex="0" aria-label="Open memory: Customer prefers email summaries on Fridays">
                 <div class="hm-mem-text">Customer prefers email summaries on Fridays — keep under 200 words and lead with decisions, not analysis.</div>
                 <div class="hm-mem-meta">
                   <span class="hm-mem-space">acme-app</span>
@@ -1514,7 +1516,7 @@
                   <span class="hm-mem-sep">·</span><span>4h ago</span>
                 </div>
               </div>
-              <div class="hm-mem" data-space="pitch-deck" data-memory="m2">
+              <div class="hm-mem" data-space="pitch-deck" data-memory="m2" role="button" tabindex="0" aria-label="Open memory: Pitch deck pricing slide">
                 <div class="hm-mem-text">Pitch deck needs the revised pricing slide before Wednesday's stakeholder review.</div>
                 <div class="hm-mem-meta">
                   <span class="hm-mem-space">pitch-deck</span>
@@ -1531,7 +1533,7 @@
               <span class="hm-section-meta">12 · across 3 spaces</span>
             </div>
             <div class="hm-art-grid">
-              <div class="hm-art-cell" data-space="acme-app" data-artefact="onboarding">
+              <div class="hm-art-cell" data-space="acme-app" data-artefact="onboarding" role="button" tabindex="0" aria-label="Open Onboarding artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #ffaa66 0%, #f06d3f 60%, #c44a1c 100%);">
                   <!-- Mini kanban — 3 columns of cards -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1550,7 +1552,7 @@
                 </div>
                 <span class="hm-art-label">Onboarding</span>
               </div>
-              <div class="hm-art-cell" data-space="pitch-deck" data-artefact="pitch">
+              <div class="hm-art-cell" data-space="pitch-deck" data-artefact="pitch" role="button" tabindex="0" aria-label="Open Q4 Pitch artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #5beddc 0%, #34d4c0 35%, #1d4ed8 100%);">
                   <!-- Mini slide with bar chart -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1566,7 +1568,7 @@
                 </div>
                 <span class="hm-art-label">Q4 Pitch</span>
               </div>
-              <div class="hm-art-cell" data-space="acme-app" data-artefact="auth">
+              <div class="hm-art-cell" data-space="acme-app" data-artefact="auth" role="button" tabindex="0" aria-label="Open Auth flow artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #ff90c8 0%, #f472b6 40%, #be123c 100%);">
                   <!-- Mini node diagram — 4 nodes connected -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1584,7 +1586,7 @@
                 </div>
                 <span class="hm-art-label">Auth flow</span>
               </div>
-              <div class="hm-art-cell" data-space="acme-app" data-artefact="settings">
+              <div class="hm-art-cell" data-space="acme-app" data-artefact="settings" role="button" tabindex="0" aria-label="Open Settings UI artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #b5d8ff 0%, #6db4ff 40%, #0891b2 100%);">
                   <!-- Mini settings window with toggle on -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1604,7 +1606,7 @@
                 </div>
                 <span class="hm-art-label">Settings UI</span>
               </div>
-              <div class="hm-art-cell" data-space="field-notes" data-artefact="launch">
+              <div class="hm-art-cell" data-space="field-notes" data-artefact="launch" role="button" tabindex="0" aria-label="Open Launch list artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #ffe88a 0%, #fcd34d 35%, #ea580c 100%);">
                   <!-- Mini doc with checklist -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
