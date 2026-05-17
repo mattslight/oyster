@@ -64,6 +64,74 @@
     filter: contrast(1.02) brightness(1.18) saturate(1.3);
   }
 
+  /* On-screen touch controls — only on coarse-pointer devices and only once
+     the splash dismisses (tube.is-ready). Two thumb clusters: turn-pair in
+     the bottom-left, thrust in the bottom-right. */
+  .touch-controls {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: none;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: clamp(14px, 3vw, 28px);
+    pointer-events: none;
+    z-index: 6;
+  }
+  .tube.is-ready .touch-controls { display: flex; }
+  @media (hover: hover) and (pointer: fine) {
+    .touch-controls { display: none !important; }
+  }
+  .touch-controls .tc-group {
+    display: flex;
+    gap: clamp(10px, 2vw, 16px);
+    pointer-events: none;
+  }
+  .touch-controls .tc-btn {
+    pointer-events: auto;
+    width: clamp(56px, 11vw, 80px);
+    height: clamp(56px, 11vw, 80px);
+    border-radius: 12px;
+    border: 2px solid rgba(45, 212, 255, 0.6);
+    background: rgba(0, 0, 0, 0.35);
+    color: #2dd4ff;
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    font-size: clamp(20px, 4vw, 30px);
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    transition: background 0.08s, border-color 0.08s;
+  }
+  .touch-controls .tc-btn:active,
+  .touch-controls .tc-btn.is-pressed {
+    background: rgba(45, 212, 255, 0.25);
+    border-color: #2dd4ff;
+    color: #fff;
+  }
+  .touch-controls .tc-thrust {
+    width: clamp(72px, 14vw, 100px);
+    height: clamp(72px, 14vw, 100px);
+    border-color: rgba(255, 132, 0, 0.7);
+    color: #ff8800;
+  }
+  .touch-controls .tc-thrust:active,
+  .touch-controls .tc-thrust.is-pressed {
+    background: rgba(255, 132, 0, 0.25);
+    border-color: #ff8800;
+    color: #fff;
+  }
+
+  /* Splash control labels: keyboard by default, touch alternatives shown
+     only on coarse-pointer devices. */
+  .splash .controls .touch-only { display: none; }
+  @media (pointer: coarse) {
+    .splash .controls .key-only { display: none; }
+    .splash .controls .touch-only { display: block; }
+  }
+
   /* CRT scanlines + RGB sub-pixel overlay */
   /* CRT layers sit ABOVE the splash/gameover/celebrate panels so the scanlines
      + vignette read on every screen, not just gameplay. pointer-events:none
@@ -300,6 +368,14 @@
   }
   .splash .sound-toggle:hover,
   .splash .sound-toggle:focus { opacity: 1; outline: none; }
+  /* At narrow widths the host's × sits top-right; flip ♪ to top-left so
+     both stay reachable. */
+  @media (max-width: 500px) {
+    .splash .sound-toggle {
+      right: auto;
+      left: clamp(10px, 1.6vw, 18px);
+    }
+  }
   .splash .sound-toggle.is-muted {
     color: rgba(255, 255, 255, 0.32);
     text-decoration: line-through;
@@ -597,6 +673,15 @@
     <canvas id="c"></canvas>
     <div class="overlay"></div>
     <div class="vignette"></div>
+    <div class="touch-controls" aria-hidden="true">
+      <div class="tc-group tc-turn">
+        <button type="button" class="tc-btn" id="tc-left"   aria-label="Turn left"  tabindex="-1">◀</button>
+        <button type="button" class="tc-btn" id="tc-right"  aria-label="Turn right" tabindex="-1">▶</button>
+      </div>
+      <div class="tc-group tc-fire">
+        <button type="button" class="tc-btn tc-thrust" id="tc-thrust" aria-label="Thrust" tabindex="-1">▲</button>
+      </div>
+    </div>
     <div class="splash" id="splash">
       <div class="boot">
         <div class="boot-msg">SYSTEM BOOT</div>
@@ -640,8 +725,8 @@
           <div class="title">ROCKET<br>SHIP</div>
           <div class="start">INSERT COIN TO PLAY</div>
           <div class="controls">
-            <div class="key">↑ / W</div><div class="desc">THRUST</div>
-            <div class="key">← →</div><div class="desc">TURN</div>
+            <div class="key key-only">↑ / W</div><div class="key touch-only">TAP ▲</div><div class="desc">THRUST</div>
+            <div class="key key-only">← →</div><div class="key touch-only">TAP ◀ ▶</div><div class="desc">TURN</div>
             <div class="key">★</div><div class="desc">COLLECT THE STARS</div>
             <div class="key">!</div><div class="desc">AVOID THE ASTEROIDS</div>
           </div>
@@ -807,20 +892,32 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-// Touch controls — passive: false so preventDefault is honoured everywhere
+// Touch controls — driven by the on-screen buttons (◀ ▶ ▲) overlaid on the
+// tube. Buttons set the same flags the keyboard does so the rest of the game
+// loop doesn't need to know where the input came from.
+const isTouchDevice = window.matchMedia && matchMedia('(pointer: coarse)').matches;
 let touchThrust = false;
-let touchX = null;
-canvas.addEventListener('touchstart', e => {
-  e.preventDefault();
-  touchThrust = true;
-  touchX = e.touches[0].clientX;
-}, { passive: false });
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  touchX = e.touches[0].clientX;
-}, { passive: false });
-canvas.addEventListener('touchend', () => { touchThrust = false; touchX = null; });
-canvas.addEventListener('touchcancel', () => { touchThrust = false; touchX = null; });
+(function bindTouchButtons() {
+  const left   = document.getElementById('tc-left');
+  const right  = document.getElementById('tc-right');
+  const thrust = document.getElementById('tc-thrust');
+  function bind(btn, onDown, onUp) {
+    if (!btn) return;
+    const down = e => { e.preventDefault(); btn.classList.add('is-pressed'); onDown(); };
+    const up   = e => { if (e) e.preventDefault(); btn.classList.remove('is-pressed'); onUp(); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+    btn.addEventListener('pointerleave', up);
+    // Stop pointer events from bubbling to the splash's global dismiss listener.
+    ['pointerdown', 'mousedown', 'touchstart'].forEach(ev => {
+      btn.addEventListener(ev, e => e.stopPropagation(), { passive: false });
+    });
+  }
+  bind(left,   () => keys['ArrowLeft']  = true, () => keys['ArrowLeft']  = false);
+  bind(right,  () => keys['ArrowRight'] = true, () => keys['ArrowRight'] = false);
+  bind(thrust, () => touchThrust = true,        () => touchThrust = false);
+})();
 
 // Mouse control — release tracked on window (and window blur) so a drag
 // that ends outside the canvas / iframe still clears the steering state.
@@ -1040,12 +1137,11 @@ function update() {
     hasMoved = true;
   }
 
-  // Touch/mouse steering
-  if ((touchThrust && touchX !== null) || (mouseDown && mouseX !== null)) {
-    // Nullish — `||` would treat a perfectly valid touch at clientX=0 as missing.
-    const tx = touchX !== null ? touchX : mouseX;
+  // Mouse steering — point rocket toward horizontal mouse position while
+  // dragging. Touch users get explicit ◀ / ▶ buttons instead.
+  if (mouseDown && mouseX !== null) {
     const center = W / 2;
-    const diff = (tx - center) / (W / 2);
+    const diff = (mouseX - center) / (W / 2);
     rocket.angle += diff * 0.06;
   }
 
@@ -1259,7 +1355,9 @@ function draw() {
     const t = (performance.now() - movedAt) / HINT_FADE_MS;
     hintAlpha = t >= 1 ? 0 : 0.7 * (1 - t);
   }
-  if (hintAlpha > 0.001) {
+  // On touch devices the ◀ ▶ ▲ buttons are self-explanatory and the hint
+  // text just overlaps them, so skip drawing it entirely.
+  if (hintAlpha > 0.001 && !isTouchDevice) {
     ctx.fillStyle = `rgba(255,255,255,${hintAlpha.toFixed(3)})`;
     ctx.font = '11px "Press Start 2P", ui-monospace, monospace';
     ctx.textAlign = 'center';
@@ -1314,6 +1412,10 @@ loop();
   if (!bgm) return;
   bgm.volume = 0.45;
 })();
+
+// Mark the body when embedded so the host can target embedded-only styles
+// if needed. The close button lives on the host page now (see index.html).
+if (window.self !== window.top) document.body.classList.add('is-embedded');
 
 // Sound toggle on the splash. Persists muted state to localStorage and
 // mirrors it onto every <audio> element so both BGM and SFX go silent.
@@ -1673,10 +1775,11 @@ const Splash = (function () {
     // don't bubble out of an iframe, so without postMessage the outer
     // ESC-to-shutoff listener never fires while focus is in the game.
     if (e.key === 'Escape') {
-      // Target the current origin explicitly — never broadcast the close
-      // signal to a cross-origin parent (matters if the game is ever
-      // embedded elsewhere).
-      try { window.parent.postMessage({ type: 'oyster-rocket-close' }, location.origin); } catch (_) {}
+      // '*' targetOrigin because location.origin is the literal string
+      // "null" on file:// and won't match any real origin, breaking the
+      // close handshake. The parent verifies e.source against its iframe
+      // ref so this still can't be spoofed by a third-party tab.
+      try { window.parent.postMessage({ type: 'oyster-rocket-close' }, '*'); } catch (_) {}
       return;
     }
     tryDismiss();

@@ -438,9 +438,67 @@
       border: 0;
       display: block;
     }
+    /* × close button — lives on the host (not inside the iframe) so the
+       click handler can call shutoff() directly with no postMessage
+       handshake. Hidden by default; only shown on the mobile breakpoint
+       when the rocket is launched. Desktop users close via the chrome
+       dots above the device mock. */
+    .hero-mock-rocket-exit {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 2;
+      display: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.85);
+      font-family: 'Press Start 2P', ui-monospace, monospace;
+      font-size: 22px;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .hero-mock-rocket-exit:hover,
+    .hero-mock-rocket-exit:focus {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.7);
+      outline: none;
+    }
+    @media (max-width: 700px) {
+      .hero-mock.is-launched .hero-mock-rocket-exit { display: flex; }
+    }
     .hero-mock.is-launched .hero-mock-rocket {
       opacity: 1;
       pointer-events: auto;
+    }
+    /* On mobile, break the rocket out of the tiny device mock and cover
+       the whole viewport so the game is actually playable. The CRT
+       shutoff animation still works (it's a transform-scale).
+
+       The body.is-rocket-launched class is set by the easter-egg IIFE on
+       launch and removed after CRT shutoff completes. We use it (not the
+       :has() trick) so older Safari still works, and so the rule only
+       costs paint while the rocket is up. Raising .hero's z-index above
+       the nav (z:100) is what lets the in-.hero rocket overlay actually
+       cover the page chrome instead of rendering behind it. */
+    @media (max-width: 700px) {
+      /* .hero h1 has z-index:2 and .cta-row has its own context too, both
+         of which beat the default .hero-mock z-index:1. Lift the mock above
+         them while the rocket is up so the fullscreen iframe actually
+         covers the hero text and buttons. */
+      body.is-rocket-launched .hero { z-index: 999; }
+      body.is-rocket-launched .hero-stage .hero-mock { z-index: 50; }
+      .hero-mock.is-launched .hero-mock-rocket {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+      }
     }
     /* Hide the surface while the rocket is up — but bring it BACK as
        soon as CRT shutdown starts, so the collapsing dot reveals
@@ -455,6 +513,10 @@
       max-width: 1180px;
       margin: 84px auto 0;
       padding: 0 12px;
+    }
+    @media (max-width: 700px) {
+      .hero { padding-left: 14px; padding-right: 14px; }
+      .hero-stage { padding: 0 4px; }
     }
     .hero-stage .hero-mock {
       position: relative;
@@ -1355,6 +1417,7 @@
              to assistive tech only when visible. -->
         <div class="hero-mock-rocket" aria-hidden="true">
           <iframe data-src="rocket-ship.html" title="Rocket Ship" loading="lazy"></iframe>
+          <button type="button" class="hero-mock-rocket-exit" id="hero-mock-rocket-exit" aria-label="Exit rocket ship">×</button>
         </div>
 
         <div class="hm-preview" aria-hidden="true">
@@ -2015,6 +2078,7 @@
         setTimeout(() => {
           mock.classList.remove('is-launched');
           mock.classList.remove('is-shutting-down');
+          document.body.classList.remove('is-rocket-launched');
           if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'true');
           killIframe();
           shuttingDown = false;
@@ -2027,8 +2091,21 @@
         if (mock.classList.contains('is-launched')) return;
         if (frame) frame.src = frame.dataset.src;
         mock.classList.add('is-launched');
+        // Flag body so the mobile fullscreen CSS can lift .hero above the
+        // nav's stacking context — without this the page chrome renders
+        // over the iframe even though the iframe is z-index 1000.
+        document.body.classList.add('is-rocket-launched');
         if (rocketOverlay) rocketOverlay.setAttribute('aria-hidden', 'false');
       }
+
+      // Host-side close button (shown only on the mobile fullscreen
+      // breakout, CSS-gated). Calling shutoff() directly here avoids the
+      // postMessage round-trip and the file:// targetOrigin pitfall.
+      const exitBtn = document.getElementById('hero-mock-rocket-exit');
+      if (exitBtn) exitBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        shutoff();
+      });
 
       mock.querySelectorAll('.hero-mock-chrome .dot').forEach(dot => {
         dot.addEventListener('click', (e) => {
