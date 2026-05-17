@@ -6,7 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Added
 
-- **Rocket Ship on mobile.** On-screen ◀ ▶ ▲ controls overlay the canvas during gameplay, the title-screen instructions swap to *TAP* labels, and launching from the homepage breaks the game out to fullscreen with a × close button in the top-right.
+- **Rocket Ship on mobile.** On-screen ◀ ▶ ▲ controls overlay the canvas during gameplay, the title-screen instructions swap to *TAP* labels, and launching from the homepage breaks the game out to fullscreen with a × close button in the top-right. High-score initials can be entered with the same buttons: ◀ ▶ cycle the letter, ▲ advances to the next slot or saves.
 - **Mute toggle on the Rocket Ship title screen.** Click the ♪ in the top-right to silence music and sound effects; the choice is remembered next time you boot the game.
 
 ### Changed

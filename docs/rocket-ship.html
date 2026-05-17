@@ -23,6 +23,13 @@
     overflow: hidden;
     height: 100vh;
     width: 100vw;
+    /* Suppress iOS text selection / Copy popup when a tap drifts slightly
+       during gameplay or on the splash. Everything in the game is visual
+       — nothing should be selectable. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* Screen container — old CRT bezel (warm-gray molded plastic) */
@@ -765,7 +772,7 @@
           <span class="go-slot" data-slot="1">A</span>
           <span class="go-slot" data-slot="2">A</span>
         </div>
-        <div class="go-initials-hint">↑↓ CHANGE · ←→ MOVE · ENTER SAVE</div>
+        <div class="go-initials-hint"><span class="key-only">↑↓ CHANGE · ←→ MOVE · ENTER SAVE</span><span class="touch-only">◀ ▶ LETTER · ▲ NEXT</span></div>
       </div>
     </div>
   </div>
@@ -916,9 +923,20 @@ let touchThrust = false;
       btn.addEventListener(ev, e => e.stopPropagation(), { passive: false });
     });
   }
-  bind(left,   () => keys['ArrowLeft']  = true, () => keys['ArrowLeft']  = false);
-  bind(right,  () => keys['ArrowRight'] = true, () => keys['ArrowRight'] = false);
-  bind(thrust, () => touchThrust = true,        () => touchThrust = false);
+  // While the game-over overlay is up, the on-screen buttons drive initials
+  // entry instead of game motion: ◀/▶ cycle the active letter, ▲ advances
+  // slots (and saves on the last one). The game-over IIFE returns true if
+  // it consumed the action so we skip setting the game-input flags.
+  function goConsumed(action) {
+    const handler = window.__rocketGameOverTouch;
+    return !!(handler && handler(action));
+  }
+  bind(left,   () => { if (!goConsumed('letter-prev')) keys['ArrowLeft']  = true; },
+                () => keys['ArrowLeft']  = false);
+  bind(right,  () => { if (!goConsumed('letter-next')) keys['ArrowRight'] = true; },
+                () => keys['ArrowRight'] = false);
+  bind(thrust, () => { if (!goConsumed('advance'))     touchThrust        = true; },
+                () => touchThrust = false);
 })();
 
 // Mouse control — release tracked on window (and window blur) so a drag
@@ -1863,6 +1881,48 @@ const Splash = (function () {
 
   // Expose for triggerGameOver -> setTimeout fade-in
   window.__rocketShowGameOver = showGameOverWith;
+
+  // Touch routing for the game-over overlay. Returns true if the action was
+  // consumed so the touch-button bindings know to suppress their game
+  // (rotate/thrust) side-effects. Three actions mapped from the on-screen
+  // buttons: ◀/▶ cycle the active letter, ▲ advances to the next slot or
+  // saves on the last one.
+  window.__rocketGameOverTouch = function (action) {
+    if (!ov.classList.contains('is-visible')) return false;
+    if (enteringInitials) {
+      const idx = CHARS.indexOf(letters[activeSlot]);
+      if (action === 'letter-prev') {
+        letters[activeSlot] = CHARS[(idx - 1 + CHARS.length) % CHARS.length];
+      } else if (action === 'letter-next') {
+        letters[activeSlot] = CHARS[(idx + 1) % CHARS.length];
+      } else if (action === 'advance') {
+        if (activeSlot < 2) {
+          activeSlot++;
+        } else {
+          addToLeaderboard(pendingScore, letters.join(''));
+          enteringInitials = false;
+          ov.classList.remove('is-visible');
+          Splash.enterAttractMode();
+        }
+      }
+      paintSlots();
+      return true;
+    }
+    // Non-initials game-over: any touch button dismisses, matching the
+    // keyboard "any key" behavior.
+    ov.classList.remove('is-visible');
+    Splash.enterAttractMode();
+    return true;
+  };
+
+  // Tap anywhere outside a button to dismiss when not entering initials —
+  // mirrors the keydown handler below.
+  window.addEventListener('touchstart', (e) => {
+    if (!ov.classList.contains('is-visible')) return;
+    if (enteringInitials) return; // initials uses the on-screen buttons
+    ov.classList.remove('is-visible');
+    Splash.enterAttractMode();
+  }, { passive: true });
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') return;
