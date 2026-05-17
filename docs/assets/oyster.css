@@ -314,6 +314,12 @@ body {
   justify-content: center;
   flex-wrap: wrap;
 }
+/* Phone-sized screens only — stack the CTAs and let each one fill the width.
+   Tablets keep the inline pill row. */
+@media (max-width: 560px) {
+  .cta-row { flex-direction: column; flex-wrap: nowrap; }
+  .cta-row .cta { width: 100%; justify-content: center; }
+}
 
 /* ============================================
    TYPOGRAPHY PATTERNS
