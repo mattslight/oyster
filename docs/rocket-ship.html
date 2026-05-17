@@ -124,12 +124,14 @@
     color: #fff;
   }
 
-  /* Splash control labels: keyboard by default, touch alternatives shown
-     only on coarse-pointer devices. */
-  .splash .controls .touch-only { display: none; }
+  /* Show keyboard hints by default; swap to touch labels on coarse
+     pointers. display:revert lets each element fall back to its natural
+     display value (div → block, span → inline) so the utility works in
+     both block and inline contexts. */
+  .touch-only { display: none; }
   @media (pointer: coarse) {
-    .splash .controls .key-only { display: none; }
-    .splash .controls .touch-only { display: block; }
+    .key-only { display: none; }
+    .touch-only { display: revert; }
   }
 
   /* CRT scanlines + RGB sub-pixel overlay */
@@ -723,7 +725,7 @@
             <rect class="flame flame-4" x="10" y="27" width="2" height="2" fill="#ffffff"/>
           </svg>
           <div class="title">ROCKET<br>SHIP</div>
-          <div class="start">INSERT COIN TO PLAY</div>
+          <div class="start"><span class="key-only">INSERT COIN TO PLAY</span><span class="touch-only">TAP TO PLAY</span></div>
           <div class="controls">
             <div class="key key-only">↑ / W</div><div class="key touch-only">TAP ▲</div><div class="desc">THRUST</div>
             <div class="key key-only">← →</div><div class="key touch-only">TAP ◀ ▶</div><div class="desc">TURN</div>
@@ -731,12 +733,12 @@
             <div class="key">!</div><div class="desc">AVOID THE ASTEROIDS</div>
           </div>
           <div class="hiscore-row" id="hiscore-row">HIGH SCORE <span class="hs-val" id="hs-val-splash">000</span> <span class="hs-initials" id="hs-initials-splash">---</span></div>
-          <div class="credit">© OYSTER 2026 — PRESS ANY KEY</div>
+          <div class="credit">© OYSTER 2026 — <span class="key-only">PRESS ANY KEY</span><span class="touch-only">TAP TO PLAY</span></div>
         </div>
         <div class="leaderboard splash-view">
           <div class="lb-title">HIGH SCORES</div>
           <ol class="lb-list" id="lb-list"></ol>
-          <div class="credit">© OYSTER 2026 — PRESS ANY KEY</div>
+          <div class="credit">© OYSTER 2026 — <span class="key-only">PRESS ANY KEY</span><span class="touch-only">TAP TO PLAY</span></div>
         </div>
       </div>
       <button class="sound-toggle" id="sound-toggle" type="button" aria-label="Toggle sound" tabindex="-1">♪</button>
@@ -748,13 +750,13 @@
         <span class="flag-pole"></span>
         <span class="flag-cloth"><span class="flag-text">1<small>ST</small></span></span>
       </div>
-      <div class="celebrate-sub">PRESS ANY KEY</div>
+      <div class="celebrate-sub"><span class="key-only">PRESS ANY KEY</span><span class="touch-only">TAP TO CONTINUE</span></div>
     </div>
     <div class="gameover" id="gameover">
       <div class="title go-title">GAME OVER</div>
       <div class="go-score">SCORE <span id="go-score-val">0</span></div>
       <div class="go-hiscore" id="go-hiscore"></div>
-      <div class="go-prompt" id="go-prompt">PRESS ANY KEY TO RESTART</div>
+      <div class="go-prompt" id="go-prompt"><span class="key-only">PRESS ANY KEY TO RESTART</span><span class="touch-only">TAP TO RESTART</span></div>
       <!-- High-score initial entry, shown only when score beats the current record -->
       <div class="go-initials" id="go-initials" hidden>
         <div class="go-initials-label">NEW HIGH SCORE — ENTER INITIALS</div>
