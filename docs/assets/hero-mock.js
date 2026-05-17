@@ -148,12 +148,50 @@
     body.innerHTML = text + block('Written by', written) + block('Pulled by', pulled) + block('Linked artefacts', arts);
   }
 
+  const mock = document.querySelector('.hero-mock');
+
+  // Hover (desktop) renders content into the side panel transiently — CSS handles the reveal.
+  // Click (any device) pins the panel open: renders content AND adds .is-side-open to the mock,
+  // so taps on touch devices work and desktop users can "pin" a session for closer reading.
+  function clearActive() {
+    mock.querySelectorAll('.hm-tile.is-active, .hm-mem.is-active').forEach(el => el.classList.remove('is-active'));
+  }
+  function pinSession(tile) {
+    clearActive();
+    tile.classList.add('is-active');
+    renderSession(tile.dataset.session);
+    mock.classList.add('is-side-open');
+  }
+  function pinMemory(mem) {
+    clearActive();
+    mem.classList.add('is-active');
+    renderMemory(mem.dataset.memory);
+    mock.classList.add('is-side-open');
+  }
+  function closeSide() {
+    mock.classList.remove('is-side-open');
+    clearActive();
+  }
+
+  // Hover is the transient "peek" — but stop swapping content once the user has pinned a panel,
+  // otherwise the active highlight on one tile would mismatch the content showing for another.
   document.querySelectorAll('.hm-tile').forEach(tile => {
-    tile.addEventListener('mouseenter', () => renderSession(tile.dataset.session));
+    tile.addEventListener('mouseenter', () => {
+      if (mock.classList.contains('is-side-open')) return;
+      renderSession(tile.dataset.session);
+    });
+    tile.addEventListener('click', e => { e.stopPropagation(); pinSession(tile); });
   });
   document.querySelectorAll('.hm-mem[data-memory]').forEach(mem => {
-    mem.addEventListener('mouseenter', () => renderMemory(mem.dataset.memory));
+    mem.addEventListener('mouseenter', () => {
+      if (mock.classList.contains('is-side-open')) return;
+      renderMemory(mem.dataset.memory);
+    });
+    mem.addEventListener('click', e => { e.stopPropagation(); pinMemory(mem); });
   });
+
+  const sideBack = document.getElementById('hm-side-back');
+  if (sideBack) sideBack.addEventListener('click', e => { e.stopPropagation(); closeSide(); });
 
   renderSession('s1');
 
@@ -193,20 +231,13 @@
       </div>`,
     },
     settings: {
-      title: 'Settings UI · wireframe',
-      body: `<div class="pv-wire">
-        <div class="pv-wire-side">
-          <div class="pv-wire-side-row active"></div>
-          <div class="pv-wire-side-row"></div>
-          <div class="pv-wire-side-row"></div>
-          <div class="pv-wire-side-row"></div>
-        </div>
-        <div class="pv-wire-main">
-          <div class="pv-wire-bar long"></div>
-          <div class="pv-wire-bar med"></div>
-          <div class="pv-wire-bar long"></div>
-          <div class="pv-wire-bar short"></div>
-        </div>
+      title: 'Settings · acme-app',
+      body: `<div class="pv-settings">
+        <div class="pv-set-row"><span class="pv-set-label">Notifications</span><span class="pv-toggle on" role="switch" aria-checked="true" tabindex="0"></span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Default agent</span><span class="pv-set-value">Claude Code</span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Theme</span><span class="pv-set-value">Dark</span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Auto-sync</span><span class="pv-toggle on" role="switch" aria-checked="true" tabindex="0"></span></div>
+        <div class="pv-set-row"><span class="pv-set-label">Share usage data</span><span class="pv-toggle" role="switch" aria-checked="false" tabindex="0"></span></div>
       </div>`,
     },
     launch: {
@@ -228,12 +259,82 @@
   const previewTitle = document.getElementById('hm-preview-title');
   const previewBody = document.getElementById('hm-preview-body');
 
+  function renderArtefact(cell) {
+    const a = artefacts[cell.dataset.artefact];
+    if (!a) return;
+    previewTitle.textContent = a.title;
+    previewBody.innerHTML = a.body;
+  }
+
+  function pinArtefact(cell) {
+    mock.querySelectorAll('.hm-art-cell.is-active').forEach(el => el.classList.remove('is-active'));
+    cell.classList.add('is-active');
+    renderArtefact(cell);
+    mock.classList.add('is-preview-open');
+  }
+
   document.querySelectorAll('.hm-art-cell[data-artefact]').forEach(cell => {
     cell.addEventListener('mouseenter', () => {
-      const a = artefacts[cell.dataset.artefact];
-      if (!a) return;
-      previewTitle.textContent = a.title;
-      previewBody.innerHTML = a.body;
+      if (mock.classList.contains('is-preview-open')) return;
+      renderArtefact(cell);
+    });
+    // The rocket-ship cell owns its own click handler (launches the easter egg) — don't shadow it.
+    if (cell.classList.contains('hm-art-cell-launchable')) return;
+    cell.addEventListener('click', e => { e.stopPropagation(); pinArtefact(cell); });
+    cell.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pinArtefact(cell); }
+    });
+    // Pointer-events safety net for touch: pointerup fires reliably for mouse/pen/touch even when
+    // Safari's hover-tap interpretation eats the click event. Idempotent with the click handler.
+    cell.addEventListener('pointerup', e => {
+      if (e.pointerType === 'mouse') return;
+      e.stopPropagation();
+      pinArtefact(cell);
+    });
+  });
+
+  const previewClose = document.getElementById('hm-preview-close');
+  if (previewClose) previewClose.addEventListener('click', e => {
+    e.stopPropagation();
+    mock.classList.remove('is-preview-open');
+    mock.querySelectorAll('.hm-art-cell.is-active').forEach(el => el.classList.remove('is-active'));
+  });
+
+  // Interactive preview content — event delegation so handlers survive content swaps.
+  previewBody.addEventListener('click', e => {
+    e.stopPropagation();
+    const li = e.target.closest('.pv-list li');
+    if (li) {
+      const chk = li.querySelector('.pv-chk');
+      const nowDone = li.classList.toggle('done');
+      if (chk) {
+        chk.classList.toggle('done', nowDone);
+        chk.textContent = nowDone ? '✓' : '';
+      }
+      return;
+    }
+    const toggle = e.target.closest('.pv-toggle');
+    if (toggle) {
+      const nowOn = toggle.classList.toggle('on');
+      toggle.setAttribute('aria-checked', nowOn ? 'true' : 'false');
+      return;
+    }
+  });
+
+  // Space-filter pills: tap toggles the filter; tap again clears it.
+  const FILTER_CLASSES = ['is-filter-acme-app', 'is-filter-pitch-deck', 'is-filter-field-notes'];
+  document.querySelectorAll('.hm-pill[data-space]').forEach(pill => {
+    pill.addEventListener('click', e => {
+      e.stopPropagation();
+      const space = pill.dataset.space;
+      const cls = 'is-filter-' + space;
+      const wasActive = mock.classList.contains(cls);
+      mock.classList.remove(...FILTER_CLASSES);
+      mock.querySelectorAll('.hm-pill[data-space].is-filter-on').forEach(p => p.classList.remove('is-filter-on'));
+      if (!wasActive) {
+        mock.classList.add(cls);
+        pill.classList.add('is-filter-on');
+      }
     });
   });
 })();

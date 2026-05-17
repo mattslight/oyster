@@ -1426,12 +1426,14 @@
             <span class="dot dot-y"></span>
             <span class="dot dot-g"></span>
             <span class="hm-preview-title" id="hm-preview-title">Preview</span>
+            <button type="button" class="hm-preview-close" id="hm-preview-close" aria-label="Close preview">×</button>
           </div>
           <div class="hm-preview-body" id="hm-preview-body"></div>
         </div>
 
         <div class="hm-side" aria-hidden="true">
           <div class="hm-side-head">
+            <button type="button" class="hm-side-back" id="hm-side-back" aria-label="Close detail panel">‹ Back</button>
             <span class="hm-status" id="hm-side-status"></span>
             <span class="hm-side-title" id="hm-side-title"></span>
           </div>
@@ -1525,7 +1527,7 @@
               <span class="hm-section-meta">12 · across 3 spaces</span>
             </div>
             <div class="hm-art-grid">
-              <div class="hm-art-cell" data-space="acme-app" data-artefact="onboarding">
+              <div class="hm-art-cell" data-space="acme-app" data-artefact="onboarding" role="button" tabindex="0" aria-label="Open Onboarding artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #ffaa66 0%, #f06d3f 60%, #c44a1c 100%);">
                   <!-- Mini kanban — 3 columns of cards -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1544,7 +1546,7 @@
                 </div>
                 <span class="hm-art-label">Onboarding</span>
               </div>
-              <div class="hm-art-cell" data-space="pitch-deck" data-artefact="pitch">
+              <div class="hm-art-cell" data-space="pitch-deck" data-artefact="pitch" role="button" tabindex="0" aria-label="Open Q4 Pitch artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #5beddc 0%, #34d4c0 35%, #1d4ed8 100%);">
                   <!-- Mini slide with bar chart -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1560,7 +1562,7 @@
                 </div>
                 <span class="hm-art-label">Q4 Pitch</span>
               </div>
-              <div class="hm-art-cell" data-space="acme-app" data-artefact="auth">
+              <div class="hm-art-cell" data-space="acme-app" data-artefact="auth" role="button" tabindex="0" aria-label="Open Auth flow artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #ff90c8 0%, #f472b6 40%, #be123c 100%);">
                   <!-- Mini node diagram — 4 nodes connected -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1578,7 +1580,7 @@
                 </div>
                 <span class="hm-art-label">Auth flow</span>
               </div>
-              <div class="hm-art-cell" data-space="acme-app" data-artefact="settings">
+              <div class="hm-art-cell" data-space="acme-app" data-artefact="settings" role="button" tabindex="0" aria-label="Open Settings UI artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #b5d8ff 0%, #6db4ff 40%, #0891b2 100%);">
                   <!-- Mini settings window with toggle on -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -1598,7 +1600,7 @@
                 </div>
                 <span class="hm-art-label">Settings UI</span>
               </div>
-              <div class="hm-art-cell" data-space="field-notes" data-artefact="launch">
+              <div class="hm-art-cell" data-space="field-notes" data-artefact="launch" role="button" tabindex="0" aria-label="Open Launch list artefact preview">
                 <div class="hm-art" style="background: linear-gradient(150deg, #ffe88a 0%, #fcd34d 35%, #ea580c 100%);">
                   <!-- Mini doc with checklist -->
                   <svg class="hm-art-preview" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
