@@ -1497,22 +1497,18 @@ function showCelebration(onAdvance) {
     cel.classList.remove('is-active');
     cel.setAttribute('aria-hidden', 'true');
     window.removeEventListener('keydown', onKey);
-    window.removeEventListener('mousedown', advance);
-    window.removeEventListener('touchstart', advance);
+    cel.removeEventListener('click', advance);
     if (typeof onAdvance === 'function') onAdvance();
     else Splash.enterAttractMode();
   }
   function onKey(e) { if (e.key !== 'Escape') advance(); }
   // Grace window so the gesture that triggered the flag doesn't also dismiss
-  // it. Listeners are on `window` (not `document`) so they fire AFTER the
-  // splash IIFE's tryDismiss listener — at celebration time phase is still
-  // 'playing', so tryDismiss is inert and can't stack with this advance.
-  // touchstart is needed alongside mousedown because iOS doesn't reliably
-  // synthesize mousedown from a tap.
+  // it. Direct click on the celebration element (rather than window-level
+  // touchstart) is reliable on iOS inside the iframe; window listeners
+  // were missing in that context.
   setTimeout(() => {
     window.addEventListener('keydown', onKey);
-    window.addEventListener('mousedown', advance);
-    window.addEventListener('touchstart', advance, { passive: true });
+    cel.addEventListener('click', advance);
   }, 250);
   // Auto-advance after 6s if untouched
   setTimeout(advance, 6000);
@@ -1757,21 +1753,15 @@ const Splash = (function () {
       setView(0);
       return;
     }
-    // If autoplay was blocked, this gesture unlocks audio — use it to start
-    // the title music instead of dismissing. The next gesture dismisses.
-    // Only clear the awaiting flag on a successful play(); if play rejects
-    // again (media not ready / transient failure), keep the flag set so the
-    // next gesture retries instead of silently dismissing without music.
-    if (titleMusicAwaitingGesture) {
-      if (bgm) {
-        bgm.play()
-          .then(() => { titleMusicAwaitingGesture = false; })
-          .catch(() => {});
-      } else {
-        titleMusicAwaitingGesture = false;
-      }
-      return;
+    // If autoplay was blocked, kick bgm.play() during this same gesture
+    // (iOS counts it as the unlock) and fall through to actually dismiss
+    // — no two-tap dance. We don't wait for the play() promise; either the
+    // title music plays briefly before the game music takes over, or it
+    // doesn't, but the user gets to the game on the first tap either way.
+    if (titleMusicAwaitingGesture && bgm) {
+      bgm.play().catch(() => {});
     }
+    titleMusicAwaitingGesture = false;
     phase = 'playing';
     splash.classList.add('is-hidden');
     if (tube) tube.classList.add('is-ready');
@@ -1810,6 +1800,39 @@ const Splash = (function () {
   });
   window.addEventListener('mousedown', tryDismiss);
   window.addEventListener('touchstart', tryDismiss, { passive: true });
+
+  // Reliable mobile tap path: window-level touchstart inside the iframe
+  // proved unreliable on iOS (the parent's rocket-dot click works fine,
+  // but in-iframe taps on background elements miss the window listener).
+  // Attaching click directly to each splash-view fires consistently —
+  // .splash-view only has pointer-events:auto when .is-active, so each
+  // handler only runs while its view is visible. Single tap on the
+  // title-card both unlocks audio (via the same gesture) and dismisses.
+  const titleCard = mainEl && mainEl.querySelector('.title-card');
+  const leaderboardEl = mainEl && mainEl.querySelector('.leaderboard');
+  if (titleCard) {
+    titleCard.addEventListener('click', () => {
+      if (phase !== 'title') return;
+      if (titleMusicAwaitingGesture && bgm) bgm.play().catch(() => {});
+      titleMusicAwaitingGesture = false;
+      phase = 'playing';
+      splash.classList.add('is-hidden');
+      if (tube) tube.classList.add('is-ready');
+      stopCycle();
+      stopTitleMusic();
+      startGameMusic();
+      if (typeof restartGame === 'function') restartGame();
+      gameActive = true;
+      if (typeof ensurePlayToken === 'function') ensurePlayToken();
+    });
+  }
+  if (leaderboardEl) {
+    leaderboardEl.addEventListener('click', () => {
+      if (phase !== 'title') return;
+      stopCycle();
+      setView(0);
+    });
+  }
 
   return {
     // Re-show splash post-game-over: show leaderboard first, then title.
@@ -1919,14 +1942,16 @@ const Splash = (function () {
     return true;
   };
 
-  // Tap anywhere outside a button to dismiss when not entering initials —
-  // mirrors the keydown handler below.
-  window.addEventListener('touchstart', (e) => {
+  // Click on the gameover overlay dismisses when not entering initials.
+  // Direct-on-element click is reliable on iOS inside iframes where the
+  // older window.touchstart pattern was flaky. Initials entry uses the
+  // dedicated on-screen buttons instead.
+  ov.addEventListener('click', () => {
     if (!ov.classList.contains('is-visible')) return;
-    if (enteringInitials) return; // initials uses the on-screen buttons
+    if (enteringInitials) return;
     ov.classList.remove('is-visible');
     Splash.enterAttractMode();
-  }, { passive: true });
+  });
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') return;
