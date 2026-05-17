@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Mute toggle on the Rocket Ship title screen.** Click the ♪ in the top-right to silence music and sound effects; the choice is remembered next time you boot the game.
+
 ### Changed
 
 - **Rocket Ship title screen got an 80s arcade glow-up.** Chunky pixel-art rocket with a flickering flame hovers above the *ROCKET SHIP* title, the controls panel uses an enlarged ★ and a plain `!` for asteroids, the HUD reads `SCORE: N`, and the CRT bezel corners are more pronounced.
@@ -11,6 +15,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **Pixel font now used everywhere in Rocket Ship.** Arrow keys, the star, the music note, the in-game HUD and the game-over hint all render in the proper 8-bit typeface instead of falling back to system fonts.
 - **Title music plays during the title screen** when the page is loaded directly. Previously the autoplay-blocked path either dropped the title theme or stacked it on top of the game music.
 - **In-game hint stays until you actually fly.** The *Arrow keys / WASD…* overlay persists at full opacity until the player provides any thrust/turn input, then eases out smoothly instead of timing out after 5 seconds.
 

@@ -4,8 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rocket Ship</title>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
+  /* Self-hosted to ensure the full glyph set is available. Google Fonts
+     subsets Press Start 2P into per-script WOFF2 files and arrow/symbol
+     codepoints (U+2190 ←, U+2192 →, U+2605 ★, U+266A ♪) aren't in any of
+     them, so they fall back to system fonts when loaded from Google. */
+  @font-face {
+    font-family: 'Press Start 2P';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('assets/PressStart2P-Regular.ttf') format('truetype');
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: #0a0a0a;
@@ -262,10 +272,6 @@
     color: #2dd4ff;
     text-align: right;
   }
-  .splash .controls .key-star {
-    font-size: 1.5em;
-    line-height: 0.9;
-  }
   .splash .controls .desc {
     color: #fff;
     text-align: left;
@@ -275,6 +281,29 @@
     letter-spacing: 0.2em;
     color: rgba(255, 255, 255, 0.35);
     margin-top: clamp(12px, 2vw, 20px);
+  }
+  .splash .sound-toggle {
+    position: absolute;
+    top: clamp(10px, 1.6vw, 18px);
+    right: clamp(10px, 1.6vw, 18px);
+    z-index: 10;
+    background: transparent;
+    border: none;
+    color: #2dd4ff;
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    font-size: clamp(14px, 2vw, 22px);
+    line-height: 1;
+    padding: 6px 8px;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.15s, color 0.15s;
+  }
+  .splash .sound-toggle:hover,
+  .splash .sound-toggle:focus { opacity: 1; outline: none; }
+  .splash .sound-toggle.is-muted {
+    color: rgba(255, 255, 255, 0.32);
+    text-decoration: line-through;
+    text-decoration-thickness: 0.12em;
   }
   @media (prefers-reduced-motion: reduce) {
     .splash { animation: none; }
@@ -613,7 +642,7 @@
           <div class="controls">
             <div class="key">↑ / W</div><div class="desc">THRUST</div>
             <div class="key">← →</div><div class="desc">TURN</div>
-            <div class="key key-star">★</div><div class="desc">COLLECT THE STARS</div>
+            <div class="key">★</div><div class="desc">COLLECT THE STARS</div>
             <div class="key">!</div><div class="desc">AVOID THE ASTEROIDS</div>
           </div>
           <div class="hiscore-row" id="hiscore-row">HIGH SCORE <span class="hs-val" id="hs-val-splash">000</span> <span class="hs-initials" id="hs-initials-splash">---</span></div>
@@ -625,6 +654,7 @@
           <div class="credit">© OYSTER 2026 — PRESS ANY KEY</div>
         </div>
       </div>
+      <button class="sound-toggle" id="sound-toggle" type="button" aria-label="Toggle sound" tabindex="-1">♪</button>
     </div>
     <!-- #1 high-score celebration — pixel flag, not confetti -->
     <div class="celebrate" id="celebrate" aria-hidden="true">
@@ -648,7 +678,7 @@
           <span class="go-slot" data-slot="1">A</span>
           <span class="go-slot" data-slot="2">A</span>
         </div>
-        <div class="go-initials-hint">↑↓ change · ←→ move · ENTER save</div>
+        <div class="go-initials-hint">↑↓ CHANGE · ←→ MOVE · ENTER SAVE</div>
       </div>
     </div>
   </div>
@@ -1214,13 +1244,13 @@ function draw() {
 
   // HUD
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.font = '16px monospace';
-  ctx.fillText(`SCORE: ${score}`, 20, 30);
+  ctx.font = '14px "Press Start 2P", ui-monospace, monospace';
+  ctx.fillText(`SCORE ${score}`, 20, 30);
 
   const spd = Math.sqrt(rocket.vx ** 2 + rocket.vy ** 2);
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.font = '12px monospace';
-  ctx.fillText(`speed: ${spd.toFixed(1)}`, 20, 50);
+  ctx.font = '10px "Press Start 2P", ui-monospace, monospace';
+  ctx.fillText(`SPEED ${spd.toFixed(1)}`, 20, 52);
 
   // Instructions — full opacity until the player starts flying, then fade
   // smoothly out over HINT_FADE_MS instead of snapping away.
@@ -1231,10 +1261,10 @@ function draw() {
   }
   if (hintAlpha > 0.001) {
     ctx.fillStyle = `rgba(255,255,255,${hintAlpha.toFixed(3)})`;
-    ctx.font = '14px monospace';
+    ctx.font = '11px "Press Start 2P", ui-monospace, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Arrow keys / WASD to fly • Collect the stars!', W / 2, H - 40);
-    ctx.fillText('Click & drag or touch to steer', W / 2, H - 20);
+    ctx.fillText('ARROW KEYS / WASD TO FLY  -  COLLECT THE STARS', W / 2, H - 40);
+    ctx.fillText('CLICK & DRAG OR TOUCH TO STEER', W / 2, H - 20);
     ctx.textAlign = 'left';
   }
 
@@ -1283,6 +1313,31 @@ loop();
   const bgm = document.getElementById('bgm');
   if (!bgm) return;
   bgm.volume = 0.45;
+})();
+
+// Sound toggle on the splash. Persists muted state to localStorage and
+// mirrors it onto every <audio> element so both BGM and SFX go silent.
+(function () {
+  const SOUND_KEY = 'oyster-rocket-muted';
+  const btn = document.getElementById('sound-toggle');
+  if (!btn) return;
+  function setMuted(m) {
+    document.querySelectorAll('audio').forEach(a => { a.muted = m; });
+    btn.classList.toggle('is-muted', m);
+    btn.setAttribute('aria-pressed', String(m));
+    try { localStorage.setItem(SOUND_KEY, m ? '1' : '0'); } catch (_) {}
+  }
+  let muted = false;
+  try { muted = localStorage.getItem(SOUND_KEY) === '1'; } catch (_) {}
+  setMuted(muted);
+  // Stop pointer events from bubbling to the splash's global dismiss listener.
+  ['mousedown', 'touchstart', 'pointerdown'].forEach(ev => {
+    btn.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+  });
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    setMuted(!btn.classList.contains('is-muted'));
+  });
 })();
 
 // 8-bit SFX — real samples; rewind+play so rapid re-triggers work.
