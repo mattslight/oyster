@@ -50,6 +50,7 @@ describe("GET /api/publish/access-redirect/:token", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(`https://share.oyster.to/p/${token}`);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
     expect(new URL(res.headers.get("location")!).searchParams.get("key")).toBeNull();
   });
 
@@ -70,6 +71,7 @@ describe("GET /api/publish/access-redirect/:token", () => {
     expect(res.status).toBe(302);
     const loc = new URL(res.headers.get("location")!);
     expect(loc.origin + loc.pathname).toBe(`https://share.oyster.to/p/${token}`);
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
     const key = loc.searchParams.get("key");
     expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
 
@@ -99,6 +101,7 @@ describe("GET /api/publish/access-redirect/:token", () => {
     expect(res.status).toBe(302);
     const loc = new URL(res.headers.get("location")!);
     expect(loc.origin + loc.pathname).toBe(`https://share.oyster.to/p/${token}`);
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
     expect(loc.searchParams.get("key")).toMatch(/^[A-Za-z0-9_-]{22}$/);
   });
 

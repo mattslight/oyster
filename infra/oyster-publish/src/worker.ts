@@ -857,6 +857,7 @@ function redirectNoStore(location: string): Response {
     headers: {
       location,
       "cache-control": "private, no-store",
+      "referrer-policy": "no-referrer",
     },
   });
 }
