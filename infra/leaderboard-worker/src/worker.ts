@@ -30,7 +30,11 @@ export interface Env {
   HMAC_SECRET: string; // set via `wrangler secret put HMAC_SECRET`
 }
 
-const ALLOWED_ORIGINS = new Set(["https://oyster.to", "https://www.oyster.to"]);
+const ALLOWED_ORIGINS = new Set([
+  "https://oyster.to",
+  "https://www.oyster.to",
+  "https://arcade.oyster.to",
+]);
 const INITIALS_RE = /^[A-Z0-9.\-]{1,3}$/;
 // Per-game configuration. Add an entry here to enable a new game.
 const GAMES: Record<string, { maxScore: number }> = {
