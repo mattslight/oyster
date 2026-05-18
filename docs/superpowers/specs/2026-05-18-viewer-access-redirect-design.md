@@ -217,7 +217,10 @@ Without this change, the auth worker silently drops the `?return=` parameter and
 
 ### Viewer pre-check — `infra/oyster-publish/src/viewer-access.ts`
 
-Add a new access kind and a `?key=` pre-check before the mode switch:
+Two changes:
+
+1. Add a `?key=` pre-check before the mode switch, gated by an **explicit `consumeNonce` flag** on the resolver API so that `/raw` can never accidentally consume a nonce.
+2. Make the `signin` case accept the `oyster_view_<token>` cookie as a valid access proof, alongside the apex session check. Without this, the clean redirect after nonce consumption loops back to `signin → resolveSession → null` and bounces the visitor to sign-in again.
 
 ```ts
 export type ViewerAccess =
@@ -228,24 +231,78 @@ export type ViewerAccess =
   | { kind: "gone"; row: PublicationRow }
   | { kind: "not_found" };
 
-export async function resolveViewerAccess(req, env, shareToken) {
+export interface ResolveOptions {
+  /**
+   * When true, a valid `?key=<nonce>` consumes the nonce and yields
+   * `ok_via_nonce`. When false, the `?key=` parameter is ignored
+   * (the caller is responsible for any cookie-based check).
+   * Only `/p/<token>` passes true; `/raw` MUST pass false.
+   */
+  consumeNonce: boolean;
+}
+
+export async function resolveViewerAccess(
+  req: Request,
+  env: Env,
+  shareToken: string,
+  opts: ResolveOptions,
+): Promise<ViewerAccess> {
   const row = await fetchRow(...);
   if (!row) return { kind: "not_found" };
   if (row.unpublished_at != null) return { kind: "gone", row };
 
-  // Nonce pre-check: applies to password + signin modes; open mode never
-  // needs one. Invalid/expired/wrong-share nonces fall through silently —
-  // no oracle on whether a presented nonce was real.
-  const key = new URL(req.url).searchParams.get("key");
-  if (key && (row.mode === "password" || row.mode === "signin")) {
-    if (await consumeAccessNonce(env, key, shareToken)) {
-      return { kind: "ok_via_nonce", row };
+  // Nonce pre-check: only when the caller has opted in. Applies to
+  // password + signin modes; open mode never needs one. Invalid /
+  // expired / wrong-share nonces fall through silently — no oracle
+  // on whether a presented nonce was real.
+  if (opts.consumeNonce) {
+    const key = new URL(req.url).searchParams.get("key");
+    if (key && (row.mode === "password" || row.mode === "signin")) {
+      if (await consumeAccessNonce(env, key, shareToken)) {
+        return { kind: "ok_via_nonce", row };
+      }
     }
   }
 
-  // ...existing mode switch (open/password/signin) unchanged...
+  switch (row.mode) {
+    case "open":
+      return { kind: "ok", row };
+
+    case "password": {
+      // Existing path — cookie verifies the recent-access proof.
+      if (await checkViewerCookie(req, shareToken, env.VIEWER_COOKIE_SECRET)) {
+        return { kind: "ok", row };
+      }
+      return { kind: "gate", row };
+    }
+
+    case "signin": {
+      // CHANGED: the viewer cookie is a recent-access proof for the
+      // artefact regardless of which gate-clearing path minted it
+      // (password POST, owner-via-nonce, signin-via-nonce). Honour it
+      // first; only fall back to apex session if no cookie. Without
+      // this, the post-consumption clean redirect loops back through
+      // signin → resolveSession → null on share.oyster.to.
+      if (await checkViewerCookie(req, shareToken, env.VIEWER_COOKIE_SECRET)) {
+        return { kind: "ok", row };
+      }
+      const session = await resolveSession(req, env);
+      if (!session) {
+        return {
+          kind: "redirect",
+          location: `https://oyster.to/api/publish/access-redirect/${shareToken}`,
+        };
+      }
+      return { kind: "ok", row };
+    }
+  }
 }
+
+// `checkViewerCookie` is the existing read-cookie + verifyViewerCookie
+// pair extracted into a single helper for reuse across modes.
 ```
+
+Note the signin redirect target is now the new access-redirect endpoint, not `/auth/sign-in` directly — the redirect path handles the unauth case, mints a nonce post-sign-in, and produces a working cross-host handoff. The existing direct sign-in redirect is preserved as a fallback only for visitors who hit `/p/<token>` with no `?key=` on `share.oyster.to` directly.
 
 ### Viewer-side handling of `ok_via_nonce`
 
@@ -268,7 +325,13 @@ case "ok_via_nonce": {
 }
 ```
 
-`handleViewerRaw` (the `/raw` iframe endpoint) gets the same nonce pre-check but should not consume — `/raw` is loaded as the inner iframe of `/p/<token>`, and the visitor already has the cookie from the outer-page redirect. Practically, the nonce will already be consumed by the time `/raw` is reached, so this just means: don't 500 if a `?key=` is on the URL; just treat as no-key and rely on cookie. (Defence in depth: if a nonce ever did appear on a `/raw` request, the consume-then-redirect flow is wrong for `/raw` because the iframe body must be the response body, not a 302.)
+### `/raw` MUST NOT consume nonces
+
+`handleViewerRaw` calls `resolveViewerAccess(req, env, token, { consumeNonce: false })`. Because the flag is required on the resolver API, any future change to `/raw` cannot accidentally start consuming nonces without a deliberate edit to the call site.
+
+Rationale: `/raw` is loaded as the inner iframe of `/p/<token>`. By the time the iframe loads, the outer page has already consumed the nonce, set `oyster_view_<token>`, and stripped the key from the URL. The iframe carries the cookie and uses the standard mode dispatch. The consume-then-redirect flow is also semantically wrong for `/raw` — the iframe body must be the response body, not a 302.
+
+If a `?key=` ever does appear on a `/raw` URL (defensively constructed, mis-pasted, or a future code change misroutes a nonce), it is simply ignored — the nonce stays unconsumed and remains usable at the proper `/p/<token>?key=…` URL.
 
 ### Cookie semantics — generalised
 
@@ -303,7 +366,7 @@ The "Have access?" phrasing rather than "Own this share?" anticipates the ACL wi
 |---|---|
 | Nonce replay within TTL | Single-use enforced by atomic `UPDATE ... WHERE consumed_at IS NULL`. Second click on the same URL falls through silently to the gate. |
 | Nonce cross-share misuse | `share_token` is in the consume `WHERE` clause. A nonce minted for share A presented at share B does not consume and returns false. |
-| Nonce in URL → browser history | 302 → 302 chain means the `?key=…` URL is never the final history entry; the cleaned `/p/<token>` URL replaces it. |
+| Nonce in URL → visible address / shareable links | The consumption 302 immediately redirects the browser to the cleaned `/p/<token>` URL, so the final visible URL in the address bar carries no key. Precise browser-history retention of intermediate redirect targets is user-agent-specific and not relied on; the security claim is "the user does not see, share, or screenshot the key-bearing URL", not "the key URL is absent from history". |
 | Nonce in Referer to subresources | `referrer-policy: no-referrer` on the consumption 302 strips Referer for the destination's initial GET and its subresource fetches. |
 | Nonce in server logs | `mintAccessNonce` and `consumeAccessNonce` log only counts/booleans, never the nonce value. The endpoint logs the share token, not the query string. |
 | Nonce theft from server | A leaked nonce is single-use, 60s lifetime, and bound to one `share_token`. The blast radius is "view this one artefact once within a minute"; the cookie minted on consumption is bound to that same artefact too. |
@@ -332,20 +395,20 @@ Cover the full matrix:
 | token not found | 404 page |
 | publication retired | 410 gone page |
 | mode=open | 302 → `share.oyster.to/p/<token>` (no key) |
-| mode=signin, no session | 302 → `/auth/sign-in?return=…` |
+| mode=signin, no session | 302 → `/auth/sign-in?return=/api/publish/access-redirect/<token>` |
 | mode=signin, session | 302 → `…?key=<22 chars>` and a row exists in `viewer_access_nonces` |
-| mode=password, no session | 302 → `/auth/sign-in?return=…` |
+| mode=password, no session | 302 → `/auth/sign-in?return=/api/publish/access-redirect/<token>` |
 | mode=password, session = owner | 302 → `…?key=…` |
 | mode=password, session ≠ owner | 403 page |
 | All 302s | include `cache-control: private, no-store` |
 
 ### Viewer integration — `infra/oyster-publish/test/viewer-handler.test.ts` additions
 
-- Owner-bypass golden path: mint nonce for `(token, owner)`, GET `/p/<token>?key=<nonce>`, expect 302 to `/p/<token>` with `set-cookie: oyster_view_<token>=...`, `referrer-policy: no-referrer`. Then GET `/p/<token>` with that cookie → 200 content.
-- Same path for `signin` mode (any signed-in user, not just owner).
+- Owner-bypass golden path (password mode): mint nonce for `(token, owner)`, GET `/p/<token>?key=<nonce>`, expect 302 to `/p/<token>` with `set-cookie: oyster_view_<token>=...`, `referrer-policy: no-referrer`. Then GET `/p/<token>` with that cookie → 200 content.
+- **Signin-mode end-to-end (regression for the cookie-honouring fix):** mint nonce for `(token, signed-in user)`, GET `/p/<token>?key=<nonce>`, follow the 302, then GET `/p/<token>` with only the `oyster_view_<token>` cookie set and **no `oyster_session` cookie at all** (modelling the cross-host browser reality) — expect 200 content. Without the signin-mode cookie acceptance change this final GET would 302 back to access-redirect / sign-in, looping.
 - Replay: a second GET `/p/<token>?key=<nonce>` (after consumption) falls through to the password gate (or signin redirect) — i.e., behaviour identical to no-key.
 - Wrong-share nonce on `/p/<other_token>?key=<nonce>` falls through; the nonce remains consumable on its real token afterwards. (Regression for the atomic-WHERE fix.)
-- `/raw?key=...` on an iframe-kind share doesn't 500; treated as no-key (cookie covers it after outer-page consumption).
+- **`/raw` MUST NOT consume nonces:** GET `/raw?key=<valid_nonce>` returns the existing no-cookie behaviour for an iframe-kind share (gate redirect or 404 per current logic). Critically, after the call, `SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?` is still `NULL`, and a subsequent GET `/p/<token>?key=<nonce>` succeeds. This is the regression for the explicit `consumeNonce` flag — a future code change that drops the flag on the `/raw` resolver call will fail this test.
 
 ### Cookie-scoping regression — `infra/oyster-publish/test/signin-mode-cookie-boundary.test.ts` (new)
 
