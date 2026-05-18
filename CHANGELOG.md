@@ -16,6 +16,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **Rocket Ship SFX now honour the mute toggle.** Muting the ♪ button silenced the music as expected, but shots and explosions still played at full volume on the next boot — they now go silent too.
 - **Rocket Ship on phones reads as tappable.** *INSERT COIN* / *PRESS ANY KEY* / *PRESS ANY KEY TO RESTART* swap to *TAP TO PLAY* / *TAP TO CONTINUE* / *TAP TO RESTART* on touch devices. The page underneath is also locked while the game is up — no more peeking through at the bottom or showing the scrollbar.
 - **Pixel font now used everywhere in Rocket Ship.** Arrow keys, the star, the music note, the in-game HUD and the game-over hint all render in the proper 8-bit typeface instead of falling back to system fonts.
 - **Title music plays during the title screen** when the page is loaded directly. Previously the autoplay-blocked path either dropped the title theme or stacked it on top of the game music.
