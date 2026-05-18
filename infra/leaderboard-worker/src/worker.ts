@@ -1,19 +1,24 @@
-// Oyster Rocket Ship leaderboard worker
+// Oyster arcade leaderboard worker
 //
-// GET  /api/leaderboard            → { list: [{ initials, score, created_at }, ...] }
+// GET  /api/leaderboard?game=ID    → { list: [{ initials, score, created_at }, ...] }
 // GET  /api/leaderboard/start      → { token, expires_at }
 //                                    Token is required to submit a score. It's an
 //                                    HMAC-signed (exp + ip_hash) payload bound to
-//                                    the requesting IP. TTL 15 min.
+//                                    the requesting IP. TTL 1 hour.
 // POST /api/leaderboard            → { ok: true, list: [...] }
-//                                    body: { initials: string (1–3 chars), score: int > 0, token: string }
+//                                    body: { game: string, initials: string (1–3 chars),
+//                                            score: int > 0, token: string }
+//
+// `game` is an arcade-wide key (`rocket-ship`, `platformer`, …). Default for
+// back-compat with pre-multi-game callers is `rocket-ship`. Each game has its
+// own score cap and its own top-N / retain budget — they don't compete.
 //
 // Defences (in order of cheapness):
-//   1. Score cap (MAX_SCORE) — anything beyond a realistic hand-flown game is rejected.
+//   1. Per-game score cap — anything beyond a realistic hand-flown game is rejected.
 //   2. Origin allowlist on mutating verbs.
-//   3. Per-IP rate limit binding (1 submission per 60s).
+//   3. Per-IP rate limit binding (1 submission per 60s, across all games).
 //   4. HMAC-signed proof-of-play token — must be minted recently from the same IP.
-//   5. Soft cap (RETAIN_N) on the table so spam can't bloat D1.
+//   5. Soft cap (RETAIN_N) on the table per game so spam can't bloat D1.
 //
 // None of this is cryptographic gameplay-verification — a determined attacker who
 // mints a token and POSTs a score within the same minute can still cheat once per
@@ -27,11 +32,24 @@ export interface Env {
 
 const ALLOWED_ORIGINS = new Set(["https://oyster.to", "https://www.oyster.to"]);
 const INITIALS_RE = /^[A-Z0-9.\-]{1,3}$/;
-const MAX_SCORE = 999;
+// Per-game configuration. Add an entry here to enable a new game.
+const GAMES: Record<string, { maxScore: number }> = {
+  "rocket-ship": { maxScore: 999 },
+  "platformer":  { maxScore: 9999 },
+};
+const DEFAULT_GAME = "rocket-ship";
 const TOP_N = 10;
 const RETAIN_N = 100;
-const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour — enough for a long grinding session toward 999
+const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour — enough for a long grinding session
 const RATE_LIMIT_MS = 60 * 1000;     // 1 submission per minute per IP
+
+// Validate and resolve the `game` field. Empty/missing → DEFAULT_GAME for
+// back-compat with pre-multi-game clients. Unknown ID → null (caller 400s).
+function resolveGame(input: unknown): string | null {
+  if (input == null || input === "") return DEFAULT_GAME;
+  if (typeof input !== "string") return null;
+  return input in GAMES ? input : null;
+}
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
@@ -115,12 +133,12 @@ async function verifyToken(secret: string, token: string, currentIpHash: string)
   return true;
 }
 
-async function topN(db: D1Database, n: number) {
+async function topN(db: D1Database, n: number, game: string) {
   const { results } = await db
     .prepare(
-      "SELECT initials, score, created_at FROM scores ORDER BY score DESC, created_at ASC LIMIT ?"
+      "SELECT initials, score, created_at FROM scores WHERE game = ? ORDER BY score DESC, created_at ASC LIMIT ?"
     )
-    .bind(n)
+    .bind(game, n)
     .all<{ initials: string; score: number; created_at: number }>();
   return results ?? [];
 }
@@ -183,8 +201,10 @@ export default {
 
     // /api/leaderboard
     if (req.method === "GET") {
+      const game = resolveGame(url.searchParams.get("game"));
+      if (!game) return json({ error: "invalid_game" }, 400, corsHeaders);
       try {
-        const list = await topN(env.DB, TOP_N);
+        const list = await topN(env.DB, TOP_N, game);
         return json({ list }, 200, corsHeaders);
       } catch (err) {
         console.error("d1_select_failed", err);
@@ -220,13 +240,15 @@ export default {
       return json({ error: "rate_limit_unavailable" }, 503, corsHeaders);
     }
 
-    let payload: { initials?: unknown; score?: unknown; token?: unknown };
+    let payload: { game?: unknown; initials?: unknown; score?: unknown; token?: unknown };
     try {
       payload = await req.json();
     } catch {
       return json({ error: "invalid_json" }, 400, corsHeaders);
     }
 
+    const game = resolveGame(payload.game);
+    if (!game) return json({ error: "invalid_game" }, 400, corsHeaders);
     const initials =
       typeof payload.initials === "string" ? payload.initials.trim().toUpperCase() : "";
     if (!INITIALS_RE.test(initials)) {
@@ -236,7 +258,8 @@ export default {
       typeof payload.score === "number" && Number.isFinite(payload.score)
         ? Math.floor(payload.score)
         : NaN;
-    if (!Number.isFinite(score) || score <= 0 || score > MAX_SCORE) {
+    const maxScore = GAMES[game].maxScore;
+    if (!Number.isFinite(score) || score <= 0 || score > maxScore) {
       return json({ error: "invalid_score" }, 400, corsHeaders);
     }
     const tokenOk = typeof payload.token === "string"
@@ -253,20 +276,21 @@ export default {
     try {
       await env.DB
         .prepare(
-          "INSERT INTO scores (initials, score, created_at, ip_country, user_agent) VALUES (?, ?, ?, ?, ?)"
+          "INSERT INTO scores (initials, score, game, created_at, ip_country, user_agent) VALUES (?, ?, ?, ?, ?, ?)"
         )
-        .bind(initials, score, created_at, ip_country, user_agent)
+        .bind(initials, score, game, created_at, ip_country, user_agent)
         .run();
-      // Prune rows beyond RETAIN_N so the table stays bounded under spam.
+      // Prune rows beyond RETAIN_N PER GAME so spam can't bloat D1 and one
+      // game's traffic can't push another game's scores out of the table.
       await env.DB
         .prepare(
-          `DELETE FROM scores WHERE id NOT IN (
-             SELECT id FROM scores ORDER BY score DESC, created_at ASC LIMIT ?
+          `DELETE FROM scores WHERE game = ?1 AND id NOT IN (
+             SELECT id FROM scores WHERE game = ?1 ORDER BY score DESC, created_at ASC LIMIT ?2
            )`
         )
-        .bind(RETAIN_N)
+        .bind(game, RETAIN_N)
         .run();
-      const list = await topN(env.DB, TOP_N);
+      const list = await topN(env.DB, TOP_N, game);
       return json({ ok: true, list }, 200, corsHeaders);
     } catch (err) {
       console.error("d1_insert_failed", err);
