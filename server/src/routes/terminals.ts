@@ -259,7 +259,12 @@ export async function tryHandleTerminalRoute(
     // Auto-link is fire-and-forget. claude_resume: we already know the id —
     // attach it synchronously and broadcast. claude_new: watch for the next
     // JSONL in the encoded-cwd dir.
-    if (kind === "claude_resume" && source.type === "session") {
+    //
+    // Both `session` and `remote_session` sources carry the session id as
+    // `source.id` (a reassembled remote session has the same uuid as on the
+    // origin device). Link both — otherwise the ResumeDialog "Open in Oyster"
+    // path would never get its title linked to the Inspector.
+    if (kind === "claude_resume" && (source.type === "session" || source.type === "remote_session")) {
       deps.claudePtyManager.setLinkedSession(terminalId, source.id);
       deps.broadcastUiEvent({
         version: 1,

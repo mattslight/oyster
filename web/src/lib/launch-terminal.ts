@@ -1,6 +1,7 @@
 // Shared launch helper used by ProjectTile, SessionActions, and ResumeDialog.
-// Owns: POST to /api/terminals, dispatch OPEN_CLAUDE_TERMINAL, surface
-// failures via a single consistent UX (BinaryMissingModal + alert).
+// Owns: POST to /api/terminals, dispatch OPEN_CLAUDE_TERMINAL, return a
+// typed outcome the caller surfaces (project + session callsites alert();
+// ResumeDialog renders an inline error region inside its OkPanel).
 //
 // The error vocabulary mirrors `routes/terminals.ts`. New codes added there
 // should be reflected in `humanError` to keep the UI honest.
@@ -80,6 +81,8 @@ export function humanError(code: string): string {
       return "You have too many Claude terminals open. Close one and try again.";
     case "pty_unavailable":
       return "Native terminal support isn't installed in this build.";
+    case "watcher_not_ready":
+      return "Oyster is still starting up. Try again in a moment.";
     case "invalid_kind":
     case "invalid_source":
     case "invalid_source_type":
