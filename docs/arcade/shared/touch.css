@@ -1,0 +1,59 @@
+/* On-screen touch controls — only on coarse-pointer devices and only after
+   the splash dismisses (the game flips .tube.is-ready). Buttons are written
+   per-game (left/right/jump/thrust/…) and styled with the base .tc-btn here;
+   per-button colour overrides (.tc-thrust, .tc-jump, etc.) live in each
+   game's own stylesheet. */
+
+.touch-controls {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: none;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: clamp(14px, 3vw, 28px);
+  pointer-events: none;
+  z-index: 6;
+}
+.tube.is-ready .touch-controls { display: flex; }
+@media (hover: hover) and (pointer: fine) {
+  .touch-controls { display: none !important; }
+}
+.touch-controls .tc-group {
+  display: flex;
+  gap: clamp(10px, 2vw, 16px);
+  pointer-events: none;
+}
+.touch-controls .tc-btn {
+  pointer-events: auto;
+  width: clamp(56px, 11vw, 80px);
+  height: clamp(56px, 11vw, 80px);
+  border-radius: 12px;
+  border: 2px solid rgba(45, 212, 255, 0.6);
+  background: rgba(0, 0, 0, 0.35);
+  color: #2dd4ff;
+  font-family: 'Press Start 2P', ui-monospace, monospace;
+  font-size: clamp(20px, 4vw, 30px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: background 0.08s, border-color 0.08s;
+}
+.touch-controls .tc-btn:active,
+.touch-controls .tc-btn.is-pressed {
+  background: rgba(45, 212, 255, 0.25);
+  border-color: #2dd4ff;
+  color: #fff;
+}
+
+/* Show keyboard hints by default; swap to touch labels on coarse pointers.
+   display:revert lets each element fall back to its natural display value
+   (div → block, span → inline) so the utility works in both contexts. */
+.touch-only { display: none; }
+@media (pointer: coarse) {
+  .key-only { display: none; }
+  .touch-only { display: revert; }
+}

@@ -4,104 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Platformer</title>
+<link rel="stylesheet" href="../shared/pixel-font.css">
+<link rel="stylesheet" href="../shared/cabinet.css">
+<link rel="stylesheet" href="../shared/touch.css">
 <style>
-  @font-face {
-    font-family: 'Press Start 2P';
-    font-style: normal;
-    font-weight: 400;
-    font-display: swap;
-    src: url('../../assets/PressStart2P-Regular.ttf') format('truetype');
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0a0a0a;
-    margin: 0;
-    overflow: hidden;
-    height: 100vh;
-    width: 100vw;
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
-    -webkit-tap-highlight-color: transparent;
-  }
+  /* Platformer-specific styles. Cabinet, pixel font, and touch base styles
+     come from ../shared/ — see <link> tags above. */
 
-  /* Cabinet — bezel + tube + CRT overlay + vignette. Verbatim from rocket-ship. */
-  .screen {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    background:
-      linear-gradient(180deg, #2a2724 0%, #1a1815 50%, #100e0c 100%);
-    padding: 22px;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      inset 0 -2px 6px rgba(0, 0, 0, 0.6);
-  }
-  .tube {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-    border-radius: 36px;
-    box-shadow:
-      inset 0 0 0 1px rgba(0, 0, 0, 0.9),
-      inset 0 0 40px rgba(0, 0, 0, 0.85),
-      0 0 0 2px rgba(0, 0, 0, 0.7);
-  }
-  canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-    filter: contrast(1.02) brightness(1.18) saturate(1.3);
-  }
-
-  /* Touch controls — only on coarse pointers, only after splash dismisses */
-  .touch-controls {
-    position: absolute;
-    inset: auto 0 0 0;
-    display: none;
-    justify-content: space-between;
-    align-items: flex-end;
-    padding: clamp(14px, 3vw, 28px);
-    pointer-events: none;
-    z-index: 6;
-  }
-  .tube.is-ready .touch-controls { display: flex; }
-  @media (hover: hover) and (pointer: fine) {
-    .touch-controls { display: none !important; }
-  }
-  .touch-controls .tc-group {
-    display: flex;
-    gap: clamp(10px, 2vw, 16px);
-    pointer-events: none;
-  }
-  .touch-controls .tc-btn {
-    pointer-events: auto;
-    width: clamp(56px, 11vw, 80px);
-    height: clamp(56px, 11vw, 80px);
-    border-radius: 12px;
-    border: 2px solid rgba(45, 212, 255, 0.6);
-    background: rgba(0, 0, 0, 0.35);
-    color: #2dd4ff;
-    font-family: 'Press Start 2P', ui-monospace, monospace;
-    font-size: clamp(20px, 4vw, 30px);
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    user-select: none;
-    transition: background 0.08s, border-color 0.08s;
-  }
-  .touch-controls .tc-btn:active,
-  .touch-controls .tc-btn.is-pressed {
-    background: rgba(45, 212, 255, 0.25);
-    border-color: #2dd4ff;
-    color: #fff;
-  }
+  /* Per-button colour override: the JUMP button is orange to set it apart
+     from the cyan ◀ ▶ movement cluster. */
   .touch-controls .tc-jump {
     width: clamp(72px, 14vw, 100px);
     height: clamp(72px, 14vw, 100px);
@@ -115,67 +26,6 @@
     border-color: #ff8800;
     color: #fff;
   }
-
-  .touch-only { display: none; }
-  @media (pointer: coarse) {
-    .key-only { display: none; }
-    .touch-only { display: revert; }
-  }
-
-  /* CRT scanlines + RGB sub-pixel overlay */
-  .overlay {
-    height: 100%;
-    left: 0;
-    position: absolute;
-    top: 0;
-    width: 100%;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-  }
-  .overlay::after {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-image: url('../../assets/crt.png');
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    content: "";
-    opacity: 0.55;
-  }
-  .vignette {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: radial-gradient(ellipse at center,
-      transparent 55%,
-      rgba(0, 0, 0, 0.22) 80%,
-      rgba(0, 0, 0, 0.45) 100%);
-    pointer-events: none;
-    z-index: 11;
-    border-radius: 36px;
-  }
-  .overlay::before {
-    position: absolute;
-    top: 0; left: 0; bottom: 0; right: 0;
-    content: " ";
-    background:
-      linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.35) 50%),
-      linear-gradient(90deg, rgba(255,0,0,0.1), rgba(0,255,0,0.04), rgba(0,0,255,0.1));
-    z-index: 2;
-    background-size: 100% 3px, 3px 100%;
-    pointer-events: none;
-  }
-
-  /* Hide canvas until splash dismissed */
-  .tube canvas { visibility: hidden; }
-  .tube.is-ready canvas { visibility: visible; }
 
   /* Splash */
   .splash {
@@ -192,12 +42,6 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.25s ease;
-  }
-  @keyframes splash-poweron {
-    0%   { transform: scale(1, 0.005); filter: brightness(3.5); }
-    55%  { transform: scale(1, 0.005); filter: brightness(3.5); }
-    80%  { transform: scale(1, 1); filter: brightness(2); }
-    100% { transform: scale(1, 1); filter: brightness(1); }
   }
   .splash .boot,
   .splash .splash-main {
@@ -273,10 +117,6 @@
     color: #fff;
     animation: arcade-blink 1s steps(1) infinite;
   }
-  @keyframes arcade-blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
-  }
   .splash .controls {
     display: grid;
     grid-template-columns: auto auto;
@@ -326,9 +166,98 @@
     .splash .boot-bar-fill { animation: boot-fill 0.6s linear forwards; }
     .splash .start { animation: none; opacity: 1; }
   }
+
+  /* Game-over / level-complete panel. Same shell for both states; the
+     .go-title gets a state class that swaps colour. Verbatim style stack
+     lifted from rocket-ship so the phase-5 extraction is a copy.        */
+  .gameover {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: rgba(0, 0, 0, 0.88);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    color: #fff;
+    gap: clamp(16px, 2.6vw, 26px);
+    padding: 40px 24px;
+    animation: splash-poweron 0.3s ease-out;
+  }
+  .gameover.is-visible { display: flex; }
+  .gameover .go-title {
+    font-size: clamp(28px, 6.5vw, 60px);
+    text-shadow:
+      3px 3px 0 #2dd4ff,
+      6px 6px 0 #ffd84a,
+      0 0 16px rgba(255, 58, 161, 0.45);
+  }
+  .gameover .go-title.is-loss { color: #ff3aa1; }
+  .gameover .go-title.is-win  {
+    color: #ffd84a;
+    text-shadow:
+      3px 3px 0 #ff3aa1,
+      6px 6px 0 #2dd4ff,
+      0 0 18px rgba(255, 216, 74, 0.45);
+  }
+  .gameover .go-score {
+    font-size: clamp(14px, 2.2vw, 18px);
+    color: #ffd84a;
+    letter-spacing: 0.18em;
+  }
+  .gameover .go-hiscore {
+    font-size: clamp(9px, 1.3vw, 12px);
+    color: #2dd4ff;
+    letter-spacing: 0.18em;
+    min-height: 14px;
+  }
+  .gameover .go-prompt {
+    font-size: clamp(10px, 1.6vw, 14px);
+    letter-spacing: 0.18em;
+    color: #fff;
+    animation: arcade-blink 1s steps(1) infinite;
+  }
+  .gameover .go-initials {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 12px;
+    margin-top: 8px;
+  }
+  .gameover .go-initials-label {
+    font-size: clamp(10px, 1.5vw, 13px);
+    letter-spacing: 0.2em;
+    color: #ff3aa1;
+  }
+  .gameover .go-initials-slots {
+    display: inline-flex;
+    gap: 18px;
+    font-size: clamp(28px, 5vw, 44px);
+    color: #ffd84a;
+    text-shadow: 2px 2px 0 #ff3aa1, 4px 4px 0 #2dd4ff;
+    letter-spacing: 0.1em;
+  }
+  .gameover .go-slot {
+    display: inline-block;
+    min-width: 1ch;
+    padding: 0 4px;
+    border-bottom: 4px solid rgba(255, 216, 74, 0.3);
+  }
+  .gameover .go-slot.is-active {
+    border-bottom-color: #2dd4ff;
+    animation: arcade-blink 0.6s steps(1) infinite;
+  }
+  .gameover .go-initials-hint {
+    font-size: clamp(8px, 1.1vw, 10px);
+    letter-spacing: 0.16em;
+    color: rgba(255, 255, 255, 0.6);
+  }
 </style>
 </head>
 <body>
+<script src="../shared/audio.js"></script>
+<script src="../shared/touch.js"></script>
+<script src="../shared/iframe-host.js"></script>
 <audio id="sfx-powerup"   src="../../sfx-powerup.mp3"   preload="auto"></audio>
 <audio id="sfx-explosion" src="../../sfx-explosion.mp3" preload="auto"></audio>
 <audio id="sfx-lose"      src="../../sfx-lose.mp3"      preload="auto"></audio>
@@ -345,6 +274,21 @@
       </div>
       <div class="tc-group tc-fire">
         <button type="button" class="tc-btn tc-jump" id="tc-jump" aria-label="Jump" tabindex="-1">JUMP</button>
+      </div>
+    </div>
+    <div class="gameover" id="gameover" aria-hidden="true">
+      <div class="go-title is-loss" id="go-title">GAME OVER</div>
+      <div class="go-score">SCORE <span id="go-score-val">0</span></div>
+      <div class="go-hiscore" id="go-hiscore"></div>
+      <div class="go-prompt" id="go-prompt"><span class="key-only">PRESS ANY KEY TO RESTART</span><span class="touch-only">TAP TO RESTART</span></div>
+      <div class="go-initials" id="go-initials" hidden>
+        <div class="go-initials-label">NEW HIGH SCORE — ENTER INITIALS</div>
+        <div class="go-initials-slots">
+          <span class="go-slot is-active" data-slot="0">A</span>
+          <span class="go-slot" data-slot="1">A</span>
+          <span class="go-slot" data-slot="2">A</span>
+        </div>
+        <div class="go-initials-hint"><span class="key-only">↑↓ CHANGE · ←→ MOVE · ENTER SAVE</span><span class="touch-only">◀ ▶ LETTER · ▲ NEXT</span></div>
       </div>
     </div>
     <div class="splash" id="splash">
@@ -394,125 +338,58 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-(function bindTouchButtons() {
+// Touch buttons drive the same key flags as the keyboard, so the rest
+// of the input pipeline doesn't care where input came from.
+(function () {
   const left  = document.getElementById('tc-left');
   const right = document.getElementById('tc-right');
   const jump  = document.getElementById('tc-jump');
-  function bind(btn, onDown, onUp) {
-    if (!btn) return;
-    const down = e => { e.preventDefault(); btn.classList.add('is-pressed'); onDown(); };
-    const up   = e => { if (e) e.preventDefault(); btn.classList.remove('is-pressed'); onUp(); };
-    btn.addEventListener('pointerdown', down);
-    btn.addEventListener('pointerup', up);
-    btn.addEventListener('pointercancel', up);
-    btn.addEventListener('pointerleave', up);
-    ['pointerdown','mousedown','touchstart'].forEach(ev => {
-      btn.addEventListener(ev, e => e.stopPropagation(), { passive: false });
-    });
-  }
-  bind(left,  () => keys['ArrowLeft']  = true, () => keys['ArrowLeft']  = false);
-  bind(right, () => keys['ArrowRight'] = true, () => keys['ArrowRight'] = false);
-  bind(jump,  () => keys[' ']          = true, () => keys[' ']          = false);
+  Arcade.Touch.bind(left,  () => keys['ArrowLeft']  = true, () => keys['ArrowLeft']  = false);
+  Arcade.Touch.bind(right, () => keys['ArrowRight'] = true, () => keys['ArrowRight'] = false);
+  Arcade.Touch.bind(jump,  () => keys[' ']          = true, () => keys[' ']          = false);
 })();
 
 // ============================================
-// AUDIO — Web Audio decoded once; <audio> fallback for first frames.
-// Copied verbatim from rocket-ship.html (the gesture-coupled iOS unlock matters).
+// AUDIO — Web Audio module lives in ../shared/audio.js. Per-game wrappers
+// keep call sites readable.
 // ============================================
-const SFX_FILES = {
-  'sfx-powerup':   '../../sfx-powerup.mp3',
-  'sfx-explosion': '../../sfx-explosion.mp3',
-  'sfx-lose':      '../../sfx-lose.mp3',
-  'sfx-glitch':    '../../sfx-glitch.mp3',
-};
-var audioCtx = null;
-var sfxMasterGain = null;
-var sfxBuffers = {};
-var sfxMuted = false;
-function ensureAudioCtx() {
-  try {
-    if (!audioCtx) {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return null;
-      audioCtx = new Ctx();
-      sfxMasterGain = audioCtx.createGain();
-      sfxMasterGain.gain.value = sfxMuted ? 0 : 1;
-      sfxMasterGain.connect(audioCtx.destination);
-      Object.entries(SFX_FILES).forEach(async ([id, src]) => {
-        try {
-          const resp = await fetch(src);
-          const arr = await resp.arrayBuffer();
-          sfxBuffers[id] = await audioCtx.decodeAudioData(arr);
-        } catch (_) {}
-      });
-    }
-    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-  } catch (_) {}
-  return audioCtx;
-}
-function setSfxMuted(m) {
-  sfxMuted = m;
-  if (sfxMasterGain) sfxMasterGain.gain.value = m ? 0 : 1;
-}
-function playSfx(id, volume = 0.6) {
-  const c = audioCtx;
-  const buf = c && sfxBuffers[id];
-  if (!c || !buf) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.volume = sfxMuted ? 0 : volume;
-    try { el.currentTime = 0; el.play().catch(() => {}); } catch (_) {}
-    return;
-  }
-  const src = c.createBufferSource();
-  src.buffer = buf;
-  const gain = c.createGain();
-  gain.gain.value = volume;
-  src.connect(gain).connect(sfxMasterGain);
-  try { src.start(0); } catch (_) {}
-}
-function playJump() { playSfx('sfx-glitch', 0.4); }
-function playCoin() { playSfx('sfx-powerup', 0.5); }
-function playGoal() { playSfx('sfx-explosion', 0.55); }
-function playHurt() { playSfx('sfx-lose', 0.5); }
+Arcade.Audio.init({
+  sfx: {
+    'sfx-powerup':   '../../sfx-powerup.mp3',
+    'sfx-explosion': '../../sfx-explosion.mp3',
+    'sfx-lose':      '../../sfx-lose.mp3',
+    'sfx-glitch':    '../../sfx-glitch.mp3',
+  },
+  mutedKey: 'oyster-platformer-muted',
+});
+function playJump() { Arcade.Audio.play('sfx-glitch', 0.4); }
+function playCoin() { Arcade.Audio.play('sfx-powerup', 0.5); }
+function playGoal() { Arcade.Audio.play('sfx-explosion', 0.55); }
+function playHurt() { Arcade.Audio.play('sfx-lose', 0.5); }
 
-// ============================================
-// SOUND TOGGLE — persists muted state to localStorage
-// ============================================
+// Sound toggle on the splash. Audio module owns the persistence; the
+// button just reflects + flips state.
 (function () {
-  const SOUND_KEY = 'oyster-platformer-muted';
   const btn = document.getElementById('sound-toggle');
   if (!btn) return;
-  function setMuted(m) {
-    document.querySelectorAll('audio').forEach(a => { a.muted = m; });
-    setSfxMuted(m);
+  function paint() {
+    const m = Arcade.Audio.isMuted();
     btn.classList.toggle('is-muted', m);
     btn.setAttribute('aria-pressed', String(m));
-    try { localStorage.setItem(SOUND_KEY, m ? '1' : '0'); } catch (_) {}
   }
-  let muted = false;
-  try { muted = localStorage.getItem(SOUND_KEY) === '1'; } catch (_) {}
-  setMuted(muted);
+  paint();
   ['mousedown','touchstart','pointerdown'].forEach(ev => {
     btn.addEventListener(ev, e => e.stopPropagation(), { passive: true });
   });
   btn.addEventListener('click', e => {
     e.stopPropagation();
-    setMuted(!btn.classList.contains('is-muted'));
+    Arcade.Audio.setMuted(!Arcade.Audio.isMuted());
+    paint();
   });
 })();
 
-// ============================================
-// IFRAME HOST BRIDGE — ESC posts close to parent; mark body for host CSS hooks.
-// ============================================
-if (window.self !== window.top) document.body.classList.add('is-embedded');
-window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    try { window.parent.postMessage({ type: 'arcade-close' }, '*'); } catch (_) {}
-    // Back-compat with the existing rocket-ship close handler in docs/index.html
-    try { window.parent.postMessage({ type: 'oyster-rocket-close' }, '*'); } catch (_) {}
-  }
-});
+// Iframe ↔ host bridge (ESC → close postMessage) self-installs from
+// ../shared/iframe-host.js.
 
 // ============================================
 // SPLASH — dismiss on any input, unlock audio on same gesture.
@@ -523,7 +400,7 @@ let started = false;
 function startGame() {
   if (started) return;
   started = true;
-  ensureAudioCtx();
+  Arcade.Audio.ensureCtx();
   splash.classList.add('is-hidden');
   if (tube) tube.classList.add('is-ready');
 }

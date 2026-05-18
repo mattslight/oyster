@@ -1,0 +1,29 @@
+/* Shared pixel-font + body reset for the arcade games. */
+
+/* Self-hosted so the full glyph set is available. Google Fonts subsets Press
+   Start 2P into per-script WOFF2 files and arrow/symbol codepoints
+   (U+2190 ←, U+2192 →, U+2605 ★, U+266A ♪) aren't in any of them, so they
+   fall back to system fonts when loaded from Google. */
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../../assets/PressStart2P-Regular.ttf') format('truetype');
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a0a0a;
+  margin: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  /* Suppress iOS text selection / Copy popup when a tap drifts slightly
+     during gameplay or on the splash. Everything in the game is visual —
+     nothing should be selectable. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
