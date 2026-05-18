@@ -199,6 +199,20 @@
   .game-card.is-focused .game-hi,
   .game-card.is-focused .game-prompt { display: block; }
 
+  /* Coming-soon placeholder card — slightly desaturated, distinct prompt. */
+  .game-card.is-coming-soon .game-name {
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .game-card.is-coming-soon .game-name .br { color: rgba(45, 212, 255, 0.5); }
+  .game-card.is-coming-soon .game-thumb {
+    filter: saturate(0.55);
+  }
+  .game-prompt.is-soon {
+    color: #2dd4ff;
+    opacity: 0.7;
+    animation: none;
+  }
+
   /* Game iframe overlay — covers the inside of the tube during launch.
      splash-poweron on launch, crt-shutoff on close (both from
      shared/cabinet.css). */
@@ -362,6 +376,27 @@
     <rect x="10" y="27" width="2" height="2" fill="#ffffff"/>
   </svg>
 </template>
+<template id="preview-coming-soon">
+  <svg viewBox="0 0 22 30" aria-hidden="true">
+    <rect width="22" height="30" fill="#1a1535"/>
+    <!-- Pixel "?" — top curve, stem, dot -->
+    <rect x="7"  y="6"  width="8" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="5"  y="8"  width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="15" y="8"  width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="15" y="10" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="13" y="12" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="11" y="14" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="9"  y="16" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="9"  y="18" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <rect x="9"  y="22" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
+    <!-- Stray static-noise pixels -->
+    <rect x="2"  y="3"  width="1" height="1" fill="#fff" opacity="0.25"/>
+    <rect x="18" y="2"  width="1" height="1" fill="#fff" opacity="0.25"/>
+    <rect x="3"  y="14" width="1" height="1" fill="#fff" opacity="0.25"/>
+    <rect x="19" y="22" width="1" height="1" fill="#fff" opacity="0.25"/>
+    <rect x="14" y="27" width="1" height="1" fill="#fff" opacity="0.25"/>
+  </svg>
+</template>
 <template id="preview-platformer">
   <svg viewBox="0 0 32 32" aria-hidden="true">
     <rect width="32" height="32" fill="#1a1535"/>
@@ -393,6 +428,11 @@
 const GAMES = [
   { id: 'rocket-ship', name: 'ROCKET SHIP', url: 'https://oyster.to/rocket-ship.html', preview: 'preview-rocket-ship' },
   { id: 'platformer',  name: 'PLATFORMER',  url: 'platformer/',                         preview: 'preview-platformer'  },
+  // Placeholders so the catalogue feels populated. comingSoon entries
+  // can't be launched; clicking a focused one is a no-op.
+  { id: 'soon-1', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
+  { id: 'soon-2', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
+  { id: 'soon-3', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
 ];
 let sel = 0;
 let launched = false;
@@ -404,6 +444,7 @@ let launched = false;
 function buildCard(game, idx, klass) {
   const card = document.createElement('div');
   card.className = 'game-card ' + klass;
+  if (game.comingSoon) card.classList.add('is-coming-soon');
   card.dataset.idx = String(idx);
 
   const thumb = document.createElement('div');
@@ -417,14 +458,22 @@ function buildCard(game, idx, klass) {
   name.innerHTML = '<span class="br">[</span> ' + game.name + ' <span class="br">]</span>';
   card.appendChild(name);
 
-  const hi = document.createElement('div');
-  hi.className = 'game-hi';
-  if (klass === 'is-focused') hi.id = 'game-hi';
-  card.appendChild(hi);
+  // Placeholder cards have no hi-score line — skip the empty slot entirely.
+  if (!game.comingSoon) {
+    const hi = document.createElement('div');
+    hi.className = 'game-hi';
+    if (klass === 'is-focused') hi.id = 'game-hi';
+    card.appendChild(hi);
+  }
 
   const prompt = document.createElement('div');
   prompt.className = 'game-prompt';
-  prompt.innerHTML = '<span class="key-only">PRESS ENTER TO PLAY</span><span class="touch-only">TAP PLAY</span>';
+  if (game.comingSoon) {
+    prompt.classList.add('is-soon');
+    prompt.textContent = 'STAY TUNED';
+  } else {
+    prompt.innerHTML = '<span class="key-only">PRESS ENTER TO PLAY</span><span class="touch-only">TAP PLAY</span>';
+  }
   card.appendChild(prompt);
 
   card.addEventListener('click', () => {
@@ -442,9 +491,12 @@ function render() {
 
   grid.innerHTML = '';
 
+  // Slot positions: next (upcoming) on the LEFT, prev (just-came-from) on
+  // the RIGHT. Matches the "press right → catalogue scrolls right and new
+  // content slides in from the left" mental model.
   const leftSlot = document.createElement('div');
   leftSlot.className = 'stage-slot';
-  if (prevIdx >= 0) leftSlot.appendChild(buildCard(GAMES[prevIdx], prevIdx, 'is-prev'));
+  if (nextIdx < GAMES.length) leftSlot.appendChild(buildCard(GAMES[nextIdx], nextIdx, 'is-next'));
   grid.appendChild(leftSlot);
 
   const centerSlot = document.createElement('div');
@@ -454,7 +506,7 @@ function render() {
 
   const rightSlot = document.createElement('div');
   rightSlot.className = 'stage-slot';
-  if (nextIdx < GAMES.length) rightSlot.appendChild(buildCard(GAMES[nextIdx], nextIdx, 'is-next'));
+  if (prevIdx >= 0) rightSlot.appendChild(buildCard(GAMES[prevIdx], prevIdx, 'is-prev'));
   grid.appendChild(rightSlot);
 
   // Disable arrows at the catalogue edges (no wrap — finite list).
@@ -465,8 +517,9 @@ function render() {
 }
 
 function paintHi() {
-  const game = GAMES[sel].id;
-  Arcade.Leaderboard.init({ game, max: 10 });
+  const g = GAMES[sel];
+  if (g.comingSoon) return;  // no hi-score row rendered for placeholders
+  Arcade.Leaderboard.init({ game: g.id, max: 10 });
   const top = Arcade.Leaderboard.getHighScore();
   const el = document.getElementById('game-hi');
   if (!el) return;
@@ -492,6 +545,7 @@ const exit = document.getElementById('game-frame-exit');
 function launch() {
   if (launched) return;
   const g = GAMES[sel];
+  if (g.comingSoon) return;  // placeholder — no game to launch yet
   launched = true;
   frame.src = g.url;
   wrap.classList.remove('is-shutting-down');
@@ -551,6 +605,7 @@ Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
 // ============================================
 (async () => {
   for (const g of GAMES) {
+    if (g.comingSoon) continue;
     Arcade.Leaderboard.init({ game: g.id, max: 10 });
     try { await Arcade.Leaderboard.refresh(); } catch (_) {}
     if (GAMES[sel].id === g.id) paintHi();
