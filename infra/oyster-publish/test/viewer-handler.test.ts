@@ -452,7 +452,7 @@ describe("GET /p/:token — footer copy is mode-invariant", () => {
 });
 
 describe("nonce pre-check — consumeNonce flag", () => {
-  it("/p/<token>?key=<valid_nonce> consumes the nonce", async () => {
+  it("/p/<token>?key=<valid_nonce> sets viewer cookie, 302s to clean URL, no-referrer", async () => {
     const u = await seedUser();
     const { shareToken } = await seedActiveOpenWithBody({
       ownerUserId: u.id, artifactId: "art_n1", body: "# nonce content",
@@ -462,10 +462,28 @@ describe("nonce pre-check — consumeNonce flag", () => {
 
     const nonce = await mintAccessNonce(env, shareToken, u.id);
     const res = await call(getReq(`/p/${shareToken}?key=${nonce}`));
-    // ok_via_nonce has no handler yet (Task 6); the placeholder throws,
-    // surfacing as a 500. TODO Task 6: assert 302 + cookie + clean URL.
-    expect(res.status).toBe(500);
 
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`/p/${shareToken}`);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain(`oyster_view_${shareToken}=`);
+    expect(setCookie).toContain(`Path=/p/${shareToken}`);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+
+    // Follow-up GET with the cookie returns content. We pass NO oyster_session
+    // here on purpose — the cookie is the only proof on share.oyster.to.
+    const cookieValue = setCookie.match(/oyster_view_[^=]+=([^;]+)/)?.[1] ?? "";
+    const follow = await call(getReq(`/p/${shareToken}`, {
+      cookie: `oyster_view_${shareToken}=${cookieValue}`,
+    }));
+    expect(follow.status).toBe(200);
+    expect(await follow.text()).toContain("nonce content");
+
+    // The nonce is consumed.
     const row = await env.DB.prepare(
       "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
     ).bind(nonce).first<{ consumed_at: number | null }>();
@@ -538,5 +556,23 @@ describe("nonce pre-check — consumeNonce flag", () => {
       "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
     ).bind(nonce).first<{ consumed_at: number | null }>();
     expect(row?.consumed_at).toBeNull();
+  });
+
+  it("a replayed key falls through to the standard mode dispatch", async () => {
+    const u = await seedUser();
+    const token = await seedActivePublication({ ownerUserId: u.id, artifactId: "art_replay", mode: "signin" });
+    const nonce = await mintAccessNonce(env, token, u.id);
+
+    // First call consumes.
+    const first = await call(getReq(`/p/${token}?key=${nonce}`));
+    expect(first.status).toBe(302);
+    expect(first.headers.get("location")).toBe(`/p/${token}`);
+
+    // Second call with the same (now-consumed) key behaves identically to
+    // a no-key request: signin mode, no cookie → 302 to access-redirect.
+    const second = await call(getReq(`/p/${token}?key=${nonce}`));
+    expect(second.status).toBe(302);
+    expect(second.headers.get("location"))
+      .toBe(`https://oyster.to/api/publish/access-redirect/${token}`);
   });
 });

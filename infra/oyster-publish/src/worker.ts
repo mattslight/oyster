@@ -711,15 +711,25 @@ async function handleViewerGet(req: Request, env: Env, shareToken: string): Prom
       return htmlPage(200, passwordGatePage(shareToken));
     case "ok":
       return renderForRow(env, access.row, req);
-    case "ok_via_nonce":
-      // Placeholder — real handling lands in Task 6. Returning 500 instead
-      // of throwing means the test for Task 6's transition can pin the
-      // current behaviour (`status === 500`) and Task 6 turns it into the
-      // expected 302 with a visible edit.
-      return new Response("ok_via_nonce: handler not yet implemented (Task 6)", {
-        status: 500,
-        headers: { "content-type": "text/plain" },
+    case "ok_via_nonce": {
+      // The visitor proved they have access (owner of a password share,
+      // or any signed-in user for a signin share) via
+      // /api/publish/access-redirect. Mint the standard recent-access
+      // cookie and 302 to the clean URL so that ?key=<nonce> does not
+      // linger in the address bar / Referer.
+      const cookieValue = await signViewerCookie(access.row.share_token, env.VIEWER_COOKIE_SECRET);
+      const host = new URL(req.url).host;
+      const secureFlag = isLoopback(host) ? "" : " Secure;";
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "set-cookie": `oyster_view_${access.row.share_token}=${cookieValue}; HttpOnly;${secureFlag} SameSite=Lax; Path=/p/${access.row.share_token}; Max-Age=86400`,
+          "location": `/p/${access.row.share_token}`,
+          "cache-control": "private, no-store",
+          "referrer-policy": "no-referrer",
+        },
       });
+    }
   }
 }
 
