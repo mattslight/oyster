@@ -523,12 +523,11 @@ function render() {
 
   grid.innerHTML = '';
 
-  // Slot positions: next (upcoming) on the LEFT, prev (just-came-from) on
-  // the RIGHT. Matches the "press right → catalogue scrolls right and new
-  // content slides in from the left" mental model.
+  // Slot positions: prev (lower index, just-came-from) on the LEFT, next
+  // (higher index, upcoming) on the RIGHT — conventional catalogue order.
   const leftSlot = document.createElement('div');
   leftSlot.className = 'stage-slot';
-  if (nextIdx >= 0) leftSlot.appendChild(buildCard(GAMES[nextIdx], nextIdx, 'is-next'));
+  if (prevIdx >= 0) leftSlot.appendChild(buildCard(GAMES[prevIdx], prevIdx, 'is-prev'));
   grid.appendChild(leftSlot);
 
   const centerSlot = document.createElement('div');
@@ -538,7 +537,7 @@ function render() {
 
   const rightSlot = document.createElement('div');
   rightSlot.className = 'stage-slot';
-  if (prevIdx >= 0) rightSlot.appendChild(buildCard(GAMES[prevIdx], prevIdx, 'is-prev'));
+  if (nextIdx >= 0) rightSlot.appendChild(buildCard(GAMES[nextIdx], nextIdx, 'is-next'));
   grid.appendChild(rightSlot);
 
   paintHi();
