@@ -60,20 +60,22 @@
       0 0 30px rgba(255, 216, 74, 0.55);
   }
 
-  /* Selector layout: cabinet-side nav arrows, strip viewport in the middle. */
+  /* Selector layout: the strip viewport fills the cabinet so the focused
+     card sits at the true cabinet centre. Nav arrows are positioned on
+     top of the viewport's left + right edges rather than living in a
+     grid column (which would offset the strip toward the right). */
   .selector {
     position: absolute;
     inset: 0;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    padding: clamp(20px, 3.5vw, 48px);
     font-family: 'Press Start 2P', ui-monospace, monospace;
     color: #fff;
     z-index: 1;
   }
 
   .nav-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
     appearance: none;
     background: transparent;
     border: 3px solid rgba(45, 212, 255, 0.5);
@@ -88,28 +90,27 @@
     justify-content: center;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    transform: translateY(-50%);
     transition: transform 0.12s, color 0.12s, border-color 0.12s, background 0.12s;
   }
+  .nav-arrow.nav-prev { left:  clamp(16px, 3vw, 40px); }
+  .nav-arrow.nav-next { right: clamp(16px, 3vw, 40px); }
   .nav-arrow:hover,
   .nav-arrow:focus-visible {
-    transform: scale(1.06);
+    transform: translateY(-50%) scale(1.06);
     color: #ffd84a;
     border-color: #ffd84a;
     background: rgba(255, 216, 74, 0.08);
     outline: none;
   }
-  .nav-arrow:active { transform: scale(0.96); }
+  .nav-arrow:active { transform: translateY(-50%) scale(0.96); }
 
   /* Strip viewport — horizontal carousel of all games. The strip is wider
      than the viewport; only the focused card and its neighbours show
      (overflow:hidden clips the rest). */
   .strip-viewport {
-    position: relative;
-    width: 100%;
-    /* Sized to fit the focused card's full content (thumb + name + hi +
-       prompt). The previous clamp was too short on tablet widths and
-       clipped the TAP PLAY prompt. */
-    height: clamp(300px, 38vw, 420px);
+    position: absolute;
+    inset: 0;
     overflow: hidden;
   }
   .strip {
@@ -299,7 +300,6 @@
      so the in-screen arrows would be redundant. The cabinet keeps them
      on mice / trackpads. */
   @media (pointer: coarse) {
-    .selector { grid-template-columns: 1fr; }
     .nav-arrow { display: none; }
   }
 
@@ -333,11 +333,11 @@
     <div class="vignette"></div>
 
     <div class="selector" id="selector">
-      <button class="nav-arrow" id="nav-prev" type="button" aria-label="Previous game">◀</button>
       <div class="strip-viewport">
         <div class="strip" id="strip"></div>
       </div>
-      <button class="nav-arrow" id="nav-next" type="button" aria-label="Next game">▶</button>
+      <button class="nav-arrow nav-prev" id="nav-prev" type="button" aria-label="Previous game">◀</button>
+      <button class="nav-arrow nav-next" id="nav-next" type="button" aria-label="Next game">▶</button>
     </div>
 
     <div class="game-frame-wrap" id="game-frame-wrap" aria-hidden="true">
@@ -451,19 +451,24 @@ let animating = false;
 let suppressClickUntil = 0;
 
 // ============================================
-// STRIP — all N games rendered once, with TWO clones at each end. The
-// extra clones matter because the visible "neighbour" of the focused
-// card at the wrap boundary needs to match across the snap: with only
-// one clone, the far-side neighbour pops in/out of existence. Two
-// clones cover both the focused card and its neighbour during the wrap.
-// Strip indices:
-//   0     = clone of GAMES[N-2]   (leading clone, 2-deep)
-//   1     = clone of GAMES[N-1]   (leading clone, 1-deep)
-//   2..N+1 = GAMES[0..N-1]        (real cards)
-//   N+2   = clone of GAMES[0]     (trailing clone, 1-deep)
-//   N+3   = clone of GAMES[1]     (trailing clone, 2-deep)
-// sel → strip index = sel + 2.
+// STRIP — all N games rendered once with CLONE_COUNT clones at each end.
+// The clones cover the visible neighbours of the focused card at the
+// wrap boundary so the snap (after the wrap animation) is seamless:
+// every visible position has matching content before vs after the snap.
+//
+// 3-deep clones means seamless wrap as long as no more than ~3 cards on
+// each side of the focused are visible — covers any realistic viewport
+// width. For very wide viewports add more or limit visible range via
+// a max-width on the strip-viewport.
+//
+// Strip indices for CLONE_COUNT=3:
+//   0..2          leading clones (of last 3 real cards, in order)
+//   3..N+2        real cards 0..N-1
+//   N+3..N+5      trailing clones (of first 3 real cards, in order)
+// sel → strip index = sel + CLONE_COUNT.
 // ============================================
+const CLONE_COUNT = 3;
+
 function buildCard(game, realIdx, isClone) {
   const card = document.createElement('div');
   card.className = 'game-card';
@@ -516,17 +521,21 @@ function buildCard(game, realIdx, isClone) {
 function mountStrip() {
   const strip = document.getElementById('strip');
   strip.replaceChildren();
-  // 2 leading clones (last two cards, in order)
-  strip.appendChild(buildCard(GAMES[(N - 2 + N) % N], (N - 2 + N) % N, true));
-  strip.appendChild(buildCard(GAMES[N - 1],          N - 1,          true));
+  // Leading clones: the last CLONE_COUNT real cards, in catalogue order.
+  for (let i = N - CLONE_COUNT; i < N; i++) {
+    const r = ((i % N) + N) % N;
+    strip.appendChild(buildCard(GAMES[r], r, true));
+  }
   // Real cards
   for (let i = 0; i < N; i++) strip.appendChild(buildCard(GAMES[i], i, false));
-  // 2 trailing clones (first two cards, in order)
-  strip.appendChild(buildCard(GAMES[0], 0, true));
-  strip.appendChild(buildCard(GAMES[1 % N], 1 % N, true));
+  // Trailing clones: the first CLONE_COUNT real cards, in catalogue order.
+  for (let i = 0; i < CLONE_COUNT; i++) {
+    const r = i % N;
+    strip.appendChild(buildCard(GAMES[r], r, true));
+  }
 }
 
-function stripIdxFor(realIdx) { return realIdx + 2; }
+function stripIdxFor(realIdx) { return realIdx + CLONE_COUNT; }
 
 // Translate the strip so the card at `stripIdx` sits centred in the
 // viewport. Reads the card's offsetLeft (its position within the strip)
@@ -584,9 +593,10 @@ function next() {
     reposition(true);
     setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
   } else {
-    // Wrap forward: animate to the trailing clone of card 0 at strip
-    // index N+2, then snap to real card 0 at strip index 2.
-    translateStripTo(N + 2, true);
+    // Wrap forward: animate to the first trailing clone (clone of card
+    // 0) at strip index N + CLONE_COUNT, then snap to real card 0 at
+    // strip index CLONE_COUNT.
+    translateStripTo(N + CLONE_COUNT, true);
     setTimeout(() => {
       sel = 0;
       reposition(false);
@@ -603,9 +613,10 @@ function prev() {
     reposition(true);
     setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
   } else {
-    // Wrap backward: animate to the inner leading clone (clone of card
-    // N-1) at strip index 1, then snap to real card N-1 at strip index N+1.
-    translateStripTo(1, true);
+    // Wrap backward: animate to the last leading clone (clone of card
+    // N-1) at strip index CLONE_COUNT - 1, then snap to real card N-1
+    // at strip index N + CLONE_COUNT - 1.
+    translateStripTo(CLONE_COUNT - 1, true);
     setTimeout(() => {
       sel = N - 1;
       reposition(false);
