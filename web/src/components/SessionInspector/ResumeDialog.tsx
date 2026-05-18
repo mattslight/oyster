@@ -21,9 +21,22 @@ import { useEffect, useState } from "react";
 import type { Session } from "../../data/sessions-api";
 import { resumeSession, type SessionResumeResponse } from "../../data/sessions-api";
 
+// Result shape for the "Open in Oyster" path. ResumeDialog renders a small
+// error message inline on failure; the parent owns the actual launch.
+export interface OpenInOysterResult {
+  ok: boolean;
+  error?: string;
+  installHint?: string;
+}
+
 interface ResumeDialogProps {
   session: Session;
   onClose: () => void;
+  /** Launch the resumed session inside an Oyster terminal window. Called
+   *  from the OkPanel "Open in Oyster" button. Returns whether the launch
+   *  succeeded so the panel can surface failures inline (e.g. binary not
+   *  found) without dismissing the dialog. */
+  onOpenInOyster?: (sessionId: string) => Promise<OpenInOysterResult>;
 }
 
 interface DialogState {
@@ -38,7 +51,7 @@ interface DialogState {
   loading: boolean;
 }
 
-export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
+export function ResumeDialog({ session, onClose, onOpenInOyster }: ResumeDialogProps) {
   const [state, setState] = useState<DialogState>({
     response: null,
     draftCwd: "",
@@ -109,7 +122,12 @@ export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
       )}
 
       {!state.loading && state.response?.status === "ok" && (
-        <OkPanel response={state.response} copied={copied} onCopy={copyCommand} />
+        <OkPanel
+          response={state.response}
+          copied={copied}
+          onCopy={copyCommand}
+          onOpenInOyster={onOpenInOyster ? () => onOpenInOyster(session.id) : undefined}
+        />
       )}
 
       {!state.loading && state.response?.status === "needs_target" && (
@@ -148,12 +166,33 @@ export function ResumeDialog({ session, onClose }: ResumeDialogProps) {
 // ── Panels ──
 
 function OkPanel({
-  response, copied, onCopy,
+  response, copied, onCopy, onOpenInOyster,
 }: {
   response: Extract<SessionResumeResponse, { status: "ok" }>;
   copied: boolean;
   onCopy: (cmd: string) => void;
+  onOpenInOyster?: () => Promise<OpenInOysterResult>;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [openHint, setOpenHint] = useState<string | null>(null);
+
+  async function handleOpen(): Promise<void> {
+    if (!onOpenInOyster) return;
+    setBusy(true);
+    setOpenError(null);
+    setOpenHint(null);
+    try {
+      const result = await onOpenInOyster();
+      if (!result.ok) {
+        setOpenError(result.error ?? "launch_failed");
+        setOpenHint(result.installHint ?? null);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="resume-panel resume-ok">
       <p>Transcript ready at <code>{response.jsonlPath}</code>.</p>
@@ -163,7 +202,18 @@ function OkPanel({
         <button type="button" onClick={() => onCopy(response.command)}>
           {copied ? "Copied" : "Copy command"}
         </button>
+        {onOpenInOyster && (
+          <button type="button" disabled={busy} onClick={handleOpen}>
+            {busy ? "Opening…" : "Open in Oyster"}
+          </button>
+        )}
       </div>
+      {openError && (
+        <div className="resume-open-error" style={{ marginTop: 8, color: "var(--text-dim)" }}>
+          {openError}
+          {openHint && <div style={{ marginTop: 4 }}><code>{openHint}</code></div>}
+        </div>
+      )}
     </div>
   );
 }

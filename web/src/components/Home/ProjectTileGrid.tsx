@@ -12,6 +12,7 @@ export function ProjectTileGrid({
   spaceId, projects, projectArtefactCounts, sessionCountsByProject,
   selectedProjectId, setSelectedProjectId,
   totalCounts, showAttachForm, setShowAttachForm, onProjectsChanged, onSpaceDelete,
+  onLaunchClaude,
 }: {
   spaceId: string;
   projects: Project[];
@@ -27,6 +28,7 @@ export function ProjectTileGrid({
   setShowAttachForm: (v: boolean) => void;
   onProjectsChanged: () => void;
   onSpaceDelete?: (spaceId: string) => Promise<void> | void;
+  onLaunchClaude?: (projectId: string) => void;
 }) {
   // Sort by artefact count desc — busiest projects first.
   const sortedProjects = useMemo(
@@ -91,6 +93,7 @@ export function ProjectTileGrid({
             spaceTotalSessions={totalCounts.all}
             onSpaceDelete={onSpaceDelete}
             otherProjects={sortedProjects.filter((o) => o.id !== p.id)}
+            onLaunchClaude={onLaunchClaude}
           />
         ))}
 

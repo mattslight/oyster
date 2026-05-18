@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Session, SessionState } from "../../data/sessions-api";
 import { useMyDeviceId } from "../../hooks/useMyDeviceId";
 import { SessionActions } from "./SessionActions";
-import { ResumeDialog } from "./ResumeDialog";
+import { ResumeDialog, type OpenInOysterResult } from "./ResumeDialog";
 import { formatTs } from "./utils";
 
 const PIP_CLASS: Record<SessionState, string> = {
@@ -20,7 +20,15 @@ const STATE_LABEL: Record<SessionState, string> = {
   done: "done",
 };
 
-export function Header({ session, onClose }: { session: Session; onClose: () => void }) {
+export function Header({ session, onClose, onLaunchClaude, onOpenInOyster }: {
+  session: Session;
+  onClose: () => void;
+  /** Resume this session in an Oyster terminal (`claude --resume <id>`). */
+  onLaunchClaude?: () => void;
+  /** Launch a remote (cross-device) session in an Oyster terminal once
+   *  its bytes have been reassembled. Surfaced by the ResumeDialog OkPanel. */
+  onOpenInOyster?: (sessionId: string) => Promise<OpenInOysterResult>;
+}) {
   const myDevice = useMyDeviceId();
   const myDeviceId = myDevice?.deviceId ?? null;
   // Show the Resume affordance only on remote sessions. A null myDeviceId
@@ -50,7 +58,7 @@ export function Header({ session, onClose }: { session: Session; onClose: () => 
         {session.id} · started {formatTs(session.startedAt)}
         {session.model ? ` · ${session.model}` : ""}
       </div>
-      <SessionActions session={session} />
+      <SessionActions session={session} onLaunchClaude={onLaunchClaude} />
 
       {isRemote && (
         <div className="inspector-resume">
@@ -69,7 +77,11 @@ export function Header({ session, onClose }: { session: Session; onClose: () => 
       )}
 
       {resumeOpen && (
-        <ResumeDialog session={session} onClose={() => setResumeOpen(false)} />
+        <ResumeDialog
+          session={session}
+          onClose={() => setResumeOpen(false)}
+          onOpenInOyster={onOpenInOyster}
+        />
       )}
     </header>
   );

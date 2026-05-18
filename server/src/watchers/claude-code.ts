@@ -193,6 +193,110 @@ export class ClaudeCodeWatcher {
     this.fileLocks.clear();
   }
 
+  /** Resolve once a new `.jsonl` lands under `<root>/<encodedCwd>/`. Used by
+   *  the terminal-launch flow to auto-link a freshly spawned claude PTY to
+   *  the session row the watcher will produce.
+   *
+   *  Belt-and-braces:
+   *   1. Sync directory scan — covers the race where claude writes its
+   *      first line before any chokidar `add` event fires. Exactly one
+   *      qualifying file → resolve with its uuid. More than one → resolve
+   *      `null` (ambiguous; wrong link is worse than no link).
+   *   2. Subscribe to the watcher's existing chokidar `add` events for
+   *      `timeoutMs`. First match resolves; a second arrival before
+   *      resolution rejects to `null`.
+   *   3. Timeout → resolve `null`.
+   *
+   *  Never throws — auto-link is strictly best-effort. */
+  async onceNewJsonl(
+    encodedCwd: string,
+    sinceMs: number,
+    timeoutMs = 5_000,
+  ): Promise<{ sessionId: string } | null> {
+    const targetDir = join(this.root, encodedCwd);
+
+    // Step 1 — sync scan with a 1s back-window to absorb mtime resolution
+    // and the gap between sinceMs capture and the JSONL write.
+    try {
+      const entries = await fs.readdir(targetDir);
+      const matched: string[] = [];
+      for (const name of entries) {
+        if (!name.endsWith(".jsonl")) continue;
+        try {
+          const st = await fs.stat(join(targetDir, name));
+          if (st.mtimeMs >= sinceMs - 1000) matched.push(name);
+        } catch { /* file vanished between readdir and stat */ }
+      }
+      if (matched.length === 1) {
+        return { sessionId: filenameToSessionId(matched[0]!) };
+      }
+      if (matched.length > 1) return null; // ambiguous
+    } catch {
+      // Directory doesn't exist yet — claude will create it. Fall through
+      // to the watcher subscription path.
+    }
+
+    // Step 2 — subscribe to the chokidar `add` event for the remainder of
+    // `timeoutMs`. If chokidar hasn't started yet (rare: server still
+    // booting), the subscriber resolves only via timeout.
+    if (!this.watcher) {
+      return new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs));
+    }
+
+    return new Promise<{ sessionId: string } | null>((resolve) => {
+      const watcher = this.watcher!;
+      let resolved = false;
+      let timer: NodeJS.Timeout | null = null;
+
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer);
+        watcher.off("add", onAdd);
+      };
+
+      const onAdd = (path: string): void => {
+        if (resolved) return;
+        if (!path.endsWith(".jsonl")) return;
+        if (basename(dirname(path)) !== encodedCwd) return;
+        // mtime check — only count files actually fresh relative to spawn.
+        fs.stat(path).then(
+          (st) => {
+            if (resolved) return;
+            if (st.mtimeMs < sinceMs - 1000) return;
+            // Ambiguity: if another candidate already appeared, reject.
+            if (resolveState.firstSessionId) {
+              resolved = true;
+              cleanup();
+              resolve(null);
+              return;
+            }
+            resolveState.firstSessionId = filenameToSessionId(path);
+            // Slight delay to detect simultaneous additions racing each other.
+            // 100ms is short enough to be invisible to users yet long enough
+            // to catch two claudes spawned in the same beat.
+            setTimeout(() => {
+              if (resolved) return;
+              resolved = true;
+              cleanup();
+              resolve({ sessionId: resolveState.firstSessionId! });
+            }, 100);
+          },
+          () => { /* stat failed; ignore */ },
+        );
+      };
+
+      const resolveState: { firstSessionId: string | null } = { firstSessionId: null };
+
+      watcher.on("add", onAdd);
+
+      timer = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve(null);
+      }, timeoutMs);
+    });
+  }
+
   // ── Boot reconciliation ─────────────────────────────────────────────────
   // Walk every .jsonl already on disk, upsert a session row for it, and seed
   // the offset tracker with the current file size so we don't replay history

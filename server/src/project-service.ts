@@ -80,6 +80,16 @@ export class ProjectService {
     return rows.map((row) => ({ ...rowToProject(row), ...this.detectPathState(row.id) }));
   }
 
+  /** Lookup a single non-removed project by id, with path state attached.
+   *  Used by terminal-launch to resolve a cwd from a project reference. */
+  getById(id: string): Project | null {
+    const row = this.db
+      .prepare("SELECT id, space_id, name, created_at FROM projects WHERE id = ? AND removed_at IS NULL")
+      .get(id) as ProjectRow | undefined;
+    if (!row) return null;
+    return { ...rowToProject(row), ...this.detectPathState(row.id) };
+  }
+
   // Walk this project's cached paths once and derive:
   //   - recentPath  (most-recent, for display)
   //   - hasLivePath (ANY path exists on disk → not homeless)

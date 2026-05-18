@@ -51,6 +51,13 @@ interface Props {
    *  drop the chat bar out of hero mode so it stops occluding sub-view
    *  content. */
   onSubViewActiveChange?: (active: boolean) => void;
+  /** Spawn an in-app Claude PTY in the given project's recent path. */
+  onLaunchClaude?: (projectId: string) => void;
+  /** Resume a session in an Oyster terminal (`claude --resume <id>`). */
+  onLaunchClaudeFromSession?: (sessionId: string) => void;
+  /** Launch a remote (cross-device) session in an Oyster terminal once
+   *  reassemble has completed. Threaded to ResumeDialog via SessionInspector. */
+  onOpenRemoteInOyster?: (sessionId: string) => Promise<import("../SessionInspector/ResumeDialog").OpenInOysterResult>;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -127,7 +134,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster }: Props) {
   const { sessions, error, loading } = useSessions();
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();
@@ -967,6 +974,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               setShowAttachForm={setShowAttachForm}
               onProjectsChanged={refreshSpaceProjects}
               onSpaceDelete={onSpaceDelete}
+              onLaunchClaude={onLaunchClaude}
             />
           )
         )}
@@ -1313,6 +1321,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               setActivePanel(null);
               alert("Session no longer available");
             }}
+            onLaunchClaude={onLaunchClaudeFromSession}
+            onOpenInOyster={onOpenRemoteInOyster}
           />
         )}
         {activePanel?.kind === "artefact" && activeArtefact && (

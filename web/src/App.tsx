@@ -23,6 +23,7 @@ import { fetchSpaces, updateSpace, deleteSpace, convertFolderToSpace, promoteFol
 import type { Space, SetupProposal } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import { unpublishArtifact } from "./data/publish-api";
+import { launchAndOpen, humanError } from "./lib/launch-terminal";
 import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
@@ -225,6 +226,10 @@ export default function App() {
       void fetchSpaces().then(setSpaces).catch(() => undefined);
       void loadArtifacts().then(setArtifacts).catch(() => undefined);
     }
+    if (event.command === "terminal_session_linked") {
+      const { terminalId, sessionId } = event.payload as { terminalId: string; sessionId: string };
+      dispatch({ type: "LINK_TERMINAL_SESSION", terminalId, sessionId });
+    }
   }), [loadArtifacts]);
 
   // Sync state from browser back/forward
@@ -316,6 +321,7 @@ export default function App() {
 
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
+  const claudeTerminals = windows.filter((w) => w.type === "claude_terminal");
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
@@ -380,6 +386,53 @@ export default function App() {
     await stopAppApi(appName);
   }
 
+  // Spawn an in-app Claude PTY for a project. Failures (missing binary,
+  // homeless project, cap reached) are surfaced via a simple alert with
+  // copy guidance — the binary-missing case has the install hint.
+  const handleLaunchClaudeFromProject = useCallback(async (projectId: string) => {
+    const outcome = await launchAndOpen(
+      { kind: "claude_new", source: { type: "project", id: projectId } },
+      dispatch,
+    );
+    if (!outcome.ok) {
+      const hint = outcome.installHint ? `\n\n${outcome.installHint}` : "";
+      alert(`${humanError(outcome.error)}${hint}`);
+    }
+  }, []);
+
+  const handleLaunchClaudeFromSession = useCallback(
+    async (sessionId: string) => {
+      const outcome = await launchAndOpen(
+        { kind: "claude_resume", source: { type: "session", id: sessionId } },
+        dispatch,
+      );
+      if (!outcome.ok) {
+        const hint = outcome.installHint ? `\n\n${outcome.installHint}` : "";
+        alert(`${humanError(outcome.error)}${hint}`);
+      }
+    },
+    [],
+  );
+
+  // Remote-session "Open in Oyster" path (from ResumeDialog). Source is
+  // `remote_session`: server resolves the cwd from the reassembled jsonl on
+  // disk, so the dialog doesn't need to pass the cwd back. The dialog
+  // surfaces the error inline (so the user can still copy the command),
+  // so we return rather than alert.
+  const handleOpenRemoteInOyster = useCallback(
+    async (sessionId: string) => {
+      const outcome = await launchAndOpen(
+        { kind: "claude_resume", source: { type: "remote_session", id: sessionId } },
+        dispatch,
+      );
+      if (!outcome.ok) {
+        return { ok: false, error: humanError(outcome.error), installHint: outcome.installHint };
+      }
+      return { ok: true };
+    },
+    [],
+  );
+
   // T16-T18 will pass this to Desktop, ViewerWindow, and ChatBar.
   const handleArtifactPublish = useCallback((artifact: Artifact) => {
     if (artifact.builtin || artifact.plugin || artifact.status === "generating") return;
@@ -442,6 +495,9 @@ export default function App() {
         onSpaceDelete={handleSpaceDelete}
         onSpaceUpdate={handleSpaceUpdate}
         onSubViewActiveChange={setHomeSubViewActive}
+        onLaunchClaude={handleLaunchClaudeFromProject}
+        onLaunchClaudeFromSession={handleLaunchClaudeFromSession}
+        onOpenRemoteInOyster={handleOpenRemoteInOyster}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
@@ -536,6 +592,28 @@ export default function App() {
             onClose={() => dispatch({ type: "CLOSE", id: terminalWindow.id })}
           />
         )}
+        {claudeTerminals.map((w, i) => (
+          <TerminalWindow
+            key={w.id}
+            defaultX={140 + i * 24}
+            defaultY={80 + i * 24}
+            zIndex={w.zIndex}
+            onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
+            onClose={() => dispatch({ type: "CLOSE", id: w.id })}
+            terminalId={w.terminalId}
+            title={w.title}
+            linkedSessionId={w.linkedSessionId}
+            onOpenSession={(sessionId) => {
+              // Route to /s/<space>/sessions/<id>; the space prefix is required
+              // by the active routing today, so use the current activeSpace
+              // (the session inspector itself does its own resolve).
+              window.history.pushState(null, "", `/s/${activeSpace}/sessions/${sessionId}`);
+              // Nudge the router (mirrors how artifact navigation triggers
+              // a popstate elsewhere).
+              window.dispatchEvent(new PopStateEvent("popstate"));
+            }}
+          />
+        ))}
       </div>
 
       {showHardcoreGate && (
