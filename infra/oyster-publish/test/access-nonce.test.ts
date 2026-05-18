@@ -8,11 +8,21 @@ beforeEach(async () => {
 });
 
 describe("access-nonce — mint + consume", () => {
-  it("a freshly minted nonce consumes once and only once", async () => {
+  it("a freshly minted nonce consumes once and only once, and sets consumed_at", async () => {
     const nonce = await mintAccessNonce(env, "tok_a", "user_1");
     expect(nonce).toMatch(/^[A-Za-z0-9_-]{22}$/);
 
     expect(await consumeAccessNonce(env, nonce, "tok_a")).toBe(true);
+
+    // Verify the row-level invariant: consumed_at must be populated after
+    // the first successful consume. Without this, a hypothetical regression
+    // that returns true once then resets consumed_at to null (allowing a
+    // replay) would still pass the boolean-only checks below.
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).not.toBeNull();
+
     expect(await consumeAccessNonce(env, nonce, "tok_a")).toBe(false);
   });
 
