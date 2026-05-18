@@ -299,6 +299,29 @@
   }
   .tube.is-game-launched .touch-controls { display: none !important; }
 
+  /* When a game is launched, the arcade's outer cabinet chrome hides so it
+     doesn't double up with the embedded game's own bezel + scanlines +
+     vignette. The iframe fills the viewport; its own chrome becomes the
+     visible cabinet. The class stays applied through the CRT-shutoff
+     animation so the iframe scales cleanly into nothing before the arcade
+     selector returns. */
+  body.is-game-launched .marquee,
+  body.is-game-launched .selector,
+  body.is-game-launched .arcade-credit,
+  body.is-game-launched .tube > .overlay,
+  body.is-game-launched .tube > .vignette {
+    display: none;
+  }
+  body.is-game-launched .screen {
+    padding: 0;
+    gap: 0;
+    background: #000;
+  }
+  body.is-game-launched .tube {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
   /* Narrow viewports: hide the adjacent slots so the focused card fills
      the cabinet. Arrows still navigate. */
   @media (max-width: 640px) {
@@ -557,6 +580,7 @@ function launch() {
   wrap.classList.add('is-launched', 'is-launching');
   wrap.setAttribute('aria-hidden', 'false');
   tube.classList.add('is-game-launched');
+  document.body.classList.add('is-game-launched');
   setTimeout(() => wrap.classList.remove('is-launching'), 600);
   setTimeout(() => { try { frame.focus(); } catch (_) {} }, 60);
 }
@@ -569,6 +593,7 @@ function close() {
     wrap.classList.remove('is-launched', 'is-shutting-down', 'is-launching');
     wrap.setAttribute('aria-hidden', 'true');
     tube.classList.remove('is-game-launched');
+    document.body.classList.remove('is-game-launched');
     try { frame.src = 'about:blank'; } catch (_) {}
     paintHi();
     Arcade.Leaderboard.init({ game: GAMES[sel].id, max: 10 });
