@@ -579,6 +579,12 @@ const LEVEL = {
   // Goal flag sits on top of the last platform (row 5, cols 42-44).
   // The flag visual extends ~2 tiles above this anchor.
   goal: { col: 43, row: 5 },
+  // Walker enemies pace back and forth on their starting platform. The
+  // col/row anchors place the enemy's feet at the top-left of the tile.
+  enemies: [
+    { col: 13, row: 10, type: 'walker' },
+    { col: 25, row:  8, type: 'walker' },
+  ],
 };
 function tileAt(col, row) {
   if (col < 0 || row < 0 || col >= LEVEL.width || row >= LEVEL.height) {
@@ -597,13 +603,19 @@ function isSolid(col, row) { return tileAt(col, row) === '#'; }
 let TILE_PX = 32;
 let PLAYER_W = 28;
 let PLAYER_H = 40;
+let ENEMY_W = 28;
+let ENEMY_H = 28;
 const PLAYER_W_FRAC = 0.85;
 const PLAYER_H_FRAC = 1.25;
+const ENEMY_W_FRAC = 0.85;
+const ENEMY_H_FRAC = 0.85;
 
 function recomputeScale() {
   TILE_PX = Math.max(16, Math.floor(H / LEVEL.height));
   PLAYER_W = Math.round(TILE_PX * PLAYER_W_FRAC);
   PLAYER_H = Math.round(TILE_PX * PLAYER_H_FRAC);
+  ENEMY_W = Math.round(TILE_PX * ENEMY_W_FRAC);
+  ENEMY_H = Math.round(TILE_PX * ENEMY_H_FRAC);
 }
 recomputeScale();
 
@@ -627,29 +639,75 @@ const player = {
   lastGroundedAt: -Infinity,
   jumpPressedAt: -Infinity,
   jumpHeld: false,
+  invulnAt: -Infinity,   // last time a hit was taken
 };
 
 const cam = { x: 0 };
 
-// Run-level state: score, collected coins (by index in LEVEL.coins),
-// and the level-complete flag with a small grace window so the input
-// gesture that touched the goal doesn't immediately restart.
+// Run-level state.
+const MAX_LIVES = 3;
+const LEVEL_COMPLETE_GRACE_MS = 600;
+const GAME_OVER_GRACE_MS = 600;
+const INVULN_MS = 1200;            // post-hit invulnerability window
+const ENEMY_SPEED_FRAC = 0.04;     // per-tile / frame; ENEMY_SPEED computed below
+
 let score = 0;
+let lives = MAX_LIVES;
 const coinsCollected = new Set();
 let levelComplete = false;
 let levelCompleteAt = 0;
-const LEVEL_COMPLETE_GRACE_MS = 600;
+let gameOver = false;
+let gameOverAt = 0;
+const enemies = [];
 
 function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-function resetLevel() {
+function initEnemies() {
+  enemies.length = 0;
+  const speed = Math.max(1.2, TILE_PX * ENEMY_SPEED_FRAC * 60 / 60);
+  for (const e of LEVEL.enemies) {
+    enemies.push({
+      x: e.col * TILE_PX + (TILE_PX - ENEMY_W) / 2,
+      y: e.row * TILE_PX - ENEMY_H,
+      vx: -speed,
+      alive: true,
+      squashAt: 0,
+    });
+  }
+}
+
+// Full restart: lives, score, coins, enemies, player position. Called from
+// the splash, after game-over, and after level-complete.
+function resetRun() {
   score = 0;
+  lives = MAX_LIVES;
   coinsCollected.clear();
-  levelComplete = false;
-  levelCompleteAt = 0;
+  levelComplete = false; levelCompleteAt = 0;
+  gameOver = false; gameOverAt = 0;
+  initEnemies();
   resetPlayer();
+}
+
+// Lose a life but keep score and coin progress. If lives drop to 0 the
+// run ends and the game-over overlay takes over.
+function hurtPlayer() {
+  const now = performance.now();
+  if (now - player.invulnAt < INVULN_MS) return;
+  lives--;
+  player.invulnAt = now;
+  playHurt();
+  if (lives <= 0) {
+    gameOver = true;
+    gameOverAt = now;
+    return;
+  }
+  // Mid-run respawn — back to spawn but keep score + coins.
+  player.x = LEVEL.spawn.col * TILE_PX + (TILE_PX - PLAYER_W) / 2;
+  player.y = LEVEL.spawn.row * TILE_PX - PLAYER_H;
+  player.vx = 0; player.vy = 0;
+  cam.x = 0;
 }
 
 function resetPlayer() {
@@ -664,15 +722,16 @@ function resetPlayer() {
   player.jumpHeld = false;
   cam.x = 0;
 }
-resetPlayer();
+resetRun();
 
 window.addEventListener('resize', () => {
   // Preserve the player's tile-space position across the rescale, then
   // re-snap. Avoids dropping them into the floor or off the bottom on
-  // viewport changes.
+  // viewport changes. Enemies snap back to their spawn — rare and benign.
   const wasCol = (player.x + PLAYER_W / 2) / TILE_PX;
   const wasRow = (player.y + PLAYER_H) / TILE_PX;
   recomputeScale();
+  initEnemies();
   player.x = wasCol * TILE_PX - PLAYER_W / 2;
   player.y = wasRow * TILE_PX - PLAYER_H;
   player.vx = 0;
@@ -742,15 +801,17 @@ let prevJump = false;
 function update() {
   const now = performance.now();
 
-  // Level complete: freeze gameplay, wait for an input to restart. The grace
-  // window prevents the gesture that touched the goal from also restarting.
-  if (levelComplete) {
-    if (now - levelCompleteAt > LEVEL_COMPLETE_GRACE_MS) {
+  // Level complete / game over: freeze gameplay, wait for an input. Grace
+  // window prevents the gesture that ended the run from also restarting.
+  if (levelComplete || gameOver) {
+    const since = now - (levelComplete ? levelCompleteAt : gameOverAt);
+    const graceMs = levelComplete ? LEVEL_COMPLETE_GRACE_MS : GAME_OVER_GRACE_MS;
+    if (since > graceMs) {
       const anyAction =
         keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] ||
         keys['ArrowLeft'] || keys['ArrowRight'] || keys['a'] || keys['d'] ||
         keys['A'] || keys['D'] || keys['Enter'];
-      if (anyAction) resetLevel();
+      if (anyAction) resetRun();
     }
     return;
   }
@@ -794,12 +855,59 @@ function update() {
   resolveX(player.vx);
   resolveY(player.vy);
 
-  // Death by falling below the level → respawn at spawn point (resets the
-  // run so the player can't farm coins by dying after picking them up).
+  // Death by falling below the level → lose a life (keep score + coins).
   if (player.y > LEVEL.height * TILE_PX + 200) {
-    playHurt();
-    resetLevel();
+    hurtPlayer();
     return;
+  }
+
+  // Enemies — walker AI. Each frame: advance vx, then reverse if the next
+  // step would walk into a wall or off the edge of the current platform.
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (!e.alive) continue;
+    e.x += e.vx;
+    // Wall check: tile at the leading face, vertical centre.
+    const leadX = e.vx > 0 ? e.x + ENEMY_W : e.x;
+    const wallCol = Math.floor(leadX / TILE_PX);
+    const wallRow = Math.floor((e.y + ENEMY_H * 0.5) / TILE_PX);
+    if (isSolid(wallCol, wallRow)) {
+      e.vx = -e.vx;
+      // Push out of the wall by one px so we don't re-trigger next frame.
+      e.x += e.vx > 0 ? 1 : -1;
+      continue;
+    }
+    // Edge check: tile directly below the leading foot. Walker reverses
+    // rather than walking off the platform.
+    const footCol = Math.floor(leadX / TILE_PX);
+    const footRow = Math.floor((e.y + ENEMY_H + 2) / TILE_PX);
+    if (!isSolid(footCol, footRow)) {
+      e.vx = -e.vx;
+    }
+  }
+
+  // Player vs enemy. Stomp from above kills the enemy and bounces the
+  // player; touch from any other angle costs a life (gated by invuln).
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (!e.alive) continue;
+    if (!aabbOverlap(player.x, player.y, PLAYER_W, PLAYER_H, e.x, e.y, ENEMY_W, ENEMY_H)) continue;
+    const playerBottom = player.y + PLAYER_H;
+    const stomping = player.vy > 1 && (playerBottom - e.y) < ENEMY_H * 0.6;
+    if (stomping) {
+      e.alive = false;
+      e.squashAt = now;
+      player.vy = -8;          // small pop off the squashed enemy
+      score += 50;
+      playSfx('sfx-glitch', 0.45);
+    } else {
+      hurtPlayer();
+      // Knock the player back a little so they don't immediately re-hit.
+      const dir = player.x + PLAYER_W * 0.5 < e.x + ENEMY_W * 0.5 ? -1 : 1;
+      player.vx = dir * 4;
+      player.vy = -6;
+      break;
+    }
   }
 
   // Coin pickups — small AABB centred on the coin tile.
@@ -864,6 +972,40 @@ function drawTile(col, row) {
   ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
 }
 
+function drawEnemy(e, t) {
+  const x = Math.round(e.x - cam.x);
+  const y = Math.round(e.y);
+  if (x + ENEMY_W < -8 || x > W + 8) return;
+  if (!e.alive) {
+    // Squashed: half height, fades out over 250ms then despawns visually.
+    const age = t - e.squashAt;
+    if (age > 250) return;
+    const alpha = 1 - age / 250;
+    ctx.fillStyle = `rgba(140, 60, 30, ${alpha})`;
+    ctx.fillRect(x, y + ENEMY_H * 0.55, ENEMY_W, ENEMY_H * 0.45);
+    return;
+  }
+  // Walking wobble — small vertical bob with a faster cadence.
+  const wob = Math.round(Math.sin(t * 0.014) * 1);
+  ctx.fillStyle = '#8c3c1e';
+  ctx.fillRect(x, y + wob, ENEMY_W, ENEMY_H);
+  ctx.fillStyle = '#5a2010';
+  ctx.fillRect(x, y + ENEMY_H * 0.7 + wob, ENEMY_W, ENEMY_H * 0.3);
+  // Eyes — sclera + pupil; pupil shifts in the direction of motion.
+  const eyeS = Math.max(3, Math.floor(ENEMY_W * 0.18));
+  const eyeY = y + Math.floor(ENEMY_H * 0.22) + wob;
+  const eye1X = x + Math.floor(ENEMY_W * 0.18);
+  const eye2X = x + ENEMY_W - eyeS - Math.floor(ENEMY_W * 0.18);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(eye1X, eyeY, eyeS, eyeS);
+  ctx.fillRect(eye2X, eyeY, eyeS, eyeS);
+  ctx.fillStyle = '#000';
+  const pupilSize = Math.max(2, Math.floor(eyeS * 0.5));
+  const pupilOff = e.vx > 0 ? eyeS - pupilSize : 0;
+  ctx.fillRect(eye1X + pupilOff, eyeY + Math.floor(eyeS * 0.3), pupilSize, pupilSize);
+  ctx.fillRect(eye2X + pupilOff, eyeY + Math.floor(eyeS * 0.3), pupilSize, pupilSize);
+}
+
 function drawCoin(col, row, t) {
   const cx = col * TILE_PX + TILE_PX / 2 - cam.x;
   const cy = row * TILE_PX + TILE_PX / 2 + Math.sin(t * 0.006 + col) * 3;
@@ -914,6 +1056,41 @@ function drawHUD() {
   ctx.fillText(label, pad + 2, pad + 2);
   ctx.fillStyle = '#ffd84a';
   ctx.fillText(label, pad, pad);
+
+  // Lives — small pink squares to the right of the score; faded for lost.
+  const iconSize = Math.max(8, Math.floor(size * 0.85));
+  const iconY = pad + Math.floor((size - iconSize) / 2);
+  const labelW = ctx.measureText(label).width;
+  const iconStartX = pad + labelW + 20;
+  for (let i = 0; i < MAX_LIVES; i++) {
+    const ix = iconStartX + i * (iconSize + 5);
+    ctx.fillStyle = i < lives ? '#ff3aa1' : 'rgba(255,58,161,0.22)';
+    ctx.fillRect(ix, iconY, iconSize, iconSize);
+  }
+}
+
+function drawGameOver(t) {
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const titleSize = Math.max(28, Math.floor(TILE_PX * 1.0));
+  ctx.font = `${titleSize}px 'Press Start 2P', ui-monospace, monospace`;
+  ctx.fillStyle = '#2dd4ff'; ctx.fillText('GAME OVER', W / 2 + 6, H / 2 - 60 + 6);
+  ctx.fillStyle = '#ffd84a'; ctx.fillText('GAME OVER', W / 2 + 3, H / 2 - 60 + 3);
+  ctx.fillStyle = '#ff3aa1'; ctx.fillText('GAME OVER', W / 2,     H / 2 - 60);
+
+  const scoreSize = Math.max(14, Math.floor(TILE_PX * 0.4));
+  ctx.font = `${scoreSize}px 'Press Start 2P', ui-monospace, monospace`;
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillText(`SCORE ${String(score).padStart(3, '0')}`, W / 2, H / 2 + 10);
+
+  if (t - gameOverAt > GAME_OVER_GRACE_MS && Math.floor(t / 500) % 2 === 0) {
+    const promptSize = Math.max(11, Math.floor(TILE_PX * 0.3));
+    ctx.font = `${promptSize}px 'Press Start 2P', ui-monospace, monospace`;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('PRESS ANY KEY TO RESTART', W / 2, H / 2 + 60);
+  }
 }
 
 function drawLevelComplete(t) {
@@ -978,27 +1155,40 @@ function draw() {
   // Goal flag
   drawGoal(t);
 
-  // Player
-  const px = Math.round(player.x - cam.x);
-  const py = Math.round(player.y);
-  ctx.fillStyle = '#ff3aa1';
-  ctx.fillRect(px, py, PLAYER_W, PLAYER_H);
-  ctx.fillStyle = '#ffd84a';
-  ctx.fillRect(px + 4, py + Math.floor(PLAYER_H * 0.15), PLAYER_W - 8, Math.max(3, Math.floor(PLAYER_H * 0.1)));
-  // Eye
-  ctx.fillStyle = '#0a0a0a';
-  const eyeS = Math.max(4, Math.floor(PLAYER_W * 0.22));
-  const eyeX = player.facing > 0 ? px + PLAYER_W - eyeS - 4 : px + 4;
-  const eyeY = py + Math.floor(PLAYER_H * 0.35);
-  ctx.fillRect(eyeX, eyeY, eyeS, eyeS);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(eyeX + Math.floor(eyeS * 0.4), eyeY + Math.floor(eyeS * 0.3), 2, 2);
+  // Enemies (alive on top so squashed remnants render under)
+  for (let i = 0; i < enemies.length; i++) {
+    if (!enemies[i].alive) drawEnemy(enemies[i], t);
+  }
+  for (let i = 0; i < enemies.length; i++) {
+    if (enemies[i].alive) drawEnemy(enemies[i], t);
+  }
+
+  // Player — skip every other 80ms slice during invuln for a classic flash.
+  const invulnLeft = player.invulnAt + INVULN_MS - t;
+  const flashOff = invulnLeft > 0 && Math.floor(t / 80) % 2 === 0;
+  if (!flashOff) {
+    const px = Math.round(player.x - cam.x);
+    const py = Math.round(player.y);
+    ctx.fillStyle = '#ff3aa1';
+    ctx.fillRect(px, py, PLAYER_W, PLAYER_H);
+    ctx.fillStyle = '#ffd84a';
+    ctx.fillRect(px + 4, py + Math.floor(PLAYER_H * 0.15), PLAYER_W - 8, Math.max(3, Math.floor(PLAYER_H * 0.1)));
+    // Eye
+    ctx.fillStyle = '#0a0a0a';
+    const eyeS = Math.max(4, Math.floor(PLAYER_W * 0.22));
+    const eyeX = player.facing > 0 ? px + PLAYER_W - eyeS - 4 : px + 4;
+    const eyeY = py + Math.floor(PLAYER_H * 0.35);
+    ctx.fillRect(eyeX, eyeY, eyeS, eyeS);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(eyeX + Math.floor(eyeS * 0.4), eyeY + Math.floor(eyeS * 0.3), 2, 2);
+  }
 
   // HUD on top
   drawHUD();
 
-  // Level complete overlay
+  // End-state overlays
   if (levelComplete) drawLevelComplete(t);
+  else if (gameOver) drawGameOver(t);
 }
 
 function loop() {
