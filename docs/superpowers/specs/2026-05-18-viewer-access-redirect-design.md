@@ -302,7 +302,7 @@ export async function resolveViewerAccess(
 // pair extracted into a single helper for reuse across modes.
 ```
 
-Note the signin redirect target is now the new access-redirect endpoint, not `/auth/sign-in` directly — the redirect path handles the unauth case, mints a nonce post-sign-in, and produces a working cross-host handoff. The existing direct sign-in redirect is preserved as a fallback only for visitors who hit `/p/<token>` with no `?key=` on `share.oyster.to` directly.
+Note the signin redirect target is now the new access-redirect endpoint, not `/auth/sign-in` directly — the redirect path handles the unauth case, mints a nonce post-sign-in, and produces a working cross-host handoff. There is no parallel direct-to-sign-in path; all signin-mode viewer misses route through `/api/publish/access-redirect/<token>`.
 
 ### Viewer-side handling of `ok_via_nonce`
 
@@ -367,8 +367,8 @@ The "Have access?" phrasing rather than "Own this share?" anticipates the ACL wi
 | Nonce replay within TTL | Single-use enforced by atomic `UPDATE ... WHERE consumed_at IS NULL`. Second click on the same URL falls through silently to the gate. |
 | Nonce cross-share misuse | `share_token` is in the consume `WHERE` clause. A nonce minted for share A presented at share B does not consume and returns false. |
 | Nonce in URL → visible address / shareable links | The consumption 302 immediately redirects the browser to the cleaned `/p/<token>` URL, so the final visible URL in the address bar carries no key. Precise browser-history retention of intermediate redirect targets is user-agent-specific and not relied on; the security claim is "the user does not see, share, or screenshot the key-bearing URL", not "the key URL is absent from history". |
-| Nonce in Referer to subresources | `referrer-policy: no-referrer` on the consumption 302 strips Referer for the destination's initial GET and its subresource fetches. |
-| Nonce in server logs | `mintAccessNonce` and `consumeAccessNonce` log only counts/booleans, never the nonce value. The endpoint logs the share token, not the query string. |
+| Nonce in Referer to subresources | `referrer-policy: no-referrer` on the consumption 302 strips Referer for the destination's initial GET and its subresource fetches. Additionally, the **final rendered viewer responses** (`renderMarkdownPage` / `renderMermaidPage` / `renderChromeWithIframe` / `renderRawHtmlBody` / `renderImageInline`) also emit `referrer-policy: no-referrer` — added in the shared `cacheHeaders()` helper. Defence in depth so any future URL-shaped sensitive parameter (or a paste-edited share URL) cannot leak via subresource or onward-navigation Referer from the rendered page itself. |
+| Nonce in application logs | `mintAccessNonce` and `consumeAccessNonce` log only counts/booleans, never the nonce value. The endpoint logs the share token, not the query string. **Platform-level request logs (Cloudflare Logpush / `wrangler tail` / Workers Analytics Engine) are out of band of application code and must be reviewed separately** — if any of these capture the full request URL by default, the query string will include the nonce. Action item before implementation: audit the production log sinks for query-string capture and either disable or scrub `?key=` on the access-redirect destination paths. |
 | Nonce theft from server | A leaked nonce is single-use, 60s lifetime, and bound to one `share_token`. The blast radius is "view this one artefact once within a minute"; the cookie minted on consumption is bound to that same artefact too. |
 | Ownership change after mint | `consumeAccessNonce` does not re-check ownership; the row stores `user_id` for audit only. Ownership transfers in Oyster are not a current feature; the predicate runs at mint time. |
 | Cross-site request forgery against `/api/publish/access-redirect/...` | The endpoint is `GET` with no side effects beyond a D1 insert that only matters if the visitor follows the resulting 302. The session is `SameSite=Lax`, so a cross-site `GET` does carry the session — but the consequence is a wasted nonce, not an authenticated action against the artefact. |
@@ -404,7 +404,7 @@ Cover the full matrix:
 
 ### Viewer integration — `infra/oyster-publish/test/viewer-handler.test.ts` additions
 
-- Owner-bypass golden path (password mode): mint nonce for `(token, owner)`, GET `/p/<token>?key=<nonce>`, expect 302 to `/p/<token>` with `set-cookie: oyster_view_<token>=...`, `referrer-policy: no-referrer`. Then GET `/p/<token>` with that cookie → 200 content.
+- Owner-bypass golden path (password mode): mint nonce for `(token, owner)`, GET `/p/<token>?key=<nonce>`, expect 302 to `/p/<token>` with `set-cookie: oyster_view_<token>=...`, `referrer-policy: no-referrer`. Then GET `/p/<token>` with that cookie → 200 content, and the 200 response **also carries `referrer-policy: no-referrer`** (asserts the `cacheHeaders()` change).
 - **Signin-mode end-to-end (regression for the cookie-honouring fix):** mint nonce for `(token, signed-in user)`, GET `/p/<token>?key=<nonce>`, follow the 302, then GET `/p/<token>` with only the `oyster_view_<token>` cookie set and **no `oyster_session` cookie at all** (modelling the cross-host browser reality) — expect 200 content. Without the signin-mode cookie acceptance change this final GET would 302 back to access-redirect / sign-in, looping.
 - Replay: a second GET `/p/<token>?key=<nonce>` (after consumption) falls through to the password gate (or signin redirect) — i.e., behaviour identical to no-key.
 - Wrong-share nonce on `/p/<other_token>?key=<nonce>` falls through; the nonce remains consumable on its real token afterwards. (Regression for the atomic-WHERE fix.)
