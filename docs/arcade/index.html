@@ -106,7 +106,10 @@
   .strip-viewport {
     position: relative;
     width: 100%;
-    height: clamp(220px, 30vw, 320px);
+    /* Sized to fit the focused card's full content (thumb + name + hi +
+       prompt). The previous clamp was too short on tablet widths and
+       clipped the TAP PLAY prompt. */
+    height: clamp(300px, 38vw, 420px);
     overflow: hidden;
   }
   .strip {
@@ -443,15 +446,23 @@ const TRANSITION_MS = 400;
 let sel = 0;
 let launched = false;
 let animating = false;
+// Set briefly to the future after a swipe so the synthesised click event
+// at touch-end doesn't also launch a game / reposition a card.
+let suppressClickUntil = 0;
 
 // ============================================
-// STRIP — all N games rendered once, with a leading clone of the last
-// card and a trailing clone of the first so the wrap edge has somewhere
-// to slide into. Strip indices:
-//   0     = clone of GAMES[N-1]   (leading clone)
-//   1..N  = GAMES[0..N-1]         (real cards)
-//   N+1   = clone of GAMES[0]     (trailing clone)
-// sel → strip index = sel + 1.
+// STRIP — all N games rendered once, with TWO clones at each end. The
+// extra clones matter because the visible "neighbour" of the focused
+// card at the wrap boundary needs to match across the snap: with only
+// one clone, the far-side neighbour pops in/out of existence. Two
+// clones cover both the focused card and its neighbour during the wrap.
+// Strip indices:
+//   0     = clone of GAMES[N-2]   (leading clone, 2-deep)
+//   1     = clone of GAMES[N-1]   (leading clone, 1-deep)
+//   2..N+1 = GAMES[0..N-1]        (real cards)
+//   N+2   = clone of GAMES[0]     (trailing clone, 1-deep)
+//   N+3   = clone of GAMES[1]     (trailing clone, 2-deep)
+// sel → strip index = sel + 2.
 // ============================================
 function buildCard(game, realIdx, isClone) {
   const card = document.createElement('div');
@@ -487,10 +498,13 @@ function buildCard(game, realIdx, isClone) {
   }
   card.appendChild(prompt);
 
-  // Clicking a real card: focus it if not already focused, else launch.
-  // Clicking a clone: focus the corresponding real game.
+  // Clicking a real card: focus if not already focused, else launch.
+  // Clones are inert (visual placeholders for the wrap transition).
+  // Skip the click if a swipe just happened — the touch-end synthesised
+  // click would otherwise fire on the card that ended up under the finger.
   if (!isClone) {
     card.addEventListener('click', () => {
+      if (Date.now() < suppressClickUntil) return;
       if (realIdx === sel) launch();
       else { sel = realIdx; reposition(); }
     });
@@ -502,15 +516,17 @@ function buildCard(game, realIdx, isClone) {
 function mountStrip() {
   const strip = document.getElementById('strip');
   strip.replaceChildren();
-  // Leading clone of last
-  strip.appendChild(buildCard(GAMES[N - 1], N - 1, true));
+  // 2 leading clones (last two cards, in order)
+  strip.appendChild(buildCard(GAMES[(N - 2 + N) % N], (N - 2 + N) % N, true));
+  strip.appendChild(buildCard(GAMES[N - 1],          N - 1,          true));
   // Real cards
   for (let i = 0; i < N; i++) strip.appendChild(buildCard(GAMES[i], i, false));
-  // Trailing clone of first
+  // 2 trailing clones (first two cards, in order)
   strip.appendChild(buildCard(GAMES[0], 0, true));
+  strip.appendChild(buildCard(GAMES[1 % N], 1 % N, true));
 }
 
-function stripIdxFor(realIdx) { return realIdx + 1; }
+function stripIdxFor(realIdx) { return realIdx + 2; }
 
 // Translate the strip so the card at `stripIdx` sits centred in the
 // viewport. Reads the card's offsetLeft (its position within the strip)
@@ -568,9 +584,9 @@ function next() {
     reposition(true);
     setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
   } else {
-    // Animate to the trailing clone (strip index N+1), then snap to
-    // real index 1 (= sel 0) with no transition.
-    translateStripTo(N + 1, true);
+    // Wrap forward: animate to the trailing clone of card 0 at strip
+    // index N+2, then snap to real card 0 at strip index 2.
+    translateStripTo(N + 2, true);
     setTimeout(() => {
       sel = 0;
       reposition(false);
@@ -587,9 +603,9 @@ function prev() {
     reposition(true);
     setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
   } else {
-    // Animate to the leading clone (strip index 0), then snap to
-    // real index N (= sel N-1) with no transition.
-    translateStripTo(0, true);
+    // Wrap backward: animate to the inner leading clone (clone of card
+    // N-1) at strip index 1, then snap to real card N-1 at strip index N+1.
+    translateStripTo(1, true);
     setTimeout(() => {
       sel = N - 1;
       reposition(false);
@@ -664,6 +680,36 @@ document.getElementById('nav-next').addEventListener('click', next);
 Arcade.Touch.bind(document.getElementById('tc-left'),   prev,   () => {});
 Arcade.Touch.bind(document.getElementById('tc-right'),  next,   () => {});
 Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
+
+// Swipe navigation on the strip viewport. Threshold of 40px and a
+// horizontal-dominance check keep accidental scrolls from triggering.
+// Listeners are passive so we never block scrolling; the page doesn't
+// need to scroll vertically inside the cabinet anyway.
+(function () {
+  const SWIPE_THRESHOLD = 40;
+  const viewport = document.querySelector('.strip-viewport');
+  if (!viewport) return;
+  let startX = 0, startY = 0, active = false;
+  viewport.addEventListener('touchstart', e => {
+    if (launched || animating) { active = false; return; }
+    if (e.touches.length !== 1) { active = false; return; }
+    active = true;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  viewport.addEventListener('touchend', e => {
+    if (!active) return;
+    active = false;
+    if (launched || animating) return;
+    if (e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) < SWIPE_THRESHOLD) return;
+    if (Math.abs(dx) <= Math.abs(dy)) return;
+    suppressClickUntil = Date.now() + 350;
+    if (dx < 0) next(); else prev();
+  }, { passive: true });
+})();
 
 // ============================================
 // BOOT — mount strip, position initial card, refresh leaderboards.
