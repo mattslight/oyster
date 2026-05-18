@@ -533,24 +533,34 @@ function mountStrip() {
 // Canonical strip-idx for a real-idx: the middle copy.
 function canonicalStripFor(realIdx) { return N + realIdx; }
 
+// Stable cardCentre formula — doesn't depend on a particular card's
+// offsetLeft, which can drift sub-pixel-wise when sibling cards change
+// content (focused vs not). All cards have identical flex-basis and a
+// uniform `gap`, so K * (w + g) + w/2 is exact for any stripIdx.
+function cardCentreFor(stripIdx) {
+  const strip = document.getElementById('strip');
+  const first = strip.children[0];
+  if (!first) return 0;
+  const w = first.offsetWidth;
+  const g = parseFloat(getComputedStyle(strip).gap) || 0;
+  return stripIdx * (w + g) + w / 2;
+}
+
 // Translate the strip so the card at `stripIdx` sits centred in the
-// viewport. Reads the card's offsetLeft (its position within the strip)
-// and translates by -centre. Strip's anchor is left:50% on the viewport,
-// so a -cardCentre translate puts the card at viewport centre.
+// viewport. Toggle .is-focused FIRST so display-block prompt/hi-score
+// is applied before we measure — otherwise layout might shift between
+// the measure-time state and the final paint, causing the focused
+// card to land slightly off-centre. With no-transition active the
+// cards don't animate their scale change either, so the snap is silent.
 function translateStripTo(stripIdx, animate) {
   const strip = document.getElementById('strip');
-  const card = strip.children[stripIdx];
-  if (!card) return;
+  if (!strip.children[stripIdx]) return;
   if (!animate) strip.classList.add('no-transition');
-  const cardCentre = card.offsetLeft + card.offsetWidth / 2;
-  strip.style.setProperty('--strip-x', '-' + cardCentre + 'px');
-  // Update is-focused class on every card so styling tracks the visible
-  // position. With the .no-transition class also disabling .game-card
-  // transitions (see CSS), a silent move doesn't trigger scale shrinks /
-  // grows during the snap.
   for (let i = 0; i < strip.children.length; i++) {
     strip.children[i].classList.toggle('is-focused', i === stripIdx);
   }
+  const cardCentre = cardCentreFor(stripIdx);
+  strip.style.setProperty('--strip-x', '-' + cardCentre + 'px');
   if (!animate) {
     void strip.offsetWidth;
     strip.classList.remove('no-transition');
