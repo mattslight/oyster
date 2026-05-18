@@ -329,8 +329,10 @@
 </style>
 </head>
 <body>
-<audio id="sfx-powerup" src="../../sfx-powerup.mp3" preload="auto"></audio>
-<audio id="sfx-lose"    src="../../sfx-lose.mp3"    preload="auto"></audio>
+<audio id="sfx-powerup"   src="../../sfx-powerup.mp3"   preload="auto"></audio>
+<audio id="sfx-explosion" src="../../sfx-explosion.mp3" preload="auto"></audio>
+<audio id="sfx-lose"      src="../../sfx-lose.mp3"      preload="auto"></audio>
+<audio id="sfx-glitch"    src="../../sfx-glitch.mp3"    preload="auto"></audio>
 <div class="screen">
   <div class="tube">
     <canvas id="c"></canvas>
@@ -418,8 +420,10 @@ window.addEventListener('keyup', e => keys[e.key] = false);
 // Copied verbatim from rocket-ship.html (the gesture-coupled iOS unlock matters).
 // ============================================
 const SFX_FILES = {
-  'sfx-powerup': '../../sfx-powerup.mp3',
-  'sfx-lose':    '../../sfx-lose.mp3',
+  'sfx-powerup':   '../../sfx-powerup.mp3',
+  'sfx-explosion': '../../sfx-explosion.mp3',
+  'sfx-lose':      '../../sfx-lose.mp3',
+  'sfx-glitch':    '../../sfx-glitch.mp3',
 };
 var audioCtx = null;
 var sfxMasterGain = null;
@@ -467,7 +471,9 @@ function playSfx(id, volume = 0.6) {
   src.connect(gain).connect(sfxMasterGain);
   try { src.start(0); } catch (_) {}
 }
-function playJump() { playSfx('sfx-powerup', 0.5); }
+function playJump() { playSfx('sfx-glitch', 0.4); }
+function playCoin() { playSfx('sfx-powerup', 0.5); }
+function playGoal() { playSfx('sfx-explosion', 0.55); }
 function playHurt() { playSfx('sfx-lose', 0.5); }
 
 // ============================================
@@ -560,6 +566,19 @@ const LEVEL = {
     '############################################################',
     '############################################################',
   ],
+  // One coin centred above each platform (rows are the row immediately
+  // above the platform top, so the player picks them up as they land).
+  coins: [
+    { col:  7, row: 10 },
+    { col: 13, row:  9 },
+    { col: 19, row:  8 },
+    { col: 25, row:  7 },
+    { col: 31, row:  6 },
+    { col: 37, row:  5 },
+  ],
+  // Goal flag sits on top of the last platform (row 5, cols 42-44).
+  // The flag visual extends ~2 tiles above this anchor.
+  goal: { col: 43, row: 5 },
 };
 function tileAt(col, row) {
   if (col < 0 || row < 0 || col >= LEVEL.width || row >= LEVEL.height) {
@@ -611,6 +630,27 @@ const player = {
 };
 
 const cam = { x: 0 };
+
+// Run-level state: score, collected coins (by index in LEVEL.coins),
+// and the level-complete flag with a small grace window so the input
+// gesture that touched the goal doesn't immediately restart.
+let score = 0;
+const coinsCollected = new Set();
+let levelComplete = false;
+let levelCompleteAt = 0;
+const LEVEL_COMPLETE_GRACE_MS = 600;
+
+function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function resetLevel() {
+  score = 0;
+  coinsCollected.clear();
+  levelComplete = false;
+  levelCompleteAt = 0;
+  resetPlayer();
+}
 
 function resetPlayer() {
   player.x = LEVEL.spawn.col * TILE_PX + (TILE_PX - PLAYER_W) / 2;
@@ -702,6 +742,19 @@ let prevJump = false;
 function update() {
   const now = performance.now();
 
+  // Level complete: freeze gameplay, wait for an input to restart. The grace
+  // window prevents the gesture that touched the goal from also restarting.
+  if (levelComplete) {
+    if (now - levelCompleteAt > LEVEL_COMPLETE_GRACE_MS) {
+      const anyAction =
+        keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] ||
+        keys['ArrowLeft'] || keys['ArrowRight'] || keys['a'] || keys['d'] ||
+        keys['A'] || keys['D'] || keys['Enter'];
+      if (anyAction) resetLevel();
+    }
+    return;
+  }
+
   // Horizontal input
   const left = keys['ArrowLeft'] || keys['a'] || keys['A'];
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
@@ -741,10 +794,41 @@ function update() {
   resolveX(player.vx);
   resolveY(player.vy);
 
-  // Death by falling below the level → respawn at spawn point.
+  // Death by falling below the level → respawn at spawn point (resets the
+  // run so the player can't farm coins by dying after picking them up).
   if (player.y > LEVEL.height * TILE_PX + 200) {
     playHurt();
-    resetPlayer();
+    resetLevel();
+    return;
+  }
+
+  // Coin pickups — small AABB centred on the coin tile.
+  for (let i = 0; i < LEVEL.coins.length; i++) {
+    if (coinsCollected.has(i)) continue;
+    const c = LEVEL.coins[i];
+    const cw = TILE_PX * 0.6;
+    const cx = c.col * TILE_PX + (TILE_PX - cw) / 2;
+    const cy = c.row * TILE_PX + (TILE_PX - cw) / 2;
+    if (aabbOverlap(player.x, player.y, PLAYER_W, PLAYER_H, cx, cy, cw, cw)) {
+      coinsCollected.add(i);
+      score += 10;
+      playCoin();
+    }
+  }
+
+  // Goal flag — collision box covers the pole + flag (2 tiles tall, anchored
+  // at the goal column on row 5 = top of the last platform).
+  {
+    const g = LEVEL.goal;
+    const gx = g.col * TILE_PX;
+    const gy = (g.row - 2) * TILE_PX;
+    const gw = TILE_PX * 0.8;
+    const gh = TILE_PX * 2;
+    if (aabbOverlap(player.x, player.y, PLAYER_W, PLAYER_H, gx, gy, gw, gh)) {
+      levelComplete = true;
+      levelCompleteAt = now;
+      playGoal();
+    }
   }
 
   // Camera — track player with a soft trailing follow. Player sits around
@@ -780,7 +864,87 @@ function drawTile(col, row) {
   ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
 }
 
+function drawCoin(col, row, t) {
+  const cx = col * TILE_PX + TILE_PX / 2 - cam.x;
+  const cy = row * TILE_PX + TILE_PX / 2 + Math.sin(t * 0.006 + col) * 3;
+  if (cx + TILE_PX < 0 || cx - TILE_PX > W) return;
+  const r = TILE_PX * 0.28;
+  ctx.fillStyle = '#c79b00';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffd84a';
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2); ctx.fill();
+  // Inner vertical bar = classic arcade coin face
+  ctx.fillStyle = '#c79b00';
+  ctx.fillRect(cx - 1, cy - r * 0.5, 2, r);
+}
+
+function drawGoal(t) {
+  const g = LEVEL.goal;
+  const poleX = g.col * TILE_PX + TILE_PX / 2 - cam.x;
+  const poleTop = (g.row - 2) * TILE_PX;
+  const poleBot = g.row * TILE_PX;
+  if (poleX < -TILE_PX * 2 || poleX > W + TILE_PX * 2) return;
+  // Pole
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(poleX - 2, poleTop, 4, poleBot - poleTop);
+  // Knob
+  ctx.fillStyle = '#ffd84a';
+  ctx.beginPath(); ctx.arc(poleX, poleTop - 2, 6, 0, Math.PI * 2); ctx.fill();
+  // Flag (waving)
+  const wave = Math.sin(t * 0.005) * 3;
+  const flagW = TILE_PX * 0.9;
+  ctx.fillStyle = '#2dd4ff';
+  ctx.beginPath();
+  ctx.moveTo(poleX + 2, poleTop + 4);
+  ctx.lineTo(poleX + flagW + wave, poleTop + TILE_PX * 0.35);
+  ctx.lineTo(poleX + 2, poleTop + TILE_PX * 0.7);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawHUD() {
+  const size = Math.max(10, Math.floor(TILE_PX * 0.35));
+  ctx.font = `${size}px 'Press Start 2P', ui-monospace, monospace`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const pad = Math.max(10, Math.floor(TILE_PX * 0.3));
+  const label = `SCORE ${String(score).padStart(3, '0')}`;
+  // Drop shadow for legibility against any background
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillText(label, pad + 2, pad + 2);
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillText(label, pad, pad);
+}
+
+function drawLevelComplete(t) {
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const titleSize = Math.max(24, Math.floor(TILE_PX * 0.9));
+  ctx.font = `${titleSize}px 'Press Start 2P', ui-monospace, monospace`;
+  // Shadow stack matching the splash title (yellow/magenta/cyan)
+  ctx.fillStyle = '#2dd4ff'; ctx.fillText('LEVEL COMPLETE', W / 2 + 6, H / 2 - 60 + 6);
+  ctx.fillStyle = '#ff3aa1'; ctx.fillText('LEVEL COMPLETE', W / 2 + 3, H / 2 - 60 + 3);
+  ctx.fillStyle = '#ffd84a'; ctx.fillText('LEVEL COMPLETE', W / 2,     H / 2 - 60);
+
+  const scoreSize = Math.max(14, Math.floor(TILE_PX * 0.4));
+  ctx.font = `${scoreSize}px 'Press Start 2P', ui-monospace, monospace`;
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillText(`SCORE ${String(score).padStart(3, '0')}`, W / 2, H / 2 + 10);
+
+  // Blinking prompt; only shown after the grace window.
+  if (t - levelCompleteAt > LEVEL_COMPLETE_GRACE_MS && Math.floor(t / 500) % 2 === 0) {
+    const promptSize = Math.max(11, Math.floor(TILE_PX * 0.3));
+    ctx.font = `${promptSize}px 'Press Start 2P', ui-monospace, monospace`;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('PRESS ANY KEY TO PLAY AGAIN', W / 2, H / 2 + 60);
+  }
+}
+
 function draw() {
+  const t = performance.now();
+
   // Sky
   ctx.fillStyle = '#1a1535';
   ctx.fillRect(0, 0, W, H);
@@ -805,6 +969,15 @@ function draw() {
     }
   }
 
+  // Coins (skip collected)
+  for (let i = 0; i < LEVEL.coins.length; i++) {
+    if (coinsCollected.has(i)) continue;
+    drawCoin(LEVEL.coins[i].col, LEVEL.coins[i].row, t);
+  }
+
+  // Goal flag
+  drawGoal(t);
+
   // Player
   const px = Math.round(player.x - cam.x);
   const py = Math.round(player.y);
@@ -820,6 +993,12 @@ function draw() {
   ctx.fillRect(eyeX, eyeY, eyeS, eyeS);
   ctx.fillStyle = '#fff';
   ctx.fillRect(eyeX + Math.floor(eyeS * 0.4), eyeY + Math.floor(eyeS * 0.3), 2, 2);
+
+  // HUD on top
+  drawHUD();
+
+  // Level complete overlay
+  if (levelComplete) drawLevelComplete(t);
 }
 
 function loop() {
