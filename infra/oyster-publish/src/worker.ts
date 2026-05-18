@@ -696,7 +696,7 @@ async function collectWithSizeCap(
 // ─── Viewer handlers (#316) ────────────────────────────────────────────────
 
 async function handleViewerGet(req: Request, env: Env, shareToken: string): Promise<Response> {
-  const access = await resolveViewerAccess(req, env, shareToken);
+  const access = await resolveViewerAccess(req, env, shareToken, { consumeNonce: true });
   switch (access.kind) {
     case "not_found":
       return htmlPage(404, notFoundPage());
@@ -711,11 +711,14 @@ async function handleViewerGet(req: Request, env: Env, shareToken: string): Prom
       return htmlPage(200, passwordGatePage(shareToken));
     case "ok":
       return renderForRow(env, access.row, req);
+    case "ok_via_nonce":
+      // Placeholder — real handling lands in Task 6.
+      throw new Error("ok_via_nonce: handler not yet implemented (Task 6)");
   }
 }
 
 async function handleViewerRaw(req: Request, env: Env, shareToken: string): Promise<Response> {
-  const access = await resolveViewerAccess(req, env, shareToken);
+  const access = await resolveViewerAccess(req, env, shareToken, { consumeNonce: false });
   if (access.kind === "not_found") return htmlPage(404, notFoundPage());
   if (access.kind === "gone") return htmlPage(410, gonePage());
   if (access.kind === "redirect") {
@@ -736,7 +739,7 @@ async function handleViewerRaw(req: Request, env: Env, shareToken: string): Prom
 }
 
 async function handleViewerPost(req: Request, env: Env, shareToken: string): Promise<Response> {
-  const access = await resolveViewerAccess(req, env, shareToken);
+  const access = await resolveViewerAccess(req, env, shareToken, { consumeNonce: false });
   if (access.kind === "not_found") return htmlPage(404, notFoundPage());
   if (access.kind === "gone") return htmlPage(410, gonePage());
   if (access.kind === "redirect") {

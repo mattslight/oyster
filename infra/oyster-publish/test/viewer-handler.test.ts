@@ -6,6 +6,7 @@ import {
   putR2Object, seedActiveOpenWithBody,
 } from "./fixtures/seed";
 import { signViewerCookie } from "../src/viewer-cookie";
+import { mintAccessNonce, consumeAccessNonce } from "../src/access-nonce";
 
 beforeAll(() => {
   // VIEWER_PASSWORD_LIMIT is an unsafe ratelimit binding; miniflare doesn't auto-mock it.
@@ -447,5 +448,71 @@ describe("GET /p/:token — footer copy is mode-invariant", () => {
     const res = await call(getReq(`/p/${shareToken}`, { cookie }));
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("Published with");
+  });
+});
+
+describe("nonce pre-check — consumeNonce flag", () => {
+  it("/p/<token>?key=<valid_nonce> consumes the nonce", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n1", body: "# nonce content",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    // Pre-Task-6 there is no ok_via_nonce render handler, so we expect
+    // the handler to throw and the request to surface as 500 (placeholder
+    // is added in this task). What we assert here is the SIDE EFFECT:
+    // the nonce was consumed.
+    await call(getReq(`/p/${shareToken}?key=${nonce}`));
+
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).not.toBeNull();
+  });
+
+  it("/p/<token>/raw?key=<valid_nonce> does NOT consume the nonce", async () => {
+    // Regression for the explicit consumeNonce: false on /raw. If a future
+    // change drops the flag, this test fails.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n_raw", body: "<h1>iframe</h1>",
+      artifactKind: "app", contentType: "text/html",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    await call(getReq(`/p/${shareToken}/raw?key=${nonce}`));
+
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
+
+    // The nonce remains usable on the proper /p endpoint.
+    expect(await consumeAccessNonce(env, nonce, shareToken)).toBe(true);
+  });
+
+  it("/p/<token>?key=<nonce_for_other_share> falls through silently AND leaves the nonce unconsumed", async () => {
+    const u = await seedUser();
+    const tokA = await seedActivePublication({ ownerUserId: u.id, artifactId: "art_A", mode: "signin" });
+    const tokB = await seedActivePublication({ ownerUserId: u.id, artifactId: "art_B", mode: "signin" });
+
+    const nonce = await mintAccessNonce(env, tokA, u.id);
+    const res = await call(getReq(`/p/${tokB}?key=${nonce}`));
+    // signin mode, no cookie/session → 302 to access-redirect (silent fall-through).
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `https://oyster.to/api/publish/access-redirect/${tokB}`,
+    );
+
+    // Nonce is still alive for its real share.
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
   });
 });
