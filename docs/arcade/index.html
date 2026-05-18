@@ -40,10 +40,8 @@
     height: 4px;
     background-image: repeating-linear-gradient(
       90deg,
-      #ffd84a 0,
-      #ffd84a 4px,
-      transparent 4px,
-      transparent 14px
+      #ffd84a 0, #ffd84a 4px,
+      transparent 4px, transparent 14px
     );
     border-radius: 2px;
     opacity: 0.45;
@@ -62,9 +60,7 @@
       0 0 30px rgba(255, 216, 74, 0.55);
   }
 
-  /* Selector — arrows flank a 3-slot grid that always has the focused
-     card centred. Empty slots on the edges (when the list runs out)
-     keep the focused card anchored to the middle. */
+  /* Selector layout: cabinet-side nav arrows, strip viewport in the middle. */
   .selector {
     position: absolute;
     inset: 0;
@@ -75,7 +71,6 @@
     font-family: 'Press Start 2P', ui-monospace, monospace;
     color: #fff;
     z-index: 1;
-    animation: splash-poweron 0.55s ease-out;
   }
 
   .nav-arrow {
@@ -104,68 +99,52 @@
     outline: none;
   }
   .nav-arrow:active { transform: scale(0.96); }
-  .nav-arrow[disabled] {
-    opacity: 0.25;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
 
-  .stage-grid {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    justify-items: center;
-    gap: clamp(20px, 4vw, 60px);
+  /* Strip viewport — horizontal carousel of all games. The strip is wider
+     than the viewport; only the focused card and its neighbours show
+     (overflow:hidden clips the rest). */
+  .strip-viewport {
+    position: relative;
     width: 100%;
+    height: clamp(220px, 30vw, 320px);
+    overflow: hidden;
   }
-  .stage-slot {
+  .strip {
+    position: absolute;
+    top: 50%;
+    left: 50%;
     display: flex;
     align-items: center;
-    justify-content: center;
-    min-height: clamp(180px, 28vw, 280px);
+    gap: clamp(40px, 5vw, 80px);
+    transform: translateY(-50%) translateX(var(--strip-x, 0px));
+    transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
+    will-change: transform;
   }
+  .strip.no-transition { transition: none; }
 
-  /* The card — same internal structure for focused and adjacent; the
-     adjacent cards get a smaller thumb + smaller name (real layout
-     dimensions, not transform: scale) so the grid columns size to fit
-     the cabinet and the focused card stays centred. */
+  /* All cards share the same layout footprint; the focused one scales up
+     visually via transform (composited on the GPU — width/height don't
+     change, so there's no layout/paint cost). */
   .game-card {
+    flex: 0 0 clamp(160px, 22vw, 240px);
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: clamp(8px, 1.4vw, 14px);
+    transform: scale(0.55);
+    transform-origin: center;
+    opacity: 0.45;
+    transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.35s ease;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    transition: opacity 0.25s ease;
   }
-  .game-card.is-focused { animation: card-in-focused 0.3s ease-out; }
-  .game-card.is-prev,
-  .game-card.is-next { animation: card-in-dim 0.3s ease-out; opacity: 0.45; }
-  .game-card.is-prev:hover,
-  .game-card.is-next:hover { opacity: 0.85; }
-  @keyframes card-in-focused {
-    from { opacity: 0;    transform: translateY(6px); }
-    to   { opacity: 1;    transform: translateY(0); }
+  .game-card.is-focused {
+    transform: scale(1);
+    opacity: 1;
+    z-index: 1;
   }
-  @keyframes card-in-dim {
-    from { opacity: 0;    transform: translateY(6px); }
-    to   { opacity: 0.45; transform: translateY(0); }
-  }
-  /* Adjacent (prev/next) cards: ~half the focused thumb size, smaller
-     name font. This is the layout-shrink that keeps the row from
-     overflowing on narrow desktops / tablets. */
-  .game-card.is-prev .game-thumb,
-  .game-card.is-next .game-thumb {
-    width: clamp(80px, 13vw, 130px);
-    height: clamp(80px, 13vw, 130px);
-    padding: clamp(8px, 1.4vw, 16px);
-  }
-  .game-card.is-prev .game-name,
-  .game-card.is-next .game-name {
-    font-size: clamp(11px, 1.6vw, 15px);
-    letter-spacing: 0.08em;
-  }
+  .game-card.is-clone { cursor: default; }
 
   .game-thumb {
     width: clamp(160px, 22vw, 240px);
@@ -187,9 +166,9 @@
     shape-rendering: crispEdges;
   }
   .game-name {
-    font-size: clamp(13px, 2.5vw, 24px);
+    font-size: clamp(15px, 2.6vw, 24px);
     color: #ffd84a;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     white-space: nowrap;
   }
   /* Brackets only render on the focused card. */
@@ -216,23 +195,18 @@
   .game-card.is-focused .game-hi,
   .game-card.is-focused .game-prompt { display: block; }
 
-  /* Coming-soon placeholder card — slightly desaturated, distinct prompt. */
-  .game-card.is-coming-soon .game-name {
-    color: rgba(255, 255, 255, 0.55);
-  }
+  /* Coming-soon placeholder card — desaturated, distinct prompt. */
+  .game-card.is-coming-soon .game-name { color: rgba(255, 255, 255, 0.55); }
   .game-card.is-coming-soon .game-name .br { color: rgba(45, 212, 255, 0.5); }
-  .game-card.is-coming-soon .game-thumb {
-    filter: saturate(0.55);
-  }
+  .game-card.is-coming-soon .game-thumb { filter: saturate(0.55); }
   .game-prompt.is-soon {
     color: #2dd4ff;
     opacity: 0.7;
     animation: none;
   }
 
-  /* Game iframe overlay — covers the inside of the tube during launch.
-     splash-poweron on launch, crt-shutoff on close (both from
-     shared/cabinet.css). */
+  /* Game iframe overlay — splash-poweron on launch, crt-shutoff on close
+     (both keyframes from shared/cabinet.css). */
   .game-frame-wrap {
     position: absolute;
     inset: 0;
@@ -298,6 +272,7 @@
   .arcade-credit a { color: #2dd4ff; text-decoration: none; pointer-events: auto; }
   .arcade-credit a:hover { text-decoration: underline; }
 
+  /* PLAY touch button — orange to distinguish from cyan ◀ ▶. */
   .touch-controls .tc-select {
     width: auto;
     min-width: clamp(80px, 16vw, 120px);
@@ -316,12 +291,18 @@
   }
   .tube.is-game-launched .touch-controls { display: none !important; }
 
-  /* When a game is launched, the arcade's outer cabinet chrome hides so it
-     doesn't double up with the embedded game's own bezel + scanlines +
-     vignette. The iframe fills the viewport; its own chrome becomes the
-     visible cabinet. The class stays applied through the CRT-shutoff
-     animation so the iframe scales cleanly into nothing before the arcade
-     selector returns. */
+  /* On touch / coarse-pointer devices, hide the cabinet's in-screen
+     ◀ ▶ buttons — the bottom touch-controls cluster handles navigation,
+     so the in-screen arrows would be redundant. The cabinet keeps them
+     on mice / trackpads. */
+  @media (pointer: coarse) {
+    .selector { grid-template-columns: 1fr; }
+    .nav-arrow { display: none; }
+  }
+
+  /* When a game is launched, the arcade's outer cabinet chrome hides so
+     it doesn't double up with the embedded game's own bezel + scanlines
+     + vignette. */
   body.is-game-launched .marquee,
   body.is-game-launched .selector,
   body.is-game-launched .arcade-credit,
@@ -329,45 +310,13 @@
   body.is-game-launched .tube > .vignette {
     display: none;
   }
-  body.is-game-launched .screen {
-    padding: 0;
-    gap: 0;
-    background: #000;
-  }
-  body.is-game-launched .tube {
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  /* Narrow viewports: hide the adjacent slots AND the in-cabinet nav
-     arrows so the focused card has the cabinet to itself. The bottom
-     touch-controls cluster (◀ ▶ + PLAY) handles navigation on mobile,
-     so the in-cabinet arrows would be redundant. */
-  @media (max-width: 640px) {
-    .selector {
-      grid-template-columns: 1fr;
-      padding: clamp(16px, 3vw, 32px);
-      /* Reserve room at the bottom for the touch-controls cluster so the
-         card never sits behind the JUMP / PLAY buttons. */
-      padding-bottom: clamp(104px, 18vw, 140px);
-    }
-    .nav-arrow { display: none; }
-    .stage-grid { grid-template-columns: 1fr; }
-    .stage-slot { min-height: 0; }
-    .game-card.is-prev,
-    .game-card.is-next { display: none; }
-    .game-thumb {
-      width: clamp(128px, 38vw, 180px);
-      height: clamp(128px, 38vw, 180px);
-      padding: clamp(10px, 2vw, 18px);
-    }
-  }
+  body.is-game-launched .screen { padding: 0; gap: 0; background: #000; }
+  body.is-game-launched .tube { border-radius: 0; box-shadow: none; }
 
   @media (prefers-reduced-motion: reduce) {
-    .selector { animation: none; }
-    .game-prompt { animation: none; opacity: 1; }
-    .nav-arrow, .game-card { transition: none; }
-    .game-card { animation: none; }
+    .strip,
+    .game-card,
+    .nav-arrow { transition: none; }
   }
 </style>
 </head>
@@ -382,7 +331,9 @@
 
     <div class="selector" id="selector">
       <button class="nav-arrow" id="nav-prev" type="button" aria-label="Previous game">◀</button>
-      <div class="stage-grid" id="stage-grid"></div>
+      <div class="strip-viewport">
+        <div class="strip" id="strip"></div>
+      </div>
       <button class="nav-arrow" id="nav-next" type="button" aria-label="Next game">▶</button>
     </div>
 
@@ -405,7 +356,7 @@
   </div>
 </div>
 
-<!-- Pixel-art previews — stamped into cards by JS. -->
+<!-- Pixel-art previews. -->
 <template id="preview-rocket-ship">
   <svg viewBox="0 0 22 30" aria-hidden="true">
     <rect x="10" y="0" width="2" height="2" fill="#ff4444"/>
@@ -435,7 +386,6 @@
 <template id="preview-coming-soon">
   <svg viewBox="0 0 22 30" aria-hidden="true">
     <rect width="22" height="30" fill="#1a1535"/>
-    <!-- Pixel "?" — top curve, stem, dot -->
     <rect x="7"  y="6"  width="8" height="2" fill="#2dd4ff" opacity="0.75"/>
     <rect x="5"  y="8"  width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
     <rect x="15" y="8"  width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
@@ -445,7 +395,6 @@
     <rect x="9"  y="16" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
     <rect x="9"  y="18" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
     <rect x="9"  y="22" width="2" height="2" fill="#2dd4ff" opacity="0.75"/>
-    <!-- Stray static-noise pixels -->
     <rect x="2"  y="3"  width="1" height="1" fill="#fff" opacity="0.25"/>
     <rect x="18" y="2"  width="1" height="1" fill="#fff" opacity="0.25"/>
     <rect x="3"  y="14" width="1" height="1" fill="#fff" opacity="0.25"/>
@@ -484,24 +433,32 @@
 const GAMES = [
   { id: 'rocket-ship', name: 'ROCKET SHIP', url: 'https://oyster.to/rocket-ship.html', preview: 'preview-rocket-ship' },
   { id: 'platformer',  name: 'PLATFORMER',  url: 'platformer/',                         preview: 'preview-platformer'  },
-  // Placeholders so the catalogue feels populated. comingSoon entries
-  // can't be launched; clicking a focused one is a no-op.
   { id: 'soon-1', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
   { id: 'soon-2', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
   { id: 'soon-3', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
 ];
+const N = GAMES.length;
+const TRANSITION_MS = 400;
+
 let sel = 0;
 let launched = false;
+let animating = false;
 
 // ============================================
-// CARDS — three slots (prev / focused / next). Edges of the list leave
-// the outer slot empty so the focused card stays anchored to the centre.
+// STRIP — all N games rendered once, with a leading clone of the last
+// card and a trailing clone of the first so the wrap edge has somewhere
+// to slide into. Strip indices:
+//   0     = clone of GAMES[N-1]   (leading clone)
+//   1..N  = GAMES[0..N-1]         (real cards)
+//   N+1   = clone of GAMES[0]     (trailing clone)
+// sel → strip index = sel + 1.
 // ============================================
-function buildCard(game, idx, klass) {
+function buildCard(game, realIdx, isClone) {
   const card = document.createElement('div');
-  card.className = 'game-card ' + klass;
+  card.className = 'game-card';
+  if (isClone) card.classList.add('is-clone');
   if (game.comingSoon) card.classList.add('is-coming-soon');
-  card.dataset.idx = String(idx);
+  card.dataset.realIdx = String(realIdx);
 
   const thumb = document.createElement('div');
   thumb.className = 'game-thumb';
@@ -514,11 +471,9 @@ function buildCard(game, idx, klass) {
   name.innerHTML = '<span class="br">[</span> ' + game.name + ' <span class="br">]</span>';
   card.appendChild(name);
 
-  // Placeholder cards have no hi-score line — skip the empty slot entirely.
   if (!game.comingSoon) {
     const hi = document.createElement('div');
     hi.className = 'game-hi';
-    if (klass === 'is-focused') hi.id = 'game-hi';
     card.appendChild(hi);
   }
 
@@ -532,80 +487,129 @@ function buildCard(game, idx, klass) {
   }
   card.appendChild(prompt);
 
-  card.addEventListener('click', () => {
-    if (idx === sel) launch();
-    else { sel = idx; render(); }
-  });
+  // Clicking a real card: focus it if not already focused, else launch.
+  // Clicking a clone: focus the corresponding real game.
+  if (!isClone) {
+    card.addEventListener('click', () => {
+      if (realIdx === sel) launch();
+      else { sel = realIdx; reposition(); }
+    });
+  }
 
   return card;
 }
 
-function render() {
-  const grid = document.getElementById('stage-grid');
-  const n = GAMES.length;
-  // Wrap-around. With ≥3 games both neighbours are distinct; with 2 games
-  // we only show one neighbour to avoid the same card appearing on both
-  // sides; with 1 game neither slot has a neighbour.
-  let prevIdx = -1, nextIdx = -1;
-  if (n >= 3) {
-    prevIdx = (sel - 1 + n) % n;
-    nextIdx = (sel + 1) % n;
-  } else if (n === 2) {
-    nextIdx = (sel + 1) % n;
+function mountStrip() {
+  const strip = document.getElementById('strip');
+  strip.replaceChildren();
+  // Leading clone of last
+  strip.appendChild(buildCard(GAMES[N - 1], N - 1, true));
+  // Real cards
+  for (let i = 0; i < N; i++) strip.appendChild(buildCard(GAMES[i], i, false));
+  // Trailing clone of first
+  strip.appendChild(buildCard(GAMES[0], 0, true));
+}
+
+function stripIdxFor(realIdx) { return realIdx + 1; }
+
+// Translate the strip so the card at `stripIdx` sits centred in the
+// viewport. Reads the card's offsetLeft (its position within the strip)
+// and translates by -centre. Strip's anchor is left:50% on the viewport,
+// so a -cardCentre translate puts the card at viewport centre.
+function translateStripTo(stripIdx, animate) {
+  const strip = document.getElementById('strip');
+  if (!animate) strip.classList.add('no-transition');
+  const card = strip.children[stripIdx];
+  const cardCentre = card.offsetLeft + card.offsetWidth / 2;
+  strip.style.setProperty('--strip-x', '-' + cardCentre + 'px');
+  // Update focused class to follow the visible card.
+  for (let i = 0; i < strip.children.length; i++) {
+    strip.children[i].classList.toggle('is-focused', i === stripIdx);
   }
-
-  grid.innerHTML = '';
-
-  // Slot positions: prev (lower index, just-came-from) on the LEFT, next
-  // (higher index, upcoming) on the RIGHT — conventional catalogue order.
-  const leftSlot = document.createElement('div');
-  leftSlot.className = 'stage-slot';
-  if (prevIdx >= 0) leftSlot.appendChild(buildCard(GAMES[prevIdx], prevIdx, 'is-prev'));
-  grid.appendChild(leftSlot);
-
-  const centerSlot = document.createElement('div');
-  centerSlot.className = 'stage-slot';
-  centerSlot.appendChild(buildCard(GAMES[sel], sel, 'is-focused'));
-  grid.appendChild(centerSlot);
-
-  const rightSlot = document.createElement('div');
-  rightSlot.className = 'stage-slot';
-  if (nextIdx >= 0) rightSlot.appendChild(buildCard(GAMES[nextIdx], nextIdx, 'is-next'));
-  grid.appendChild(rightSlot);
-
+  if (!animate) {
+    // Force reflow before the next paint so the no-transition snap takes
+    // effect; then re-enable transitions for subsequent navigations.
+    void strip.offsetWidth;
+    strip.classList.remove('no-transition');
+  }
   paintHi();
 }
 
+function reposition(animate) {
+  if (animate === undefined) animate = true;
+  translateStripTo(stripIdxFor(sel), animate);
+}
+
 function paintHi() {
+  const strip = document.getElementById('strip');
+  const card = strip.children[stripIdxFor(sel)];
+  if (!card) return;
+  const hi = card.querySelector('.game-hi');
+  if (!hi) return;  // coming-soon
   const g = GAMES[sel];
-  if (g.comingSoon) return;  // no hi-score row rendered for placeholders
   Arcade.Leaderboard.init({ game: g.id, max: 10 });
   const top = Arcade.Leaderboard.getHighScore();
-  const el = document.getElementById('game-hi');
-  if (!el) return;
-  if (!top) { el.textContent = ' '; return; }
-  el.innerHTML =
+  if (!top) { hi.textContent = ' '; return; }
+  hi.innerHTML =
     'HIGH SCORE <span class="hi-val">' + String(top.score).padStart(3, '0') + '</span> ' +
     '<span class="hi-initials">' + (top.initials || '---') + '</span>';
 }
 
-function next() { if (launched) return; sel = (sel + 1) % GAMES.length;                  render(); }
-function prev() { if (launched) return; sel = (sel - 1 + GAMES.length) % GAMES.length;   render(); }
+// ============================================
+// NAVIGATION — next / prev with wrap. Wraps use a phantom (clone) slot:
+// animate to it normally, then on transition end snap silently to the
+// matching real slot. The user sees one smooth slide.
+// ============================================
+function next() {
+  if (launched || animating) return;
+  animating = true;
+  if (sel < N - 1) {
+    sel++;
+    reposition(true);
+    setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
+  } else {
+    // Animate to the trailing clone (strip index N+1), then snap to
+    // real index 1 (= sel 0) with no transition.
+    translateStripTo(N + 1, true);
+    setTimeout(() => {
+      sel = 0;
+      reposition(false);
+      animating = false;
+    }, TRANSITION_MS + 20);
+  }
+}
 
-render();
+function prev() {
+  if (launched || animating) return;
+  animating = true;
+  if (sel > 0) {
+    sel--;
+    reposition(true);
+    setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
+  } else {
+    // Animate to the leading clone (strip index 0), then snap to
+    // real index N (= sel N-1) with no transition.
+    translateStripTo(0, true);
+    setTimeout(() => {
+      sel = N - 1;
+      reposition(false);
+      animating = false;
+    }, TRANSITION_MS + 20);
+  }
+}
 
 // ============================================
-// LAUNCH / CLOSE
+// LAUNCH / CLOSE — iframe overlay using shared CRT animations.
 // ============================================
 const tube = document.querySelector('.tube');
 const wrap = document.getElementById('game-frame-wrap');
 const frame = document.getElementById('game-frame');
-const exit = document.getElementById('game-frame-exit');
+const exitBtn = document.getElementById('game-frame-exit');
 
 function launch() {
-  if (launched) return;
+  if (launched || animating) return;
   const g = GAMES[sel];
-  if (g.comingSoon) return;  // placeholder — no game to launch yet
+  if (g.comingSoon) return;
   launched = true;
   frame.src = g.url;
   wrap.classList.remove('is-shutting-down');
@@ -633,7 +637,7 @@ function close() {
   }, 720);
 }
 
-exit.addEventListener('click', close);
+exitBtn.addEventListener('click', close);
 
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape' && launched) { close(); e.preventDefault(); }
@@ -662,9 +666,14 @@ Arcade.Touch.bind(document.getElementById('tc-right'),  next,   () => {});
 Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
 
 // ============================================
-// LEADERBOARD preload — serial because the singleton module isn't safe
-// for concurrent inits.
+// BOOT — mount strip, position initial card, refresh leaderboards.
+// On resize, recompute the strip offset because card sizes are clamp()
+// and depend on viewport width.
 // ============================================
+mountStrip();
+reposition(false);
+window.addEventListener('resize', () => reposition(false));
+
 (async () => {
   for (const g of GAMES) {
     if (g.comingSoon) continue;
