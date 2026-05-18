@@ -1,6 +1,6 @@
 {
   "name": "oyster-os",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Oyster keeps your AI work synced, remembered and publishable across devices and agents.",
   "type": "module",
   "bin": {
