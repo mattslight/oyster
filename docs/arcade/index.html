@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="shared/touch.css">
 <style>
   /* Override the shared cabinet to stack a marquee strip on top of the
-     screen. The cabinet evokes the top half of an arcade machine: marquee
+     tube. The cabinet evokes the top half of an arcade machine: marquee
      panel up top, CRT tube below. */
   .screen {
     display: flex;
@@ -62,118 +62,96 @@
       0 0 30px rgba(255, 216, 74, 0.55);
   }
 
-  .arcade-main {
+  /* Selector — one game in focus, big arrows on either side. */
+  .selector {
     position: absolute;
     inset: 0;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    padding: clamp(24px, 4vw, 56px);
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    color: #fff;
+    z-index: 1;
+    animation: splash-poweron 0.55s ease-out;
+  }
+  .selector.is-fading-out { opacity: 0; transition: opacity 0.2s ease; pointer-events: none; }
+  .selector.is-fading-in  { opacity: 0; animation: fade-in 0.35s ease-out forwards; }
+  @keyframes fade-in { to { opacity: 1; } }
+
+  .nav-arrow {
+    appearance: none;
+    background: transparent;
+    border: 3px solid rgba(45, 212, 255, 0.5);
+    border-radius: 12px;
+    color: #2dd4ff;
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    font-size: clamp(22px, 4vw, 36px);
+    width: clamp(48px, 8vw, 80px);
+    height: clamp(48px, 8vw, 80px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.12s, color 0.12s, border-color 0.12s, background 0.12s;
+  }
+  .nav-arrow:hover,
+  .nav-arrow:focus-visible {
+    transform: scale(1.06);
+    color: #ffd84a;
+    border-color: #ffd84a;
+    background: rgba(255, 216, 74, 0.08);
+    outline: none;
+  }
+  .nav-arrow:active { transform: scale(0.96); }
+
+  .stage {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: clamp(24px, 4vw, 48px);
-    font-family: 'Press Start 2P', ui-monospace, monospace;
-    color: #fff;
     text-align: center;
-    gap: clamp(14px, 2.5vw, 28px);
-    z-index: 1;
-    animation: splash-poweron 0.55s ease-out;
+    gap: clamp(12px, 2vw, 22px);
+    min-width: 0;
   }
-
-  /* Preview stage — only the selected game's pixel-art thumbnail is shown. */
-  .game-preview-stage {
-    position: relative;
-    width: clamp(140px, 22vw, 220px);
-    height: clamp(140px, 22vw, 220px);
+  /* Game preview swap animation — cross-fade between previous and next. */
+  .stage .game-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(10px, 1.8vw, 18px);
+    animation: card-in 0.3s ease-out;
+  }
+  @keyframes card-in {
+    0%   { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .game-thumb {
+    width: clamp(160px, 24vw, 260px);
+    height: clamp(160px, 24vw, 260px);
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 14px;
+    box-shadow:
+      inset 0 0 36px rgba(0, 0, 0, 0.8),
+      inset 0 0 0 2px rgba(255, 255, 255, 0.04);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 12px;
-    box-shadow: inset 0 0 32px rgba(0, 0, 0, 0.75);
-    overflow: hidden;
+    padding: clamp(18px, 2.5vw, 28px);
   }
-  .game-preview {
-    position: absolute;
-    inset: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 12px;
-  }
-  .game-preview.is-active { display: flex; }
-  .game-preview svg {
-    width: 80%;
-    height: 80%;
+  .game-thumb svg {
+    width: 85%;
+    height: 85%;
     image-rendering: pixelated;
     shape-rendering: crispEdges;
   }
-
-  /* Horizontal game selector — current is wrapped in [ … ]; others dimmed.
-     Wrap on narrow screens so a long list never overflows the cabinet. */
-  .game-selector {
-    display: flex;
-    align-items: center;
-    gap: clamp(14px, 3vw, 28px);
-    max-width: 100%;
-  }
-  .game-list {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: clamp(14px, 3vw, 28px);
-    list-style: none;
-    padding: 0; margin: 0;
-  }
-  .game-item {
-    appearance: none;
-    background: transparent;
-    border: none;
-    font: inherit;
-    font-size: clamp(13px, 2.2vw, 20px);
-    letter-spacing: 0.1em;
-    color: rgba(255, 255, 255, 0.42);
-    padding: 4px 6px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: color 0.12s, transform 0.12s;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .game-item:hover { color: rgba(255, 216, 74, 0.7); }
-  .game-item:focus-visible { outline: none; color: #ffd84a; }
-  .game-item.is-selected {
+  .game-name {
+    font-size: clamp(16px, 3vw, 28px);
     color: #ffd84a;
-    transform: translateY(-1px);
+    letter-spacing: 0.12em;
   }
-  .game-item.is-selected::before {
-    content: '[ ';
-    color: #2dd4ff;
-    letter-spacing: 0;
-  }
-  .game-item.is-selected::after {
-    content: ' ]';
-    color: #2dd4ff;
-    letter-spacing: 0;
-  }
-  .select-arrow {
-    appearance: none;
-    background: transparent;
-    border: none;
-    font: inherit;
-    font-family: 'Press Start 2P', ui-monospace, monospace;
-    font-size: clamp(16px, 2.8vw, 24px);
-    color: rgba(45, 212, 255, 0.55);
-    cursor: pointer;
-    padding: 4px 8px;
-    -webkit-tap-highlight-color: transparent;
-    transition: color 0.12s, transform 0.12s;
-  }
-  .select-arrow:hover,
-  .select-arrow:focus-visible {
-    color: #2dd4ff;
-    outline: none;
-    transform: scale(1.1);
-  }
-
+  .game-name .br { color: #2dd4ff; }
   .game-hi {
     font-size: clamp(9px, 1.4vw, 12px);
     letter-spacing: 0.18em;
@@ -187,7 +165,66 @@
     letter-spacing: 0.18em;
     color: #fff;
     animation: arcade-blink 1s steps(1) infinite;
+    margin-top: 4px;
   }
+  .game-card.is-launching {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* Game iframe overlay — covers the inside of the tube when launching.
+     Uses the shared splash-poweron animation on launch, crt-shutoff on
+     close. Hidden when there's no active game. */
+  .game-frame-wrap {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: #000;
+    overflow: hidden;
+    display: none;
+    transform-origin: center;
+  }
+  .game-frame-wrap.is-launched { display: block; }
+  .game-frame-wrap.is-launching { animation: splash-poweron 0.55s ease-out; }
+  .game-frame-wrap.is-shutting-down { animation: crt-shutoff 700ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+  @media (prefers-reduced-motion: reduce) {
+    .game-frame-wrap.is-launching,
+    .game-frame-wrap.is-shutting-down { animation: none; }
+  }
+  .game-frame-wrap iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+  .game-frame-exit {
+    position: absolute;
+    top: clamp(10px, 1.6vw, 18px);
+    right: clamp(10px, 1.6vw, 18px);
+    z-index: 2;
+    width: clamp(40px, 5vw, 50px);
+    height: clamp(40px, 5vw, 50px);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.9);
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    font-size: clamp(18px, 2.4vw, 24px);
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .game-frame-exit:hover,
+  .game-frame-exit:focus-visible {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.7);
+    outline: none;
+  }
+
   .arcade-credit {
     position: absolute;
     bottom: clamp(8px, 1.4vw, 14px);
@@ -198,12 +235,12 @@
     color: rgba(255, 255, 255, 0.4);
     font-family: 'Press Start 2P', ui-monospace, monospace;
     z-index: 1;
+    pointer-events: none;
   }
-  .arcade-credit a { color: #2dd4ff; text-decoration: none; }
+  .arcade-credit a { color: #2dd4ff; text-decoration: none; pointer-events: auto; }
   .arcade-credit a:hover { text-decoration: underline; }
 
-  /* PLAY touch button — wider than the directional buttons, orange to
-     distinguish from the cyan ◀ ▶ cluster. */
+  /* PLAY touch button — orange, wider than the directional cluster. */
   .touch-controls .tc-select {
     width: auto;
     min-width: clamp(80px, 16vw, 120px);
@@ -220,11 +257,15 @@
     border-color: #ff8800;
     color: #fff;
   }
+  /* Touch controls hide while a game is launched; the launched game has
+     its own touch controls. */
+  .tube.is-game-launched .touch-controls { display: none !important; }
 
   @media (prefers-reduced-motion: reduce) {
-    .arcade-main { animation: none; }
+    .selector { animation: none; }
     .game-prompt { animation: none; opacity: 1; }
-    .game-item, .select-arrow { transition: none; }
+    .nav-arrow { transition: none; }
+    .stage .game-card { animation: none; }
   }
 </style>
 </head>
@@ -236,71 +277,21 @@
   <div class="tube is-ready">
     <div class="overlay"></div>
     <div class="vignette"></div>
-    <main class="arcade-main">
-      <div class="game-preview-stage">
-        <!-- ROCKET SHIP preview -->
-        <div class="game-preview" data-preview-for="rocket-ship">
-          <svg viewBox="0 0 22 30" aria-hidden="true">
-            <rect x="10" y="0" width="2" height="2" fill="#ff4444"/>
-            <rect x="9"  y="2" width="4" height="2" fill="#ff4444"/>
-            <rect x="8"  y="4" width="6" height="2" fill="#ff4444"/>
-            <rect x="7"  y="6"  width="8"  height="8" fill="#ffffff"/>
-            <rect x="13" y="6"  width="2"  height="8" fill="#c8c8c8"/>
-            <rect x="6"  y="14" width="10" height="4" fill="#ffffff"/>
-            <rect x="14" y="14" width="2"  height="4" fill="#c8c8c8"/>
-            <rect x="9"  y="8"  width="4" height="4" fill="#2dd4ff"/>
-            <rect x="10" y="9"  width="2" height="1" fill="#aef0ff"/>
-            <rect x="6"  y="16" width="10" height="1" fill="#ff3aa1"/>
-            <rect x="3"  y="14" width="3" height="2" fill="#ff4444"/>
-            <rect x="2"  y="16" width="4" height="2" fill="#ff4444"/>
-            <rect x="0"  y="18" width="4" height="2" fill="#ff4444"/>
-            <rect x="16" y="14" width="3" height="2" fill="#ff4444"/>
-            <rect x="16" y="16" width="4" height="2" fill="#ff4444"/>
-            <rect x="18" y="18" width="4" height="2" fill="#ff4444"/>
-            <rect x="7"  y="18" width="8" height="2" fill="#555555"/>
-            <rect x="8"  y="20" width="6" height="1" fill="#333333"/>
-            <rect x="8"  y="21" width="6" height="2" fill="#ffd84a"/>
-            <rect x="9"  y="23" width="4" height="2" fill="#ff8800"/>
-            <rect x="9"  y="25" width="4" height="2" fill="#ffd84a"/>
-            <rect x="10" y="27" width="2" height="2" fill="#ffffff"/>
-          </svg>
-        </div>
-        <!-- PLATFORMER preview -->
-        <div class="game-preview" data-preview-for="platformer">
-          <svg viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" fill="#1a1535"/>
-            <rect x="4"  y="3" width="1" height="1" fill="#fff"/>
-            <rect x="11" y="6" width="1" height="1" fill="#fff"/>
-            <rect x="22" y="2" width="1" height="1" fill="#fff"/>
-            <rect x="27" y="7" width="1" height="1" fill="#fff"/>
-            <rect x="0" y="26" width="32" height="6" fill="#3b2f1a"/>
-            <rect x="0" y="26" width="32" height="1" fill="#5a4a2a"/>
-            <rect x="0" y="26" width="32" height="1" fill="#2dd4ff" opacity="0.65"/>
-            <rect x="13" y="18" width="7" height="3" fill="#3b2f1a"/>
-            <rect x="13" y="18" width="7" height="1" fill="#2dd4ff" opacity="0.6"/>
-            <rect x="4" y="18" width="5" height="8" fill="#ff3aa1"/>
-            <rect x="5" y="20" width="3" height="1" fill="#ffd84a"/>
-            <rect x="7" y="21" width="1" height="1" fill="#0a0a0a"/>
-            <circle cx="16" cy="14" r="1.6" fill="#ffd84a"/>
-            <circle cx="16" cy="14" r="0.7" fill="#c79b00"/>
-            <rect x="28" y="14" width="1" height="12" fill="#fff"/>
-            <polygon points="29,15 32,16.5 29,18" fill="#2dd4ff"/>
-          </svg>
-        </div>
+
+    <div class="selector" id="selector">
+      <button class="nav-arrow" id="nav-prev" type="button" aria-label="Previous game">◀</button>
+      <div class="stage" id="stage">
+        <!-- populated by JS; one .game-card at a time -->
       </div>
-      <div class="game-selector">
-        <button class="select-arrow" id="sel-prev" type="button" aria-label="Previous game" tabindex="-1">◀</button>
-        <ul class="game-list" id="game-list" role="listbox" aria-label="Games">
-          <!-- populated by JS so it's trivially extensible -->
-        </ul>
-        <button class="select-arrow" id="sel-next" type="button" aria-label="Next game" tabindex="-1">▶</button>
-      </div>
-      <div class="game-hi" id="game-hi">&nbsp;</div>
-      <div class="game-prompt">
-        <span class="key-only">← → SELECT  ·  ENTER TO PLAY</span>
-        <span class="touch-only">TAP A GAME TO PLAY</span>
-      </div>
-    </main>
+      <button class="nav-arrow" id="nav-next" type="button" aria-label="Next game">▶</button>
+    </div>
+
+    <!-- Iframe overlay — empty until launch; then the chosen game's URL. -->
+    <div class="game-frame-wrap" id="game-frame-wrap" aria-hidden="true">
+      <iframe id="game-frame" title="Game" allow="autoplay"></iframe>
+      <button class="game-frame-exit" id="game-frame-exit" type="button" aria-label="Close game">×</button>
+    </div>
+
     <div class="touch-controls" aria-hidden="true">
       <div class="tc-group">
         <button type="button" class="tc-btn" id="tc-left"  aria-label="Previous game" tabindex="-1">◀</button>
@@ -310,30 +301,111 @@
         <button type="button" class="tc-btn tc-select" id="tc-select" aria-label="Play selected game" tabindex="-1">PLAY</button>
       </div>
     </div>
+
     <div class="arcade-credit">© OYSTER 2026 · <a href="https://oyster.to/">oyster.to</a></div>
   </div>
 </div>
 
+<!-- Pixel-art previews live in templates so the stage can stamp them in.
+     SVGs are inlined (not <img src>) to keep the pixel-rendering snap and
+     so each game's preview is a single hop with no extra requests. -->
+<template id="preview-rocket-ship">
+  <svg viewBox="0 0 22 30" aria-hidden="true">
+    <rect x="10" y="0" width="2" height="2" fill="#ff4444"/>
+    <rect x="9"  y="2" width="4" height="2" fill="#ff4444"/>
+    <rect x="8"  y="4" width="6" height="2" fill="#ff4444"/>
+    <rect x="7"  y="6"  width="8"  height="8" fill="#ffffff"/>
+    <rect x="13" y="6"  width="2"  height="8" fill="#c8c8c8"/>
+    <rect x="6"  y="14" width="10" height="4" fill="#ffffff"/>
+    <rect x="14" y="14" width="2"  height="4" fill="#c8c8c8"/>
+    <rect x="9"  y="8"  width="4" height="4" fill="#2dd4ff"/>
+    <rect x="10" y="9"  width="2" height="1" fill="#aef0ff"/>
+    <rect x="6"  y="16" width="10" height="1" fill="#ff3aa1"/>
+    <rect x="3"  y="14" width="3" height="2" fill="#ff4444"/>
+    <rect x="2"  y="16" width="4" height="2" fill="#ff4444"/>
+    <rect x="0"  y="18" width="4" height="2" fill="#ff4444"/>
+    <rect x="16" y="14" width="3" height="2" fill="#ff4444"/>
+    <rect x="16" y="16" width="4" height="2" fill="#ff4444"/>
+    <rect x="18" y="18" width="4" height="2" fill="#ff4444"/>
+    <rect x="7"  y="18" width="8" height="2" fill="#555555"/>
+    <rect x="8"  y="20" width="6" height="1" fill="#333333"/>
+    <rect x="8"  y="21" width="6" height="2" fill="#ffd84a"/>
+    <rect x="9"  y="23" width="4" height="2" fill="#ff8800"/>
+    <rect x="9"  y="25" width="4" height="2" fill="#ffd84a"/>
+    <rect x="10" y="27" width="2" height="2" fill="#ffffff"/>
+  </svg>
+</template>
+<template id="preview-platformer">
+  <svg viewBox="0 0 32 32" aria-hidden="true">
+    <rect width="32" height="32" fill="#1a1535"/>
+    <rect x="4"  y="3" width="1" height="1" fill="#fff"/>
+    <rect x="11" y="6" width="1" height="1" fill="#fff"/>
+    <rect x="22" y="2" width="1" height="1" fill="#fff"/>
+    <rect x="27" y="7" width="1" height="1" fill="#fff"/>
+    <rect x="0" y="26" width="32" height="6" fill="#3b2f1a"/>
+    <rect x="0" y="26" width="32" height="1" fill="#5a4a2a"/>
+    <rect x="0" y="26" width="32" height="1" fill="#2dd4ff" opacity="0.65"/>
+    <rect x="13" y="18" width="7" height="3" fill="#3b2f1a"/>
+    <rect x="13" y="18" width="7" height="1" fill="#2dd4ff" opacity="0.6"/>
+    <rect x="4" y="18" width="5" height="8" fill="#ff3aa1"/>
+    <rect x="5" y="20" width="3" height="1" fill="#ffd84a"/>
+    <rect x="7" y="21" width="1" height="1" fill="#0a0a0a"/>
+    <circle cx="16" cy="14" r="1.6" fill="#ffd84a"/>
+    <circle cx="16" cy="14" r="0.7" fill="#c79b00"/>
+    <rect x="28" y="14" width="1" height="12" fill="#fff"/>
+    <polygon points="29,15 32,16.5 29,18" fill="#2dd4ff"/>
+  </svg>
+</template>
+
 <script src="shared/touch.js"></script>
 <script src="shared/leaderboard.js"></script>
 <script>
-// Game catalogue. Add new entries here — UI and routing are data-driven.
+// ============================================
+// CATALOGUE — add a new game here + its preview <template> above.
+// ============================================
 const GAMES = [
-  { id: 'rocket-ship', name: 'ROCKET SHIP', url: 'https://oyster.to/rocket-ship.html' },
-  { id: 'platformer',  name: 'PLATFORMER',  url: 'platformer/' },
+  { id: 'rocket-ship', name: 'ROCKET SHIP', url: 'https://oyster.to/rocket-ship.html', preview: 'preview-rocket-ship' },
+  { id: 'platformer',  name: 'PLATFORMER',  url: 'platformer/',                         preview: 'preview-platformer'  },
 ];
-
 let sel = 0;
+let launched = false;
 
-function paint() {
-  document.querySelectorAll('.game-list .game-item').forEach((el, i) => {
-    const active = i === sel;
-    el.classList.toggle('is-selected', active);
-    el.setAttribute('aria-selected', String(active));
-  });
-  document.querySelectorAll('.game-preview').forEach(el => {
-    el.classList.toggle('is-active', el.dataset.previewFor === GAMES[sel].id);
-  });
+// ============================================
+// SELECTOR — render the in-focus game in the cabinet screen.
+// ============================================
+const stageEl = document.getElementById('stage');
+function renderStage() {
+  const g = GAMES[sel];
+  const tpl = document.getElementById(g.preview);
+  const card = document.createElement('div');
+  card.className = 'game-card';
+  card.dataset.game = g.id;
+
+  const thumb = document.createElement('div');
+  thumb.className = 'game-thumb';
+  if (tpl) thumb.appendChild(tpl.content.cloneNode(true));
+  card.appendChild(thumb);
+
+  const name = document.createElement('div');
+  name.className = 'game-name';
+  // Bracket the name in the same yellow/cyan style as splash titles.
+  name.innerHTML = '<span class="br">[</span> ' + g.name + ' <span class="br">]</span>';
+  card.appendChild(name);
+
+  const hi = document.createElement('div');
+  hi.className = 'game-hi';
+  hi.id = 'game-hi';
+  card.appendChild(hi);
+
+  const prompt = document.createElement('div');
+  prompt.className = 'game-prompt';
+  prompt.innerHTML = '<span class="key-only">PRESS ENTER TO PLAY</span><span class="touch-only">TAP PLAY</span>';
+  card.appendChild(prompt);
+
+  // Click anywhere on the card to launch the in-focus game.
+  card.addEventListener('click', launch);
+
+  stageEl.replaceChildren(card);
   paintHi();
 }
 
@@ -342,51 +414,103 @@ function paintHi() {
   Arcade.Leaderboard.init({ game, max: 10 });
   const top = Arcade.Leaderboard.getHighScore();
   const el = document.getElementById('game-hi');
-  if (!top) { el.textContent = ' '; return; }
+  if (!el) return;
+  if (!top) { el.textContent = ' '; return; }
   el.innerHTML =
     'HIGH SCORE <span class="hi-val">' + String(top.score).padStart(3, '0') + '</span> ' +
     '<span class="hi-initials">' + (top.initials || '---') + '</span>';
 }
 
-function next()   { sel = (sel + 1) % GAMES.length; paint(); }
-function prev()   { sel = (sel - 1 + GAMES.length) % GAMES.length; paint(); }
-function launch() { window.location.href = GAMES[sel].url; }
+function next() { if (launched) return; sel = (sel + 1) % GAMES.length;             renderStage(); }
+function prev() { if (launched) return; sel = (sel - 1 + GAMES.length) % GAMES.length; renderStage(); }
 
-// Build the list. Click on a name selects + launches.
-const listEl = document.getElementById('game-list');
-GAMES.forEach((g, i) => {
-  const li = document.createElement('li');
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'game-item';
-  btn.dataset.idx = String(i);
-  btn.setAttribute('role', 'option');
-  btn.textContent = g.name;
-  btn.addEventListener('click', () => { sel = i; paint(); launch(); });
-  li.appendChild(btn);
-  listEl.appendChild(li);
-});
-paint();
+renderStage();
 
-// Keyboard navigation
+// ============================================
+// LAUNCH / CLOSE — iframe overlay using shared CRT animations.
+// ============================================
+const tube = document.querySelector('.tube');
+const wrap = document.getElementById('game-frame-wrap');
+const frame = document.getElementById('game-frame');
+const exit = document.getElementById('game-frame-exit');
+
+function launch() {
+  if (launched) return;
+  const g = GAMES[sel];
+  launched = true;
+  // Load the game, then play the CRT power-on animation.
+  frame.src = g.url;
+  wrap.classList.remove('is-shutting-down');
+  wrap.classList.add('is-launched', 'is-launching');
+  wrap.setAttribute('aria-hidden', 'false');
+  tube.classList.add('is-game-launched');
+  // Strip the launching class once the animation finishes so a later
+  // close doesn't fight with leftover state.
+  setTimeout(() => wrap.classList.remove('is-launching'), 600);
+  // Focus the iframe so the game's keyboard listeners pick up immediately.
+  setTimeout(() => { try { frame.focus(); } catch (_) {} }, 60);
+}
+
+function close() {
+  if (!launched) return;
+  launched = false;
+  wrap.classList.add('is-shutting-down');
+  // Wait for CRT-shutoff to finish, then tear down so a fresh launch
+  // re-runs the game from scratch (boot sequence, audio unlock, etc).
+  setTimeout(() => {
+    wrap.classList.remove('is-launched', 'is-shutting-down', 'is-launching');
+    wrap.setAttribute('aria-hidden', 'true');
+    tube.classList.remove('is-game-launched');
+    try { frame.src = 'about:blank'; } catch (_) {}
+    // Refresh hi-score from cloud — the player may have just set one.
+    paintHi();
+    Arcade.Leaderboard.init({ game: GAMES[sel].id, max: 10 });
+    Arcade.Leaderboard.refresh().then(paintHi);
+  }, 720);
+}
+
+exit.addEventListener('click', close);
+
+// ESC from the host page closes the launched game (the iframe's own ESC
+// handler posts back via the message below; this is the fallback for when
+// the iframe doesn't have focus).
 window.addEventListener('keydown', e => {
-  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { prev();   e.preventDefault(); }
-  else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { next();   e.preventDefault(); }
-  else if (e.key === 'Enter' || e.key === ' ')                       { launch(); e.preventDefault(); }
+  if (e.key === 'Escape' && launched) { close(); e.preventDefault(); }
 });
 
-// On-screen arrow buttons (mouse-clickable)
-document.getElementById('sel-prev').addEventListener('click', prev);
-document.getElementById('sel-next').addEventListener('click', next);
+// Each game's shared/iframe-host.js posts either of these on ESC inside
+// the game. Verify the source matches our iframe so unrelated frames
+// can't trigger close. Origin check is relaxed to allow cross-origin
+// games (rocket-ship lives on oyster.to, platformer on whatever this
+// arcade is served from).
+window.addEventListener('message', e => {
+  if (!e || !e.data) return;
+  if (frame && e.source !== frame.contentWindow) return;
+  const t = e.data.type;
+  if (t === 'arcade-close' || t === 'oyster-rocket-close') close();
+});
 
-// Touch buttons (coarse pointers only — gated by shared/touch.css)
+// ============================================
+// INPUT — keyboard, on-screen arrows, and touch buttons.
+// While a game is launched, navigation keys/buttons are inert (the game
+// owns them); only ESC / × close.
+// ============================================
+window.addEventListener('keydown', e => {
+  if (launched) return;
+  if      (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { prev();   e.preventDefault(); }
+  else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { next();   e.preventDefault(); }
+  else if (e.key === 'Enter'      || e.key === ' ')                  { launch(); e.preventDefault(); }
+});
+document.getElementById('nav-prev').addEventListener('click', prev);
+document.getElementById('nav-next').addEventListener('click', next);
 Arcade.Touch.bind(document.getElementById('tc-left'),   prev,   () => {});
 Arcade.Touch.bind(document.getElementById('tc-right'),  next,   () => {});
 Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
 
-// Refresh leaderboard mirrors from the cloud, serially (the singleton
-// module isn't safe for concurrent inits). Repaints the hi-score line
-// for the currently-selected game when each lands.
+// ============================================
+// LEADERBOARD — preload all per-game mirrors so the first arrow doesn't
+// race against the cloud refresh. Serial to avoid the singleton race.
+// ============================================
 (async () => {
   for (const g of GAMES) {
     Arcade.Leaderboard.init({ game: g.id, max: 10 });

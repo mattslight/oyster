@@ -99,12 +99,25 @@ canvas {
 }
 
 /* CRT power-on used by splash + any end-state panel — the screen squashes
-   to a thin horizontal line, then snaps open. */
+   to a thin horizontal line, then snaps open. Also used by launchers to
+   bring an embedded game iframe online with the iconic CRT-on feel. */
 @keyframes splash-poweron {
   0%   { transform: scale(1, 0.005); filter: brightness(3.5); }
   55%  { transform: scale(1, 0.005); filter: brightness(3.5); }
   80%  { transform: scale(1, 1); filter: brightness(2); }
   100% { transform: scale(1, 1); filter: brightness(1); }
+}
+
+/* CRT power-off — somebody yanked the plug. Used by launchers when the
+   player closes an embedded game; the iframe scales vertically to a
+   bright horizontal line, then a single dot, then fades. */
+@keyframes crt-shutoff {
+  0%   { transform: scale(1, 1);          opacity: 1; filter: brightness(1)   contrast(1);   }
+  8%   { transform: scale(1, 1);          opacity: 1; filter: brightness(1.5) contrast(1.2); }
+  35%  { transform: scale(1, 0.015);      opacity: 1; filter: brightness(3.2) contrast(1.8); }
+  55%  { transform: scale(1, 0.012);      opacity: 1; filter: brightness(3);              }
+  85%  { transform: scale(0.008, 0.012);  opacity: 1; filter: brightness(3.5);            }
+  100% { transform: scale(0, 0);          opacity: 0; filter: brightness(2);              }
 }
 
 /* Crash shake — apply `.is-shaking` to .tube for a brief frame after a
