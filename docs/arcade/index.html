@@ -447,29 +447,28 @@ const TRANSITION_MS = 400;
 let sel = 0;
 let stripPos = 0;   // strip-index where the focused card currently sits
 let launched = false;
-let normTimer = null;
 // Set briefly to the future after a swipe so the synthesised click event
 // at touch-end doesn't also launch a game / reposition a card.
 let suppressClickUntil = 0;
 
 // ============================================
-// STRIP — all N games rendered THREE times, in order. Every visible
-// position has identical content across all three copies, so we can
-// silently jump between them without any visible discontinuity.
+// STRIP — all N games rendered COPIES times, in order. The middle copy
+// is the "canonical" one; the others provide buffer for the strip to
+// drift through during wraps. Every visible position has identical
+// content across all copies, so when we DO need to silently normalize
+// (only on the rare occasion that we're about to overflow the strip),
+// the jump is invisible.
 //
-// Strip indices:
-//   0..N-1     copy 0 (leading)
-//   N..2N-1    copy 1 (middle, canonical)
-//   2N..3N-1   copy 2 (trailing)
-//
-// `sel` is the user-facing real index (always in [0, N-1]).
-// `stripPos` is which strip-idx the focused card sits at right now —
-// can drift across copies during rapid navigation. After every move we
-// schedule a silent normalize that puts stripPos back at N + sel
-// (middle copy). The user never sees the jump because the cards at
-// each visible offset are identical across copies.
+// With 5 copies and N=5, the user can navigate 10 positions in one
+// direction before hitting the overflow boundary — covers any
+// reasonable session of arrow-mashing. We deliberately do NOT
+// normalize after every slide; that ran a silent translate + class
+// swap 40 ms after the wrap landed, and even with identical copies
+// some pixel-level reconciliation in the GPU compositor surfaces it
+// as a tiny jolt. No post-slide normalize → no jolt.
 // ============================================
-const COPIES = 3;
+const COPIES = 5;
+const CANONICAL_COPY = Math.floor(COPIES / 2);
 
 function buildCard(game, realIdx, isClone) {
   const card = document.createElement('div');
@@ -523,15 +522,14 @@ function mountStrip() {
   const strip = document.getElementById('strip');
   strip.replaceChildren();
   for (let c = 0; c < COPIES; c++) {
-    const isCanonical = c === Math.floor(COPIES / 2);
     for (let i = 0; i < N; i++) {
-      strip.appendChild(buildCard(GAMES[i], i, !isCanonical));
+      strip.appendChild(buildCard(GAMES[i], i, c !== CANONICAL_COPY));
     }
   }
 }
 
 // Canonical strip-idx for a real-idx: the middle copy.
-function canonicalStripFor(realIdx) { return N + realIdx; }
+function canonicalStripFor(realIdx) { return CANONICAL_COPY * N + realIdx; }
 
 // Stable cardCentre formula — doesn't depend on a particular card's
 // offsetLeft, which can drift sub-pixel-wise when sibling cards change
@@ -584,28 +582,16 @@ function paintHi() {
 }
 
 // ============================================
-// NAVIGATION — directional move that DRIFTS stripPos across copies,
-// then schedules a silent normalize back to the middle copy. No
-// `animating` block: rapid taps just retarget the same animation,
-// so mashing the arrow scrolls smoothly through the catalogue.
+// NAVIGATION — directional move that DRIFTS stripPos across copies.
+// We deliberately don't normalize after every slide: it created a
+// post-slide jolt on wraps. With 5 copies the user has tons of buffer;
+// we only normalize silently when about to overflow the strip.
 // ============================================
-function scheduleNormalize() {
-  if (normTimer) clearTimeout(normTimer);
-  normTimer = setTimeout(() => {
-    normTimer = null;
-    // Silent jump to the middle copy. Content is identical across all
-    // three copies at every visible offset, so the user sees nothing.
-    stripPos = canonicalStripFor(sel);
-    translateStripTo(stripPos, false);
-  }, TRANSITION_MS + 40);
-}
-
 function navigate(delta) {
   if (launched) return;
-  if (normTimer) { clearTimeout(normTimer); normTimer = null; }
   // Pre-empt overflow: if the next step would walk off the strip, jump
-  // silently to the middle copy first (the visible content there matches
-  // the current position because all copies are identical).
+  // silently to the middle copy first. Content at every visible offset
+  // is identical across copies, so the user doesn't see the jump.
   if (stripPos + delta < 0 || stripPos + delta >= COPIES * N) {
     stripPos = canonicalStripFor(sel);
     translateStripTo(stripPos, false);
@@ -613,7 +599,6 @@ function navigate(delta) {
   sel = (sel + delta + N) % N;
   stripPos += delta;
   translateStripTo(stripPos, true);
-  scheduleNormalize();
 }
 
 // Click / direct jump to a specific real index. Picks the strip-idx
@@ -622,7 +607,6 @@ function navigate(delta) {
 function navigateTo(newSel) {
   if (launched) return;
   if (newSel === sel) { launch(); return; }
-  if (normTimer) { clearTimeout(normTimer); normTimer = null; }
   let target = canonicalStripFor(newSel);
   for (let c = 0; c < COPIES; c++) {
     const cand = c * N + newSel;
@@ -631,7 +615,6 @@ function navigateTo(newSel) {
   sel = newSel;
   stripPos = target;
   translateStripTo(stripPos, true);
-  scheduleNormalize();
 }
 
 function next() { navigate(+1); }
