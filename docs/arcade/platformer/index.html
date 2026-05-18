@@ -529,23 +529,71 @@ splash.addEventListener('pointerdown', e => {
 });
 
 // ============================================
-// GAME — minimal scaffold: player rectangle, gravity, flat ground.
-// Variable-height jump with coyote + buffer. No tiles, enemies, scoring yet.
+// LEVEL — tile grid. '.' = empty, '#' = solid, 'S' = spawn marker (treated
+// as empty at runtime; only used to derive spawn coords if not given).
+// Designed in a string for easy editing; will move to JSON when there are
+// multiple levels.
 // ============================================
-const GROUND_FRAC = 0.82;      // ground sits 82% down the canvas
-const PLAYER_W = 28;
-const PLAYER_H = 40;
+const LEVEL = {
+  width: 60,
+  height: 14,
+  spawn: { col: 2, row: 11 },
+  tiles: [
+    '............................................................',
+    '............................................................',
+    '............................................................',
+    '............................................................',
+    '..........................###...............................',
+    '............................................................',
+    '...................###.................######...............',
+    '............................................................',
+    '............###.........................................###.',
+    '............................................................',
+    '......###..............................#####................',
+    '...............###..........###.............................',
+    '############################################################',
+    '############################################################',
+  ],
+};
+function tileAt(col, row) {
+  if (col < 0 || row < 0 || col >= LEVEL.width || row >= LEVEL.height) {
+    // Treat horizontal out-of-bounds as solid wall; below as void (death).
+    return (col < 0 || col >= LEVEL.width) ? '#' : '.';
+  }
+  return LEVEL.tiles[row][col];
+}
+function isSolid(col, row) { return tileAt(col, row) === '#'; }
+
+// ============================================
+// SCALING — derive a tile size in screen pixels from the canvas height so
+// the level always fills the viewport vertically. Player size scales with
+// the tile size. Recomputed on resize.
+// ============================================
+let TILE_PX = 32;
+let PLAYER_W = 28;
+let PLAYER_H = 40;
+const PLAYER_W_FRAC = 0.85;
+const PLAYER_H_FRAC = 1.25;
+
+function recomputeScale() {
+  TILE_PX = Math.max(16, Math.floor(H / LEVEL.height));
+  PLAYER_W = Math.round(TILE_PX * PLAYER_W_FRAC);
+  PLAYER_H = Math.round(TILE_PX * PLAYER_H_FRAC);
+}
+recomputeScale();
+
+// Movement tuning (in screen px / frame at 60fps).
 const MOVE_ACCEL = 0.6;
 const MOVE_MAX = 4.2;
 const FRICTION = 0.82;
 const GRAVITY = 0.55;
 const JUMP_VEL = -10.5;
-const JUMP_CUT = 0.45;          // shorten jump on early release
+const JUMP_CUT = 0.45;
 const COYOTE_MS = 90;
 const JUMP_BUFFER_MS = 120;
 
 const player = {
-  x: 0, y: 0,            // top-left
+  x: 0, y: 0,            // world pixels, top-left
   vx: 0, vy: 0,
   facing: 1,
   grounded: false,
@@ -554,11 +602,11 @@ const player = {
   jumpHeld: false,
 };
 
-function groundY() { return H * GROUND_FRAC; }
+const cam = { x: 0 };
 
 function resetPlayer() {
-  player.x = W * 0.15;
-  player.y = groundY() - PLAYER_H;
+  player.x = LEVEL.spawn.col * TILE_PX + (TILE_PX - PLAYER_W) / 2;
+  player.y = LEVEL.spawn.row * TILE_PX - PLAYER_H;
   player.vx = 0;
   player.vy = 0;
   player.facing = 1;
@@ -566,12 +614,81 @@ function resetPlayer() {
   player.lastGroundedAt = performance.now();
   player.jumpPressedAt = -Infinity;
   player.jumpHeld = false;
+  cam.x = 0;
 }
 resetPlayer();
+
 window.addEventListener('resize', () => {
-  // Keep the player on the new ground line so resize doesn't drop them.
-  player.y = Math.min(player.y, groundY() - PLAYER_H);
+  // Preserve the player's tile-space position across the rescale, then
+  // re-snap. Avoids dropping them into the floor or off the bottom on
+  // viewport changes.
+  const wasCol = (player.x + PLAYER_W / 2) / TILE_PX;
+  const wasRow = (player.y + PLAYER_H) / TILE_PX;
+  recomputeScale();
+  player.x = wasCol * TILE_PX - PLAYER_W / 2;
+  player.y = wasRow * TILE_PX - PLAYER_H;
+  player.vx = 0;
+  player.vy = 0;
 });
+
+// ============================================
+// COLLISION — axis-separated AABB vs tile grid. Move X, resolve X.
+// Move Y, resolve Y. Standard pattern; avoids the "stick in corner" bug
+// you get from a combined sweep.
+// ============================================
+function resolveX(dx) {
+  player.x += dx;
+  if (dx === 0) return;
+  const top = Math.floor(player.y / TILE_PX);
+  const bottom = Math.floor((player.y + PLAYER_H - 1) / TILE_PX);
+  if (dx > 0) {
+    const right = Math.floor((player.x + PLAYER_W - 1) / TILE_PX);
+    for (let row = top; row <= bottom; row++) {
+      if (isSolid(right, row)) {
+        player.x = right * TILE_PX - PLAYER_W;
+        player.vx = 0;
+        return;
+      }
+    }
+  } else {
+    const left = Math.floor(player.x / TILE_PX);
+    for (let row = top; row <= bottom; row++) {
+      if (isSolid(left, row)) {
+        player.x = (left + 1) * TILE_PX;
+        player.vx = 0;
+        return;
+      }
+    }
+  }
+}
+function resolveY(dy) {
+  player.y += dy;
+  if (dy === 0) return;
+  const left = Math.floor(player.x / TILE_PX);
+  const right = Math.floor((player.x + PLAYER_W - 1) / TILE_PX);
+  if (dy > 0) {
+    const bottom = Math.floor((player.y + PLAYER_H - 1) / TILE_PX);
+    for (let col = left; col <= right; col++) {
+      if (isSolid(col, bottom)) {
+        player.y = bottom * TILE_PX - PLAYER_H;
+        player.vy = 0;
+        player.grounded = true;
+        player.lastGroundedAt = performance.now();
+        return;
+      }
+    }
+    player.grounded = false;
+  } else {
+    const top = Math.floor(player.y / TILE_PX);
+    for (let col = left; col <= right; col++) {
+      if (isSolid(col, top)) {
+        player.y = (top + 1) * TILE_PX;
+        player.vy = 0;
+        return;
+      }
+    }
+  }
+}
 
 let prevJump = false;
 function update() {
@@ -597,39 +714,62 @@ function update() {
   if (bufferedJump && (player.grounded || canCoyote)) {
     player.vy = JUMP_VEL;
     player.grounded = false;
-    player.jumpPressedAt = -Infinity;     // consume
-    player.lastGroundedAt = -Infinity;    // consume coyote
+    player.jumpPressedAt = -Infinity;
+    player.lastGroundedAt = -Infinity;
     playJump();
   }
 
   // Variable height — cut upward velocity if jump released while rising
   if (!player.jumpHeld && player.vy < 0) {
     player.vy *= JUMP_CUT;
-    if (player.vy > -1) player.vy = -1;  // floor to avoid sticking
+    if (player.vy > -1) player.vy = -1;
   }
 
   // Gravity
   player.vy += GRAVITY;
   if (player.vy > 16) player.vy = 16;
 
-  // Integrate
-  player.x += player.vx;
-  player.y += player.vy;
+  // Integrate with tile collision (X then Y)
+  resolveX(player.vx);
+  resolveY(player.vy);
 
-  // Walls (clamp to canvas)
-  if (player.x < 0) { player.x = 0; player.vx = 0; }
-  if (player.x + PLAYER_W > W) { player.x = W - PLAYER_W; player.vx = 0; }
-
-  // Ground collision
-  const gy = groundY();
-  if (player.y + PLAYER_H >= gy) {
-    player.y = gy - PLAYER_H;
-    player.vy = 0;
-    if (!player.grounded) player.grounded = true;
-    player.lastGroundedAt = now;
-  } else {
-    player.grounded = false;
+  // Death by falling below the level → respawn at spawn point.
+  if (player.y > LEVEL.height * TILE_PX + 200) {
+    playHurt();
+    resetPlayer();
   }
+
+  // Camera — track player with a soft trailing follow. Player sits around
+  // 40% from the left edge once at speed. Clamp to level bounds.
+  const targetX = player.x - W * 0.4;
+  cam.x += (targetX - cam.x) * 0.15;
+  const maxCamX = Math.max(0, LEVEL.width * TILE_PX - W);
+  if (cam.x < 0) cam.x = 0;
+  if (cam.x > maxCamX) cam.x = maxCamX;
+}
+
+// ============================================
+// RENDER
+// ============================================
+function drawTile(col, row) {
+  const x = Math.round(col * TILE_PX - cam.x);
+  const y = Math.round(row * TILE_PX);
+  // Skip tiles fully outside the viewport (tile is at most TILE_PX px wide).
+  if (x + TILE_PX < 0 || x > W) return;
+  // Solid ground tile — brown body, lighter top edge, cyan highlight pixel row.
+  ctx.fillStyle = '#3b2f1a';
+  ctx.fillRect(x, y, TILE_PX, TILE_PX);
+  const topOpen = !isSolid(col, row - 1);
+  if (topOpen) {
+    ctx.fillStyle = '#5a4a2a';
+    ctx.fillRect(x, y, TILE_PX, Math.max(4, Math.floor(TILE_PX * 0.18)));
+    ctx.fillStyle = '#2dd4ff';
+    ctx.fillRect(x, y, TILE_PX, 1);
+  }
+  // Inner outline for that pixel-y chunky look
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(x + TILE_PX - 2, y, 2, TILE_PX);
+  ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
 }
 
 function draw() {
@@ -637,36 +777,41 @@ function draw() {
   ctx.fillStyle = '#1a1535';
   ctx.fillRect(0, 0, W, H);
 
-  // Stars (cheap background)
+  // Parallax stars — drift slower than the camera (factor 0.3) for depth.
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  for (let i = 0; i < 60; i++) {
-    const sx = (i * 73) % W;
-    const sy = (i * 137) % (H * GROUND_FRAC - 20);
-    ctx.fillRect(sx, sy, 2, 2);
+  for (let i = 0; i < 80; i++) {
+    const baseX = (i * 73) % (LEVEL.width * TILE_PX);
+    const baseY = (i * 137) % Math.max(1, LEVEL.height * TILE_PX - 80);
+    const sx = baseX - cam.x * 0.3;
+    const sy = baseY;
+    const wrapped = ((sx % W) + W) % W;
+    ctx.fillRect(wrapped, sy, 2, 2);
   }
 
-  // Ground
-  const gy = groundY();
-  ctx.fillStyle = '#3b2f1a';
-  ctx.fillRect(0, gy, W, H - gy);
-  ctx.fillStyle = '#5a4a2a';
-  ctx.fillRect(0, gy, W, 6);
-  ctx.fillStyle = '#2dd4ff';
-  ctx.fillRect(0, gy - 1, W, 1);
+  // Visible tile range
+  const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
+  const c1 = Math.min(LEVEL.width - 1, Math.ceil((cam.x + W) / TILE_PX));
+  for (let row = 0; row < LEVEL.height; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (isSolid(col, row)) drawTile(col, row);
+    }
+  }
 
-  // Player (chunky pixel rectangle, magenta body + yellow stripe)
-  const px = Math.round(player.x);
+  // Player
+  const px = Math.round(player.x - cam.x);
   const py = Math.round(player.y);
   ctx.fillStyle = '#ff3aa1';
   ctx.fillRect(px, py, PLAYER_W, PLAYER_H);
   ctx.fillStyle = '#ffd84a';
-  ctx.fillRect(px + 4, py + 6, PLAYER_W - 8, 4);
+  ctx.fillRect(px + 4, py + Math.floor(PLAYER_H * 0.15), PLAYER_W - 8, Math.max(3, Math.floor(PLAYER_H * 0.1)));
   // Eye
   ctx.fillStyle = '#0a0a0a';
-  const eyeX = player.facing > 0 ? px + PLAYER_W - 10 : px + 4;
-  ctx.fillRect(eyeX, py + 14, 6, 6);
+  const eyeS = Math.max(4, Math.floor(PLAYER_W * 0.22));
+  const eyeX = player.facing > 0 ? px + PLAYER_W - eyeS - 4 : px + 4;
+  const eyeY = py + Math.floor(PLAYER_H * 0.35);
+  ctx.fillRect(eyeX, eyeY, eyeS, eyeS);
   ctx.fillStyle = '#fff';
-  ctx.fillRect(eyeX + 2, py + 16, 2, 2);
+  ctx.fillRect(eyeX + Math.floor(eyeS * 0.4), eyeY + Math.floor(eyeS * 0.3), 2, 2);
 }
 
 function loop() {
