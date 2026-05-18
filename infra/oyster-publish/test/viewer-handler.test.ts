@@ -461,11 +461,10 @@ describe("nonce pre-check — consumeNonce flag", () => {
       .bind(shareToken).run();
 
     const nonce = await mintAccessNonce(env, shareToken, u.id);
-    // Pre-Task-6 there is no ok_via_nonce render handler, so we expect
-    // the handler to throw and the request to surface as 500 (placeholder
-    // is added in this task). What we assert here is the SIDE EFFECT:
-    // the nonce was consumed.
-    await call(getReq(`/p/${shareToken}?key=${nonce}`));
+    const res = await call(getReq(`/p/${shareToken}?key=${nonce}`));
+    // ok_via_nonce has no handler yet (Task 6); the placeholder throws,
+    // surfacing as a 500. TODO Task 6: assert 302 + cookie + clean URL.
+    expect(res.status).toBe(500);
 
     const row = await env.DB.prepare(
       "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
@@ -493,6 +492,31 @@ describe("nonce pre-check — consumeNonce flag", () => {
     expect(row?.consumed_at).toBeNull();
 
     // The nonce remains usable on the proper /p endpoint.
+    expect(await consumeAccessNonce(env, nonce, shareToken)).toBe(true);
+  });
+
+  it("/p/<token>/raw?key=<valid_nonce> does NOT consume — password mode", async () => {
+    // Password mode is the higher-stakes case for the /raw non-consume
+    // invariant: it has an owner-bound password and the most surface area.
+    // A future regression that started consuming on /raw in password mode
+    // would burn the nonce before the outer /p page could use it.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n_raw_pw", body: "<h1>iframe</h1>",
+      artifactKind: "app", contentType: "text/html",
+    });
+    await env.DB.prepare(
+      "UPDATE published_artifacts SET mode = 'password', password_hash = 'pbkdf2$100000$AAAA$BBBB' WHERE share_token = ?",
+    ).bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    await call(getReq(`/p/${shareToken}/raw?key=${nonce}`));
+
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
+
     expect(await consumeAccessNonce(env, nonce, shareToken)).toBe(true);
   });
 

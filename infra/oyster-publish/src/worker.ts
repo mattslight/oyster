@@ -712,8 +712,14 @@ async function handleViewerGet(req: Request, env: Env, shareToken: string): Prom
     case "ok":
       return renderForRow(env, access.row, req);
     case "ok_via_nonce":
-      // Placeholder — real handling lands in Task 6.
-      throw new Error("ok_via_nonce: handler not yet implemented (Task 6)");
+      // Placeholder — real handling lands in Task 6. Returning 500 instead
+      // of throwing means the test for Task 6's transition can pin the
+      // current behaviour (`status === 500`) and Task 6 turns it into the
+      // expected 302 with a visible edit.
+      return new Response("ok_via_nonce: handler not yet implemented (Task 6)", {
+        status: 500,
+        headers: { "content-type": "text/plain" },
+      });
   }
 }
 
