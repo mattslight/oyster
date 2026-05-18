@@ -306,23 +306,8 @@
 <h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.9.1...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
 <h3>Added</h3>
 <ul>
-<li><strong>Launch and resume Claude Code sessions inside Oyster.</strong> A new <em>Launch Claude here</em> action on project tiles starts a fresh <code>claude</code> session in the project&#39;s folder, inside an in-app terminal. <em>Resume here</em> on a Session Inspector continues that conversation via <code>claude --resume</code>. The Resume dialog for cross-device sessions now offers <em>Open in Oyster</em> alongside the existing <em>Copy command</em>. Terminals are real PTYs with slash commands, status line, and resize — and the title turns into a link to the session&#39;s Inspector as soon as the conversation begins.</li>
-<li><strong>Rocket Ship on mobile.</strong> On-screen ◀ ▶ ▲ controls overlay the canvas during gameplay, the title-screen instructions swap to <em>TAP</em> labels, and launching from the homepage breaks the game out to fullscreen with a × close button in the top-right. High-score initials can be entered with the same buttons: ◀ ▶ cycle the letter, ▲ advances to the next slot or saves.</li>
-<li><strong>Mute toggle on the Rocket Ship title screen.</strong> Click the ♪ in the top-right to silence music and sound effects; the choice is remembered next time you boot the game.</li>
+<li><strong>Launch and resume Claude Code sessions inside Oyster.</strong> <em>Launch Claude here</em> on a project tile starts a fresh <code>claude</code> session in the folder, inside an in-app terminal. <em>Resume here</em> on a Session Inspector continues that conversation via <code>claude --resume</code>. The cross-device Resume dialog now offers <em>Open in Oyster</em> alongside <em>Copy command</em>.</li>
 <li><strong>Sign in to view your own protected shares.</strong> A password-protected share now offers a &quot;Have access? Sign in to view&quot; option alongside the password field; if you&#39;re signed in to Oyster as the owner, you skip the password.</li>
-</ul>
-<h3>Changed</h3>
-<ul>
-<li><strong>Rocket Ship title screen got an 80s arcade glow-up.</strong> Chunky pixel-art rocket with a flickering flame hovers above the <em>ROCKET SHIP</em> title, the controls panel uses an enlarged ★ and a plain <code>!</code> for asteroids, the HUD reads <code>SCORE: N</code>, and the CRT bezel corners are more pronounced.</li>
-<li><strong>Post-game flow: flag → name → leaderboard → title → new game.</strong> A new #1 high score celebrates with the flag <em>before</em> the initials prompt, and the attract sequence is steppable — a key on the leaderboard view advances to the title-card; only the title-card starts a new game.</li>
-</ul>
-<h3>Fixed</h3>
-<ul>
-<li><strong>Rocket Ship SFX now honour the mute toggle.</strong> Muting the ♪ button silenced the music as expected, but shots and explosions still played at full volume on the next boot — they now go silent too.</li>
-<li><strong>Rocket Ship on phones reads as tappable.</strong> <em>INSERT COIN</em> / <em>PRESS ANY KEY</em> / <em>PRESS ANY KEY TO RESTART</em> swap to <em>TAP TO PLAY</em> / <em>TAP TO CONTINUE</em> / <em>TAP TO RESTART</em> on touch devices. The page underneath is also locked while the game is up — no more peeking through at the bottom or showing the scrollbar.</li>
-<li><strong>Pixel font now used everywhere in Rocket Ship.</strong> Arrow keys, the star, the music note, the in-game HUD and the game-over hint all render in the proper 8-bit typeface instead of falling back to system fonts.</li>
-<li><strong>Title music plays during the title screen</strong> when the page is loaded directly. Previously the autoplay-blocked path either dropped the title theme or stacked it on top of the game music.</li>
-<li><strong>In-game hint stays until you actually fly.</strong> The <em>Arrow keys / WASD…</em> overlay persists at full opacity until the player provides any thrust/turn input, then eases out smoothly instead of timing out after 5 seconds.</li>
 </ul>
 <h2 id="v-0-9-1"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.9.0...v0.9.1" rel="noopener noreferrer"><span class="release-version">0.9.1</span></a><span class="release-date"> — 2026-05-16</span></h2>
 <h3>Added</h3>
@@ -330,12 +315,9 @@
 <li><strong>Filter cmd+K by type or space.</strong> Type <code>@session</code>, <code>@artefact</code>, or <code>@memory</code> to scope by type; <code>#&lt;space&gt;</code> to scope by space. Filters appear as removable chips inside the input; Backspace at an empty input pops the most-recent chip.</li>
 <li><strong>Memory is searchable from cmd+K.</strong> Saved memories appear alongside sessions and artefacts in Spotlight results.</li>
 <li><strong>Recent artefacts in empty cmd+K.</strong> Opening Spotlight without typing shows your most-recent artefacts under <em>Recent</em> — a quick jump back when you can&#39;t remember the name.</li>
-<li><strong>Rocket Ship easter egg on oyster.to.</strong> Clicking the red or yellow window dot — or the new Rocket Ship artefact tile — boots a hidden 8-bit arcade game inside the hero device. Title splash with loading bar, top-10 leaderboard, 3-letter initial entry, CRT power-off when you close it.</li>
 </ul>
 <h3>Changed</h3>
 <ul>
-<li><strong>Redesigned oyster.to.</strong> New editorial typography (Sora + Instrument Serif italic), cosmic background with orbital arcs, refreshed hero with luminous device frame, and a stronger &quot;Pearl in Orbit&quot; look across the homepage, pricing, plugins, MCP, and changelog pages.</li>
-<li><strong>Hero device mock refinements.</strong> Darkened the device chrome so the inside content + rim glow pop against the cosmic background, and replaced the generic centered-icon artefacts with miniature content previews (kanban board, slide deck with bar chart, node diagram, settings window, checklist, rocket ship).</li>
 <li><strong>Top bar is now one sticky pill.</strong> Account and space switcher share a single bar pinned to the top of every view. Signed-in shows an avatar (email + sign-out in the click-menu); signed-out shows a <em>Sign in</em> pill in the same slot.</li>
 </ul>
 <h3>Fixed</h3>

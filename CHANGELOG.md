@@ -6,23 +6,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Added
 
-- **Launch and resume Claude Code sessions inside Oyster.** A new *Launch Claude here* action on project tiles starts a fresh `claude` session in the project's folder, inside an in-app terminal. *Resume here* on a Session Inspector continues that conversation via `claude --resume`. The Resume dialog for cross-device sessions now offers *Open in Oyster* alongside the existing *Copy command*. Terminals are real PTYs with slash commands, status line, and resize — and the title turns into a link to the session's Inspector as soon as the conversation begins.
-- **Rocket Ship on mobile.** On-screen ◀ ▶ ▲ controls overlay the canvas during gameplay, the title-screen instructions swap to *TAP* labels, and launching from the homepage breaks the game out to fullscreen with a × close button in the top-right. High-score initials can be entered with the same buttons: ◀ ▶ cycle the letter, ▲ advances to the next slot or saves.
-- **Mute toggle on the Rocket Ship title screen.** Click the ♪ in the top-right to silence music and sound effects; the choice is remembered next time you boot the game.
+- **Launch and resume Claude Code sessions inside Oyster.** *Launch Claude here* on a project tile starts a fresh `claude` session in the folder, inside an in-app terminal. *Resume here* on a Session Inspector continues that conversation via `claude --resume`. The cross-device Resume dialog now offers *Open in Oyster* alongside *Copy command*.
 - **Sign in to view your own protected shares.** A password-protected share now offers a "Have access? Sign in to view" option alongside the password field; if you're signed in to Oyster as the owner, you skip the password.
-
-### Changed
-
-- **Rocket Ship title screen got an 80s arcade glow-up.** Chunky pixel-art rocket with a flickering flame hovers above the *ROCKET SHIP* title, the controls panel uses an enlarged ★ and a plain `!` for asteroids, the HUD reads `SCORE: N`, and the CRT bezel corners are more pronounced.
-- **Post-game flow: flag → name → leaderboard → title → new game.** A new #1 high score celebrates with the flag *before* the initials prompt, and the attract sequence is steppable — a key on the leaderboard view advances to the title-card; only the title-card starts a new game.
-
-### Fixed
-
-- **Rocket Ship SFX now honour the mute toggle.** Muting the ♪ button silenced the music as expected, but shots and explosions still played at full volume on the next boot — they now go silent too.
-- **Rocket Ship on phones reads as tappable.** *INSERT COIN* / *PRESS ANY KEY* / *PRESS ANY KEY TO RESTART* swap to *TAP TO PLAY* / *TAP TO CONTINUE* / *TAP TO RESTART* on touch devices. The page underneath is also locked while the game is up — no more peeking through at the bottom or showing the scrollbar.
-- **Pixel font now used everywhere in Rocket Ship.** Arrow keys, the star, the music note, the in-game HUD and the game-over hint all render in the proper 8-bit typeface instead of falling back to system fonts.
-- **Title music plays during the title screen** when the page is loaded directly. Previously the autoplay-blocked path either dropped the title theme or stacked it on top of the game music.
-- **In-game hint stays until you actually fly.** The *Arrow keys / WASD…* overlay persists at full opacity until the player provides any thrust/turn input, then eases out smoothly instead of timing out after 5 seconds.
 
 ## [0.9.1] - 2026-05-16
 
@@ -31,12 +16,9 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Filter cmd+K by type or space.** Type `@session`, `@artefact`, or `@memory` to scope by type; `#<space>` to scope by space. Filters appear as removable chips inside the input; Backspace at an empty input pops the most-recent chip.
 - **Memory is searchable from cmd+K.** Saved memories appear alongside sessions and artefacts in Spotlight results.
 - **Recent artefacts in empty cmd+K.** Opening Spotlight without typing shows your most-recent artefacts under *Recent* — a quick jump back when you can't remember the name.
-- **Rocket Ship easter egg on oyster.to.** Clicking the red or yellow window dot — or the new Rocket Ship artefact tile — boots a hidden 8-bit arcade game inside the hero device. Title splash with loading bar, top-10 leaderboard, 3-letter initial entry, CRT power-off when you close it.
 
 ### Changed
 
-- **Redesigned oyster.to.** New editorial typography (Sora + Instrument Serif italic), cosmic background with orbital arcs, refreshed hero with luminous device frame, and a stronger "Pearl in Orbit" look across the homepage, pricing, plugins, MCP, and changelog pages.
-- **Hero device mock refinements.** Darkened the device chrome so the inside content + rim glow pop against the cosmic background, and replaced the generic centered-icon artefacts with miniature content previews (kanban board, slide deck with bar chart, node diagram, settings window, checklist, rocket ship).
 - **Top bar is now one sticky pill.** Account and space switcher share a single bar pinned to the top of every view. Signed-in shows an avatar (email + sign-out in the click-menu); signed-out shows a *Sign in* pill in the same slot.
 
 ### Fixed
