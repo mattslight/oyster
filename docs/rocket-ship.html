@@ -1484,10 +1484,13 @@ const SFX_FILES = {
 // That call lands here before this line would have executed under `let`,
 // which would throw a TDZ ReferenceError, halt the script, and prevent
 // the splash IIFE further down from registering its click handlers.
+// `sfxMuted` has no initializer for the same reason: the IIFE has
+// already assigned it, and `= false` would run afterwards and clobber
+// the persisted value back to unmuted.
 var audioCtx = null;
 var sfxMasterGain = null;
 var sfxBuffers = {};
-var sfxMuted = false;
+var sfxMuted;
 
 // Called from the first user gesture (see Splash IIFE). Idempotent —
 // creates the context, kicks off all decodes in parallel, and resumes
