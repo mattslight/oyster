@@ -9,6 +9,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Launch and resume Claude Code sessions inside Oyster.** A new *Launch Claude here* action on project tiles starts a fresh `claude` session in the project's folder, inside an in-app terminal. *Resume here* on a Session Inspector continues that conversation via `claude --resume`. The Resume dialog for cross-device sessions now offers *Open in Oyster* alongside the existing *Copy command*. Terminals are real PTYs with slash commands, status line, and resize — and the title turns into a link to the session's Inspector as soon as the conversation begins.
 - **Rocket Ship on mobile.** On-screen ◀ ▶ ▲ controls overlay the canvas during gameplay, the title-screen instructions swap to *TAP* labels, and launching from the homepage breaks the game out to fullscreen with a × close button in the top-right. High-score initials can be entered with the same buttons: ◀ ▶ cycle the letter, ▲ advances to the next slot or saves.
 - **Mute toggle on the Rocket Ship title screen.** Click the ♪ in the top-right to silence music and sound effects; the choice is remembered next time you boot the game.
+- **Sign in to view your own protected shares.** A password-protected share now offers a "Have access? Sign in to view" option alongside the password field; if you're signed in to Oyster as the owner, you skip the password.
 
 ### Changed
 

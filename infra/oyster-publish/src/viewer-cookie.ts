@@ -1,5 +1,11 @@
-// HMAC-SHA256 signed cookie for password-mode unlock.
-// Spec: docs/superpowers/specs/2026-05-03-r5-viewer-design.md (Cookie scheme).
+// HMAC-SHA256 signed cookie — generic recent-access proof for a share.
+// The cookie certifies "this visitor cleared an access check for
+// <share_token> at time T". It is minted by any successful gate-clearing
+// path (password POST, owner-via-nonce, signin-via-nonce) and is honoured
+// by both password and signin modes (see viewer-access.ts).
+//
+// Spec: docs/superpowers/specs/2026-05-03-r5-viewer-design.md (Cookie scheme)
+//       docs/superpowers/specs/2026-05-18-viewer-access-redirect-design.md
 // Format: <token>.<unix_seconds>.<hmac_b64url>
 //   - token is the share_token (asserted on verify; the cookie path also scopes it)
 //   - hmac is over `${token}.${unix_seconds}` keyed by VIEWER_COOKIE_SECRET

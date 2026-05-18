@@ -8,6 +8,7 @@ const SCHEMA_SQL = `
 --   infra/auth-worker/migrations/0001_init.sql  (users, sessions)
 --   infra/auth-worker/migrations/0003_publish.sql (users.tier, published_artifacts)
 --   infra/auth-worker/migrations/0006_synced_spaces.sql (synced_spaces)
+--   infra/auth-worker/migrations/0011_viewer_access_nonces.sql (viewer_access_nonces)
 CREATE TABLE users (
   id            TEXT PRIMARY KEY,
   email         TEXT NOT NULL UNIQUE,
@@ -61,6 +62,16 @@ CREATE TABLE synced_spaces (
 );
 CREATE INDEX idx_synced_spaces_owner_updated
   ON synced_spaces (owner_id, updated_at DESC);
+CREATE TABLE viewer_access_nonces (
+  nonce        TEXT    PRIMARY KEY,
+  share_token  TEXT    NOT NULL,
+  user_id      TEXT    NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  consumed_at  INTEGER,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX idx_viewer_access_nonces_expires
+  ON viewer_access_nonces(expires_at);
 `;
 
 export async function applySchema(): Promise<void> {
