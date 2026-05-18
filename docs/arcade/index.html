@@ -27,7 +27,7 @@
     justify-content: center;
     position: relative;
     overflow: hidden;
-    padding: 14px 24px;
+    padding: 14px 16px;
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.04),
       inset 0 0 40px rgba(0, 0, 0, 0.85),
@@ -50,9 +50,12 @@
   }
   .marquee-text {
     font-family: 'Press Start 2P', ui-monospace, monospace;
-    font-size: clamp(22px, 5.5vw, 52px);
+    font-size: clamp(15px, 5vw, 52px);
     color: #ffd84a;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
+    text-align: center;
+    line-height: 1.15;
+    white-space: nowrap;
     text-shadow:
       3px 3px 0 #ff3aa1,
       6px 6px 0 #2dd4ff,
@@ -171,9 +174,10 @@
     shape-rendering: crispEdges;
   }
   .game-name {
-    font-size: clamp(15px, 2.6vw, 24px);
+    font-size: clamp(13px, 2.5vw, 24px);
     color: #ffd84a;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
   }
   /* Brackets only render on the focused card. */
   .game-name .br { color: #2dd4ff; display: none; }
