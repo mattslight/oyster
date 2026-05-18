@@ -44,6 +44,11 @@ export function cacheHeaders(row: PublicationRow, contentType: string): HeadersI
   }
   // Block content-type sniffing across all responses.
   headers["x-content-type-options"] = "nosniff";
+  // Defence in depth: don't surface URL info on subresource fetches or
+  // onward navigation from the rendered page. Consistent with the
+  // nonce-consumption 302; matters most if a future change introduces
+  // any URL-shaped sensitive parameter on the viewer URL.
+  headers["referrer-policy"] = "no-referrer";
   return headers;
 }
 

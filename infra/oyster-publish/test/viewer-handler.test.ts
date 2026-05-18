@@ -605,3 +605,33 @@ describe("password gate — sign-in link", () => {
     expect(body).toContain("Have access?");
   });
 });
+
+describe("rendered viewer responses — Referrer-Policy", () => {
+  it("open-mode markdown render carries referrer-policy: no-referrer", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_rp_open", body: "# hi",
+    });
+    const res = await call(getReq(`/p/${shareToken}`));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("password-mode (post-unlock) render carries referrer-policy: no-referrer", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_rp_pw", body: "# secret",
+    });
+    await env.DB.prepare(
+      "UPDATE published_artifacts SET mode = 'password', password_hash = 'pbkdf2$100000$AAAA$BBBB' WHERE share_token = ?",
+    ).bind(shareToken).run();
+
+    // Hand-mint a valid viewer cookie so we exercise the rendered response path.
+    const cookieValue = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+    const res = await call(getReq(`/p/${shareToken}`, {
+      cookie: `oyster_view_${shareToken}=${cookieValue}`,
+    }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+});
