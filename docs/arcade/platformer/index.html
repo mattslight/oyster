@@ -710,9 +710,11 @@ function update() {
   else { player.vx *= FRICTION; if (Math.abs(player.vx) < 0.05) player.vx = 0; }
   player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
 
-  // Jump input — edge-triggered buffer
+  // Jump input — edges for press / release
   const jumpDown = !!(keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W']);
-  if (jumpDown && !prevJump) player.jumpPressedAt = now;
+  const jumpJustPressed  =  jumpDown && !prevJump;
+  const jumpJustReleased = !jumpDown &&  prevJump;
+  if (jumpJustPressed) player.jumpPressedAt = now;
   player.jumpHeld = jumpDown;
   prevJump = jumpDown;
 
@@ -727,11 +729,9 @@ function update() {
     playJump();
   }
 
-  // Variable height — cut upward velocity if jump released while rising
-  if (!player.jumpHeld && player.vy < 0) {
-    player.vy *= JUMP_CUT;
-    if (player.vy > -1) player.vy = -1;
-  }
+  // Variable height — cut once on the release edge while rising. Gravity
+  // takes over normally afterward.
+  if (jumpJustReleased && player.vy < 0) player.vy *= JUMP_CUT;
 
   // Gravity
   player.vy += GRAVITY;
