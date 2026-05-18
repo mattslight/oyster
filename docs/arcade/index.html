@@ -125,8 +125,10 @@
     min-height: clamp(180px, 28vw, 280px);
   }
 
-  /* The card — same internal structure for focused and adjacent; CSS
-     scales + dims the off-centre ones and hides their hi-score / prompt. */
+  /* The card — same internal structure for focused and adjacent; the
+     adjacent cards get a smaller thumb + smaller name (real layout
+     dimensions, not transform: scale) so the grid columns size to fit
+     the cabinet and the focused card stays centred. */
   .game-card {
     display: flex;
     flex-direction: column;
@@ -135,23 +137,34 @@
     gap: clamp(8px, 1.4vw, 14px);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    transition: opacity 0.25s ease, transform 0.25s ease;
-    animation: card-in 0.3s ease-out;
+    transition: opacity 0.25s ease;
   }
-  @keyframes card-in {
-    0%   { opacity: 0; transform: translateY(6px) scale(var(--in-scale, 1)); }
-    100% { opacity: var(--in-opacity, 1); transform: translateY(0) scale(var(--in-scale, 1)); }
-  }
+  .game-card.is-focused { animation: card-in-focused 0.3s ease-out; }
   .game-card.is-prev,
-  .game-card.is-next {
-    --in-opacity: 0.4;
-    --in-scale: 0.62;
-    opacity: 0.4;
-    transform: scale(0.62);
-  }
+  .game-card.is-next { animation: card-in-dim 0.3s ease-out; opacity: 0.45; }
   .game-card.is-prev:hover,
-  .game-card.is-next:hover {
-    opacity: 0.75;
+  .game-card.is-next:hover { opacity: 0.85; }
+  @keyframes card-in-focused {
+    from { opacity: 0;    transform: translateY(6px); }
+    to   { opacity: 1;    transform: translateY(0); }
+  }
+  @keyframes card-in-dim {
+    from { opacity: 0;    transform: translateY(6px); }
+    to   { opacity: 0.45; transform: translateY(0); }
+  }
+  /* Adjacent (prev/next) cards: ~half the focused thumb size, smaller
+     name font. This is the layout-shrink that keeps the row from
+     overflowing on narrow desktops / tablets. */
+  .game-card.is-prev .game-thumb,
+  .game-card.is-next .game-thumb {
+    width: clamp(80px, 13vw, 130px);
+    height: clamp(80px, 13vw, 130px);
+    padding: clamp(8px, 1.4vw, 16px);
+  }
+  .game-card.is-prev .game-name,
+  .game-card.is-next .game-name {
+    font-size: clamp(11px, 1.6vw, 15px);
+    letter-spacing: 0.08em;
   }
 
   .game-thumb {
