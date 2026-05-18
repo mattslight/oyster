@@ -326,12 +326,28 @@
     box-shadow: none;
   }
 
-  /* Narrow viewports: hide the adjacent slots so the focused card fills
-     the cabinet. Arrows still navigate. */
+  /* Narrow viewports: hide the adjacent slots AND the in-cabinet nav
+     arrows so the focused card has the cabinet to itself. The bottom
+     touch-controls cluster (◀ ▶ + PLAY) handles navigation on mobile,
+     so the in-cabinet arrows would be redundant. */
   @media (max-width: 640px) {
+    .selector {
+      grid-template-columns: 1fr;
+      padding: clamp(16px, 3vw, 32px);
+      /* Reserve room at the bottom for the touch-controls cluster so the
+         card never sits behind the JUMP / PLAY buttons. */
+      padding-bottom: clamp(104px, 18vw, 140px);
+    }
+    .nav-arrow { display: none; }
     .stage-grid { grid-template-columns: 1fr; }
+    .stage-slot { min-height: 0; }
     .game-card.is-prev,
     .game-card.is-next { display: none; }
+    .game-thumb {
+      width: clamp(128px, 38vw, 180px);
+      height: clamp(128px, 38vw, 180px);
+      padding: clamp(10px, 2vw, 18px);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
