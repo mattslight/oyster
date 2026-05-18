@@ -576,3 +576,32 @@ describe("nonce pre-check — consumeNonce flag", () => {
       .toBe(`https://oyster.to/api/publish/access-redirect/${token}`);
   });
 });
+
+describe("password gate — sign-in link", () => {
+  it('shows "Have access? Sign in to view" link pointing at access-redirect', async () => {
+    const u = await seedUser();
+    const token = await seedActivePublication({
+      ownerUserId: u.id, artifactId: "art_gate", mode: "password",
+    });
+    const res = await call(getReq(`/p/${token}`));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("Have access?");
+    expect(body).toContain(`https://oyster.to/api/publish/access-redirect/${token}`);
+  });
+
+  it("link is present on the wrong-password error state too", async () => {
+    const u = await seedUser();
+    // Use a stub PBKDF2 hash that verifyPbkdf2 will reject for any input
+    // (well-formed but not derivable). Submitting "wrong" produces the error block.
+    const token = await seedActivePublication({
+      ownerUserId: u.id, artifactId: "art_gate2", mode: "password",
+      passwordHash: "pbkdf2$100000$AAAA$BBBB",
+    });
+    const res = await call(postReq(`/p/${token}`, { password: "wrong" }));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("Incorrect password.");
+    expect(body).toContain("Have access?");
+  });
+});

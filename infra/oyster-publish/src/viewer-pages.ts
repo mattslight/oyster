@@ -12,15 +12,17 @@ export function passwordGatePage(shareToken: string, opts?: { error?: "wrong_pas
   const errorBlock = opts?.error === "wrong_password"
     ? `<p class="err">Incorrect password.</p>`
     : "";
+  const tokenSafe = escapeHtml(shareToken);
   return basePage("Password required", `
     <div class="icon">🔒</div>
     <h1>Password required</h1>
     <p class="hint">This share is password-protected.</p>
     ${errorBlock}
-    <form method="POST" action="/p/${escapeHtml(shareToken)}">
+    <form method="POST" action="/p/${tokenSafe}">
       <input type="password" name="password" placeholder="Password" autofocus required>
       <button type="submit">Unlock</button>
     </form>
+    <p class="hint-link">Have access? <a href="https://oyster.to/api/publish/access-redirect/${tokenSafe}">Sign in to view</a></p>
   `);
 }
 
@@ -85,6 +87,8 @@ function basePage(title: string, bodyHtml: string): string {
   input[type=password] { padding: 0.55rem 0.7rem; font-size: 0.95rem; border: 1px solid var(--bd); border-radius: 0.35rem; background: transparent; color: inherit; text-align: center; }
   button { padding: 0.55rem 0.7rem; font-size: 0.95rem; font-weight: 500; border: 0; border-radius: 0.35rem; background: var(--fg); color: var(--bg); cursor: pointer; }
   .tag { font-size: 0.7rem; color: var(--muted); margin-top: 4rem; opacity: 0.6; }
+  .hint-link { font-size: 0.85rem; color: var(--muted); margin-top: 1.25rem; }
+  .hint-link a { color: inherit; text-decoration: underline; }
 </style>
 </head><body>
 ${bodyHtml}
