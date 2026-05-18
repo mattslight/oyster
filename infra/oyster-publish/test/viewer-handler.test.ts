@@ -575,6 +575,31 @@ describe("nonce pre-check — consumeNonce flag", () => {
     expect(second.headers.get("location"))
       .toBe(`https://oyster.to/api/publish/access-redirect/${token}`);
   });
+
+  it("does NOT consume the nonce when the visitor already has a valid viewer cookie", async () => {
+    // Models a visitor who clicked the access-redirect link earlier (got
+    // the cookie), then re-lands on the ?key= URL via back-button /
+    // bookmark / cached page. The nonce must NOT be burned.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n_cookie", body: "# content",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    const viewerCookie = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+
+    const res = await call(getReq(`/p/${shareToken}?key=${nonce}`, {
+      cookie: `oyster_view_${shareToken}=${viewerCookie}`,
+    }));
+    expect(res.status).toBe(200);  // standard mode dispatch admits via cookie
+
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
+  });
 });
 
 describe("password gate — sign-in link", () => {

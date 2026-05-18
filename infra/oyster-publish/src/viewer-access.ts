@@ -57,7 +57,17 @@ export async function resolveViewerAccess(
   // Step 3: nonce pre-check (caller opt-in). Open mode never needs a
   // nonce — the viewer would serve content anyway. Invalid / expired /
   // wrong-share nonces fall through silently — no oracle.
-  if (opts.consumeNonce && (row.mode === "password" || row.mode === "signin")) {
+  //
+  // Skipped when the visitor already has a valid recent-access cookie,
+  // since burning a single-use nonce in that case grants no new access
+  // (the visitor would have been admitted by the mode dispatch below
+  // anyway). This guards against back/forward navigation, bookmarks,
+  // and cached pages that still carry ?key=<nonce>.
+  if (
+    opts.consumeNonce &&
+    (row.mode === "password" || row.mode === "signin") &&
+    !(await hasValidViewerCookie(req, shareToken, env.VIEWER_COOKIE_SECRET))
+  ) {
     const key = new URL(req.url).searchParams.get("key");
     if (key && await consumeAccessNonce(env, key, shareToken)) {
       return { kind: "ok_via_nonce", row };

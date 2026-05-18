@@ -26,6 +26,19 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/publish/access-redirect/") && req.method === "GET") {
+      // Canonical host is oyster.to (where the apex session cookie lives).
+      // www. and share. get a 308 mirroring the /p/* legacy-origin pattern;
+      // without this the handler on a non-apex host fails session checks and
+      // burns an extra hop through sign-in.
+      if (url.hostname === "www.oyster.to" || url.hostname === "share.oyster.to") {
+        return new Response(null, {
+          status: 308,
+          headers: {
+            location: `https://oyster.to${url.pathname}${url.search}`,
+            "cache-control": "public, max-age=3600",
+          },
+        });
+      }
       const token = url.pathname.slice("/api/publish/access-redirect/".length);
       if (!token || token.includes("/")) {
         return new Response("Not Found", { status: 404 });

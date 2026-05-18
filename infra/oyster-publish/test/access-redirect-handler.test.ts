@@ -114,13 +114,37 @@ describe("GET /api/publish/access-redirect/:token", () => {
     const res = await call(getReq(PATH(token), { cookie: `oyster_session=${other.sessionToken}` }));
     expect(res.status).toBe(403);
     expect(res.headers.get("content-type")).toMatch(/^text\/html/);
-    // Body should give them a way back to the public gate.
-    expect(await res.text()).toContain(`/p/${token}`);
+    // Body should give them an absolute way back to the public gate on
+    // share.oyster.to (avoiding a 308 hop from the oyster.to apex).
+    expect(await res.text()).toContain(`https://share.oyster.to/p/${token}`);
 
     // No nonce minted.
     const count = await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM viewer_access_nonces WHERE share_token = ?",
     ).bind(token).first<{ n: number }>();
     expect(count?.n).toBe(0);
+  });
+
+  describe("legacy-origin 308", () => {
+    function reqWithHost(host: string, path: string): Request {
+      return new Request(`https://${host}${path}`, { method: "GET" });
+    }
+
+    it("share.oyster.to/api/publish/access-redirect/<token> → 308 to oyster.to", async () => {
+      const res = await call(reqWithHost("share.oyster.to", PATH("any-token")));
+      expect(res.status).toBe(308);
+      expect(res.headers.get("location")).toBe(`https://oyster.to${PATH("any-token")}`);
+    });
+
+    it("www.oyster.to/api/publish/access-redirect/<token> → 308 to oyster.to", async () => {
+      const res = await call(reqWithHost("www.oyster.to", PATH("any-token")));
+      expect(res.status).toBe(308);
+      expect(res.headers.get("location")).toBe(`https://oyster.to${PATH("any-token")}`);
+    });
+
+    it("oyster.to host bypasses 308 and runs the handler (404 for unknown token)", async () => {
+      const res = await call(reqWithHost("oyster.to", PATH("no-such")));
+      expect(res.status).toBe(404);
+    });
   });
 });

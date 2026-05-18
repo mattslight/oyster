@@ -47,7 +47,7 @@ export function noAccessPage(shareToken: string): string {
     <div class="icon">🔒</div>
     <h1>You don't have access to this share</h1>
     <p class="hint">This publication belongs to a different account.</p>
-    <p><a href="/p/${escapeHtml(shareToken)}">Enter the password instead</a></p>
+    <p><a href="https://share.oyster.to/p/${escapeHtml(shareToken)}">Enter the password instead</a></p>
   `);
 }
 
