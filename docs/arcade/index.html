@@ -124,7 +124,8 @@
     transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
     will-change: transform;
   }
-  .strip.no-transition { transition: none; }
+  .strip.no-transition,
+  .strip.no-transition .game-card { transition: none; }
 
   /* All cards share the same layout footprint; the focused one scales up
      visually via transform (composited on the GPU — width/height don't
@@ -444,30 +445,31 @@ const N = GAMES.length;
 const TRANSITION_MS = 400;
 
 let sel = 0;
+let stripPos = 0;   // strip-index where the focused card currently sits
 let launched = false;
-let animating = false;
+let normTimer = null;
 // Set briefly to the future after a swipe so the synthesised click event
 // at touch-end doesn't also launch a game / reposition a card.
 let suppressClickUntil = 0;
 
 // ============================================
-// STRIP — all N games rendered once with CLONE_COUNT clones at each end.
-// The clones cover the visible neighbours of the focused card at the
-// wrap boundary so the snap (after the wrap animation) is seamless:
-// every visible position has matching content before vs after the snap.
+// STRIP — all N games rendered THREE times, in order. Every visible
+// position has identical content across all three copies, so we can
+// silently jump between them without any visible discontinuity.
 //
-// 3-deep clones means seamless wrap as long as no more than ~3 cards on
-// each side of the focused are visible — covers any realistic viewport
-// width. For very wide viewports add more or limit visible range via
-// a max-width on the strip-viewport.
+// Strip indices:
+//   0..N-1     copy 0 (leading)
+//   N..2N-1    copy 1 (middle, canonical)
+//   2N..3N-1   copy 2 (trailing)
 //
-// Strip indices for CLONE_COUNT=3:
-//   0..2          leading clones (of last 3 real cards, in order)
-//   3..N+2        real cards 0..N-1
-//   N+3..N+5      trailing clones (of first 3 real cards, in order)
-// sel → strip index = sel + CLONE_COUNT.
+// `sel` is the user-facing real index (always in [0, N-1]).
+// `stripPos` is which strip-idx the focused card sits at right now —
+// can drift across copies during rapid navigation. After every move we
+// schedule a silent normalize that puts stripPos back at N + sel
+// (middle copy). The user never sees the jump because the cards at
+// each visible offset are identical across copies.
 // ============================================
-const CLONE_COUNT = 3;
+const COPIES = 3;
 
 function buildCard(game, realIdx, isClone) {
   const card = document.createElement('div');
@@ -503,17 +505,16 @@ function buildCard(game, realIdx, isClone) {
   }
   card.appendChild(prompt);
 
-  // Clicking a real card: focus if not already focused, else launch.
-  // Clones are inert (visual placeholders for the wrap transition).
-  // Skip the click if a swipe just happened — the touch-end synthesised
-  // click would otherwise fire on the card that ended up under the finger.
-  if (!isClone) {
-    card.addEventListener('click', () => {
-      if (Date.now() < suppressClickUntil) return;
-      if (realIdx === sel) launch();
-      else { sel = realIdx; reposition(); }
-    });
-  }
+  // Click handler — all cards are clickable (in 3-copies design every
+  // copy is real-looking). Centered card launches; any other navigates
+  // to that game. Swipes suppress the synthesised click for 350ms.
+  card.addEventListener('click', e => {
+    if (Date.now() < suppressClickUntil) return;
+    const strip = document.getElementById('strip');
+    const idx = Array.prototype.indexOf.call(strip.children, e.currentTarget);
+    if (idx === stripPos) launch();
+    else navigateTo(realIdx);
+  });
 
   return card;
 }
@@ -521,21 +522,16 @@ function buildCard(game, realIdx, isClone) {
 function mountStrip() {
   const strip = document.getElementById('strip');
   strip.replaceChildren();
-  // Leading clones: the last CLONE_COUNT real cards, in catalogue order.
-  for (let i = N - CLONE_COUNT; i < N; i++) {
-    const r = ((i % N) + N) % N;
-    strip.appendChild(buildCard(GAMES[r], r, true));
-  }
-  // Real cards
-  for (let i = 0; i < N; i++) strip.appendChild(buildCard(GAMES[i], i, false));
-  // Trailing clones: the first CLONE_COUNT real cards, in catalogue order.
-  for (let i = 0; i < CLONE_COUNT; i++) {
-    const r = i % N;
-    strip.appendChild(buildCard(GAMES[r], r, true));
+  for (let c = 0; c < COPIES; c++) {
+    const isCanonical = c === Math.floor(COPIES / 2);
+    for (let i = 0; i < N; i++) {
+      strip.appendChild(buildCard(GAMES[i], i, !isCanonical));
+    }
   }
 }
 
-function stripIdxFor(realIdx) { return realIdx + CLONE_COUNT; }
+// Canonical strip-idx for a real-idx: the middle copy.
+function canonicalStripFor(realIdx) { return N + realIdx; }
 
 // Translate the strip so the card at `stripIdx` sits centred in the
 // viewport. Reads the card's offsetLeft (its position within the strip)
@@ -543,31 +539,28 @@ function stripIdxFor(realIdx) { return realIdx + CLONE_COUNT; }
 // so a -cardCentre translate puts the card at viewport centre.
 function translateStripTo(stripIdx, animate) {
   const strip = document.getElementById('strip');
-  if (!animate) strip.classList.add('no-transition');
   const card = strip.children[stripIdx];
+  if (!card) return;
+  if (!animate) strip.classList.add('no-transition');
   const cardCentre = card.offsetLeft + card.offsetWidth / 2;
   strip.style.setProperty('--strip-x', '-' + cardCentre + 'px');
-  // Update focused class to follow the visible card.
+  // Update is-focused class on every card so styling tracks the visible
+  // position. With the .no-transition class also disabling .game-card
+  // transitions (see CSS), a silent move doesn't trigger scale shrinks /
+  // grows during the snap.
   for (let i = 0; i < strip.children.length; i++) {
     strip.children[i].classList.toggle('is-focused', i === stripIdx);
   }
   if (!animate) {
-    // Force reflow before the next paint so the no-transition snap takes
-    // effect; then re-enable transitions for subsequent navigations.
     void strip.offsetWidth;
     strip.classList.remove('no-transition');
   }
   paintHi();
 }
 
-function reposition(animate) {
-  if (animate === undefined) animate = true;
-  translateStripTo(stripIdxFor(sel), animate);
-}
-
 function paintHi() {
   const strip = document.getElementById('strip');
-  const card = strip.children[stripIdxFor(sel)];
+  const card = strip.children[stripPos];
   if (!card) return;
   const hi = card.querySelector('.game-hi');
   if (!hi) return;  // coming-soon
@@ -581,49 +574,58 @@ function paintHi() {
 }
 
 // ============================================
-// NAVIGATION — next / prev with wrap. Wraps use a phantom (clone) slot:
-// animate to it normally, then on transition end snap silently to the
-// matching real slot. The user sees one smooth slide.
+// NAVIGATION — directional move that DRIFTS stripPos across copies,
+// then schedules a silent normalize back to the middle copy. No
+// `animating` block: rapid taps just retarget the same animation,
+// so mashing the arrow scrolls smoothly through the catalogue.
 // ============================================
-function next() {
-  if (launched || animating) return;
-  animating = true;
-  if (sel < N - 1) {
-    sel++;
-    reposition(true);
-    setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
-  } else {
-    // Wrap forward: animate to the first trailing clone (clone of card
-    // 0) at strip index N + CLONE_COUNT, then snap to real card 0 at
-    // strip index CLONE_COUNT.
-    translateStripTo(N + CLONE_COUNT, true);
-    setTimeout(() => {
-      sel = 0;
-      reposition(false);
-      animating = false;
-    }, TRANSITION_MS + 20);
-  }
+function scheduleNormalize() {
+  if (normTimer) clearTimeout(normTimer);
+  normTimer = setTimeout(() => {
+    normTimer = null;
+    // Silent jump to the middle copy. Content is identical across all
+    // three copies at every visible offset, so the user sees nothing.
+    stripPos = canonicalStripFor(sel);
+    translateStripTo(stripPos, false);
+  }, TRANSITION_MS + 40);
 }
 
-function prev() {
-  if (launched || animating) return;
-  animating = true;
-  if (sel > 0) {
-    sel--;
-    reposition(true);
-    setTimeout(() => { animating = false; }, TRANSITION_MS + 20);
-  } else {
-    // Wrap backward: animate to the last leading clone (clone of card
-    // N-1) at strip index CLONE_COUNT - 1, then snap to real card N-1
-    // at strip index N + CLONE_COUNT - 1.
-    translateStripTo(CLONE_COUNT - 1, true);
-    setTimeout(() => {
-      sel = N - 1;
-      reposition(false);
-      animating = false;
-    }, TRANSITION_MS + 20);
+function navigate(delta) {
+  if (launched) return;
+  if (normTimer) { clearTimeout(normTimer); normTimer = null; }
+  // Pre-empt overflow: if the next step would walk off the strip, jump
+  // silently to the middle copy first (the visible content there matches
+  // the current position because all copies are identical).
+  if (stripPos + delta < 0 || stripPos + delta >= COPIES * N) {
+    stripPos = canonicalStripFor(sel);
+    translateStripTo(stripPos, false);
   }
+  sel = (sel + delta + N) % N;
+  stripPos += delta;
+  translateStripTo(stripPos, true);
+  scheduleNormalize();
 }
+
+// Click / direct jump to a specific real index. Picks the strip-idx
+// copy of `newSel` closest to the current stripPos so the slide is the
+// shortest path.
+function navigateTo(newSel) {
+  if (launched) return;
+  if (newSel === sel) { launch(); return; }
+  if (normTimer) { clearTimeout(normTimer); normTimer = null; }
+  let target = canonicalStripFor(newSel);
+  for (let c = 0; c < COPIES; c++) {
+    const cand = c * N + newSel;
+    if (Math.abs(cand - stripPos) < Math.abs(target - stripPos)) target = cand;
+  }
+  sel = newSel;
+  stripPos = target;
+  translateStripTo(stripPos, true);
+  scheduleNormalize();
+}
+
+function next() { navigate(+1); }
+function prev() { navigate(-1); }
 
 // ============================================
 // LAUNCH / CLOSE — iframe overlay using shared CRT animations.
@@ -634,7 +636,7 @@ const frame = document.getElementById('game-frame');
 const exitBtn = document.getElementById('game-frame-exit');
 
 function launch() {
-  if (launched || animating) return;
+  if (launched) return;
   const g = GAMES[sel];
   if (g.comingSoon) return;
   launched = true;
@@ -702,7 +704,7 @@ Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
   if (!viewport) return;
   let startX = 0, startY = 0, active = false;
   viewport.addEventListener('touchstart', e => {
-    if (launched || animating) { active = false; return; }
+    if (launched) { active = false; return; }
     if (e.touches.length !== 1) { active = false; return; }
     active = true;
     startX = e.touches[0].clientX;
@@ -711,7 +713,7 @@ Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
   viewport.addEventListener('touchend', e => {
     if (!active) return;
     active = false;
-    if (launched || animating) return;
+    if (launched) return;
     if (e.changedTouches.length !== 1) return;
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
@@ -723,13 +725,17 @@ Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
 })();
 
 // ============================================
-// BOOT — mount strip, position initial card, refresh leaderboards.
-// On resize, recompute the strip offset because card sizes are clamp()
-// and depend on viewport width.
+// BOOT — mount strip, position the initial focused card at the middle
+// copy. On resize, re-translate (card widths are clamp() and change
+// with viewport width, so the centre offset shifts).
 // ============================================
 mountStrip();
-reposition(false);
-window.addEventListener('resize', () => reposition(false));
+stripPos = canonicalStripFor(sel);
+translateStripTo(stripPos, false);
+window.addEventListener('resize', () => {
+  stripPos = canonicalStripFor(sel);
+  translateStripTo(stripPos, false);
+});
 
 (async () => {
   for (const g of GAMES) {
