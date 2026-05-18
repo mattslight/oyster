@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oyster Arcade</title>
+<meta name="description" content="A small arcade of games made by Oyster.">
+<link rel="stylesheet" href="shared/pixel-font.css">
+<link rel="stylesheet" href="shared/cabinet.css">
+<style>
+  .arcade-main {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    color: #fff;
+    gap: clamp(18px, 3vw, 36px);
+    z-index: 1;
+    /* CRT power-on; reuses the keyframe from shared/cabinet.css */
+    animation: splash-poweron 0.55s ease-out;
+  }
+  .arcade-title {
+    font-size: clamp(32px, 7.5vw, 72px);
+    color: #ffd84a;
+    line-height: 1.1;
+    letter-spacing: 0.04em;
+    text-shadow:
+      4px 4px 0 #ff3aa1,
+      8px 8px 0 #2dd4ff,
+      0 0 24px rgba(255, 216, 74, 0.45);
+  }
+  .arcade-sub {
+    font-size: clamp(11px, 1.8vw, 16px);
+    letter-spacing: 0.18em;
+    color: #2dd4ff;
+    animation: arcade-blink 1.4s steps(1) infinite;
+  }
+  .cabinet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 320px));
+    gap: clamp(20px, 4vw, 40px);
+    align-items: stretch;
+  }
+  .cabinet-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: clamp(18px, 2.5vw, 28px);
+    color: #fff;
+    text-decoration: none;
+    background: rgba(20, 18, 35, 0.7);
+    border: 3px solid rgba(45, 212, 255, 0.45);
+    border-radius: 16px;
+    transition: transform 0.15s ease, border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cabinet-card:hover,
+  .cabinet-card:focus-visible {
+    transform: translateY(-4px);
+    border-color: #ffd84a;
+    background: rgba(45, 32, 60, 0.85);
+    box-shadow: 0 0 30px rgba(255, 216, 74, 0.25);
+    outline: none;
+  }
+  .cabinet-thumb {
+    width: clamp(108px, 17vw, 160px);
+    height: clamp(108px, 17vw, 160px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 10px;
+    box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+  }
+  .cabinet-thumb svg {
+    width: 78%;
+    height: 78%;
+    image-rendering: pixelated;
+    shape-rendering: crispEdges;
+  }
+  .cabinet-thumb svg rect,
+  .cabinet-thumb svg polygon,
+  .cabinet-thumb svg circle { shape-rendering: crispEdges; }
+  .cabinet-name {
+    font-size: clamp(14px, 2vw, 18px);
+    color: #ffd84a;
+    letter-spacing: 0.08em;
+  }
+  .cabinet-hi {
+    font-size: clamp(8px, 1.1vw, 11px);
+    color: #ff3aa1;
+    letter-spacing: 0.18em;
+    min-height: 14px;
+  }
+  .cabinet-hi .hi-val { color: #ffd84a; }
+  .cabinet-hi .hi-initials { color: #2dd4ff; }
+  .arcade-credit {
+    font-size: clamp(8px, 1.1vw, 10px);
+    letter-spacing: 0.22em;
+    color: rgba(255, 255, 255, 0.45);
+    margin-top: clamp(20px, 3vw, 40px);
+  }
+  .arcade-credit a {
+    color: #2dd4ff;
+    text-decoration: none;
+  }
+  .arcade-credit a:hover { text-decoration: underline; }
+  @media (prefers-reduced-motion: reduce) {
+    .arcade-main { animation: none; }
+    .arcade-sub { animation: none; opacity: 1; }
+    .cabinet-card { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="tube is-ready">
+    <div class="overlay"></div>
+    <div class="vignette"></div>
+    <main class="arcade-main">
+      <h1 class="arcade-title">OYSTER<br>ARCADE</h1>
+      <div class="arcade-sub">SELECT GAME</div>
+      <div class="cabinet-grid">
+        <!-- Cross-domain link so the card works whether this page is served
+             at oyster.to/arcade/ or at arcade.oyster.to/. -->
+        <a href="https://oyster.to/rocket-ship.html" class="cabinet-card" data-game="rocket-ship" aria-label="Play Rocket Ship">
+          <div class="cabinet-thumb">
+            <svg viewBox="0 0 22 30" aria-hidden="true">
+              <!-- Nose cone -->
+              <rect x="10" y="0" width="2" height="2" fill="#ff4444"/>
+              <rect x="9"  y="2" width="4" height="2" fill="#ff4444"/>
+              <rect x="8"  y="4" width="6" height="2" fill="#ff4444"/>
+              <!-- Body (white with right-side shadow) -->
+              <rect x="7"  y="6"  width="8"  height="8" fill="#ffffff"/>
+              <rect x="13" y="6"  width="2"  height="8" fill="#c8c8c8"/>
+              <rect x="6"  y="14" width="10" height="4" fill="#ffffff"/>
+              <rect x="14" y="14" width="2"  height="4" fill="#c8c8c8"/>
+              <!-- Porthole window -->
+              <rect x="9"  y="8"  width="4" height="4" fill="#2dd4ff"/>
+              <rect x="10" y="9"  width="2" height="1" fill="#aef0ff"/>
+              <!-- Magenta stripe -->
+              <rect x="6"  y="16" width="10" height="1" fill="#ff3aa1"/>
+              <!-- Fins -->
+              <rect x="3"  y="14" width="3" height="2" fill="#ff4444"/>
+              <rect x="2"  y="16" width="4" height="2" fill="#ff4444"/>
+              <rect x="0"  y="18" width="4" height="2" fill="#ff4444"/>
+              <rect x="16" y="14" width="3" height="2" fill="#ff4444"/>
+              <rect x="16" y="16" width="4" height="2" fill="#ff4444"/>
+              <rect x="18" y="18" width="4" height="2" fill="#ff4444"/>
+              <!-- Nozzle -->
+              <rect x="7"  y="18" width="8" height="2" fill="#555555"/>
+              <rect x="8"  y="20" width="6" height="1" fill="#333333"/>
+              <!-- Flame -->
+              <rect x="8"  y="21" width="6" height="2" fill="#ffd84a"/>
+              <rect x="9"  y="23" width="4" height="2" fill="#ff8800"/>
+              <rect x="9"  y="25" width="4" height="2" fill="#ffd84a"/>
+              <rect x="10" y="27" width="2" height="2" fill="#ffffff"/>
+            </svg>
+          </div>
+          <div class="cabinet-name">ROCKET SHIP</div>
+          <div class="cabinet-hi" data-hi-for="rocket-ship">&nbsp;</div>
+        </a>
+        <a href="platformer/" class="cabinet-card" data-game="platformer" aria-label="Play Platformer">
+          <div class="cabinet-thumb">
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <!-- Sky -->
+              <rect width="32" height="32" fill="#1a1535"/>
+              <!-- Stars -->
+              <rect x="4"  y="3" width="1" height="1" fill="#fff"/>
+              <rect x="11" y="6" width="1" height="1" fill="#fff"/>
+              <rect x="22" y="2" width="1" height="1" fill="#fff"/>
+              <rect x="27" y="7" width="1" height="1" fill="#fff"/>
+              <!-- Ground -->
+              <rect x="0" y="26" width="32" height="6" fill="#3b2f1a"/>
+              <rect x="0" y="26" width="32" height="1" fill="#5a4a2a"/>
+              <rect x="0" y="26" width="32" height="1" fill="#2dd4ff" opacity="0.65"/>
+              <!-- Floating platform -->
+              <rect x="13" y="18" width="7" height="3" fill="#3b2f1a"/>
+              <rect x="13" y="18" width="7" height="1" fill="#2dd4ff" opacity="0.6"/>
+              <!-- Player -->
+              <rect x="4" y="18" width="5" height="8" fill="#ff3aa1"/>
+              <rect x="5" y="20" width="3" height="1" fill="#ffd84a"/>
+              <rect x="7" y="21" width="1" height="1" fill="#0a0a0a"/>
+              <!-- Coin above platform -->
+              <circle cx="16" cy="14" r="1.6" fill="#ffd84a"/>
+              <circle cx="16" cy="14" r="0.7" fill="#c79b00"/>
+              <!-- Flag -->
+              <rect x="28" y="14" width="1" height="12" fill="#fff"/>
+              <polygon points="29,15 32,16.5 29,18" fill="#2dd4ff"/>
+            </svg>
+          </div>
+          <div class="cabinet-name">PLATFORMER</div>
+          <div class="cabinet-hi" data-hi-for="platformer">&nbsp;</div>
+        </a>
+      </div>
+      <div class="arcade-credit">© OYSTER 2026 · <a href="https://oyster.to/">oyster.to</a></div>
+    </main>
+  </div>
+</div>
+
+<script src="shared/leaderboard.js"></script>
+<script>
+// Paint each card's high score from the local mirror, then refresh from the
+// cloud sequentially (the singleton leaderboard module isn't safe for
+// concurrent inits; running them in series avoids the race).
+const GAMES = ['rocket-ship', 'platformer'];
+
+function paintHi(game) {
+  const el = document.querySelector('[data-hi-for="' + game + '"]');
+  if (!el) return;
+  Arcade.Leaderboard.init({ game: game, max: 10 });
+  const top = Arcade.Leaderboard.getHighScore();
+  if (!top) { el.textContent = ' '; return; }
+  el.innerHTML =
+    'HI <span class="hi-val">' + String(top.score).padStart(3, '0') + '</span> ' +
+    '<span class="hi-initials">' + (top.initials || '---') + '</span>';
+}
+
+// Initial paint from local mirror — instant, no network wait.
+GAMES.forEach(paintHi);
+
+// Then refresh cloud-side serially and repaint as each lands.
+(async function () {
+  for (const g of GAMES) {
+    Arcade.Leaderboard.init({ game: g, max: 10 });
+    try { await Arcade.Leaderboard.refresh(); } catch (_) {}
+    paintHi(g);
+  }
+})();
+</script>
+</body>
+</html>
