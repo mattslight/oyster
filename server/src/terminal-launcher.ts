@@ -5,10 +5,9 @@
 // installer at `~/.claude/local/claude`). The route surfaces a clean
 // `binary_not_found` to the UI when none of the candidates resolve.
 
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter as PATH_DELIM, dirname, join } from "node:path";
 
 export type ResolveResult =
   | { ok: true; path: string }
@@ -47,18 +46,25 @@ export function resolveClaudeBinary(packageRoot: string): ResolveResult {
     }
   }
 
-  // 4. PATH lookup.
-  try {
-    const which = isWin ? "where" : "which";
-    const out = execFileSync(which, ["claude"], {
-      stdio: ["ignore", "pipe", "ignore"],
-      encoding: "utf8",
-      timeout: 2000,
-    });
-    const firstLine = out.split(/\r?\n/).map((s) => s.trim()).find((s) => s.length > 0);
-    if (firstLine && existsSync(firstLine)) return { ok: true, path: firstLine };
-  } catch {
-    /* not on PATH */
+  // 4. Walk $PATH ourselves. Earlier versions shelled out to `which`/`where`
+  //    via `execFileSync` with a 2s timeout — a synchronous subprocess
+  //    blocks the Node event loop for every other in-flight request, and
+  //    on slow / NFS-backed PATHs it could stall the server for the full
+  //    timeout. A pure-fs walk is faster, predictable, and (because each
+  //    `statSync` is cheap) tolerates a long PATH without trouble.
+  const pathEnv = process.env.PATH ?? "";
+  if (pathEnv) {
+    for (const dirEntry of pathEnv.split(PATH_DELIM)) {
+      if (!dirEntry) continue;
+      for (const name of names) {
+        const candidate = join(dirEntry, name);
+        // statSync absorbs ENOENT cheaply via try/catch; checking isFile()
+        // skips matching directories or sockets named `claude`.
+        try {
+          if (statSync(candidate).isFile()) return { ok: true, path: candidate };
+        } catch { /* not here */ }
+      }
+    }
   }
 
   return { ok: false, error: "binary_not_found" };

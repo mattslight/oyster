@@ -25,7 +25,7 @@ import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
 import { SessionService } from "./session-service.js";
 import { slugify } from "./utils.js";
-import { makeRouteCtx } from "./http-utils.js";
+import { makeRouteCtx, isLocalUpgradeOrigin } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
@@ -1076,7 +1076,12 @@ attachWebSocket({ shell: SHELL, shellArgs: SHELL_ARGS, cwd: WORKSPACE, env: clea
 
 // Explicit WS upgrade routing. Unknown paths get socket.destroy() so we
 // don't silently accept any URL the way `WebSocketServer({server})` did.
+// Origin gate: same loopback + Origin policy as `rejectIfNonLocalOrigin`
+// on the REST side — browsers can open cross-origin WebSockets to
+// localhost, so without this a same-machine page from a different
+// port could read/write any active Claude PTY (or the legacy shell).
 httpServer.on("upgrade", (req, socket, head) => {
+  if (!isLocalUpgradeOrigin(req)) { socket.destroy(); return; }
   const u = new URL(req.url ?? "/", "http://localhost");
   if (u.pathname === "/ws/terminal") {
     const id = u.searchParams.get("id");

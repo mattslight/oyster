@@ -5,8 +5,30 @@
 // cwd via `resolveSourceCwd` against trusted DB rows. That makes the route
 // safe to call from web origins without arbitrary local-directory exposure.
 
-import { existsSync, statSync, openSync, readSync, closeSync } from "node:fs";
+import { statSync, openSync, readSync, closeSync } from "node:fs";
 import { basename, dirname } from "node:path";
+
+/** Single-syscall existence + directory check. Returns true only if the
+ *  path exists AND is a directory; absorbs ENOENT/ENOTDIR/EACCES. Used in
+ *  place of an `existsSync` + `statSync` pair to avoid the TOCTOU window
+ *  where the path is deleted between the two calls, which would otherwise
+ *  throw out of a synchronous route handler. */
+function isLiveDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Same idea for files (the reassembled remote-session jsonl). */
+function isLiveFile(p: string): boolean {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type Database from "better-sqlite3";
 import type { RouteCtx } from "../http-utils.js";
@@ -59,7 +81,7 @@ export function resolveSourceCwd(
     if (!project.recentPath || project.hasLivePath === false) {
       return { error: "project_homeless" };
     }
-    if (!existsSync(project.recentPath)) return { error: "project_homeless" };
+    if (!isLiveDirectory(project.recentPath)) return { error: "project_homeless" };
     return { cwd: project.recentPath, displayName: project.name };
   }
 
@@ -67,7 +89,7 @@ export function resolveSourceCwd(
     const row = deps.sessionStore.getById(source.id);
     if (!row) return { error: "session_not_found" };
     if (!row.cwd) return { error: "session_no_cwd" };
-    if (!existsSync(row.cwd)) return { error: "session_cwd_missing" };
+    if (!isLiveDirectory(row.cwd)) return { error: "session_cwd_missing" };
     return { cwd: row.cwd, displayName: row.title ?? basename(row.cwd) };
   }
 
@@ -81,7 +103,7 @@ export function resolveSourceCwd(
     )
     .get(ownerId, source.id) as { jsonl_local_path: string | null } | undefined;
   if (!row || !row.jsonl_local_path) return { error: "session_not_reassembled_yet" };
-  if (!existsSync(row.jsonl_local_path)) return { error: "session_not_reassembled_yet" };
+  if (!isLiveFile(row.jsonl_local_path)) return { error: "session_not_reassembled_yet" };
 
   // The parent dir's basename is `encodeCwd(originalCwd)`. The original cwd
   // may not exist on this device (cross-device reassemble), so scan the head
@@ -89,7 +111,7 @@ export function resolveSourceCwd(
   // locally. Mirrors `pickJsonlCwd` used by the watcher.
   const candidates = headEventCwds(row.jsonl_local_path);
   const resolved = pickJsonlCwd(row.jsonl_local_path, candidates);
-  if (!resolved || !existsSync(resolved)) return { error: "cwd_not_on_this_device" };
+  if (!resolved || !isLiveDirectory(resolved)) return { error: "cwd_not_on_this_device" };
   return { cwd: resolved, displayName: basename(resolved) };
 }
 
@@ -178,10 +200,9 @@ export async function tryHandleTerminalRoute(
       sendJson({ error: resolved.error }, 400);
       return true;
     }
-    if (!statSync(resolved.cwd).isDirectory()) {
-      sendJson({ error: "cwd_not_a_directory" }, 400);
-      return true;
-    }
+    // resolveSourceCwd already asserted isDirectory() via isLiveDirectory.
+    // Don't re-stat here — a TOCTOU window between two syscalls in a
+    // sync handler can throw out of the route and crash the server.
 
     const bin = resolveClaudeBinary(deps.packageRoot);
     if (!bin.ok) {
