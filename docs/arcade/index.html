@@ -486,8 +486,17 @@ function buildCard(game, idx, klass) {
 
 function render() {
   const grid = document.getElementById('stage-grid');
-  const prevIdx = sel - 1;
-  const nextIdx = sel + 1;
+  const n = GAMES.length;
+  // Wrap-around. With ≥3 games both neighbours are distinct; with 2 games
+  // we only show one neighbour to avoid the same card appearing on both
+  // sides; with 1 game neither slot has a neighbour.
+  let prevIdx = -1, nextIdx = -1;
+  if (n >= 3) {
+    prevIdx = (sel - 1 + n) % n;
+    nextIdx = (sel + 1) % n;
+  } else if (n === 2) {
+    nextIdx = (sel + 1) % n;
+  }
 
   grid.innerHTML = '';
 
@@ -496,7 +505,7 @@ function render() {
   // content slides in from the left" mental model.
   const leftSlot = document.createElement('div');
   leftSlot.className = 'stage-slot';
-  if (nextIdx < GAMES.length) leftSlot.appendChild(buildCard(GAMES[nextIdx], nextIdx, 'is-next'));
+  if (nextIdx >= 0) leftSlot.appendChild(buildCard(GAMES[nextIdx], nextIdx, 'is-next'));
   grid.appendChild(leftSlot);
 
   const centerSlot = document.createElement('div');
@@ -508,10 +517,6 @@ function render() {
   rightSlot.className = 'stage-slot';
   if (prevIdx >= 0) rightSlot.appendChild(buildCard(GAMES[prevIdx], prevIdx, 'is-prev'));
   grid.appendChild(rightSlot);
-
-  // Disable arrows at the catalogue edges (no wrap — finite list).
-  document.getElementById('nav-prev').disabled = sel <= 0;
-  document.getElementById('nav-next').disabled = sel >= GAMES.length - 1;
 
   paintHi();
 }
@@ -529,8 +534,8 @@ function paintHi() {
     '<span class="hi-initials">' + (top.initials || '---') + '</span>';
 }
 
-function next() { if (launched) return; if (sel < GAMES.length - 1) { sel++; render(); } }
-function prev() { if (launched) return; if (sel > 0)                { sel--; render(); } }
+function next() { if (launched) return; sel = (sel + 1) % GAMES.length;                  render(); }
+function prev() { if (launched) return; sel = (sel - 1 + GAMES.length) % GAMES.length;   render(); }
 
 render();
 
