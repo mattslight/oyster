@@ -246,10 +246,18 @@ export class ClaudeCodeWatcher {
     return new Promise<{ sessionId: string } | null>((resolve) => {
       const watcher = this.watcher!;
       let resolved = false;
-      let timer: NodeJS.Timeout | null = null;
+      let outerTimer: NodeJS.Timeout | null = null;
+      // The 100ms grace timer that waits for a second `add` before resolving
+      // with the first match. Tracked separately so cleanup() can cancel it —
+      // without that, a 5s outer timeout firing mid-grace would call
+      // resolve(null) and then the 100ms timer would later try to
+      // resolve({sessionId}) on the already-settled promise (silently
+      // dropped), losing a perfectly good link.
+      let graceTimer: NodeJS.Timeout | null = null;
 
       const cleanup = (): void => {
-        if (timer) clearTimeout(timer);
+        if (outerTimer) clearTimeout(outerTimer);
+        if (graceTimer) clearTimeout(graceTimer);
         watcher.off("add", onAdd);
       };
 
@@ -273,7 +281,7 @@ export class ClaudeCodeWatcher {
             // Slight delay to detect simultaneous additions racing each other.
             // 100ms is short enough to be invisible to users yet long enough
             // to catch two claudes spawned in the same beat.
-            setTimeout(() => {
+            graceTimer = setTimeout(() => {
               if (resolved) return;
               resolved = true;
               cleanup();
@@ -288,7 +296,7 @@ export class ClaudeCodeWatcher {
 
       watcher.on("add", onAdd);
 
-      timer = setTimeout(() => {
+      outerTimer = setTimeout(() => {
         if (resolved) return;
         resolved = true;
         cleanup();

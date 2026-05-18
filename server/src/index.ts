@@ -785,8 +785,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
   })) return;
 
   // /api/terminals/* — spawn / list / kill Claude Code PTYs. Source-typed
-  // launch contract: no raw cwd accepted from the client.
-  if (claudeCodeWatcherRef && await tryHandleTerminalRoute(req, res, url, ctx, {
+  // launch contract: no raw cwd accepted from the client. The watcher may
+  // still be initialising during the boot window (between listen() and the
+  // listen-callback running); the route handler surfaces that as 503 rather
+  // than letting the request fall through to the 404 catchall.
+  if (await tryHandleTerminalRoute(req, res, url, ctx, {
     db, sessionStore, projectService, claudeCodeWatcher: claudeCodeWatcherRef,
     claudePtyManager, packageRoot: PACKAGE_ROOT, cleanEnv,
     currentUserId: () => authService.getState().user?.id ?? null,

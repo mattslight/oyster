@@ -103,6 +103,31 @@ export class ClaudePtyManager {
     if (!ptyAvailable || !ptyModule) {
       throw new PtyUnavailableError();
     }
+    // Reap zombie entries before counting. node-pty's `onExit` doesn't
+    // strictly guarantee firing on every failure path (native errors during
+    // spawn, hard kills before the pty is fully wired, etc.). Without this,
+    // a zombie can occupy a slot against the cap forever. `process.kill(pid, 0)`
+    // is the standard probe — throws ESRCH when the process is gone.
+    for (const entry of this.terminals.values()) {
+      if (entry.exitedAt !== null) continue;
+      const pid = entry.proc?.pid;
+      if (typeof pid !== "number") continue;
+      try {
+        process.kill(pid, 0);
+      } catch (err) {
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "ESRCH") {
+          // Process is gone; mark exited so it stops counting against the
+          // cap. Schedule the same 30s retention so reconnects still see
+          // the final scrollback.
+          entry.exitedAt = Date.now();
+          entry.evictTimer ??= setTimeout(() => {
+            this.terminals.delete(entry.terminalId);
+          }, POST_EXIT_RETENTION_MS);
+        }
+        // EPERM means it exists but we can't signal it — leave as alive.
+      }
+    }
     const alive = Array.from(this.terminals.values()).filter((t) => t.exitedAt === null).length;
     if (alive >= MAX_CONCURRENT_TERMINALS) {
       throw new TerminalCapError();

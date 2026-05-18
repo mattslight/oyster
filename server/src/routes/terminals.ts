@@ -51,7 +51,10 @@ export interface TerminalRouteDeps {
   db: Database.Database;
   sessionStore: SessionStore;
   projectService: ProjectService;
-  claudeCodeWatcher: ClaudeCodeWatcher;
+  /** Null during the boot window between `httpServer.listen()` resolving
+   *  and the listen callback constructing the watcher. The route handler
+   *  surfaces this as 503 rather than letting the request 404. */
+  claudeCodeWatcher: ClaudeCodeWatcher | null;
   claudePtyManager: ClaudePtyManager;
   packageRoot: string;
   /** Clean env (PATH, HOME, etc.) for spawned PTYs. Lifted from index.ts so
@@ -159,6 +162,13 @@ export async function tryHandleTerminalRoute(
 
   if (url === "/api/terminals" && req.method === "POST") {
     if (rejectIfNonLocalOrigin()) return true;
+    if (!deps.claudeCodeWatcher) {
+      // Server is up but the JSONL watcher hasn't initialised yet. Auto-link
+      // would be impossible and the launch flow expects a live watcher.
+      // Honest 503 ("come back in a moment") beats a misleading 404.
+      sendJson({ error: "watcher_not_ready" }, 503);
+      return true;
+    }
     let body: Record<string, unknown>;
     try {
       body = await readJsonBody();
@@ -258,7 +268,10 @@ export async function tryHandleTerminalRoute(
       });
     } else if (kind === "claude_new") {
       const encoded = encodeCwd(resolved.cwd);
-      deps.claudeCodeWatcher
+      // Local binding so the closure below doesn't depend on TS narrowing
+      // surviving through the .then arrow.
+      const watcher = deps.claudeCodeWatcher;
+      watcher
         .onceNewJsonl(encoded, sinceMs)
         .then((result) => {
           if (!result) return;
