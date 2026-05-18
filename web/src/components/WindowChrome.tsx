@@ -11,7 +11,7 @@ const MIN_W = 320;
 const MIN_H = 200;
 
 interface Props {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   onFocus?: () => void;
   onClose: () => void;

@@ -44,9 +44,16 @@ interface Props {
   onOpenArtefact: (artefact: Artifact) => void;
   onClose: () => void;
   onNotFound: () => void;
+  /** Resume this session in an Oyster terminal (`claude --resume <id>`).
+   *  Optional: when omitted, the "Resume here" button is hidden and the
+   *  user falls back to copying the resume command. */
+  onLaunchClaude?: (sessionId: string) => void;
+  /** Launch a remote (cross-device) session in an Oyster terminal once
+   *  its bytes have been reassembled. Threaded through to ResumeDialog. */
+  onOpenInOyster?: (sessionId: string) => Promise<import("./ResumeDialog").OpenInOysterResult>;
 }
 
-export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onOpenArtefact, onClose, onNotFound }: Props) {
+export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onOpenArtefact, onClose, onNotFound, onLaunchClaude, onOpenInOyster }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
@@ -269,7 +276,12 @@ export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, 
 
   return (
     <>
-      <Header session={session} onClose={onClose} />
+      <Header
+        session={session}
+        onClose={onClose}
+        onLaunchClaude={onLaunchClaude ? () => onLaunchClaude(session.id) : undefined}
+        onOpenInOyster={onOpenInOyster}
+      />
       <Banner session={session} />
       {isRemoteUnsynced ? (
         <div className="inspector-empty" style={{ padding: "32px 28px", lineHeight: 1.6 }}>

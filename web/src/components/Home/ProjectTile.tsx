@@ -11,6 +11,7 @@ import { PromptModal } from "../PromptModal";
 export function ProjectTile({
   project, artefactCount, sessionCounts, selected, onSelect, onChanged,
   isLastProject, spaceTotalSessions, onSpaceDelete, otherProjects,
+  onLaunchClaude,
 }: {
   project: Project;
   artefactCount: number;
@@ -24,6 +25,9 @@ export function ProjectTile({
   onSpaceDelete?: (spaceId: string) => Promise<void> | void;
   /** Other projects in the same space — populates the "Merge into…" picker. */
   otherProjects: Project[];
+  /** Spawn a Claude PTY in this project's folder. Disabled when the
+   *  project has no live path. */
+  onLaunchClaude?: (projectId: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -142,6 +146,20 @@ export function ProjectTile({
         </button>
         {menuOpen && !mergePickerOpen && (
           <div className="home-project-tile-menu" role="menu">
+            {onLaunchClaude && (
+              <button
+                type="button"
+                className="home-project-tile-menu-item"
+                disabled={project.hasLivePath === false}
+                title={project.hasLivePath === false ? "This project has no folder on this machine." : `Run claude in ${project.recentPath ?? project.name}`}
+                onClick={() => {
+                  onLaunchClaude(project.id);
+                  setMenuOpen(false);
+                }}
+              >
+                Launch Claude here
+              </button>
+            )}
             <button
               type="button"
               className="home-project-tile-menu-item"
