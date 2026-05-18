@@ -537,7 +537,7 @@ splash.addEventListener('pointerdown', e => {
 const LEVEL = {
   width: 60,
   height: 14,
-  spawn: { col: 2, row: 11 },
+  spawn: { col: 2, row: 12 },
   tiles: [
     '............................................................',
     '............................................................',
@@ -583,14 +583,16 @@ function recomputeScale() {
 recomputeScale();
 
 // Movement tuning (in screen px / frame at 60fps).
-const MOVE_ACCEL = 0.6;
-const MOVE_MAX = 4.2;
+// Peak jump = JUMP_VEL^2 / (2 * GRAVITY) ≈ 141 px ≈ 2.35 tiles at typical
+// scale, so the player can comfortably land on 2-tile-high platforms.
+const MOVE_ACCEL = 0.75;
+const MOVE_MAX = 5.0;
 const FRICTION = 0.82;
-const GRAVITY = 0.55;
-const JUMP_VEL = -10.5;
-const JUMP_CUT = 0.45;
-const COYOTE_MS = 90;
-const JUMP_BUFFER_MS = 120;
+const GRAVITY = 0.6;
+const JUMP_VEL = -13;
+const JUMP_CUT = 0.4;
+const COYOTE_MS = 100;
+const JUMP_BUFFER_MS = 130;
 
 const player = {
   x: 0, y: 0,            // world pixels, top-left
