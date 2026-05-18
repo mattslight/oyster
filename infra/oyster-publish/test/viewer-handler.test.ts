@@ -379,7 +379,7 @@ describe("GET /p/:token — unknown artifact_kind", () => {
 });
 
 describe("GET /p/:token — signin mode", () => {
-  it("unsigned visitor → 302 to /auth/sign-in?return=/p/<token>", async () => {
+  it("unsigned visitor → 302 to /api/publish/access-redirect/<token>", async () => {
     const u = await seedUser();
     const token = await seedActivePublication({
       ownerUserId: u.id, artifactId: "art3", mode: "signin",
@@ -387,7 +387,7 @@ describe("GET /p/:token — signin mode", () => {
     const res = await call(getReq(`/p/${token}`));
     expect(res.status).toBe(302);
     const location = res.headers.get("location") ?? "";
-    expect(location).toBe(`https://oyster.to/auth/sign-in?return=/p/${token}`);
+    expect(location).toBe(`https://oyster.to/api/publish/access-redirect/${token}`);
   });
 
   it("signed-in visitor → content", async () => {
@@ -404,6 +404,25 @@ describe("GET /p/:token — signin mode", () => {
     expect(await res.text()).toContain("private");
   });
 
+  it("signed-in cookie-only visitor (no apex session) → content", async () => {
+    // Models the post-nonce-consumption follow-up GET: the viewer cookie
+    // was minted by the consume handler, but the apex session cookie was
+    // NEVER on share.oyster.to in the first place. Without the signin-mode
+    // cookie acceptance change, this would loop back to access-redirect.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art3cookie", body: "# private",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const viewerCookie = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+    const res = await call(getReq(`/p/${shareToken}`, {
+      cookie: `oyster_view_${shareToken}=${viewerCookie}`,  // no oyster_session
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("private");
+  });
 });
 
 describe("GET /p/:token — footer copy is mode-invariant", () => {
