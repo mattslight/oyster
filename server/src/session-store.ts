@@ -570,7 +570,7 @@ export class SqliteSessionStore implements SessionStore {
 
   linkTerminal(sessionId: string, terminalId: string): void {
     this.db.prepare(
-      "UPDATE sessions SET terminal_id = ? WHERE id = ?",
+      "UPDATE sessions SET terminal_id = ?, terminal_attached_clients = 0 WHERE id = ?",
     ).run(terminalId, sessionId);
   }
 
