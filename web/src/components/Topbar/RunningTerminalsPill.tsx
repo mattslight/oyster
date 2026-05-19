@@ -48,7 +48,7 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
         title={`${presence.totalLive} running terminal${presence.totalLive === 1 ? "" : "s"}`}
       >
         <span className="rtp-pulse" />
-        running ({presence.totalLive})
+        {presence.totalLive} running
       </button>
       {open && (
         <div className="rtp-popover" ref={popoverRef}>

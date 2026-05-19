@@ -120,8 +120,8 @@ function useStickyView(key: string, defaultValue: ViewMode): [ViewMode, (v: View
 // is review/history, not active inventory. The dot after "live" indicates
 // the live cluster ends; the per-state chips after it are for fine-grained
 // filtering.
-const FILTER_ORDER: StateFilter[] = ["live", "active", "waiting", "disconnected", "done", "all"];
-const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
+const FILTER_ORDER: StateFilter[] = ["live-terminals", "live", "active", "waiting", "done", "all"];
+const LIVE_STATES: SessionState[] = ["active", "waiting"];
 
 const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
@@ -138,7 +138,7 @@ const MEMORIES_PREVIEW = 5;
 
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
-  "live-terminals": "live terminals",
+  "live-terminals": "running",
   active: "active",
   waiting: "waiting",
   disconnected: "disconnected",
@@ -295,7 +295,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   const spaceCounts = useMemo(() => {
     const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
-    counts.live = counts.active + counts.waiting + counts.disconnected;
+    counts.done += counts.disconnected;
+    counts.disconnected = 0;
+    counts.live = counts.active + counts.waiting;
     return counts;
   }, [scopedSessions]);
 
@@ -314,7 +316,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   const stateCounts = useMemo(() => {
     const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
     for (const s of folderScopedSessions) counts[s.state]++;
-    counts.live = counts.active + counts.waiting + counts.disconnected;
+    counts.done += counts.disconnected;
+    counts.disconnected = 0;
+    counts.live = counts.active + counts.waiting;
     counts["live-terminals"] = presence.totalLive;
     return counts;
   }, [folderScopedSessions, presence.totalLive]);
@@ -324,6 +328,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     if (stateFilter === "all") list = folderScopedSessions;
     else if (stateFilter === "live") list = folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
     else if (stateFilter === "live-terminals") list = folderScopedSessions.filter((s) => presence.byId[s.id] != null);
+    else if (stateFilter === "done") list = folderScopedSessions.filter((s) => s.state === "done" || s.state === "disconnected");
     else list = folderScopedSessions.filter((s) => s.state === stateFilter);
     // Pin live (open terminal) rows to the top; within each group preserve
     // descending last-activity order.
@@ -1032,6 +1037,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               {FILTER_ORDER.map((f) => {
                 const count = stateCounts[f];
                 if (count === 0 && f !== "all" && f !== "live") return null;
+                const isLiveTerminals = f === "live-terminals";
                 const showPip = f !== "all" && f !== "live";
                 return (
                   <span key={f} style={{ display: "contents" }}>
@@ -1039,21 +1045,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       className={`stat-btn${stateFilter === f ? " active" : ""}`}
                       onClick={() => setStateFilter(f)}
                     >
-                      {showPip && <span className={`pip pip-${stateColor(f as SessionState)}`} />}
+                      {showPip && (
+                        isLiveTerminals
+                          ? <span className="pip pip-teal" />
+                          : <span className={`pip pip-${stateColor(f as SessionState)}`} />
+                      )}
                       {count} {FILTER_LABELS[f]}
                     </button>
                     {f === "live" && <span className="stat-divider" aria-hidden="true" />}
                   </span>
                 );
               })}
-              {presence.totalLive > 0 && (
-                <button
-                  className={`stat-btn stat-btn--live-terminals${stateFilter === "live-terminals" ? " active" : ""}`}
-                  onClick={() => setStateFilter("live-terminals")}
-                >
-                  {presence.totalLive} Running
-                </button>
-              )}
             </span>
             <span className="home-section-rule" />
             <div className="home-view-toggle">
