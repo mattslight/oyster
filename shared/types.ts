@@ -133,6 +133,10 @@ export interface Session {
    *  it. Returned by GET /api/sessions/:id and PATCH; absent on older
    *  rows from before this column existed, which the UI treats as 'auto'. */
   assignmentMode?: "auto" | "manual";
+  /** Linked PTY terminal id, or null when no live terminal. */
+  terminalId: string | null;
+  /** Count of currently-attached WS clients on the linked terminal. */
+  terminalAttachedClients: number;
 }
 
 /** POST /api/sessions/:id/resume response shapes. */
