@@ -24,6 +24,7 @@ import type { Space, SetupProposal } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import { unpublishArtifact } from "./data/publish-api";
 import { launchAndOpen, humanError } from "./lib/launch-terminal";
+import { recordRecentProjectId } from "./lib/new-session-recents";
 import { useSessions } from "./hooks/useSessions";
 import { NewSessionPicker } from "./components/NewSessionPicker";
 import { useAllProjects } from "./data/all-projects";
@@ -328,8 +329,8 @@ export default function App() {
 
   const { sessions: allSessions, loading: sessionsLoading, error: sessionsError } = useSessions();
 
-  // TEMPORARY visual preview — replaced in Task 6 with real spawn wiring.
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const { projects: allProjects } = useAllProjects(pickerOpen);
   useEffect(() => {
     // Press Shift+P to toggle the preview for now.
@@ -508,13 +509,23 @@ export default function App() {
       )}
       <NewSessionPicker
         open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        onClose={() => { setPickerOpen(false); setPickerError(null); }}
         projects={allProjects}
         spaces={spaces}
-        onActivate={(p) => {
-          // eslint-disable-next-line no-console
-          console.log("[NewSessionPicker] would spawn", p.id);
-          setPickerOpen(false);
+        errorMessage={pickerError}
+        onActivate={async (p) => {
+          setPickerError(null);
+          const outcome = await launchAndOpen(
+            { kind: "claude_new", source: { type: "project", id: p.id } },
+            dispatch,
+          );
+          if (outcome.ok) {
+            recordRecentProjectId(p.id);
+            setPickerOpen(false);
+          } else {
+            const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
+            setPickerError(`${humanError(outcome.error)}${hint}`);
+          }
         }}
       />
       <Home

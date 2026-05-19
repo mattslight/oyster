@@ -23,6 +23,8 @@ export interface NewSessionPickerProps {
   spaces: Space[];
   /** Fired when a non-disabled row is activated (click or ↵). */
   onActivate: (project: Project) => void;
+  /** Error to surface inline (e.g. binary_not_found). Cleared by the parent. */
+  errorMessage?: string | null;
 }
 
 interface Row {
@@ -33,7 +35,7 @@ interface Row {
 }
 
 export function NewSessionPicker({
-  open, onClose, initialQuery, projects, spaces, onActivate,
+  open, onClose, initialQuery, projects, spaces, onActivate, errorMessage,
 }: NewSessionPickerProps) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [highlightIdx, setHighlightIdx] = useState(0);
@@ -150,6 +152,8 @@ export function NewSessionPicker({
           />
           <span className="nsp-search-kbd">⌘N</span>
         </div>
+
+        {errorMessage && <div className="nsp-error">{errorMessage}</div>}
 
         <div className="nsp-list">
           {rows.length === 0 ? (
