@@ -75,6 +75,25 @@ export interface SessionEventSearchHit {
   snippet: string;
 }
 
+/** A session-grouped search hit. One row per session, picking the
+ *  best-ranked matching event as the representative snippet. Used by
+ *  the Spotlight UI so a single session with many matches collapses
+ *  to a single row instead of flooding the result list. */
+export interface SessionSearchHit {
+  session_id: string;
+  session_title: string | null;
+  space_id: string | null;
+  /** Best-ranked matching event id, for click-through deep-linking. */
+  event_id: number;
+  role: SessionEventRole;
+  /** Timestamp of the *session* (last_event_at), for date display. */
+  last_event_at: string | null;
+  /** Highlighted excerpt of the best-ranked match. */
+  snippet: string;
+  /** Number of distinct matching events in this session. */
+  match_count: number;
+}
+
 // ── Insert shapes (let SQLite supply timestamps + auto-id) ──
 
 export interface InsertSession {
@@ -145,6 +164,10 @@ export interface SessionStore {
    *  `query` is natural language; tokenised to OR-joined terms inside the
    *  implementation. `sessionId` optionally scopes to one session. */
   searchEvents(query: string, opts?: { limit?: number; sessionId?: string; spaceId?: string }): SessionEventSearchHit[];
+  /** Same FTS5 search, but grouped by session — returns one row per
+   *  matching session with the best-ranked event as the representative
+   *  snippet plus a match_count. Used by the Spotlight UI. */
+  searchSessions(query: string, opts?: { limit?: number; spaceId?: string }): SessionSearchHit[];
 }
 
 // ── SQLite implementation ──
@@ -476,5 +499,62 @@ export class SqliteSessionStore implements SessionStore {
                  LIMIT ?`;
     params.push(limit);
     return this.db.prepare(sql).all(...params) as SessionEventSearchHit[];
+  }
+
+  searchSessions(
+    query: string,
+    opts: { limit?: number; spaceId?: string } = {},
+  ): SessionSearchHit[] {
+    // Same query-shape logic as searchEvents — keep them in sync.
+    const trimmed = query.trim();
+    if (trimmed.length === 0) return [];
+    if (!/[A-Za-z0-9]/.test(trimmed)) return [];
+    const isPlainWord = /^[A-Za-z0-9]+$/.test(trimmed);
+    let ftsQuery: string;
+    if (isPlainWord) {
+      if (trimmed.length < 2) return [];
+      ftsQuery = `${trimmed}*`;
+    } else {
+      ftsQuery = `"${trimmed.replace(/"/g, '""')}"`;
+    }
+    const limit = opts.limit ?? 20;
+
+    // FTS5's snippet() auxiliary can't be used in a SELECT that also wraps
+    // window functions ("unable to use function snippet in the requested
+    // context") — it needs to live in a query that directly scans the FTS
+    // virtual table under MATCH. So we materialize the snippet + raw rank
+    // in an inner CTE and let the outer CTE handle ROW_NUMBER / COUNT over
+    // those plain columns.
+    const innerWhere: string[] = ["session_events_fts MATCH ?"];
+    const innerParams: unknown[] = [ftsQuery];
+    if (opts.spaceId) { innerWhere.push("s.space_id = ?"); innerParams.push(opts.spaceId); }
+
+    const sql = `WITH matches AS (
+                   SELECT e.id, e.session_id, e.role,
+                          fts.rank AS m_rank,
+                          snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet
+                   FROM session_events e
+                   JOIN session_events_fts fts ON e.id = fts.rowid
+                   JOIN sessions s             ON s.id = e.session_id
+                   WHERE ${innerWhere.join(" AND ")}
+                 ),
+                 ranked AS (
+                   SELECT id, session_id, role, m_rank, snippet,
+                          ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY m_rank) AS rn,
+                          COUNT(*)     OVER (PARTITION BY session_id)                 AS match_count
+                   FROM matches
+                 )
+                 SELECT r.id AS event_id, r.session_id, r.role,
+                        r.snippet, r.match_count,
+                        s.title         AS session_title,
+                        s.space_id      AS space_id,
+                        s.last_event_at AS last_event_at
+                 FROM ranked r
+                 JOIN sessions s ON s.id = r.session_id
+                 WHERE r.rn = 1
+                 ORDER BY r.m_rank ASC
+                 LIMIT ?`;
+    innerParams.push(limit);
+    return this.db.prepare(sql).all(...innerParams) as SessionSearchHit[];
   }
 }
