@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
-import type { SessionState } from "../../data/sessions-api";
+import type { Session, SessionState } from "../../data/sessions-api";
 import type { Artifact, Space } from "../../../../shared/types";
-import { useSessions } from "../../hooks/useSessions";
 import { useMemories } from "../../hooks/useMemories";
 import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
 import { useMyDeviceId } from "../../hooks/useMyDeviceId";
@@ -69,6 +68,10 @@ interface Props {
   onTerminalRestore?: (sessionId: string, terminalId: string) => void;
   /** Running-terminals pill: stop (DELETE) a running terminal. */
   onTerminalStop?: (terminalId: string) => Promise<void>;
+  /** Sessions feed — hoisted to App to avoid duplicate SSE-triggered refetches. */
+  sessions: Session[];
+  sessionsLoading?: boolean;
+  sessionsError?: Error | null;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -146,8 +149,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop }: Props) {
-  const { sessions, error, loading } = useSessions();
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
   const presence = useTerminalPresence(sessions, terminalWindows ?? []);
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();

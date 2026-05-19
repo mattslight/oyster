@@ -15,18 +15,20 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
   const [open, setOpen] = useState(false);
   const [pendingStopId, setPendingStopId] = useState<string | null>(null);
   const [dontAskAgain, setDontAskAgain] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   // Close popover when count drops to 0 — the pill disappears too.
   useEffect(() => {
     if (presence.totalLive === 0) setOpen(false);
   }, [presence.totalLive]);
 
-  // Click-outside closes the popover.
+  // Click-outside closes the popover. The ref covers both the pill button
+  // and the popover so clicking the pill itself doesn't re-open it after
+  // the mousedown handler closes it.
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -41,7 +43,7 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
     }));
 
   return (
-    <div className="rtp-wrap">
+    <div className="rtp-wrap" ref={wrapRef}>
       <button
         className={`rtp-pill${open ? " rtp-pill--open" : ""}`}
         onClick={() => setOpen(o => !o)}
@@ -53,7 +55,7 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
         running
       </button>
       {open && (
-        <div className="rtp-popover" ref={popoverRef}>
+        <div className="rtp-popover">
           <div className="rtp-popover-arrow" />
           {rows.map(({ info, session }) => {
             const title = session?.title ?? info.sessionId.slice(0, 8);

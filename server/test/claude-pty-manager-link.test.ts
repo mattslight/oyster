@@ -67,6 +67,49 @@ describe("ClaudePtyManager attached clients", () => {
     fakeWs2.fireClose();
     expect(env.store.getById("s1")!.terminal_attached_clients).toBe(0);
   });
+
+  it("attach after PTY exit does NOT update terminal_attached_clients", () => {
+    env.mgr._seedEntryForTest({ terminalId: "t1", linkedSessionId: null });
+    env.mgr.linkTerminalForTest("t1", "s1");
+    // Kill the PTY — fires _handleExit synchronously via the fake proc.
+    env.mgr.kill("t1");
+    // terminal_attached_clients should be 0 after exit (clearTerminal resets it).
+    expect(env.store.getById("s1")!.terminal_attached_clients).toBe(0);
+    env.events.length = 0;
+
+    // Now attach a new WS to the retained (exited) entry.
+    const ws = makeFakeWs();
+    env.mgr.attachClient("t1", ws as unknown as WebSocket);
+
+    // DB count must remain 0 — no write for an exited terminal.
+    expect(env.store.getById("s1")!.terminal_attached_clients).toBe(0);
+    // No terminal:attached event should be emitted.
+    expect(env.events.map(e => e.command)).not.toContain("terminal:attached");
+  });
+
+  it("ws close after PTY exit does NOT update terminal_attached_clients", () => {
+    env.mgr._seedEntryForTest({ terminalId: "t1", linkedSessionId: null });
+    env.mgr.linkTerminalForTest("t1", "s1");
+
+    // Attach a WS while the PTY is still alive.
+    const ws = makeFakeWs();
+    env.mgr.attachClient("t1", ws as unknown as WebSocket);
+    expect(env.store.getById("s1")!.terminal_attached_clients).toBe(1);
+
+    // Kill the PTY — fires _handleExit synchronously.
+    env.mgr.kill("t1");
+    // clearTerminal resets attached_clients to 0.
+    expect(env.store.getById("s1")!.terminal_attached_clients).toBe(0);
+    env.events.length = 0;
+
+    // Now close the WS — the close handler should be gated on exitedAt.
+    ws.fireClose();
+
+    // DB count must remain 0 — no write after exit.
+    expect(env.store.getById("s1")!.terminal_attached_clients).toBe(0);
+    // No terminal:detached event should be emitted.
+    expect(env.events.map(e => e.command)).not.toContain("terminal:detached");
+  });
 });
 
 function makeFakeWs() {

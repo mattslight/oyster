@@ -324,7 +324,7 @@ export default function App() {
   const terminalWindow = windows.find((w) => w.type === "terminal");
   const claudeTerminals = windows.filter((w) => w.type === "claude_terminal");
 
-  const { sessions: allSessions } = useSessions();
+  const { sessions: allSessions, loading: sessionsLoading, error: sessionsError } = useSessions();
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
@@ -501,6 +501,9 @@ export default function App() {
         onLaunchClaude={handleLaunchClaudeFromProject}
         onLaunchClaudeFromSession={handleLaunchClaudeFromSession}
         onOpenRemoteInOyster={handleOpenRemoteInOyster}
+        sessions={allSessions}
+        sessionsLoading={sessionsLoading}
+        sessionsError={sessionsError}
         terminalWindows={claudeTerminals}
         onTerminalFocus={(terminalId) => {
           const w = windows.find(w => w.terminalId === terminalId);

@@ -194,15 +194,15 @@ export class ClaudePtyManager {
     const entry = this.terminals.get(terminalId);
     if (!entry) return false;
     entry.clients.add(ws);
-    if (entry.linkedSessionId) {
+    if (entry.exitedAt === null && entry.linkedSessionId) {
       this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+      this.broadcastUiEvent({
+        version: 1,
+        command: "terminal:attached",
+        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
+      });
+      this.notifySessionChanged(entry.linkedSessionId);
     }
-    this.broadcastUiEvent({
-      version: 1,
-      command: "terminal:attached",
-      payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
-    });
-    this.notifySessionChanged(entry.linkedSessionId);
 
     if (entry.scrollback.length > 0) {
       ws.send(entry.scrollback);
@@ -227,15 +227,15 @@ export class ClaudePtyManager {
 
     ws.on("close", () => {
       entry.clients.delete(ws);
-      if (entry.linkedSessionId) {
+      if (entry.exitedAt === null && entry.linkedSessionId) {
         this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+        this.broadcastUiEvent({
+          version: 1,
+          command: "terminal:detached",
+          payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
+        });
+        this.notifySessionChanged(entry.linkedSessionId);
       }
-      this.broadcastUiEvent({
-        version: 1,
-        command: "terminal:detached",
-        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
-      });
-      this.notifySessionChanged(entry.linkedSessionId);
     });
 
     return true;
@@ -327,15 +327,17 @@ export class ClaudePtyManager {
     for (const ws of entry.clients) {
       if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
     }
-    if (entry.linkedSessionId) {
-      this.sessionStore.clearTerminal(entry.linkedSessionId);
+    const exitedSessionId = entry.linkedSessionId;
+    if (exitedSessionId) {
+      this.sessionStore.clearTerminal(exitedSessionId);
+      entry.linkedSessionId = null;
     }
     this.broadcastUiEvent({
       version: 1,
       command: "terminal:exited",
-      payload: { terminalId: entry.terminalId, sessionId: entry.linkedSessionId, attachedClients: 0 } satisfies TerminalPresenceEventPayload,
+      payload: { terminalId: entry.terminalId, sessionId: exitedSessionId, attachedClients: 0 } satisfies TerminalPresenceEventPayload,
     });
-    this.notifySessionChanged(entry.linkedSessionId);
+    this.notifySessionChanged(exitedSessionId);
     // Retain for late reconnects, then evict.
     entry.evictTimer = setTimeout(() => {
       this.terminals.delete(entry.terminalId);
