@@ -1048,7 +1048,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   className={`stat-btn stat-btn--live-terminals${stateFilter === "live-terminals" ? " active" : ""}`}
                   onClick={() => setStateFilter("live-terminals")}
                 >
-                  {presence.totalLive} Live
+                  {presence.totalLive} Running
                 </button>
               )}
             </span>

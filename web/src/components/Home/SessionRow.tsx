@@ -123,22 +123,25 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
     >
       <span className={`home-row-status ${statusDotClass}`} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
-      <span className="home-row-title" title={title}>
-        {remoteChip && (
-          <span className="home-remote-chip" title={remoteChip.titleTooltip}>
-            <span aria-hidden="true">↗</span> {remoteChip.label}
-          </span>
-        )}
-        {activeChip && (
-          <span className="home-active-chip" title={activeChip.titleTooltip}>
-            {activeChip.label}
-          </span>
-        )}
-        {isManual && (
-          <span className="home-manual-chip" title="Pinned manually — Oyster's heuristic won't reassign this.">
-            pinned
-          </span>
-        )}
+      <span className="home-row-title">
+        <span className="home-row-title-inner" title={title}>
+          {remoteChip && (
+            <span className="home-remote-chip" title={remoteChip.titleTooltip}>
+              <span aria-hidden="true">↗</span> {remoteChip.label}
+            </span>
+          )}
+          {activeChip && (
+            <span className="home-active-chip" title={activeChip.titleTooltip}>
+              {activeChip.label}
+            </span>
+          )}
+          {isManual && (
+            <span className="home-manual-chip" title="Pinned manually — Oyster's heuristic won't reassign this.">
+              pinned
+            </span>
+          )}
+          {title}
+        </span>
         {livePresence?.state === "running" && onTerminalRestore && (
           <button
             type="button"
@@ -149,7 +152,6 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
             Restore
           </button>
         )}
-        {title}
       </span>
       <span className={`home-row-agent ${AGENT_PIP_CLASS[session.agent]}`}>
         <span className="home-agent-pip" />
