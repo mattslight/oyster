@@ -71,21 +71,43 @@ describe("SqliteSessionStore.searchSessions", () => {
     expect(hits[0].snippet).toContain("[deposit]");
   });
 
-  it("returns one row per matching session, ordered by best rank", () => {
+  it("returns one row per matching session and excludes non-matching ones", () => {
     seedSpace(env.db, "ws");
     seedSession(env.db, { id: "a", title: "A", space_id: "ws" });
     seedSession(env.db, { id: "b", title: "B", space_id: "ws" });
     seedSession(env.db, { id: "c", title: "C", space_id: "ws" });
-    // Same word, distributed across three sessions
     env.store.insertEvent({ session_id: "a", role: "user", text: "talk about deposit cards" });
     env.store.insertEvent({ session_id: "b", role: "user", text: "no match here" });
     env.store.insertEvent({ session_id: "c", role: "user", text: "another deposit mention" });
 
     const hits = env.store.searchSessions("deposit");
+    // Two matching sessions returned, the non-matching `b` is excluded.
+    // Relative ordering between `a` and `c` is not asserted — their FTS
+    // ranks are equivalent here and BM25 tie-break order is fragile to
+    // assert on. A dedicated rank-ordering test below uses asymmetric
+    // inputs to lock that in deterministically.
     expect(hits).toHaveLength(2);
-    const ids = hits.map(h => h.session_id).sort();
-    expect(ids).toEqual(["a", "c"]);
+    const ids = new Set(hits.map(h => h.session_id));
+    expect(ids).toEqual(new Set(["a", "c"]));
     for (const h of hits) expect(h.match_count).toBe(1);
+  });
+
+  it("orders sessions by best FTS rank (stronger match first)", () => {
+    seedSpace(env.db, "ws");
+    seedSession(env.db, { id: "strong", title: "S", space_id: "ws" });
+    seedSession(env.db, { id: "weak", title: "W", space_id: "ws" });
+    // BM25 favours higher term frequency relative to doc length. A short
+    // event that's just the query token outranks a long event where the
+    // token appears once amongst many.
+    env.store.insertEvent({ session_id: "strong", role: "user", text: "deposit" });
+    env.store.insertEvent({
+      session_id: "weak",
+      role: "user",
+      text: "lorem ipsum dolor sit amet consectetur adipiscing elit deposit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
+    });
+
+    const hits = env.store.searchSessions("deposit");
+    expect(hits.map(h => h.session_id)).toEqual(["strong", "weak"]);
   });
 
   it("scopes by space_id when given", () => {

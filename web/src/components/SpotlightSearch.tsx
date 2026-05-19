@@ -525,9 +525,12 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
   );
 }
 
-/** ChatGPT-style compact relative date: "Today", "Yesterday", "8 May",
- *  or "8 May 2024" if older than the current year. Full ISO timestamp
- *  shown on hover via title attr at the row level. */
+/** ChatGPT-style compact relative date: "Today", "Yesterday", or a
+ *  short locale-formatted date — e.g. "8 May" / "May 8" — adding the
+ *  year only when older than the current calendar year. Day/month
+ *  ordering follows the user's locale (passing `undefined` lets the
+ *  runtime decide). The hover title at the row level shows the full
+ *  locale-formatted timestamp. */
 function formatHitDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
