@@ -686,12 +686,28 @@ export function initDb(userlandDir: string): Database.Database {
        ON sessions(sync_dirty_at) WHERE sync_dirty_at IS NOT NULL`,
   );
 
+  // Classify slash-command machinery (`<command-…>`, `<local-command-…>`,
+  // `<system-reminder>`) at ingest so the transcript reader and the FTS
+  // search index can both ignore it while the raw row stays on disk for
+  // audit. See #530 + server/src/utils/claude-protocol-artifacts.ts.
+  try {
+    db.exec("ALTER TABLE session_events ADD COLUMN is_protocol_artifact INTEGER NOT NULL DEFAULT 0");
+  } catch { /* already exists */ }
+
   // ── R2 verbatim recall (#311): FTS5 over session_events.text ──
   // Lives after the state-rename rebuild block (which DROPs and rebuilds
   // session_events) so the virtual table + triggers always end up
   // attached to the final concrete table. We index `text` only — `raw`
   // is the original JSONL with metadata + JSON syntax, which would
   // bloat the index and pollute matches.
+  //
+  // Triggers are gated on `is_protocol_artifact`:
+  //   - AI re-indexes only non-artifact rows.
+  //   - AD / AU's delete-half only fires when the row WAS indexed
+  //     (old.is_protocol_artifact = 0); FTS5 'delete' is unsafe to call
+  //     for a rowid that isn't in the inverted index (#530).
+  // Drop-then-create keeps existing installs in sync after the trigger
+  // shape changed in this migration.
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS session_events_fts USING fts5(
       text,
@@ -699,17 +715,63 @@ export function initDb(userlandDir: string): Database.Database {
       content_rowid=id
     );
 
-    CREATE TRIGGER IF NOT EXISTS session_events_ai AFTER INSERT ON session_events BEGIN
+    DROP TRIGGER IF EXISTS session_events_ai;
+    DROP TRIGGER IF EXISTS session_events_ad;
+    DROP TRIGGER IF EXISTS session_events_au;
+    DROP TRIGGER IF EXISTS session_events_au_del;
+    DROP TRIGGER IF EXISTS session_events_au_ins;
+
+    CREATE TRIGGER session_events_ai AFTER INSERT ON session_events
+    WHEN new.is_protocol_artifact = 0 BEGIN
       INSERT INTO session_events_fts(rowid, text) VALUES (new.id, new.text);
     END;
-    CREATE TRIGGER IF NOT EXISTS session_events_ad AFTER DELETE ON session_events BEGIN
+    CREATE TRIGGER session_events_ad AFTER DELETE ON session_events
+    WHEN old.is_protocol_artifact = 0 BEGIN
       INSERT INTO session_events_fts(session_events_fts, rowid, text) VALUES('delete', old.id, old.text);
     END;
-    CREATE TRIGGER IF NOT EXISTS session_events_au AFTER UPDATE ON session_events BEGIN
+    CREATE TRIGGER session_events_au_del AFTER UPDATE ON session_events
+    WHEN old.is_protocol_artifact = 0 BEGIN
       INSERT INTO session_events_fts(session_events_fts, rowid, text) VALUES('delete', old.id, old.text);
+    END;
+    CREATE TRIGGER session_events_au_ins AFTER UPDATE ON session_events
+    WHEN new.is_protocol_artifact = 0 BEGIN
       INSERT INTO session_events_fts(rowid, text) VALUES (new.id, new.text);
     END;
   `);
+
+  // One-time backfill: mark existing protocol-artifact rows on installs
+  // that pre-date this migration. The UPDATE fires session_events_au_del
+  // for each (old artifact=0 → indexed in FTS), pulling those rows out of
+  // the inverted index; session_events_au_ins skips the re-insert because
+  // new.is_protocol_artifact = 1.
+  //
+  // Gated via app_state so the full-table predicate scan doesn't run on
+  // every boot — session_events grows roughly linearly with usage and
+  // there's no useful index for the leading-whitespace + prefix check.
+  //
+  // Predicate mirrors isClaudeProtocolArtifact: strip leading whitespace
+  // (space/tab/LF/CR) and check the three wrapper prefixes. Only USER
+  // events qualify — assistant slash-command echoes (e.g. `/rename …`)
+  // stay visible.
+  {
+    const flag = db.prepare(
+      `INSERT OR IGNORE INTO app_state (key, value, applied_at)
+       VALUES ('protocol_artifact_backfill_done', '1', ?)`,
+    ).run(Date.now());
+    if (flag.changes > 0) {
+      db.exec(`
+        UPDATE session_events
+           SET is_protocol_artifact = 1
+         WHERE is_protocol_artifact = 0
+           AND role = 'user'
+           AND (
+             ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<local-command-%'
+             OR ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<command-%'
+             OR ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<system-reminder>%'
+           );
+      `);
+    }
+  }
 
   // Backfill the FTS index if it's stale relative to the content table.
   //
@@ -727,15 +789,28 @@ export function initDb(userlandDir: string): Database.Database {
   // 'rebuild' is idempotent — clears + re-populates from content — so
   // it's safe to run.
   {
-    const eventCount = (db.prepare("SELECT COUNT(*) as n FROM session_events").get() as { n: number }).n;
-    if (eventCount > 0) {
+    const indexableCount = (db.prepare(
+      "SELECT COUNT(*) as n FROM session_events WHERE is_protocol_artifact = 0"
+    ).get() as { n: number }).n;
+    if (indexableCount > 0) {
       const sampleHits = (db.prepare(
         "SELECT count(*) as n FROM session_events_fts WHERE session_events_fts MATCH 'a'"
       ).get() as { n: number }).n;
       // Threshold is generous — even pathological transcripts will have
       // 'a' in well over 50% of events. < 25% indicates a broken index.
-      if (sampleHits * 4 < eventCount) {
-        db.exec("INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild')");
+      if (sampleHits * 4 < indexableCount) {
+        // rebuild reads from the content table directly, bypassing our
+        // gated triggers — so it re-indexes protocol artefacts too.
+        // Sweep them back out in a single INSERT...SELECT so the cost
+        // scales with row count, not round-trips, and any unexpected
+        // FTS5 error surfaces instead of being swallowed per-row.
+        db.exec(`
+          INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild');
+          INSERT INTO session_events_fts(session_events_fts, rowid, text)
+            SELECT 'delete', id, text
+              FROM session_events
+             WHERE is_protocol_artifact = 1;
+        `);
       }
     }
   }

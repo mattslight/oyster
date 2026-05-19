@@ -50,6 +50,11 @@ export interface SessionEventRow {
   text: string;
   ts: string;
   raw: string | null;
+  /** 1 when this row is slash-command machinery from claude-code (e.g.
+   *  `<command-name>/exit</command-name>`, `<system-reminder>…`). Such
+   *  rows are kept on disk for audit but hidden from the transcript
+   *  reader and excluded from the FTS index. See #530. */
+  is_protocol_artifact: 0 | 1;
 }
 
 export interface SessionArtifactRow {
@@ -125,6 +130,10 @@ export interface InsertSessionEvent {
   text: string;
   ts?: string;
   raw?: string | null;
+  /** Defaults to 0 when omitted. Set to 1 for claude-code slash-command
+   *  machinery so the row is excluded from the transcript and the FTS
+   *  index. See server/src/utils/claude-protocol-artifacts.ts. */
+  is_protocol_artifact?: 0 | 1;
 }
 
 export interface InsertSessionArtifact {
@@ -277,20 +286,25 @@ export class SqliteSessionStore implements SessionStore {
         "UPDATE sessions SET state = ?, last_event_at = ? WHERE id = ?"
       ),
       insertEvent: db.prepare(`
-        INSERT INTO session_events (session_id, role, text, ts, raw)
-        VALUES (@session_id, @role, @text, COALESCE(@ts, datetime('now')), @raw)
+        INSERT INTO session_events (session_id, role, text, ts, raw, is_protocol_artifact)
+        VALUES (@session_id, @role, @text, COALESCE(@ts, datetime('now')), @raw, @is_protocol_artifact)
       `),
+      // Transcript reads filter out protocol artefacts (#530). The FTS
+      // search path filters implicitly via the JOIN (artefacts are never
+      // indexed). getEventById stays unfiltered — it's a primitive "fetch
+      // by id" used by the inspector to lazy-load the raw JSONL for tool
+      // turns; future "show hidden" toggles can lean on it.
       getEventsBySession: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? ORDER BY id"
+        "SELECT * FROM session_events WHERE session_id = ? AND is_protocol_artifact = 0 ORDER BY id"
       ),
       getEventsBySessionLimit: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? ORDER BY id DESC LIMIT ?"
+        "SELECT * FROM session_events WHERE session_id = ? AND is_protocol_artifact = 0 ORDER BY id DESC LIMIT ?"
       ),
       getEventsBefore: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?"
+        "SELECT * FROM session_events WHERE session_id = ? AND id < ? AND is_protocol_artifact = 0 ORDER BY id DESC LIMIT ?"
       ),
       getEventsAfter: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT ?"
+        "SELECT * FROM session_events WHERE session_id = ? AND id > ? AND is_protocol_artifact = 0 ORDER BY id ASC LIMIT ?"
       ),
       getEventById: db.prepare(
         "SELECT * FROM session_events WHERE session_id = ? AND id = ? LIMIT 1"
@@ -318,7 +332,7 @@ export class SqliteSessionStore implements SessionStore {
     const insertOne = this.stmts.insertEvent;
     this.insertEventsTxn = db.transaction((rows: InsertSessionEvent[]) => {
       for (const r of rows) {
-        insertOne.run({ ts: null, raw: null, ...r });
+        insertOne.run({ ts: null, raw: null, is_protocol_artifact: 0, ...r });
       }
     });
   }
@@ -387,7 +401,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   insertEvent(row: InsertSessionEvent): number {
-    const info = this.stmts.insertEvent.run({ ts: null, raw: null, ...row });
+    const info = this.stmts.insertEvent.run({ ts: null, raw: null, is_protocol_artifact: 0, ...row });
     return Number(info.lastInsertRowid);
   }
 
