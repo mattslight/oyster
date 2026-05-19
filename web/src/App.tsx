@@ -384,6 +384,24 @@ export default function App() {
     }
   }, [activeSpace, spaces, dispatch, handleNewSessionSpawn]);
 
+  // ⌘N (or Ctrl+N off-Mac) opens the New Session palette. Unconditional —
+  // intercepts even inside text inputs, textareas, contenteditable, and
+  // the xterm.js helper textarea. Per spec §2: consistency over preserving
+  // the browser's "new window" default.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const cmd = e.metaKey || e.ctrlKey;
+      // Don't fire on ⌘⇧N (private window) or ⌘⌥N — keep the shortcut to
+      // the bare combo. Modifier shape: only Cmd/Ctrl + N, no shift/alt.
+      if (cmd && !e.shiftKey && !e.altKey && (e.key === "n" || e.key === "N")) {
+        e.preventDefault();
+        void handleOpenNewSession();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleOpenNewSession]);
+
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
 
