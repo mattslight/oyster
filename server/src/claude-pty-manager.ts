@@ -21,7 +21,8 @@ export interface ClaudePtyManagerDeps {
 }
 
 const SCROLLBACK_LIMIT = 50_000;
-const POST_EXIT_RETENTION_MS = 30_000;
+export const POST_EXIT_RETENTION_MS = 15 * 60 * 1000;
+export const MAX_RETAINED_EXITED = 50;
 const MAX_CONCURRENT_TERMINALS = 8;
 
 export class TerminalCapError extends Error {
@@ -308,6 +309,17 @@ export class ClaudePtyManager {
     this.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: sessionId } });
   }
 
+  private enforceRetentionCap(): void {
+    const exited = Array.from(this.terminals.values())
+      .filter(e => e.exitedAt !== null)
+      .sort((a, b) => (a.exitedAt ?? 0) - (b.exitedAt ?? 0));
+    while (exited.length > MAX_RETAINED_EXITED) {
+      const victim = exited.shift()!;
+      if (victim.evictTimer) { clearTimeout(victim.evictTimer); victim.evictTimer = null; }
+      this.terminals.delete(victim.terminalId);
+    }
+  }
+
   private _handleExit(entry: ClaudePtyEntry, exitCode: number): void {
     entry.exitedAt = Date.now();
     const closeNote = `\r\n\x1b[90m[session ended (exit ${exitCode})]\x1b[0m\r\n`;
@@ -328,6 +340,8 @@ export class ClaudePtyManager {
     entry.evictTimer = setTimeout(() => {
       this.terminals.delete(entry.terminalId);
     }, POST_EXIT_RETENTION_MS);
+    // Eagerly enforce the hard cap, evicting oldest-exited-first.
+    this.enforceRetentionCap();
   }
 
   /** Test-only: pair `_seedEntryForTest` with a link write in one step. */
