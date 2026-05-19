@@ -1,0 +1,162 @@
+/* New Session palette — command-palette-style modal. Mounts at <body>
+   via React portal-style absolute positioning; the overlay catches
+   outside clicks. Keep z-index above terminal windows. */
+
+.nsp-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 10000;
+  animation: nsp-fade 80ms ease-out;
+}
+
+@keyframes nsp-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.nsp-modal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: 70vh;
+  background: var(--bg-panel, #14141c);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary, #e8e8ee);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.nsp-search-row {
+  position: relative;
+  padding: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nsp-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.nsp-search-input::placeholder {
+  color: var(--text-dim, #777);
+}
+
+.nsp-search-kbd {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-dim, #777);
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.nsp-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+
+.nsp-group-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim, #888);
+  padding: 8px 14px 4px;
+}
+
+.nsp-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.nsp-row:hover:not(.nsp-row--disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nsp-row--highlighted {
+  background: rgba(124, 107, 255, 0.14);
+}
+
+.nsp-row--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nsp-row-name {
+  font-weight: 500;
+  color: var(--text-primary, #e8e8ee);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nsp-row-meta {
+  color: var(--text-dim, #888);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+.nsp-empty {
+  padding: 18px 14px;
+  font-size: 13px;
+  color: var(--text-dim, #888);
+  text-align: center;
+}
+
+.nsp-error {
+  padding: 8px 14px;
+  margin: 6px 10px;
+  border-radius: 5px;
+  background: rgba(220, 64, 64, 0.12);
+  color: #ff8888;
+  font-size: 12px;
+  border: 1px solid rgba(220, 64, 64, 0.3);
+}
+
+.nsp-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: var(--text-dim, #888);
+}
+
+.nsp-footer .nsp-kbd {
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  font-family: ui-monospace, monospace;
+  margin-right: 4px;
+}

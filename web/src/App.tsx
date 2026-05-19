@@ -25,6 +25,8 @@ import { createSession, sendMessage } from "./data/chat-api";
 import { unpublishArtifact } from "./data/publish-api";
 import { launchAndOpen, humanError } from "./lib/launch-terminal";
 import { useSessions } from "./hooks/useSessions";
+import { NewSessionPicker } from "./components/NewSessionPicker";
+import { useAllProjects } from "./data/all-projects";
 import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
@@ -326,6 +328,21 @@ export default function App() {
 
   const { sessions: allSessions, loading: sessionsLoading, error: sessionsError } = useSessions();
 
+  // TEMPORARY visual preview — replaced in Task 6 with real spawn wiring.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { projects: allProjects } = useAllProjects(pickerOpen);
+  useEffect(() => {
+    // Press Shift+P to toggle the preview for now.
+    const h = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key === "P") {
+        e.preventDefault();
+        setPickerOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
 
@@ -489,6 +506,17 @@ export default function App() {
           <span>{aiError}</span>
         </div>
       )}
+      <NewSessionPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        projects={allProjects}
+        spaces={spaces}
+        onActivate={(p) => {
+          // eslint-disable-next-line no-console
+          console.log("[NewSessionPicker] would spawn", p.id);
+          setPickerOpen(false);
+        }}
+      />
       <Home
         activeSpace={activeSpace}
         spaces={spaces}
