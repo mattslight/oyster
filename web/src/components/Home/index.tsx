@@ -1118,6 +1118,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                         myDeviceId={myDeviceId}
                         livePresence={presence.byId[session.id]}
                         onOpen={(id) => setActivePanel({ kind: "session", id })}
+                        onTerminalFocus={onTerminalFocus}
                         onTerminalRestore={onTerminalRestore}
                       />
                     ))}

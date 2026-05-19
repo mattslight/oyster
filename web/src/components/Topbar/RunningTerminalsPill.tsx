@@ -63,17 +63,13 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
                 className="rtp-row"
                 onClick={() => isAttached ? onFocus(info.terminalId) : onRestore(info.sessionId, info.terminalId)}
               >
-                <span className={isAttached ? "rtp-dot rtp-dot--attached" : "rtp-dot rtp-dot--running"} />
+                <span className="rtp-dot" />
                 <div className="rtp-body">
                   <span className="rtp-title">{title}</span>
                   <span className="rtp-meta">
                     <span className="rtp-space">{space}</span> · claude-code · {isAttached ? "open" : "minimised"}
                   </span>
                 </div>
-                {/* Always render the chip slot to keep stop-button column aligned. */}
-                {!isAttached
-                  ? <span className="rtp-chip rtp-chip--restore">Restore</span>
-                  : <span className="rtp-chip-placeholder" />}
                 <button
                   className="rtp-stop"
                   title="Stop terminal"

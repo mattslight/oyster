@@ -18,11 +18,13 @@ interface SessionRowProps {
   /** Presence info from useTerminalPresence; undefined when no live terminal. */
   livePresence?: PresenceInfo;
   onOpen?: (id: string) => void;
+  /** Focus an already-open terminal window for this session. */
+  onTerminalFocus?: (terminalId: string) => void;
   /** Restore a minimised terminal window for this session. */
   onTerminalRestore?: (sessionId: string, terminalId: string) => void;
 }
 
-export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalRestore }: SessionRowProps) {
+export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalFocus, onTerminalRestore }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = session.state === "waiting" ? `waiting ${rel}`
@@ -111,15 +113,29 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
     }
   }
 
+  // Row click priority: if this row has a live terminal, focus it (Open) or
+  // restore it (Minimised) — bringing the panel to the user is the most
+  // likely intent. Falls through to onOpen (Session Inspector) otherwise.
+  // The Inspect chip below gives a deliberate path to the inspector when the
+  // row is live.
+  const handleRowActivate = () => {
+    if (livePresence?.state === "attached" && onTerminalFocus) {
+      onTerminalFocus(livePresence.terminalId);
+    } else if (livePresence?.state === "running" && onTerminalRestore) {
+      onTerminalRestore(session.id, livePresence.terminalId);
+    } else if (onOpen) {
+      onOpen(session.id);
+    }
+  };
   return (
     <div
       className={`home-row${rowExtraClass}`}
-      onClick={() => onOpen?.(session.id)}
-      onKeyDown={onOpen ? (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(session.id); }
+      onClick={handleRowActivate}
+      onKeyDown={onOpen || livePresence ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowActivate(); }
       } : undefined}
-      role={onOpen ? "button" : undefined}
-      tabIndex={onOpen ? 0 : undefined}
+      role={onOpen || livePresence ? "button" : undefined}
+      tabIndex={onOpen || livePresence ? 0 : undefined}
     >
       <span className={`home-row-status ${statusDotClass}`} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
@@ -142,14 +158,14 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
           )}
           {title}
         </span>
-        {livePresence?.state === "running" && onTerminalRestore && (
+        {livePresence && onOpen && (
           <button
             type="button"
-            className="sl-chip--restore"
-            onClick={(e) => { e.stopPropagation(); onTerminalRestore(session.id, livePresence.terminalId); }}
-            title="Restore terminal"
+            className="sl-chip--inspect"
+            onClick={(e) => { e.stopPropagation(); onOpen(session.id); }}
+            title="Open the Session Inspector for this conversation"
           >
-            Restore
+            Inspect
           </button>
         )}
       </span>

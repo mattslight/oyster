@@ -2518,14 +2518,16 @@ body {
   transform: rotate(45deg);
 }
 .rtp-row {
-  display: grid; grid-template-columns: 14px 1fr auto auto;
+  display: grid; grid-template-columns: 14px 1fr auto;
   gap: 10px; align-items: center; padding: 8px 10px; border-radius: 6px; cursor: pointer;
 }
 .rtp-row + .rtp-row { margin-top: 2px; }
 .rtp-row:hover { background: rgba(255,255,255,0.04); }
-.rtp-dot { width: 9px; height: 9px; border-radius: 50%; }
-.rtp-dot--attached { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.6); }
-.rtp-dot--running { background: transparent; border: 2px solid #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.4); }
+/* Both Open and Minimised terminals are "running" — share the teal dot.
+ * The Restore chip on Minimised rows is the only state-distinguishing
+ * signal in the popover. */
+.rtp-dot { width: 9px; height: 9px; border-radius: 50%; background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.6); }
+.rtp-dot--attached, .rtp-dot--running { /* same — kept as separate classes for any future per-state styling */ }
 .rtp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rtp-title { font-size: 12px; color: #e8e9f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rtp-meta { font-size: 10px; color: rgba(232,233,240,0.45); }
@@ -2554,32 +2556,28 @@ body {
 }
 .rtp-confirm-checkbox input { accent-color: #5eead4; }
 
-/* ── Sessions list: live terminal row treatment (Task 13) ── */
-.home-row.sr--attached {
+/* ── Sessions list: live terminal row treatment ──
+ * Both Open and Minimised are "running" — same teal stripe + dot.
+ * Clicking the row focuses (Open) or restores (Minimised) — no chip needed. */
+.home-row.sr--attached,
+.home-row.sr--running {
   background: linear-gradient(90deg, rgba(94,234,212,0.06), transparent 70%);
   border-left: 2px solid #5eead4;
   padding-left: 12px;
 }
-.home-row.sr--attached:hover {
+.home-row.sr--attached:hover,
+.home-row.sr--running:hover {
   background: linear-gradient(90deg, rgba(94,234,212,0.10), rgba(124,107,255,0.05) 70%);
 }
-.home-row.sr--running {
-  background: linear-gradient(90deg, rgba(167,139,250,0.05), transparent 70%);
-  border-left: 2px solid #a78bfa;
-  padding-left: 12px;
-}
-.home-row.sr--running:hover {
-  background: linear-gradient(90deg, rgba(167,139,250,0.09), rgba(124,107,255,0.05) 70%);
-}
-.home-row-status.rd--attached { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.5); }
-.home-row-status.rd--running { background: transparent; border: 2px solid #a78bfa; }
-.sl-chip--restore {
-  background: rgba(167,139,250,0.18); color: #a78bfa;
+.home-row-status.rd--attached,
+.home-row-status.rd--running { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.5); }
+.sl-chip--inspect {
+  background: rgba(255,255,255,0.06); color: rgba(232,233,240,0.7);
   font-size: 9px; padding: 2px 7px; border-radius: 4px;
   letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600;
   border: none; cursor: pointer; margin-right: 4px;
 }
-.sl-chip--restore:hover { background: rgba(167,139,250,0.28); }
+.sl-chip--inspect:hover { background: rgba(255,255,255,0.12); color: #e8e9f0; }
 .stat-btn--live-terminals { color: #5eead4; }
 .stat-btn--live-terminals.active { background: rgba(94,234,212,0.15); color: #5eead4; }
 
@@ -2602,6 +2600,6 @@ body {
   height: 7px;
   border-radius: 50%;
 }
-.tile-presence-dot.tpd--attached::before { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.6); }
-.tile-presence-dot.tpd--running { background: var(--desktop-bg, #1e1f36); }
-.tile-presence-dot.tpd--running::before { background: transparent; border: 1.5px solid #a78bfa; width: 6px; height: 6px; }
+/* Both Open and Minimised tiles get the same teal dot — they're both running. */
+.tile-presence-dot.tpd--attached::before,
+.tile-presence-dot.tpd--running::before { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.6); }
