@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Links inside shared artefacts now click through.** External links in published prototypes (`target="_blank"`, `window.open`) open as expected instead of silently failing — the share.oyster.to iframe now permits popups, matching CodePen/JSFiddle/StackBlitz.
+
 ## [0.9.3] - 2026-05-19
 
 ### Added

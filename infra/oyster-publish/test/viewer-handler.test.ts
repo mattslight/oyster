@@ -140,7 +140,7 @@ describe("GET /p/:token — open mode", () => {
     expect(res.headers.get("content-type")).toMatch(/^text\/html/);
     const body = await res.text();
     expect(body).toContain(`src="/p/${shareToken}/raw"`);
-    expect(body).toContain('sandbox="allow-scripts allow-same-origin"');
+    expect(body).toContain('sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"');
   });
 });
 
