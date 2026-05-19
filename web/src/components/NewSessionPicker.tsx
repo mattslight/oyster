@@ -78,10 +78,10 @@ export function NewSessionPicker({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-    // `rows` and `highlightIdx` are intentionally closed-over via the
-    // event handler; we don't want stale-closure bugs but recomputing
-    // listeners on every keystroke is wasteful. Use refs if needed —
-    // for v1, lean on React's render cadence (it's a tiny modal).
+    // No dep array: handler closes over `rows`/`highlightIdx` so it always
+    // sees current values without stale-closure bugs. The attach/detach
+    // cost on every render is negligible for a small modal. Refs would be
+    // more idiomatic if this list ever gets long; for v1 this is fine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   });
 
@@ -129,6 +129,9 @@ export function NewSessionPicker({
     if (highlightIdx >= rows.length) setHighlightIdx(Math.max(0, rows.length - 1));
   }, [rows.length, highlightIdx]);
 
+  const recentRows = rows.filter((r) => r.group === "recent");
+  const allRows = rows.filter((r) => r.group === "all");
+
   if (!open) return null;
 
   return (
@@ -136,7 +139,7 @@ export function NewSessionPicker({
       className="nsp-overlay"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="nsp-modal" role="dialog" aria-label="Start new session">
+      <div className="nsp-modal" role="dialog" aria-modal="true" aria-label="Start new session">
         <div className="nsp-search-row">
           <input
             ref={inputRef}
@@ -153,23 +156,25 @@ export function NewSessionPicker({
             <div className="nsp-empty">No projects match.</div>
           ) : (
             <>
-              {rows.some((r) => r.group === "recent") && (
-                <div className="nsp-group-label">Recent</div>
-              )}
-              {rows.filter((r) => r.group === "recent").map((row, idx) => (
-                <RowView key={row.project.id} row={row}
+              {recentRows.length > 0 && <div className="nsp-group-label">Recent</div>}
+              {recentRows.map((row, idx) => (
+                <RowView
+                  key={row.project.id}
+                  row={row}
                   highlighted={idx === highlightIdx}
-                  onClick={() => !row.disabled && onActivate(row.project)} />
+                  onClick={() => !row.disabled && onActivate(row.project)}
+                />
               ))}
-              {rows.some((r) => r.group === "all") && (
-                <div className="nsp-group-label">All projects</div>
-              )}
-              {rows.filter((r) => r.group === "all").map((row, i) => {
-                const idx = rows.filter((r) => r.group === "recent").length + i;
+              {allRows.length > 0 && <div className="nsp-group-label">All projects</div>}
+              {allRows.map((row, i) => {
+                const idx = recentRows.length + i;
                 return (
-                  <RowView key={row.project.id} row={row}
+                  <RowView
+                    key={row.project.id}
+                    row={row}
                     highlighted={idx === highlightIdx}
-                    onClick={() => !row.disabled && onActivate(row.project)} />
+                    onClick={() => !row.disabled && onActivate(row.project)}
+                  />
                 );
               })}
             </>
