@@ -1447,6 +1447,17 @@
           <div id="hm-side-body"></div>
         </div>
 
+        <div class="hm-terminal" id="hm-terminal" aria-hidden="true">
+          <div class="hm-terminal-chrome">
+            <button type="button" class="hm-term-dot hm-term-dot-r" id="hm-terminal-close" aria-label="Close terminal" title="Close terminal"></button>
+            <span class="hm-term-dot hm-term-dot-y" aria-hidden="true"></span>
+            <span class="hm-term-dot hm-term-dot-g" aria-hidden="true"></span>
+            <span class="hm-terminal-title" id="hm-terminal-title">Refactor checkout flow — acme-app</span>
+            <span class="hm-terminal-tag" aria-hidden="true">claude-code</span>
+          </div>
+          <div class="hm-terminal-body" id="hm-terminal-body"></div>
+        </div>
+
         <div class="hero-mock-body">
           <div class="hero-mock-breadcrumb">
             <span class="hm-pill hm-pill-icon hm-pill-active" aria-label="Home">
@@ -1455,6 +1466,22 @@
             <span class="hm-pill" data-space="acme-app"><span class="pip pip-g"></span>acme-app</span>
             <span class="hm-pill" data-space="pitch-deck"><span class="pip pip-a"></span>pitch-deck</span>
             <span class="hm-pill" data-space="field-notes"><span class="pip pip-r"></span>field-notes</span>
+
+            <div class="hm-rtp-wrap">
+              <button type="button" class="hm-rtp-pill" id="hm-rtp-pill" aria-expanded="false" aria-controls="hm-rtp-popover" aria-label="1 running terminal">
+                <span class="hm-rtp-pip" aria-hidden="true"></span><span class="hm-rtp-count">1</span> running
+              </button>
+              <div class="hm-rtp-popover" id="hm-rtp-popover">
+                <div class="hm-rtp-arrow" aria-hidden="true"></div>
+                <div class="hm-rtp-row" id="hm-rtp-row" tabindex="0" role="button" aria-label="Open running terminal: Refactor checkout flow">
+                  <span class="hm-rtp-dot" aria-hidden="true"></span>
+                  <div class="hm-rtp-body">
+                    <span class="hm-rtp-title">Refactor checkout flow</span>
+                    <span class="hm-rtp-meta">acme-app · claude-code · <span id="hm-rtp-activity">cooking 4s</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -1467,13 +1494,13 @@
               </span>
             </div>
             <div class="hm-tiles">
-              <div class="hm-tile" data-space="acme-app" data-session="s1" role="button" tabindex="0" aria-label="Open session: Refactor checkout flow">
-                <span class="hm-status hm-status-g"></span>
+              <div class="hm-tile hm-tile-running" data-space="acme-app" data-session="s1" role="button" tabindex="0" aria-label="Open running terminal: Refactor checkout flow">
+                <span class="hm-status hm-status-running"></span>
                 <div class="hm-tile-body">
                   <div class="hm-tile-title">Refactor checkout flow</div>
-                  <div class="hm-tile-meta">claude-code · acme-app</div>
+                  <div class="hm-tile-meta">claude-code · acme-app · running</div>
                 </div>
-                <span class="hm-tile-time">2m ago</span>
+                <span class="hm-tile-time">just now</span>
               </div>
               <div class="hm-tile" data-space="pitch-deck" data-session="s2" role="button" tabindex="0" aria-label="Open session: Stakeholder pitch v3">
                 <span class="hm-status hm-status-a"></span>
