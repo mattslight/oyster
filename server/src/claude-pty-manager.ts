@@ -194,6 +194,18 @@ export class ClaudePtyManager {
       if (entry.linkedSessionId) {
         this.sessionStore.clearTerminal(entry.linkedSessionId);
       }
+      this.broadcastUiEvent({
+        version: 1,
+        command: "terminal:exited",
+        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: 0 },
+      });
+      if (entry.linkedSessionId) {
+        this.broadcastUiEvent({
+          version: 1,
+          command: "session_changed",
+          payload: { id: entry.linkedSessionId },
+        });
+      }
       // Retain for late reconnects, then evict.
       entry.evictTimer = setTimeout(() => {
         this.terminals.delete(terminalId);
@@ -209,6 +221,18 @@ export class ClaudePtyManager {
     entry.clients.add(ws);
     if (entry.linkedSessionId) {
       this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+    }
+    this.broadcastUiEvent({
+      version: 1,
+      command: "terminal:attached",
+      payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size },
+    });
+    if (entry.linkedSessionId) {
+      this.broadcastUiEvent({
+        version: 1,
+        command: "session_changed",
+        payload: { id: entry.linkedSessionId },
+      });
     }
 
     if (entry.scrollback.length > 0) {
@@ -236,6 +260,18 @@ export class ClaudePtyManager {
       entry.clients.delete(ws);
       if (entry.linkedSessionId) {
         this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+      }
+      this.broadcastUiEvent({
+        version: 1,
+        command: "terminal:detached",
+        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size },
+      });
+      if (entry.linkedSessionId) {
+        this.broadcastUiEvent({
+          version: 1,
+          command: "session_changed",
+          payload: { id: entry.linkedSessionId },
+        });
       }
     });
 
@@ -339,6 +375,18 @@ export class ClaudePtyManager {
       entry.exitedAt = Date.now();
       if (entry.linkedSessionId) {
         this.sessionStore.clearTerminal(entry.linkedSessionId);
+      }
+      this.broadcastUiEvent({
+        version: 1,
+        command: "terminal:exited",
+        payload: { terminalId: input.terminalId, sessionId: entry.linkedSessionId, attachedClients: 0 },
+      });
+      if (entry.linkedSessionId) {
+        this.broadcastUiEvent({
+          version: 1,
+          command: "session_changed",
+          payload: { id: entry.linkedSessionId },
+        });
       }
     });
     this.terminals.set(input.terminalId, entry);

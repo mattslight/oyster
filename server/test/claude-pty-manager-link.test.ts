@@ -26,6 +26,28 @@ describe("ClaudePtyManager attached clients", () => {
   beforeEach(() => { env = makeEnv(); });
   afterEach(() => { env.dispose(); });
 
+  it("emits terminal:attached / terminal:detached / terminal:exited", () => {
+    env.mgr._seedEntryForTest({ terminalId: "t1", linkedSessionId: null });
+    env.mgr.linkTerminalForTest("t1", "s1");
+    env.events.length = 0;
+
+    const ws = makeFakeWs();
+    env.mgr.attachClient("t1", ws as unknown as WebSocket);
+    ws.fireClose();
+    env.mgr.kill("t1");
+
+    const commands = env.events.map(e => e.command);
+    expect(commands).toContain("terminal:attached");
+    expect(commands).toContain("terminal:detached");
+    expect(commands).toContain("terminal:exited");
+
+    const attachedEvent = env.events.find(e => e.command === "terminal:attached")!;
+    const payload = attachedEvent.payload as { terminalId: string; sessionId: string | null; attachedClients: number };
+    expect(payload.terminalId).toBe("t1");
+    expect(payload.sessionId).toBe("s1");
+    expect(payload.attachedClients).toBe(1);
+  });
+
   it("attach/detach updates terminal_attached_clients on the linked row", () => {
     env.mgr._seedEntryForTest({ terminalId: "t1", linkedSessionId: "s1" });
     env.mgr.linkTerminalForTest("t1", "s1");

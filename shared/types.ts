@@ -200,6 +200,14 @@ export interface Space {
   updatedAt: string;
 }
 
+/** Payload for the `terminal:attached` / `terminal:detached` / `terminal:exited`
+ *  UiCommand variants. SessionId is null when the PTY was not yet linked. */
+export interface TerminalPresenceEventPayload {
+  terminalId: string;
+  sessionId: string | null;
+  attachedClients: number;
+}
+
 /** SSE message broadcast on /api/ui/events. The web app subscribes via
  *  subscribeUiEvents and routes by `command`. The `version` field is
  *  reserved for future envelope evolution — today's client (ui-events.ts)
