@@ -27,7 +27,7 @@ import { launchAndOpen, humanError } from "./lib/launch-terminal";
 import { recordRecentProjectId } from "./lib/new-session-recents";
 import { useSessions } from "./hooks/useSessions";
 import { NewSessionPicker } from "./components/NewSessionPicker";
-import { useAllProjects } from "./data/all-projects";
+import { useAllProjects, fetchAllProjects } from "./data/all-projects";
 import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
@@ -331,7 +331,45 @@ export default function App() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [initialPickerQuery, setInitialPickerQuery] = useState<string | undefined>(undefined);
   const { projects: allProjects } = useAllProjects(pickerOpen);
+
+  const handleOpenNewSession = useCallback(async () => {
+    if (activeSpace === "home" || activeSpace === "__all__" || activeSpace === "__archived__") {
+      setInitialPickerQuery(undefined);
+      setPickerOpen(true);
+      return;
+    }
+    // Inside a real space: count live-folder projects to decide.
+    try {
+      const all = await fetchAllProjects();
+      const inSpace = all.filter((p) => p.spaceId === activeSpace && p.hasLivePath !== false);
+      if (inSpace.length === 1) {
+        // Spawn silently — no palette.
+        setPickerError(null);
+        const outcome = await launchAndOpen(
+          { kind: "claude_new", source: { type: "project", id: inSpace[0].id } },
+          dispatch,
+        );
+        if (outcome.ok) {
+          recordRecentProjectId(inSpace[0].id);
+          return;
+        }
+        // Silent spawn failed — fall back to the palette with the error.
+        const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
+        setPickerError(`${humanError(outcome.error)}${hint}`);
+      }
+      // 0 or 2+ → open palette. Pre-fill with the space name when 2+.
+      const space = spaces.find((s) => s.id === activeSpace);
+      setInitialPickerQuery(inSpace.length >= 2 ? (space?.displayName ?? "") : undefined);
+      setPickerOpen(true);
+    } catch (err) {
+      // Network failure — open the palette with the error so the user
+      // can retry / pick manually.
+      setPickerError(err instanceof Error ? err.message : String(err));
+      setPickerOpen(true);
+    }
+  }, [activeSpace, spaces, dispatch]);
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
@@ -519,7 +557,8 @@ export default function App() {
       )}
       <NewSessionPicker
         open={pickerOpen}
-        onClose={() => { setPickerOpen(false); setPickerError(null); }}
+        onClose={() => { setPickerOpen(false); setPickerError(null); setInitialPickerQuery(undefined); }}
+        initialQuery={initialPickerQuery}
         projects={allProjects}
         spaces={spaces}
         errorMessage={pickerError}
@@ -565,7 +604,7 @@ export default function App() {
           const w = windows.find((x) => x.terminalId === terminalId);
           if (w) dispatch({ type: "CLOSE", id: w.id });
         }}
-        onOpenNewSession={() => setPickerOpen(true)}
+        onOpenNewSession={handleOpenNewSession}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
