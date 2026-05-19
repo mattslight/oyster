@@ -273,6 +273,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     setSelectedOrphanCwd(null);
   }, [scopedSpace, showElsewhere, isHomeView]);
 
+  // Auto-reset the live-terminals filter if there are no live terminals
+  // (e.g. the last terminal was stopped, or the user switched to a space
+  // with none). Without this the pill disappears but the filter sticks,
+  // leaving a silently empty session list.
+  useEffect(() => {
+    if (stateFilter === "live-terminals" && presence.totalLive === 0) {
+      setStateFilter("all");
+    }
+  }, [stateFilter, presence.totalLive]);
+
   const scopedSessions = useMemo(() => {
     if (showElsewhere && isHomeView) return sessions.filter((s) => s.spaceId === null);
     return scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions;
