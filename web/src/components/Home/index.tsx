@@ -31,6 +31,9 @@ import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./t
 import { attachFolder } from "../../data/projects-api";
 import { deleteMemory, type Memory } from "../../data/memories-api";
 import { ApiError } from "../../data/http";
+import { useTerminalPresence } from "../../hooks/useTerminalPresence";
+import type { WindowState } from "../../stores/windows";
+import { RunningTerminalsPill } from "../Topbar/RunningTerminalsPill";
 import "./Home.css";
 
 interface Props {
@@ -58,6 +61,14 @@ interface Props {
   /** Launch a remote (cross-device) session in an Oyster terminal once
    *  reassemble has completed. Threaded to ResumeDialog via SessionInspector. */
   onOpenRemoteInOyster?: (sessionId: string) => Promise<import("../SessionInspector/ResumeDialog").OpenInOysterResult>;
+  /** Running-terminals pill: client-side window list for presence fusion. */
+  terminalWindows?: WindowState[];
+  /** Running-terminals pill: focus an already-open terminal window. */
+  onTerminalFocus?: (terminalId: string) => void;
+  /** Running-terminals pill: restore a minimised terminal. */
+  onTerminalRestore?: (sessionId: string, terminalId: string) => void;
+  /** Running-terminals pill: stop (DELETE) a running terminal. */
+  onTerminalStop?: (terminalId: string) => Promise<void>;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -134,8 +145,9 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop }: Props) {
   const { sessions, error, loading } = useSessions();
+  const presence = useTerminalPresence(sessions, terminalWindows ?? []);
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();
   const myDeviceId = myDevice?.deviceId ?? null;
@@ -771,6 +783,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 )}
                 <span className="home-breadcrumb-pill-label">Unsorted</span>
               </button>
+            )}
+            {onTerminalFocus && onTerminalRestore && onTerminalStop && (
+              <RunningTerminalsPill
+                presence={presence}
+                sessions={sessions}
+                onFocus={onTerminalFocus}
+                onRestore={onTerminalRestore}
+                onStop={onTerminalStop}
+              />
             )}
             </div>
             </LayoutGroup>

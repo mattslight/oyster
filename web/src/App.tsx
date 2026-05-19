@@ -24,6 +24,8 @@ import type { Space, SetupProposal } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import { unpublishArtifact } from "./data/publish-api";
 import { launchAndOpen, humanError } from "./lib/launch-terminal";
+import { useSessions } from "./hooks/useSessions";
+import { useTerminalPresence } from "./hooks/useTerminalPresence";
 import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
@@ -323,6 +325,9 @@ export default function App() {
   const terminalWindow = windows.find((w) => w.type === "terminal");
   const claudeTerminals = windows.filter((w) => w.type === "claude_terminal");
 
+  const { sessions: allSessions } = useSessions();
+  const presence = useTerminalPresence(allSessions, windows);
+
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
 
@@ -498,6 +503,26 @@ export default function App() {
         onLaunchClaude={handleLaunchClaudeFromProject}
         onLaunchClaudeFromSession={handleLaunchClaudeFromSession}
         onOpenRemoteInOyster={handleOpenRemoteInOyster}
+        terminalWindows={claudeTerminals}
+        onTerminalFocus={(terminalId) => {
+          const w = windows.find(w => w.terminalId === terminalId);
+          if (w) dispatch({ type: "FOCUS", id: w.id });
+        }}
+        onTerminalRestore={(sessionId, terminalId) => {
+          const session = allSessions.find(s => s.id === sessionId);
+          dispatch({
+            type: "OPEN_CLAUDE_TERMINAL",
+            terminalId,
+            title: session?.title ?? "Claude",
+            cwd: session?.cwd ?? "/",
+            kind: "claude_resume",
+            linkedSessionId: sessionId,
+          });
+        }}
+        onTerminalStop={async (terminalId) => {
+          await fetch(`/api/terminals/${encodeURIComponent(terminalId)}`, { method: "DELETE" });
+          // SSE event will trigger refetch.
+        }}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
