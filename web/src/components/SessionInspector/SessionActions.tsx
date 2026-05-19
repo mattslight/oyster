@@ -1,6 +1,7 @@
 // SessionActions — extracted from SessionInspector for navigability.
 import { useState } from "react";
 import type { Session } from "../../data/sessions-api";
+import { ConfirmModal } from "../ConfirmModal";
 
 // POSIX single-quote: wrap in 's, replace embedded ' with '\''. Keeps
 // paths with spaces, $, backticks, etc. literal so resume can be pasted
@@ -18,6 +19,14 @@ export function SessionActions({ session, onLaunchClaude }: {
 }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [forkWarningOpen, setForkWarningOpen] = useState(false);
+
+  // A session that's active or waiting AND not currently running in Oyster
+  // is alive somewhere else (the user's own claude CLI, another device,
+  // another tab). Resuming it here would attach a second claude process
+  // to the same session id and fork the conversation.
+  const forkRisk = (session.state === "active" || session.state === "waiting")
+    && session.terminalId == null;
   // `cd --` disables option parsing so a path beginning with `-` (or
   // the literal `-`, which would otherwise mean "previous dir") is
   // taken as a positional path argument. Single-quoting handles
@@ -65,7 +74,7 @@ export function SessionActions({ session, onLaunchClaude }: {
         <button
           type="button"
           className="btn primary"
-          onClick={() => onLaunchClaude!()}
+          onClick={() => forkRisk ? setForkWarningOpen(true) : onLaunchClaude!()}
           title={`Run claude --resume ${session.id} in ${session.cwd}`}
         >
           Resume here
@@ -77,6 +86,26 @@ export function SessionActions({ session, onLaunchClaude }: {
       <button type="button" className="btn" onClick={copyId}>
         {copiedId ? "Copied!" : "Copy session ID"}
       </button>
+      <ConfirmModal
+        open={forkWarningOpen}
+        title="This session is active outside Oyster"
+        body={
+          <p>
+            Resuming here will start a second Claude process on the same session id and
+            <strong> fork the conversation</strong>. The original copy will keep running where it is.
+            <br /><br />
+            To avoid forks, launch sessions from inside Oyster.
+          </p>
+        }
+        confirmLabel="Resume anyway"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setForkWarningOpen(false)}
+        onConfirm={() => {
+          setForkWarningOpen(false);
+          onLaunchClaude!();
+        }}
+      />
     </div>
   );
 }
