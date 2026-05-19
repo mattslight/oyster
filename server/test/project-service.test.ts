@@ -143,6 +143,55 @@ describe("ProjectService.listForSpace", () => {
   });
 });
 
+describe("ProjectService.listAll", () => {
+  let dir: string;
+  let db: Database.Database;
+  let service: ProjectService;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-ps-listall-"));
+    db = initDb(dir);
+    db.exec(`
+      INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('work', 'Work', '#000', 'none');
+      INSERT INTO spaces (id, display_name, color, scan_status) VALUES ('home', 'Home', '#111', 'none');
+    `);
+    service = new ProjectService(db);
+  });
+  afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  it("returns active projects across all spaces, sorted by name", () => {
+    service.createProject({ spaceId: "work", name: "Zebra" });
+    service.createProject({ spaceId: "home", name: "Alpha" });
+    service.createProject({ spaceId: "work", name: "Mango" });
+
+    const projects = service.listAll();
+    expect(projects.map((p) => p.name)).toEqual(["Alpha", "Mango", "Zebra"]);
+    // Each row carries its space so the palette can show the breadcrumb.
+    expect(projects.map((p) => p.spaceId).sort()).toEqual(["home", "work", "work"]);
+  });
+
+  it("excludes soft-deleted projects", () => {
+    const keep = service.createProject({ spaceId: "work", name: "Keep" });
+    const gone = service.createProject({ spaceId: "home", name: "Gone" });
+    service.deleteProject(gone.id);
+
+    const projects = service.listAll();
+    expect(projects.map((p) => p.id)).toEqual([keep.id]);
+  });
+
+  it("exposes the same path-state fields as listForSpace (hasLivePath, recentPath, isGitRepo)", () => {
+    const folder = mkdtempSync(join(tmpdir(), "oyster-listall-live-"));
+    const proj = service.createProject({ spaceId: "work", name: "Live" });
+    db.prepare("INSERT INTO project_paths (project_id, path) VALUES (?, ?)").run(proj.id, folder);
+
+    const [listed] = service.listAll();
+    expect(listed.hasLivePath).toBe(true);
+    expect(listed.recentPath).toBe(folder);
+
+    rmSync(folder, { recursive: true, force: true });
+  });
+});
+
 describe("ProjectService.claimOrphan", () => {
   let dir: string;
   let db: Database.Database;

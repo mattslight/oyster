@@ -80,6 +80,15 @@ export class ProjectService {
     return rows.map((row) => ({ ...rowToProject(row), ...this.detectPathState(row.id) }));
   }
 
+  /** All non-removed projects across every space, sorted by name. Used by
+   *  the New Session palette which presents one flat list. */
+  listAll(): Project[] {
+    const rows = this.db
+      .prepare("SELECT id, space_id, name, created_at FROM projects WHERE removed_at IS NULL ORDER BY name COLLATE NOCASE")
+      .all() as ProjectRow[];
+    return rows.map((row) => ({ ...rowToProject(row), ...this.detectPathState(row.id) }));
+  }
+
   /** Lookup a single non-removed project by id, with path state attached.
    *  Used by terminal-launch to resolve a cwd from a project reference. */
   getById(id: string): Project | null {
