@@ -25,7 +25,6 @@ import { createSession, sendMessage } from "./data/chat-api";
 import { unpublishArtifact } from "./data/publish-api";
 import { launchAndOpen, humanError } from "./lib/launch-terminal";
 import { useSessions } from "./hooks/useSessions";
-import { useTerminalPresence } from "./hooks/useTerminalPresence";
 import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
@@ -326,7 +325,6 @@ export default function App() {
   const claudeTerminals = windows.filter((w) => w.type === "claude_terminal");
 
   const { sessions: allSessions } = useSessions();
-  const presence = useTerminalPresence(allSessions, windows);
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
