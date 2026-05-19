@@ -24,7 +24,7 @@ describe("GET /api/sessions payload — terminal fields", () => {
     env.store.setAttachedClients("s1", 2);
 
     const row = env.store.getById("s1")!;
-    const payload = mapSessionRow(row, /* myDeviceId */ null, /* myDeviceLabel */ null);
+    const payload = mapSessionRow(row);
     expect(payload.terminalId).toBe("term-1");
     expect(payload.terminalAttachedClients).toBe(2);
   });
@@ -32,7 +32,7 @@ describe("GET /api/sessions payload — terminal fields", () => {
   it("payload mapping projects null/0 when no terminal linked", () => {
     env.store.insertSession({ id: "s2", space_id: null, agent: "claude-code", state: "done" });
     const row = env.store.getById("s2")!;
-    const payload = mapSessionRow(row, null, null);
+    const payload = mapSessionRow(row);
     expect(payload.terminalId).toBeNull();
     expect(payload.terminalAttachedClients).toBe(0);
   });

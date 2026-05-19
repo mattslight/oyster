@@ -151,8 +151,6 @@ export interface MergedSessionPayload {
  *  Exported so unit tests can exercise the mapping without spinning up HTTP. */
 export function mapSessionRow(
   row: SessionRow,
-  myDeviceId: string | null,
-  myDeviceLabel: string | null,
 ): MergedSessionPayload {
   return {
     id: row.id,
@@ -206,7 +204,7 @@ export async function tryHandleSessionRoute(
     const { myDeviceId, myDeviceLabel } = readMyDeviceIdentity(db);
     const resolveActiveLabel = makeActiveLabelResolver(myDeviceId, myDeviceLabel);
     const localPayload: MergedSessionPayload[] = rows.map((row) =>
-      mapSessionRow(row, myDeviceId, myDeviceLabel),
+      mapSessionRow(row),
     );
 
     // Merge cross-device sessions from remote_sessions. Pulled by
@@ -353,27 +351,7 @@ export async function tryHandleSessionRoute(
       const id = m[1]!;
       const row = sessionStore.getById(id);
       if (row) {
-        sendJson({
-          id: row.id,
-          spaceId: row.space_id,
-          projectId: row.project_id ?? null,
-          cwd: row.cwd,
-          agent: row.agent,
-          title: row.title,
-          state: row.state,
-          startedAt: row.started_at,
-          endedAt: row.ended_at,
-          model: row.model,
-          lastEventAt: row.last_event_at,
-          // Local sessions are by definition local — null/true.
-          originDeviceId: null,
-          originDeviceLabel: null,
-          jsonlAvailableLocally: true,
-          hasBytes: true,
-          activeDeviceId: null,
-          activeDeviceLabel: null,
-          assignmentMode: row.assignment_mode,
-        });
+        sendJson(mapSessionRow(row));
         return true;
       }
 
@@ -417,6 +395,9 @@ export async function tryHandleSessionRoute(
             activeDeviceLabel: resolve(
               remoteRow.active_device_id, remoteRow.device_id, remoteRow.device_label,
             ),
+            // Remote sessions have no local PTY terminal.
+            terminalId: null,
+            terminalAttachedClients: 0,
           });
           return true;
         }
@@ -450,26 +431,7 @@ export async function tryHandleSessionRoute(
         }
         const updated = sessionService.moveSession(input);
         broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
-        sendJson({
-          id: updated.id,
-          spaceId: updated.space_id,
-          projectId: updated.project_id ?? null,
-          cwd: updated.cwd,
-          agent: updated.agent,
-          title: updated.title,
-          state: updated.state,
-          startedAt: updated.started_at,
-          endedAt: updated.ended_at,
-          model: updated.model,
-          lastEventAt: updated.last_event_at,
-          assignmentMode: updated.assignment_mode,
-          originDeviceId: null,
-          originDeviceLabel: null,
-          jsonlAvailableLocally: true,
-          hasBytes: true,
-          activeDeviceId: null,
-          activeDeviceLabel: null,
-        });
+        sendJson(mapSessionRow(updated));
       } catch (err) {
         if (err instanceof SessionNotFoundError || err instanceof ProjectNotFoundError) {
           sendJson({ error: err.message }, 404);
