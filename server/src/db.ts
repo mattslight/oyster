@@ -676,6 +676,13 @@ export function initDb(userlandDir: string): Database.Database {
     // the origin device's cwd (e.g. "C:\\Users\\matth" on a Mac-resumed
     // Windows session). Storing the real path is the only ground truth.
     "ALTER TABLE sessions ADD COLUMN jsonl_path TEXT",
+    // Terminal UX: in-memory PTY identity. terminal_id is the UUID of the
+    // live PTY (null between boots); terminal_attached_clients is the count
+    // of WebSocket connections currently tailing the output. Both are reset
+    // to null/0 on boot (see boot reset below) because PTYs are in-memory
+    // only and don't survive a server restart.
+    "ALTER TABLE sessions ADD COLUMN terminal_id TEXT",
+    "ALTER TABLE sessions ADD COLUMN terminal_attached_clients INTEGER NOT NULL DEFAULT 0",
   ]) {
     try { db.exec(sql); } catch { /* already exists */ }
   }
@@ -827,6 +834,15 @@ export function initDb(userlandDir: string): Database.Database {
         AND removed_at IS NULL
     `);
   }
+
+  // Stale-indicator reset. PTYs live in-memory only — they don't survive a
+  // server restart, so any non-null terminal_id or non-zero attached count
+  // from the previous boot is meaningless.
+  db.prepare(
+    `UPDATE sessions
+       SET terminal_id = NULL, terminal_attached_clients = 0
+     WHERE terminal_id IS NOT NULL OR terminal_attached_clients > 0`,
+  ).run();
 
   return db;
 }

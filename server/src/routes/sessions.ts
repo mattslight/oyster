@@ -10,7 +10,7 @@ import { basename, join } from "node:path";
 import { existsSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import type Database from "better-sqlite3";
-import type { SessionStore } from "../session-store.js";
+import type { SessionStore, SessionRow } from "../session-store.js";
 import type { SqliteSpaceStore } from "../space-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
@@ -114,6 +114,74 @@ function validateOverrideTarget(targetCwd: string, remoteCwd: string | null): Va
   return { ok: reasons.length === 0, reasons };
 }
 
+// ── Local-session payload types + mapper ───────────────────────────────────
+
+export interface MergedSessionPayload {
+  id: string;
+  spaceId: string | null;
+  projectId: string | null;
+  cwd: string | null;
+  agent: string;
+  title: string | null;
+  state: string;
+  startedAt: string;
+  endedAt: string | null;
+  model: string | null;
+  lastEventAt: string;
+  originDeviceId: string | null;
+  originDeviceLabel: string | null;
+  jsonlAvailableLocally: boolean;
+  hasBytes: boolean;
+  activeDeviceId: string | null;
+  /** Human-readable label of whichever device most recently wrote a
+   *  chunk for this session. Resolved server-side from one of:
+   *  - this device's device_identity.label (when active is us)
+   *  - remote_sessions.device_label (when active is the origin device)
+   *  - null (when active is some third device we don't yet know about).
+   *  Drives the "Now active on Mac" chip in the UI. */
+  activeDeviceLabel: string | null;
+  assignmentMode?: "auto" | "manual";
+  /** Linked PTY terminal id, or null when no live terminal. */
+  terminalId: string | null;
+  /** Count of currently-attached WS clients on the linked terminal. */
+  terminalAttachedClients: number;
+}
+
+/** Map a local sessions row to the wire payload shape.
+ *  Exported so unit tests can exercise the mapping without spinning up HTTP. */
+export function mapSessionRow(
+  row: SessionRow,
+): MergedSessionPayload {
+  return {
+    id: row.id,
+    spaceId: row.space_id,
+    projectId: row.project_id ?? null,
+    cwd: row.cwd,
+    agent: row.agent,
+    title: row.title,
+    state: row.state,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    model: row.model,
+    lastEventAt: row.last_event_at,
+    // Local sessions are by definition available on this device.
+    originDeviceId: null,
+    originDeviceLabel: null,
+    jsonlAvailableLocally: true,
+    // We don't track "is there a cloud chunk for this local session" here
+    // — that requires a cloud round-trip. For the UI, the
+    // jsonlAvailableLocally flag is the right gate. hasBytes mirrors that
+    // (the file is on disk, so there are bytes to read).
+    hasBytes: true,
+    // Local sessions are always actively written by this device.
+    activeDeviceId: null,
+    activeDeviceLabel: null,
+    assignmentMode: row.assignment_mode,
+    terminalId: row.terminal_id,
+    terminalAttachedClients: row.terminal_attached_clients,
+  };
+}
+
 export async function tryHandleSessionRoute(
   req: IncomingMessage,
   res: ServerResponse,
@@ -130,65 +198,14 @@ export async function tryHandleSessionRoute(
   if (url === "/api/sessions" && req.method === "GET") {
     if (rejectIfNonLocalOrigin()) return true;
     const rows = sessionStore.getAll();
-    interface MergedSessionPayload {
-      id: string;
-      spaceId: string | null;
-      projectId: string | null;
-      cwd: string | null;
-      agent: string;
-      title: string | null;
-      state: string;
-      startedAt: string;
-      endedAt: string | null;
-      model: string | null;
-      lastEventAt: string;
-      originDeviceId: string | null;
-      originDeviceLabel: string | null;
-      jsonlAvailableLocally: boolean;
-      hasBytes: boolean;
-      activeDeviceId: string | null;
-      /** Human-readable label of whichever device most recently wrote a
-       *  chunk for this session. Resolved server-side from one of:
-       *  - this device's device_identity.label (when active is us)
-       *  - remote_sessions.device_label (when active is the origin device)
-       *  - null (when active is some third device we don't yet know about).
-       *  Drives the "Now active on Mac" chip in the UI. */
-      activeDeviceLabel: string | null;
-      assignmentMode?: "auto" | "manual";
-    }
     // Cache the current device identity once — used to resolve "active is us"
     // for both local and remote payload entries. NULL when device_identity
     // hasn't been seeded yet; the chip silently skips in that case.
     const { myDeviceId, myDeviceLabel } = readMyDeviceIdentity(db);
     const resolveActiveLabel = makeActiveLabelResolver(myDeviceId, myDeviceLabel);
-    const localPayload: MergedSessionPayload[] = rows.map((row) => {
-      return {
-        id: row.id,
-        spaceId: row.space_id,
-        projectId: row.project_id ?? null,
-        cwd: row.cwd,
-        agent: row.agent,
-        title: row.title,
-        state: row.state,
-        startedAt: row.started_at,
-        endedAt: row.ended_at,
-        model: row.model,
-        lastEventAt: row.last_event_at,
-        // Local sessions are by definition available on this device.
-        originDeviceId: null,
-        originDeviceLabel: null,
-        jsonlAvailableLocally: true,
-        // We don't track "is there a cloud chunk for this local session" here
-        // — that requires a cloud round-trip. For the UI, the
-        // jsonlAvailableLocally flag is the right gate. hasBytes mirrors that
-        // (the file is on disk, so there are bytes to read).
-        hasBytes: true,
-        // Local sessions are always actively written by this device.
-        activeDeviceId: null,
-        activeDeviceLabel: null,
-        assignmentMode: row.assignment_mode,
-      };
-    });
+    const localPayload: MergedSessionPayload[] = rows.map((row) =>
+      mapSessionRow(row),
+    );
 
     // Merge cross-device sessions from remote_sessions. Pulled by
     // SessionSyncService from the cloud's GET /api/sessions/metadata.
@@ -255,6 +272,9 @@ export async function tryHandleSessionRoute(
           hasBytes: r.has_bytes === 1,
           activeDeviceId: r.active_device_id,
           activeDeviceLabel: resolveActiveLabel(r.active_device_id, r.device_id, r.device_label),
+          // Remote sessions have no local PTY terminal.
+          terminalId: null,
+          terminalAttachedClients: 0,
         }));
     }
 
@@ -331,27 +351,7 @@ export async function tryHandleSessionRoute(
       const id = m[1]!;
       const row = sessionStore.getById(id);
       if (row) {
-        sendJson({
-          id: row.id,
-          spaceId: row.space_id,
-          projectId: row.project_id ?? null,
-          cwd: row.cwd,
-          agent: row.agent,
-          title: row.title,
-          state: row.state,
-          startedAt: row.started_at,
-          endedAt: row.ended_at,
-          model: row.model,
-          lastEventAt: row.last_event_at,
-          // Local sessions are by definition local — null/true.
-          originDeviceId: null,
-          originDeviceLabel: null,
-          jsonlAvailableLocally: true,
-          hasBytes: true,
-          activeDeviceId: null,
-          activeDeviceLabel: null,
-          assignmentMode: row.assignment_mode,
-        });
+        sendJson(mapSessionRow(row));
         return true;
       }
 
@@ -395,6 +395,9 @@ export async function tryHandleSessionRoute(
             activeDeviceLabel: resolve(
               remoteRow.active_device_id, remoteRow.device_id, remoteRow.device_label,
             ),
+            // Remote sessions have no local PTY terminal.
+            terminalId: null,
+            terminalAttachedClients: 0,
           });
           return true;
         }
@@ -428,26 +431,7 @@ export async function tryHandleSessionRoute(
         }
         const updated = sessionService.moveSession(input);
         broadcastUiEvent({ version: 1, command: "session_changed", payload: { id } });
-        sendJson({
-          id: updated.id,
-          spaceId: updated.space_id,
-          projectId: updated.project_id ?? null,
-          cwd: updated.cwd,
-          agent: updated.agent,
-          title: updated.title,
-          state: updated.state,
-          startedAt: updated.started_at,
-          endedAt: updated.ended_at,
-          model: updated.model,
-          lastEventAt: updated.last_event_at,
-          assignmentMode: updated.assignment_mode,
-          originDeviceId: null,
-          originDeviceLabel: null,
-          jsonlAvailableLocally: true,
-          hasBytes: true,
-          activeDeviceId: null,
-          activeDeviceLabel: null,
-        });
+        sendJson(mapSessionRow(updated));
       } catch (err) {
         if (err instanceof SessionNotFoundError || err instanceof ProjectNotFoundError) {
           sendJson({ error: err.message }, 404);

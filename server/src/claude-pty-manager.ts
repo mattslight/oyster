@@ -12,9 +12,17 @@ import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type { SessionStore } from "./session-store.js";
+import type { UiCommand, TerminalPresenceEventPayload } from "../../shared/types.js";
+
+export interface ClaudePtyManagerDeps {
+  sessionStore: SessionStore;
+  broadcastUiEvent: (cmd: UiCommand) => void;
+}
 
 const SCROLLBACK_LIMIT = 50_000;
-const POST_EXIT_RETENTION_MS = 30_000;
+export const POST_EXIT_RETENTION_MS = 15 * 60 * 1000;
+export const MAX_RETAINED_EXITED = 50;
 const MAX_CONCURRENT_TERMINALS = 8;
 
 export class TerminalCapError extends Error {
@@ -98,6 +106,13 @@ export interface ClaudePtyListEntry {
 export class ClaudePtyManager {
   private terminals = new Map<string, ClaudePtyEntry>();
   private wss = new WebSocketServer({ noServer: true });
+  private sessionStore: SessionStore;
+  private broadcastUiEvent: (cmd: UiCommand) => void;
+
+  constructor(deps: ClaudePtyManagerDeps) {
+    this.sessionStore = deps.sessionStore;
+    this.broadcastUiEvent = deps.broadcastUiEvent;
+  }
 
   spawn(input: SpawnInput): SpawnResult {
     if (!ptyAvailable || !ptyModule) {
@@ -170,18 +185,7 @@ export class ClaudePtyManager {
       }
     });
 
-    proc.onExit(({ exitCode }: { exitCode: number }) => {
-      entry.exitedAt = Date.now();
-      const closeNote = `\r\n\x1b[90m[session ended (exit ${exitCode})]\x1b[0m\r\n`;
-      entry.scrollback += closeNote;
-      for (const ws of entry.clients) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
-      }
-      // Retain for late reconnects, then evict.
-      entry.evictTimer = setTimeout(() => {
-        this.terminals.delete(terminalId);
-      }, POST_EXIT_RETENTION_MS);
-    });
+    proc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
 
     return { terminalId, startedAt };
   }
@@ -190,6 +194,15 @@ export class ClaudePtyManager {
     const entry = this.terminals.get(terminalId);
     if (!entry) return false;
     entry.clients.add(ws);
+    if (entry.exitedAt === null && entry.linkedSessionId) {
+      this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+      this.broadcastUiEvent({
+        version: 1,
+        command: "terminal:attached",
+        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
+      });
+      this.notifySessionChanged(entry.linkedSessionId);
+    }
 
     if (entry.scrollback.length > 0) {
       ws.send(entry.scrollback);
@@ -214,6 +227,15 @@ export class ClaudePtyManager {
 
     ws.on("close", () => {
       entry.clients.delete(ws);
+      if (entry.exitedAt === null && entry.linkedSessionId) {
+        this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+        this.broadcastUiEvent({
+          version: 1,
+          command: "terminal:detached",
+          payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
+        });
+        this.notifySessionChanged(entry.linkedSessionId);
+      }
     });
 
     return true;
@@ -223,6 +245,7 @@ export class ClaudePtyManager {
     const entry = this.terminals.get(terminalId);
     if (!entry) return false;
     entry.linkedSessionId = sessionId;
+    this.sessionStore.linkTerminal(sessionId, terminalId);
     return true;
   }
 
@@ -279,5 +302,81 @@ export class ClaudePtyManager {
 
   isPtyAvailable(): boolean {
     return ptyAvailable;
+  }
+
+  private notifySessionChanged(sessionId: string | null): void {
+    if (!sessionId) return;
+    this.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: sessionId } });
+  }
+
+  private enforceRetentionCap(): void {
+    const exited = Array.from(this.terminals.values())
+      .filter(e => e.exitedAt !== null)
+      .sort((a, b) => (a.exitedAt ?? 0) - (b.exitedAt ?? 0));
+    while (exited.length > MAX_RETAINED_EXITED) {
+      const victim = exited.shift()!;
+      if (victim.evictTimer) { clearTimeout(victim.evictTimer); victim.evictTimer = null; }
+      this.terminals.delete(victim.terminalId);
+    }
+  }
+
+  private _handleExit(entry: ClaudePtyEntry, exitCode: number): void {
+    entry.exitedAt = Date.now();
+    const closeNote = `\r\n\x1b[90m[session ended (exit ${exitCode})]\x1b[0m\r\n`;
+    entry.scrollback += closeNote;
+    for (const ws of entry.clients) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
+    }
+    const exitedSessionId = entry.linkedSessionId;
+    if (exitedSessionId) {
+      this.sessionStore.clearTerminal(exitedSessionId);
+      entry.linkedSessionId = null;
+    }
+    this.broadcastUiEvent({
+      version: 1,
+      command: "terminal:exited",
+      payload: { terminalId: entry.terminalId, sessionId: exitedSessionId, attachedClients: 0 } satisfies TerminalPresenceEventPayload,
+    });
+    this.notifySessionChanged(exitedSessionId);
+    // Retain for late reconnects, then evict.
+    entry.evictTimer = setTimeout(() => {
+      this.terminals.delete(entry.terminalId);
+    }, POST_EXIT_RETENTION_MS);
+    // Eagerly enforce the hard cap, evicting oldest-exited-first.
+    this.enforceRetentionCap();
+  }
+
+  /** Test-only: pair `_seedEntryForTest` with a link write in one step. */
+  linkTerminalForTest(terminalId: string, sessionId: string): void { this.setLinkedSession(terminalId, sessionId); }
+
+  /** Test-only: inject a fake entry with a stub proc whose onExit fires
+   *  immediately on kill(). Production code never calls this. */
+  _seedEntryForTest(input: { terminalId: string; linkedSessionId: string | null }): void {
+    let exitCb: (e: { exitCode: number }) => void = () => {};
+    const fakeProc: any = {
+      pid: -1,
+      onData: () => {},
+      onExit: (cb: typeof exitCb) => { exitCb = cb; },
+      write: () => {},
+      resize: () => {},
+      kill: () => { exitCb({ exitCode: 0 }); },
+    };
+    const entry: ClaudePtyEntry = {
+      terminalId: input.terminalId,
+      kind: "claude_new",
+      proc: fakeProc,
+      scrollback: "",
+      clients: new Set(),
+      cwd: "/tmp",
+      command: "/bin/echo",
+      args: [],
+      startedAt: Date.now(),
+      exitedAt: null,
+      linkedSessionId: input.linkedSessionId,
+      evictTimer: null,
+    };
+    // Wire the onExit listener the same way spawn() does.
+    fakeProc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
+    this.terminals.set(input.terminalId, entry);
   }
 }

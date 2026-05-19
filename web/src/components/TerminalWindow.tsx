@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { WindowChrome } from "./WindowChrome";
+import { ConfirmModal } from "./ConfirmModal";
 
 interface Props {
   defaultX: number;
@@ -22,6 +23,13 @@ interface Props {
   linkedSessionId?: string;
   /** Optional callback fired when the user clicks a linked title. */
   onOpenSession?: (sessionId: string) => void;
+  /** True when the underlying PTY is alive on the server. Controls whether
+   *  the close button means "minimise" (alive — glyph −) or "close" (dead,
+   *  PTY was stopped or exited — glyph ×). Defaults to true. */
+  ptyAlive?: boolean;
+  /** Optional handler to kill the PTY. When provided AND `ptyAlive`, a Stop
+   *  (■) button is rendered in the header. Mirrors the popover Stop. */
+  onStop?: () => void | Promise<void>;
 }
 
 export function TerminalWindow({
@@ -34,7 +42,24 @@ export function TerminalWindow({
   title,
   linkedSessionId,
   onOpenSession,
+  ptyAlive = true,
+  onStop,
 }: Props) {
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
+  const [dontAskAgain, setDontAskAgain] = useState(false);
+
+  // Stop button click — same fork in behaviour as the popover's Stop
+  // button (shared localStorage flag, so the user only needs to ack once
+  // across both surfaces).
+  function requestStop() {
+    if (!onStop) return;
+    if (localStorage.getItem("oyster-skip-stop-confirm") === "1") {
+      void onStop();
+    } else {
+      setDontAskAgain(false);
+      setStopConfirmOpen(true);
+    }
+  }
   const termRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -163,20 +188,54 @@ export function TerminalWindow({
   ) : (title ?? "opencode");
 
   return (
-    <WindowChrome
-      title={titleNode}
-      onFocus={onFocus}
-      onClose={onClose}
-      defaultX={defaultX}
-      defaultY={defaultY}
-      defaultW={720}
-      defaultH={480}
-      zIndex={zIndex}
-    >
-      <div
-        ref={termRef}
-        style={{ width: "100%", height: "100%", padding: "4px" }}
+    <>
+      <WindowChrome
+        title={titleNode}
+        onFocus={onFocus}
+        onClose={onClose}
+        defaultX={defaultX}
+        defaultY={defaultY}
+        defaultW={720}
+        defaultH={480}
+        zIndex={zIndex}
+        closeButtonTooltip={ptyAlive ? "Minimise terminal" : "Close window"}
+        closeButtonGlyph={ptyAlive ? "−" : "×"}
+        extraHeader={ptyAlive && onStop ? (
+          <button
+            type="button"
+            className="window-btn window-btn--stop"
+            onClick={requestStop}
+            title="Stop terminal"
+          >■</button>
+        ) : undefined}
+      >
+        <div
+          ref={termRef}
+          style={{ width: "100%", height: "100%", padding: "4px" }}
+        />
+      </WindowChrome>
+      <ConfirmModal
+        open={stopConfirmOpen}
+        title="Stop this terminal?"
+        body={
+          <>
+            <p>Ending the session kills the Claude process and discards any in-progress work. The conversation history stays in the Sessions list.</p>
+            <label className="rtp-confirm-checkbox">
+              <input type="checkbox" checked={dontAskAgain} onChange={(e) => setDontAskAgain(e.target.checked)} />
+              Don't ask me again
+            </label>
+          </>
+        }
+        confirmLabel="Stop terminal"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setStopConfirmOpen(false)}
+        onConfirm={() => {
+          if (dontAskAgain) localStorage.setItem("oyster-skip-stop-confirm", "1");
+          setStopConfirmOpen(false);
+          void onStop?.();
+        }}
       />
-    </WindowChrome>
+    </>
   );
 }

@@ -23,6 +23,7 @@ export type WindowAction =
   | { type: "OPEN_CHAT" }
   | { type: "OPEN_VIEWER"; title: string; path: string; fullscreen?: boolean }
   | { type: "CLOSE"; id: string }
+  | { type: "MINIMISE"; id: string }
   | { type: "CLOSE_ALL_VIEWERS" }
   | { type: "UPDATE_STATUS"; id: string; statusText: string }
   | { type: "OPEN_TERMINAL" }
@@ -111,6 +112,11 @@ export function windowsReducer(
       ];
     }
     case "CLOSE":
+      return state.filter((w) => w.id !== action.id);
+    case "MINIMISE":
+      // Same state change as CLOSE for the windows array (drop the window).
+      // Behavioural difference lives at the call site: terminal panels do
+      // NOT call DELETE /api/terminals/:id — the PTY survives.
       return state.filter((w) => w.id !== action.id);
     case "CLOSE_ALL_VIEWERS":
       return state.filter((w) => w.type !== "viewer");

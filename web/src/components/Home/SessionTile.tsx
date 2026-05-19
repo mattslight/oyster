@@ -1,6 +1,7 @@
 // Session tile (icons-view card). Extracted from Home/index.tsx.
 import type { Session } from "../../data/sessions-api";
 import type { Space } from "../../../../shared/types";
+import type { PresenceInfo } from "../../hooks/useTerminalPresence";
 import {
   AGENT_CLASS, AGENT_LETTERS,
   activeWriterChipFor, metaForSession, originDeviceChipFor, spaceLabelFor,
@@ -14,10 +15,11 @@ interface SessionTileProps {
    *  during the brief window before useMyDeviceId resolves — chip is
    *  suppressed during that window. */
   myDeviceId: string | null;
+  livePresence?: PresenceInfo | undefined;
   onOpen?: (id: string) => void;
 }
 
-export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, onOpen }: SessionTileProps) {
+export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, livePresence, onOpen }: SessionTileProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const title = session.title ?? "(no title yet)";
   const remoteChip = originDeviceChipFor(session, myDeviceId);
@@ -54,6 +56,12 @@ export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, onOpen
         )}
         <span className="home-agent-mark">{AGENT_LETTERS[session.agent]}</span>
         <span className={`home-status ${session.state}`} />
+        {livePresence && (
+          <span
+            className={`tile-presence-dot${livePresence.state === "attached" ? " tpd--attached" : " tpd--running"}`}
+            title={livePresence.state === "attached" ? "Open in terminal" : "Minimised"}
+          />
+        )}
       </div>
       <div className="home-tile-label" title={title}>{title}</div>
       <div className="home-tile-meta">{metaForSession(session)}</div>
