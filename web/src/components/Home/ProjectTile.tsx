@@ -15,7 +15,7 @@ export function ProjectTile({
 }: {
   project: Project;
   artefactCount: number;
-  sessionCounts?: { active: number; waiting: number; disconnected: number };
+  sessionCounts?: { running: number; active: number; waiting: number; disconnected: number };
   selected: boolean;
   onSelect: () => void;
   onChanged: () => void;
@@ -119,6 +119,7 @@ export function ProjectTile({
             <span style={{ minWidth: 0, wordBreak: "break-word" }}>{project.name}</span>
           </div>
           <div className="home-space-card-counts">
+            {sessionCounts && sessionCounts.running > 0 && <span className="signal"><span className="pip pip-teal" />{sessionCounts.running} running</span>}
             {sessionCounts && sessionCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{sessionCounts.active} active</span>}
             {sessionCounts && sessionCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{sessionCounts.waiting} waiting</span>}
             <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>

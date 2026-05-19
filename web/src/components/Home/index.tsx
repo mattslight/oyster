@@ -123,7 +123,7 @@ function useStickyView(key: string, defaultValue: ViewMode): [ViewMode, (v: View
 const FILTER_ORDER: StateFilter[] = ["live-terminals", "live", "active", "waiting", "done", "all"];
 const LIVE_STATES: SessionState[] = ["active", "waiting"];
 
-const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+const EMPTY_COUNTS = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
 // Sessions list cap. Busy spaces can run dozens of concurrent sessions
 // and previously pushed Artefacts below the fold; ten keeps the section
@@ -319,9 +319,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     counts.done += counts.disconnected;
     counts.disconnected = 0;
     counts.live = counts.active + counts.waiting;
-    counts["live-terminals"] = presence.totalLive;
+    counts["live-terminals"] = folderScopedSessions.filter((s) => presence.byId[s.id] != null).length;
     return counts;
-  }, [folderScopedSessions, presence.totalLive]);
+  }, [folderScopedSessions, presence.byId]);
 
   const visibleSessions = useMemo(() => {
     let list: typeof folderScopedSessions;
@@ -343,24 +343,27 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // Per-space session counts + a separate orphan tally (sessions with
   // spaceId === null) + a grand total for the Home card.
   const { sessionCountsBySpace, orphanCounts, totalCounts } = useMemo(() => {
-    const bySpace: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
-    const orphans = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
-    const total = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const bySpace: Record<string, { total: number; running: number; active: number; waiting: number; disconnected: number; done: number }> = {};
+    const orphans = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const total = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
     for (const s of sessions) {
       total.total++;
       total[s.state]++;
+      if (presence.byId[s.id]) total.running++;
       if (s.spaceId) {
-        const c = bySpace[s.spaceId] ?? { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+        const c = bySpace[s.spaceId] ?? { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
         c.total++;
         c[s.state]++;
+        if (presence.byId[s.id]) c.running++;
         bySpace[s.spaceId] = c;
       } else {
         orphans.total++;
         orphans[s.state]++;
+        if (presence.byId[s.id]) orphans.running++;
       }
     }
     return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total };
-  }, [sessions]);
+  }, [sessions, presence.byId]);
 
   // Active projects on Home: collapse sessions by projectId, count
   // non-done states, drop projects with no live activity. Each entry
@@ -402,17 +405,20 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // ProjectTileGrid so a project tile can show "1 active · 1 waiting"
   // when sessions are running for that project.
   const sessionCountsByProject = useMemo(() => {
-    const out: Record<string, { active: number; waiting: number; disconnected: number }> = {};
+    const out: Record<string, { running: number; active: number; waiting: number; disconnected: number }> = {};
     for (const s of sessions) {
-      if (!s.projectId || s.state === "done") continue;
-      const c = out[s.projectId] ?? { active: 0, waiting: 0, disconnected: 0 };
+      if (!s.projectId) continue;
+      const isRunning = presence.byId[s.id] != null;
+      if (s.state === "done" && !isRunning) continue;
+      const c = out[s.projectId] ?? { running: 0, active: 0, waiting: 0, disconnected: 0 };
+      if (isRunning) c.running++;
       if (s.state === "active") c.active++;
       else if (s.state === "waiting") c.waiting++;
       else if (s.state === "disconnected") c.disconnected++;
       out[s.projectId] = c;
     }
     return out;
-  }, [sessions]);
+  }, [sessions, presence.byId]);
 
   // Orphan-cwd "projects" on Elsewhere — sessions whose cwd doesn't
   // match any registered source still came from somewhere. Group by
@@ -749,6 +755,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             {realSpaces.map((space) => {
               const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
               const tip = [
+                counts.running > 0 && `${counts.running} running`,
                 counts.active > 0 && `${counts.active} active`,
                 counts.waiting > 0 && `${counts.waiting} waiting`,
                 counts.disconnected > 0 && `${counts.disconnected} disconnected`,
@@ -774,7 +781,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       transition={{ type: "spring", stiffness: 400, damping: 35 }}
                     />
                   )}
-                  {(counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
+                  {(counts.running > 0 || counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
                     <span className="home-breadcrumb-badges">
                       {renderPipCounts(counts)}
                     </span>
@@ -790,6 +797,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 onClick={() => { onSpaceChange("home"); setShowElsewhere(true); setShowVault(false); }}
                 onContextMenu={(e) => e.preventDefault()}
                 title={[
+                  orphanCounts.running > 0 && `${orphanCounts.running} running`,
                   orphanCounts.active > 0 && `${orphanCounts.active} active`,
                   orphanCounts.waiting > 0 && `${orphanCounts.waiting} waiting`,
                   orphanCounts.disconnected > 0 && `${orphanCounts.disconnected} disconnected`,
@@ -803,7 +811,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                     transition={{ type: "spring", stiffness: 400, damping: 35 }}
                   />
                 )}
-                {(orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
+                {(orphanCounts.running > 0 || orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
                   <span className="home-breadcrumb-badges">
                     {renderPipCounts(orphanCounts)}
                   </span>
