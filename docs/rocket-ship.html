@@ -153,11 +153,11 @@
   @media (pointer: coarse) {
     .key-only { display: none; }
     .touch-only { display: revert; }
-    /* Touchscreen gameplay — drop the cabinet bezel + rounded tube
-       edges once the splash dismisses, matching arcade/shared/
-       cabinet.css behavior used by other arcade games. */
-    body.is-ingame .screen { padding: 0; background: #000; }
-    body.is-ingame .tube   { border-radius: 0; box-shadow: none; }
+    /* Touch devices — drop the cabinet bezel + rounded tube edges so
+       the splash + playfield go edge-to-edge. Phones and tablets
+       don't have screen real estate to spare for chrome. */
+    .screen { padding: 0; background: #000; }
+    .tube   { border-radius: 0; box-shadow: none; }
   }
 
   /* CRT scanlines + RGB sub-pixel overlay */
