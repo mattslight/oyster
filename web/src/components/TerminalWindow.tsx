@@ -22,6 +22,10 @@ interface Props {
   linkedSessionId?: string;
   /** Optional callback fired when the user clicks a linked title. */
   onOpenSession?: (sessionId: string) => void;
+  /** True when the underlying PTY is alive on the server. Controls whether
+   *  the close button means "minimise" (alive — glyph −) or "close" (dead,
+   *  PTY was stopped or exited — glyph ×). Defaults to true. */
+  ptyAlive?: boolean;
 }
 
 export function TerminalWindow({
@@ -34,6 +38,7 @@ export function TerminalWindow({
   title,
   linkedSessionId,
   onOpenSession,
+  ptyAlive = true,
 }: Props) {
   const termRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -172,8 +177,8 @@ export function TerminalWindow({
       defaultW={720}
       defaultH={480}
       zIndex={zIndex}
-      closeButtonTooltip="Minimise terminal"
-      closeButtonGlyph="−"
+      closeButtonTooltip={ptyAlive ? "Minimise terminal" : "Close window"}
+      closeButtonGlyph={ptyAlive ? "−" : "×"}
     >
       <div
         ref={termRef}

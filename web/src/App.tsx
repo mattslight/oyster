@@ -615,28 +615,37 @@ export default function App() {
             onClose={() => dispatch({ type: "MINIMISE", id: terminalWindow.id })}
           />
         )}
-        {claudeTerminals.map((w, i) => (
-          <TerminalWindow
-            key={w.id}
-            defaultX={140 + i * 24}
-            defaultY={80 + i * 24}
-            zIndex={w.zIndex}
-            onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
-            onClose={() => dispatch({ type: "MINIMISE", id: w.id })}
-            terminalId={w.terminalId}
-            title={w.title}
-            linkedSessionId={w.linkedSessionId}
-            onOpenSession={(sessionId) => {
-              // Route to /s/<space>/sessions/<id>; the space prefix is required
-              // by the active routing today, so use the current activeSpace
-              // (the session inspector itself does its own resolve).
-              window.history.pushState(null, "", `/s/${activeSpace}/sessions/${sessionId}`);
-              // Nudge the router (mirrors how artifact navigation triggers
-              // a popstate elsewhere).
-              window.dispatchEvent(new PopStateEvent("popstate"));
-            }}
-          />
-        ))}
+        {claudeTerminals.map((w, i) => {
+          // PTY alive iff some session row reports this terminalId as live.
+          // After Stop / natural exit / cross-tab kill, the server clears
+          // session.terminalId on the linked row, so this flips to false.
+          const ptyAlive = w.terminalId
+            ? allSessions.some((s) => s.terminalId === w.terminalId)
+            : true; // legacy non-Claude terminals always treat × as minimise
+          return (
+            <TerminalWindow
+              key={w.id}
+              defaultX={140 + i * 24}
+              defaultY={80 + i * 24}
+              zIndex={w.zIndex}
+              onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
+              onClose={() => dispatch({ type: ptyAlive ? "MINIMISE" : "CLOSE", id: w.id })}
+              terminalId={w.terminalId}
+              title={w.title}
+              linkedSessionId={w.linkedSessionId}
+              ptyAlive={ptyAlive}
+              onOpenSession={(sessionId) => {
+                // Route to /s/<space>/sessions/<id>; the space prefix is required
+                // by the active routing today, so use the current activeSpace
+                // (the session inspector itself does its own resolve).
+                window.history.pushState(null, "", `/s/${activeSpace}/sessions/${sessionId}`);
+                // Nudge the router (mirrors how artifact navigation triggers
+                // a popstate elsewhere).
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }}
+            />
+          );
+        })}
       </div>
 
       {showHardcoreGate && (
