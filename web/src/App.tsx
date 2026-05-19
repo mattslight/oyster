@@ -589,7 +589,7 @@ export default function App() {
             defaultY={60}
             zIndex={terminalWindow.zIndex}
             onFocus={() => dispatch({ type: "FOCUS", id: terminalWindow.id })}
-            onClose={() => dispatch({ type: "CLOSE", id: terminalWindow.id })}
+            onClose={() => dispatch({ type: "MINIMISE", id: terminalWindow.id })}
           />
         )}
         {claudeTerminals.map((w, i) => (
@@ -599,7 +599,7 @@ export default function App() {
             defaultY={80 + i * 24}
             zIndex={w.zIndex}
             onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
-            onClose={() => dispatch({ type: "CLOSE", id: w.id })}
+            onClose={() => dispatch({ type: "MINIMISE", id: w.id })}
             terminalId={w.terminalId}
             title={w.title}
             linkedSessionId={w.linkedSessionId}
