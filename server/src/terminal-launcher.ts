@@ -8,6 +8,7 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter as PATH_DELIM, dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 export type ResolveResult =
   | { ok: true; path: string }
@@ -70,13 +71,27 @@ export function resolveClaudeBinary(packageRoot: string): ResolveResult {
   return { ok: false, error: "binary_not_found" };
 }
 
+export interface LaunchArgs {
+  args: string[];
+  /** For claude_new: a freshly generated UUID. For claude_resume: the
+   *  sessionId passed in. Either way: the canonical session id for the
+   *  spawned process, so the caller can pre-insert a session row and
+   *  link the PTY synchronously without waiting on the JSONL watcher. */
+  sessionId: string;
+}
+
 export function buildLaunchArgs(
   kind: "claude_new" | "claude_resume",
   sessionId?: string,
-): string[] {
+): LaunchArgs {
   if (kind === "claude_resume") {
     if (!sessionId) throw new Error("buildLaunchArgs: claude_resume requires sessionId");
-    return ["--resume", sessionId];
+    return { args: ["--resume", sessionId], sessionId };
   }
-  return [];
+  // claude_new: generate a UUID and pass it via --session-id so the
+  // server knows the session id BEFORE the process writes its first
+  // JSONL. Closes the auto-link race that was leaving fresh spawns
+  // orphaned (PTY alive, no session row pointing at it).
+  const id = randomUUID();
+  return { args: ["--session-id", id], sessionId: id };
 }

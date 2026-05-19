@@ -8,12 +8,25 @@ import { join } from "node:path";
 import { resolveClaudeBinary, buildLaunchArgs } from "../src/terminal-launcher.js";
 
 describe("buildLaunchArgs", () => {
-  it("returns [] for claude_new", () => {
-    expect(buildLaunchArgs("claude_new")).toEqual([]);
+  it("returns --session-id <uuid> for claude_new with a freshly generated UUID", () => {
+    const result = buildLaunchArgs("claude_new");
+    expect(result.args[0]).toBe("--session-id");
+    expect(result.args[1]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(result.sessionId).toBe(result.args[1]);
   });
-  it("returns --resume <id> for claude_resume", () => {
-    expect(buildLaunchArgs("claude_resume", "abc-123")).toEqual(["--resume", "abc-123"]);
+
+  it("generates a fresh UUID on every call", () => {
+    const a = buildLaunchArgs("claude_new");
+    const b = buildLaunchArgs("claude_new");
+    expect(a.sessionId).not.toBe(b.sessionId);
   });
+
+  it("returns --resume <id> for claude_resume and echoes the sessionId", () => {
+    const result = buildLaunchArgs("claude_resume", "abc-123");
+    expect(result.args).toEqual(["--resume", "abc-123"]);
+    expect(result.sessionId).toBe("abc-123");
+  });
+
   it("throws when claude_resume is called without a sessionId", () => {
     expect(() => buildLaunchArgs("claude_resume")).toThrow();
   });
