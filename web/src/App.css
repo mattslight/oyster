@@ -2493,7 +2493,9 @@ body {
   border: 1px solid transparent;
   color: rgba(232,233,240,0.75);
   font-size: 12px;
-  display: inline-flex; align-items: center; gap: 6px;
+  /* No flex gap — .home-breadcrumb-badges (used for the count) carries
+   * its own margin-right, so a gap here would compound. */
+  display: inline-flex; align-items: center;
   cursor: pointer;
 }
 .rtp-pill--open { background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35); color: #5eead4; }

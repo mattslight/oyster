@@ -47,7 +47,9 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
         onClick={() => setOpen(o => !o)}
         title={`${presence.totalLive} running terminal${presence.totalLive === 1 ? "" : "s"}`}
       >
-        <span className="pip-count"><span className="pip pip-teal rtp-pulse-anim" />{presence.totalLive}</span>
+        <span className="home-breadcrumb-badges">
+          <span className="pip-count"><span className="pip pip-teal rtp-pulse-anim" />{presence.totalLive}</span>
+        </span>
         running
       </button>
       {open && (
