@@ -207,6 +207,9 @@ export class ClaudePtyManager {
     const entry = this.terminals.get(terminalId);
     if (!entry) return false;
     entry.clients.add(ws);
+    if (entry.linkedSessionId) {
+      this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+    }
 
     if (entry.scrollback.length > 0) {
       ws.send(entry.scrollback);
@@ -231,6 +234,9 @@ export class ClaudePtyManager {
 
     ws.on("close", () => {
       entry.clients.delete(ws);
+      if (entry.linkedSessionId) {
+        this.sessionStore.setAttachedClients(entry.linkedSessionId, entry.clients.size);
+      }
     });
 
     return true;
@@ -298,6 +304,9 @@ export class ClaudePtyManager {
   isPtyAvailable(): boolean {
     return ptyAvailable;
   }
+
+  /** Test-only: pair `_seedEntryForTest` with a link write in one step. */
+  linkTerminalForTest(terminalId: string, sessionId: string): void { this.setLinkedSession(terminalId, sessionId); }
 
   /** Test-only: inject a fake entry with a stub proc whose onExit fires
    *  immediately on kill(). Production code never calls this. */
