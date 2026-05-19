@@ -1224,6 +1224,12 @@ body {
   background: rgba(255, 80, 80, 0.3);
   color: #ff6b6b;
 }
+/* Stop button on terminal panel headers — mirrors the popover Stop. */
+.window-btn--stop { color: rgba(232, 233, 240, 0.55); }
+.window-btn--stop:hover {
+  background: rgba(255, 80, 80, 0.18);
+  color: #ff6b6b;
+}
 
 .window-body {
   flex: 1;

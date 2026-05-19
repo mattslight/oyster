@@ -634,6 +634,11 @@ export default function App() {
               title={w.title}
               linkedSessionId={w.linkedSessionId}
               ptyAlive={ptyAlive}
+              onStop={ptyAlive && w.terminalId ? async () => {
+                await fetch(`/api/terminals/${encodeURIComponent(w.terminalId!)}`, { method: "DELETE" });
+                // SSE event will refresh sessions feed; the window's
+                // ptyAlive flag flips to false on next render.
+              } : undefined}
               onOpenSession={(sessionId) => {
                 // Route to /s/<space>/sessions/<id>; the space prefix is required
                 // by the active routing today, so use the current activeSpace
