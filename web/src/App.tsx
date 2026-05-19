@@ -514,6 +514,7 @@ export default function App() {
         projects={allProjects}
         spaces={spaces}
         errorMessage={pickerError}
+        activeSpaceId={activeSpace}
         onActivate={async (p) => {
           setPickerError(null);
           const outcome = await launchAndOpen(
@@ -522,6 +523,20 @@ export default function App() {
           );
           if (outcome.ok) {
             recordRecentProjectId(p.id);
+            setPickerOpen(false);
+          } else {
+            const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
+            setPickerError(`${humanError(outcome.error)}${hint}`);
+          }
+        }}
+        onActivateAttached={async (projectId) => {
+          setPickerError(null);
+          const outcome = await launchAndOpen(
+            { kind: "claude_new", source: { type: "project", id: projectId } },
+            dispatch,
+          );
+          if (outcome.ok) {
+            recordRecentProjectId(projectId);
             setPickerOpen(false);
           } else {
             const hint = outcome.installHint ? ` (${outcome.installHint})` : "";

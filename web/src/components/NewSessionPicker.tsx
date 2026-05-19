@@ -4,9 +4,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "../data/projects-api";
+import { attachFolder } from "../data/projects-api";
 import type { Space } from "../../../shared/types";
 import { getRecentProjectIds } from "../lib/new-session-recents";
 import "./NewSessionPicker.css";
+
+// Meta-spaces aren't real homes for projects; the attach dropdown skips them.
+const META_SPACE_IDS = new Set(["__all__", "__archived__"]);
 
 export interface NewSessionPickerProps {
   /** True when the modal should be mounted. Parent controls open/close. */
@@ -24,6 +28,11 @@ export interface NewSessionPickerProps {
   onActivate: (project: Project) => void;
   /** Error to surface inline (e.g. binary_not_found). Cleared by the parent. */
   errorMessage?: string | null;
+  /** Active space id when the palette was opened. Determines whether
+   *  the folder form needs a space picker (only on Home / meta-spaces). */
+  activeSpaceId: string;
+  /** Same callback shape onActivate uses — invoked after attach. */
+  onActivateAttached: (projectId: string) => void;
 }
 
 interface Row {
@@ -35,10 +44,61 @@ interface Row {
 
 export function NewSessionPicker({
   open, onClose, initialQuery, projects, spaces, onActivate, errorMessage,
+  activeSpaceId, onActivateAttached,
 }: NewSessionPickerProps) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [highlightIdx, setHighlightIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [folderOpen, setFolderOpen] = useState(false);
+  const [folderPath, setFolderPath] = useState("");
+  const [folderSpaceId, setFolderSpaceId] = useState<string>("");
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
+
+  const realSpaces = useMemo(
+    () => spaces.filter((s) => !META_SPACE_IDS.has(s.id)),
+    [spaces],
+  );
+
+  // Default the dropdown to the active space when it's a real space.
+  useEffect(() => {
+    if (META_SPACE_IDS.has(activeSpaceId) || activeSpaceId === "home") {
+      setFolderSpaceId(realSpaces[0]?.id ?? "");
+    } else {
+      setFolderSpaceId(activeSpaceId);
+    }
+  }, [activeSpaceId, realSpaces, folderOpen]);
+
+  // Reset folder UI on close.
+  useEffect(() => {
+    if (!open) {
+      setFolderOpen(false);
+      setFolderPath("");
+      setFolderError(null);
+    }
+  }, [open]);
+
+  const needsSpaceDropdown = META_SPACE_IDS.has(activeSpaceId) || activeSpaceId === "home";
+  const canSubmitFolder =
+    folderPath.trim().length > 0 &&
+    !folderBusy &&
+    (!!folderSpaceId);
+
+  async function submitFolder() {
+    const path = folderPath.trim();
+    if (!path || !folderSpaceId) return;
+    setFolderBusy(true);
+    setFolderError(null);
+    try {
+      const { project } = await attachFolder(folderSpaceId, path);
+      onActivateAttached(project.id);
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFolderBusy(false);
+    }
+  }
 
   // Reset state every open. We deliberately don't preserve search across
   // open/close — each invocation is a fresh task.
@@ -181,6 +241,69 @@ export function NewSessionPicker({
                 );
               })}
             </>
+          )}
+        </div>
+
+        <div className="nsp-folder-wrap">
+          {!folderOpen ? (
+            realSpaces.length > 0 && (
+              <button
+                type="button"
+                className="nsp-folder-link"
+                onClick={() => setFolderOpen(true)}
+              >
+                Or pick a folder…
+              </button>
+            )
+          ) : (
+            <div className="nsp-folder-form">
+              <input
+                className="nsp-folder-input"
+                placeholder="/absolute/path or ~/relative"
+                value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSubmitFolder) {
+                    e.preventDefault();
+                    void submitFolder();
+                  }
+                }}
+              />
+              {needsSpaceDropdown && (
+                <div className="nsp-folder-row">
+                  <span>Add to space:</span>
+                  <select
+                    className="nsp-folder-select"
+                    value={folderSpaceId}
+                    onChange={(e) => setFolderSpaceId(e.target.value)}
+                  >
+                    {realSpaces.map((s) => (
+                      <option key={s.id} value={s.id}>{s.displayName ?? s.id}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {folderError && <div className="nsp-error">{folderError}</div>}
+              <div className="nsp-folder-actions">
+                <button
+                  type="button"
+                  className="nsp-folder-btn"
+                  onClick={() => setFolderOpen(false)}
+                  disabled={folderBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="nsp-folder-btn nsp-folder-btn--primary"
+                  onClick={submitFolder}
+                  disabled={!canSubmitFolder}
+                >
+                  {folderBusy ? "Starting…" : "Start session"}
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
