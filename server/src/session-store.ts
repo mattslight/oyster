@@ -41,6 +41,10 @@ export interface SessionRow {
    *  watcher refresh on each ingest; `'manual'` is pinned by the user (or
    *  an MCP-driven move_session) and is never overwritten by the watcher. */
   assignment_mode: AssignmentMode;
+  /** ClaudePtyManager terminal id this session is linked to, or null. */
+  terminal_id: string | null;
+  /** Count of currently-attached WS clients on the linked terminal. 0 + non-null terminal_id = Minimised. */
+  terminal_attached_clients: number;
 }
 
 export interface SessionEventRow {
@@ -168,6 +172,12 @@ export interface SessionStore {
    *  matching session with the best-ranked event as the representative
    *  snippet plus a match_count. Used by the Spotlight UI. */
   searchSessions(query: string, opts?: { limit?: number; spaceId?: string }): SessionSearchHit[];
+  /** Mark a session as linked to a running PTY. Idempotent. */
+  linkTerminal(sessionId: string, terminalId: string): void;
+  /** Clear the link and zero the attached-clients counter. Idempotent. */
+  clearTerminal(sessionId: string): void;
+  /** Update the attached-clients counter on the linked session. No-op if the session row is missing. */
+  setAttachedClients(sessionId: string, count: number): void;
 }
 
 // ── SQLite implementation ──
@@ -556,5 +566,23 @@ export class SqliteSessionStore implements SessionStore {
                  LIMIT ?`;
     innerParams.push(limit);
     return this.db.prepare(sql).all(...innerParams) as SessionSearchHit[];
+  }
+
+  linkTerminal(sessionId: string, terminalId: string): void {
+    this.db.prepare(
+      "UPDATE sessions SET terminal_id = ? WHERE id = ?",
+    ).run(terminalId, sessionId);
+  }
+
+  clearTerminal(sessionId: string): void {
+    this.db.prepare(
+      "UPDATE sessions SET terminal_id = NULL, terminal_attached_clients = 0 WHERE id = ?",
+    ).run(sessionId);
+  }
+
+  setAttachedClients(sessionId: string, count: number): void {
+    this.db.prepare(
+      "UPDATE sessions SET terminal_attached_clients = ? WHERE id = ?",
+    ).run(Math.max(0, count | 0), sessionId);
   }
 }
