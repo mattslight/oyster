@@ -4,6 +4,13 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-05-19
+
+### Added
+
+- **Live terminal mission control.** A new *Running N* pill in the topbar lists every Claude session currently running in Oyster — click a row to jump back to it, ■ to stop (with a first-time *Don't ask again* confirmation). Closing × on a Claude terminal panel now means *minimise* — the conversation keeps going, and you can find it again from the pill, the Sessions list, or the space pills which now show a running count.
+- **Fork-safe Resume.** Clicking *Resume here* on a session that's still active outside Oyster now warns that resuming would fork the conversation, instead of silently spawning a duplicate `claude --resume`.
+
 ### Fixed
 
 - **Slash-command machinery no longer clutters the session transcript.** Claude Code's internal wrapper tags (`<command-name>`, `<system-reminder>`, `<local-command-stdout>`) are now hidden from the Session Inspector and excluded from Spotlight transcript search. Existing sessions clean up on next start.
