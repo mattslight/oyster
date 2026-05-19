@@ -12,6 +12,13 @@ import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type { SessionStore } from "./session-store.js";
+import type { UiCommand } from "../../shared/types.js";
+
+export interface ClaudePtyManagerDeps {
+  sessionStore: SessionStore;
+  broadcastUiEvent: (cmd: UiCommand) => void;
+}
 
 const SCROLLBACK_LIMIT = 50_000;
 const POST_EXIT_RETENTION_MS = 30_000;
@@ -98,6 +105,13 @@ export interface ClaudePtyListEntry {
 export class ClaudePtyManager {
   private terminals = new Map<string, ClaudePtyEntry>();
   private wss = new WebSocketServer({ noServer: true });
+  private sessionStore: SessionStore;
+  private broadcastUiEvent: (cmd: UiCommand) => void;
+
+  constructor(deps: ClaudePtyManagerDeps) {
+    this.sessionStore = deps.sessionStore;
+    this.broadcastUiEvent = deps.broadcastUiEvent;
+  }
 
   spawn(input: SpawnInput): SpawnResult {
     if (!ptyAvailable || !ptyModule) {
@@ -177,6 +191,9 @@ export class ClaudePtyManager {
       for (const ws of entry.clients) {
         if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
       }
+      if (entry.linkedSessionId) {
+        this.sessionStore.clearTerminal(entry.linkedSessionId);
+      }
       // Retain for late reconnects, then evict.
       entry.evictTimer = setTimeout(() => {
         this.terminals.delete(terminalId);
@@ -223,6 +240,7 @@ export class ClaudePtyManager {
     const entry = this.terminals.get(terminalId);
     if (!entry) return false;
     entry.linkedSessionId = sessionId;
+    this.sessionStore.linkTerminal(sessionId, terminalId);
     return true;
   }
 
@@ -279,5 +297,41 @@ export class ClaudePtyManager {
 
   isPtyAvailable(): boolean {
     return ptyAvailable;
+  }
+
+  /** Test-only: inject a fake entry with a stub proc whose onExit fires
+   *  immediately on kill(). Production code never calls this. */
+  _seedEntryForTest(input: { terminalId: string; linkedSessionId: string | null }): void {
+    let exitCb: (e: { exitCode: number }) => void = () => {};
+    const fakeProc: any = {
+      pid: -1,
+      onData: () => {},
+      onExit: (cb: typeof exitCb) => { exitCb = cb; },
+      write: () => {},
+      resize: () => {},
+      kill: () => { exitCb({ exitCode: 0 }); },
+    };
+    const entry: ClaudePtyEntry = {
+      terminalId: input.terminalId,
+      kind: "claude_new",
+      proc: fakeProc,
+      scrollback: "",
+      clients: new Set(),
+      cwd: "/tmp",
+      command: "/bin/echo",
+      args: [],
+      startedAt: Date.now(),
+      exitedAt: null,
+      linkedSessionId: input.linkedSessionId,
+      evictTimer: null,
+    };
+    // Wire the onExit listener the same way spawn() does.
+    fakeProc.onExit((event: { exitCode: number }) => {
+      entry.exitedAt = Date.now();
+      if (entry.linkedSessionId) {
+        this.sessionStore.clearTerminal(entry.linkedSessionId);
+      }
+    });
+    this.terminals.set(input.terminalId, entry);
   }
 }

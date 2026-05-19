@@ -6,6 +6,35 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { ClaudePtyManager, TerminalCapError, PtyUnavailableError } from "../src/claude-pty-manager.js";
 import { tmpdir, homedir } from "node:os";
 
+const stubDeps = {
+  sessionStore: {
+    getAll: () => [],
+    getById: () => undefined,
+    getMostRecentActiveByAgent: () => undefined,
+    insertSession: () => {},
+    upsertSession: () => {},
+    updateSessionState: () => {},
+    updateSession: () => {},
+    insertEvent: () => 0,
+    insertEvents: () => {},
+    getEventsBySession: () => [],
+    getEventsBeforeBySession: () => [],
+    getEventsAfterBySession: () => [],
+    getEventById: () => undefined,
+    insertArtifactTouch: () => {},
+    getArtifactsBySession: () => [],
+    getSessionsByArtifact: () => [],
+    getLastOffset: () => 0,
+    setLastOffset: () => {},
+    searchEvents: () => [],
+    searchSessions: () => [],
+    linkTerminal: () => {},
+    clearTerminal: () => {},
+    setAttachedClients: () => {},
+  } as any,
+  broadcastUiEvent: () => {},
+};
+
 const SLEEP = process.platform === "win32" ? "ping" : "sleep";
 const SLEEP_ARGS = process.platform === "win32"
   ? ["-n", "60", "127.0.0.1"]
@@ -15,7 +44,7 @@ describe("ClaudePtyManager", () => {
   let mgr: ClaudePtyManager;
 
   beforeEach(() => {
-    mgr = new ClaudePtyManager();
+    mgr = new ClaudePtyManager(stubDeps);
   });
   afterEach(() => {
     mgr.disposeAll();

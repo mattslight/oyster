@@ -558,7 +558,7 @@ sessionSnapshotHandle.unref();
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const projectService = new ProjectService(db);
 const sessionService = new SessionService(db, sessionStore);
-const claudePtyManager = new ClaudePtyManager();
+const claudePtyManager = new ClaudePtyManager({ sessionStore, broadcastUiEvent });
 // Forward-declared so the terminal route can hold a stable reference even
 // though the watcher is constructed inside `httpServer.listen`. The route
 // is only ever called after the server is listening (and therefore after
