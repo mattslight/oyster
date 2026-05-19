@@ -9,6 +9,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **Launch and resume Claude Code sessions inside Oyster.** *Launch Claude here* on a project tile starts a fresh `claude` session in the folder, inside an in-app terminal. *Resume here* on a Session Inspector continues that conversation via `claude --resume`. The cross-device Resume dialog now offers *Open in Oyster* alongside *Copy command*.
 - **Sign in to view your own protected shares.** A password-protected share now offers a "Have access? Sign in to view" option alongside the password field; if you're signed in to Oyster as the owner, you skip the password.
 
+### Changed
+
+- **Cmd+K results group by session.** Searching transcripts now returns one row per matching session — title, snippet preview, date, and space — instead of one row per matching line. A `+N` badge on the title shows how many more matches the session contains; opening still scrolls the inspector to the best match.
+
 ## [0.9.1] - 2026-05-16
 
 ### Added

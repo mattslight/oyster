@@ -423,26 +423,45 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
             })}
 
             {(transcriptHits.length > 0 || transcriptsLoading) && (
-              <div className="spotlight-section-label">Transcripts</div>
+              <div className="spotlight-section-label">Sessions</div>
             )}
             {transcriptsLoading && transcriptHits.length === 0 && (
-              <div className="spotlight-section-loading">Searching transcripts…</div>
+              <div className="spotlight-section-loading">Searching sessions…</div>
             )}
             {transcriptHits.map((h, j) => {
               const flatIndex = artefactHits.length + j;
               const isSelected = flatIndex === selected;
+              const title = h.session_title ?? h.session_id.slice(0, 8);
               return (
                 <div
-                  key={`t-${h.event_id}`}
-                  className={`spotlight-result spotlight-result--transcript${isSelected ? " spotlight-result--selected" : ""}`}
+                  key={`t-${h.session_id}`}
+                  className={`spotlight-result spotlight-result--session${isSelected ? " spotlight-result--selected" : ""}`}
                   onMouseEnter={() => setSelected(flatIndex)}
                   onClick={() => activate({ kind: "transcript", hit: h })}
+                  title={h.last_event_at ? new Date(h.last_event_at).toLocaleString() : undefined}
                 >
-                  <span className="spotlight-result-snippet">
-                    <SnippetMarks text={h.snippet} />
-                  </span>
-                  <span className="spotlight-result-session">{h.session_title ?? h.session_id.slice(0, 8)}</span>
-                  <span className="spotlight-result-role">{h.role}</span>
+                  <svg className="spotlight-result-session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  <div className="spotlight-result-session-body">
+                    <div className="spotlight-result-session-line1">
+                      <span className="spotlight-result-session-title">{title}</span>
+                      {h.match_count > 1 && (
+                        <span className="spotlight-result-session-count">+{h.match_count - 1}</span>
+                      )}
+                    </div>
+                    <div className="spotlight-result-session-snippet">
+                      <SnippetMarks text={h.snippet} />
+                    </div>
+                  </div>
+                  <div className="spotlight-result-session-meta">
+                    {h.last_event_at && (
+                      <span className="spotlight-result-session-date">{formatHitDate(h.last_event_at)}</span>
+                    )}
+                    {h.space_id && (
+                      <span className="spotlight-result-space" style={{ color: spaceColor(h.space_id), background: `${spaceColor(h.space_id)}18` }}>{h.space_id}</span>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -504,6 +523,23 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
       </div>
     </div>
   );
+}
+
+/** ChatGPT-style compact relative date: "Today", "Yesterday", "8 May",
+ *  or "8 May 2024" if older than the current year. Full ISO timestamp
+ *  shown on hover via title attr at the row level. */
+function formatHitDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round((startOf(now) - startOf(d)) / 86_400_000);
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(undefined, sameYear
+    ? { day: "numeric", month: "short" }
+    : { day: "numeric", month: "short", year: "numeric" });
 }
 
 /** Renders FTS5 snippet text, turning the [bracketed] match markers

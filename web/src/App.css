@@ -1707,41 +1707,71 @@ body {
   font-size: 0.78rem;
   color: rgba(232, 233, 240, 0.35);
 }
-.spotlight-result--transcript {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-}
-.spotlight-result-snippet {
-  font-size: 0.82rem;
-  color: rgba(232, 233, 240, 0.78);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .spotlight-snippet-mark {
   background: rgba(124, 107, 255, 0.22);
   color: #c8bfff;
   padding: 0 2px;
   border-radius: 3px;
 }
-.spotlight-result-session {
-  font-size: 0.7rem;
-  color: rgba(232, 233, 240, 0.5);
-  font-family: var(--font-mono);
-  max-width: 140px;
+/* ── Session-grouped hits: title + snippet stacked, date/space on right ── */
+.spotlight-result--session {
+  display: grid;
+  grid-template-columns: 14px 1fr max-content;
+  align-items: center;
+  column-gap: 12px;
+  padding: 10px 16px;
+}
+.spotlight-result-session-icon {
+  color: rgba(232, 233, 240, 0.4);
+  justify-self: center;
+}
+.spotlight-result-session-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.spotlight-result-session-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.spotlight-result-session-title {
+  font-size: 0.9rem;
+  color: #e8e9f0;
+  font-weight: 500;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
 }
-.spotlight-result-role {
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(232, 233, 240, 0.35);
-  font-family: var(--font-mono);
+.spotlight-result-session-count {
+  font-size: 0.65rem;
+  color: rgba(232, 233, 240, 0.4);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.spotlight-result-session-snippet {
+  font-size: 0.78rem;
+  color: rgba(232, 233, 240, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.spotlight-result-session-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.spotlight-result-session-date {
+  font-size: 0.7rem;
+  color: rgba(232, 233, 240, 0.45);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .spotlight-token-chip {

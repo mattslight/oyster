@@ -267,8 +267,13 @@ export async function tryHandleSessionRoute(
   }
 
   // GET /api/sessions/search?q=…&session_id=…&space_id=…&limit=…
-  // R2 verbatim recall (#311). FTS5 over session_events.text. Mirrors the
-  // MCP `recall_transcripts` tool surface for the web UI.
+  // R2 verbatim recall (#311). FTS5 over session_events.text. Powers the
+  // Spotlight UI — results are grouped by session (one row per session
+  // with the best-ranked snippet) so a single chat with many matches
+  // doesn't flood the result list. When `session_id` is supplied (scoping
+  // to a single session) we drop back to event-level results since the
+  // collapse would always produce exactly one row.
+  // The MCP `recall_transcripts` tool keeps event-level results.
   // Local-origin only — transcripts are private user content.
   {
     const searchPath = url.split("?")[0];
@@ -290,17 +295,21 @@ export async function tryHandleSessionRoute(
         }
       }
       try {
-        const hits = sessionStore.searchEvents(q, { sessionId: scopeSession, spaceId: scopeSpace, limit });
-        // Rename `id` → `event_id` for the wire format (the web UI's
-        // ambient `id` is artefact id; explicit naming avoids confusion).
-        sendJson(hits.map((h) => ({
-          event_id: h.id,
-          session_id: h.session_id,
-          session_title: h.session_title,
-          role: h.role,
-          ts: h.ts,
-          snippet: h.snippet,
-        })));
+        if (scopeSession) {
+          const hits = sessionStore.searchEvents(q, { sessionId: scopeSession, spaceId: scopeSpace, limit });
+          sendJson(hits.map((h) => ({
+            event_id: h.id,
+            session_id: h.session_id,
+            session_title: h.session_title,
+            space_id: null,
+            last_event_at: h.ts,
+            role: h.role,
+            snippet: h.snippet,
+            match_count: 1,
+          })));
+        } else {
+          sendJson(sessionStore.searchSessions(q, { spaceId: scopeSpace, limit }));
+        }
       } catch (err) {
         sendError(err, 500);
       }
