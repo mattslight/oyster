@@ -6,7 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Added
 
-- **New session, from anywhere.** A `+ New session` pill in the topbar (or `⌘N`) opens a searchable palette covering every project across every space. Inside a single-project space, it just starts — no extra clicks.
+- **New session, from anywhere.** A `+ New session` pill in the topbar (or `⌘/`) opens a searchable palette covering every project across every space. Inside a single-project space, it just starts — no extra clicks.
 
 ### Fixed
 

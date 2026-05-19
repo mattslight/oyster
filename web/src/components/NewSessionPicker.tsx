@@ -217,7 +217,7 @@ export function NewSessionPicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <span className="nsp-search-kbd">⌘N</span>
+          <span className="nsp-search-kbd">⌘/</span>
         </div>
 
         {errorMessage && <div className="nsp-error">{errorMessage}</div>}

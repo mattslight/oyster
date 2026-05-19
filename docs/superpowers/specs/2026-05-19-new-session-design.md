@@ -44,9 +44,17 @@ A new pill **`+ New session`** in the breadcrumb nav, right-aligned alongside th
 
 ### 2. Keyboard shortcut
 
-`⌘N` (Ctrl+N on non-Mac) opens the palette from anywhere. **Unconditional intercept** — the handler always `preventDefault`s, regardless of focus context (including text inputs, textareas, contenteditable nodes, xterm.js helper textareas, etc.). The trade-off: we lose the browser's "new window" default inside Oyster. The win: consistent muscle-memory — `⌘N` always means *new session*, no surprise behaviour based on where the cursor happens to be. User decision after considering the partial-guard alternative.
+`⌘/` (Ctrl+/ on non-Mac) opens the palette from anywhere. **Unconditional intercept** — the handler always `preventDefault`s, regardless of focus context (including text inputs, textareas, contenteditable nodes, xterm.js helper textareas, etc.).
 
-The handler installs once in `App.tsx` (window-level listener), not inside the picker. The `keydown` event fires before any focused element processes the key, so the intercept is reliable.
+Picking a shortcut for "new session" was harder than expected. `⌘N` and `⌘E` (the two obvious mnemonic-friendly choices) were both rejected:
+
+- `⌘N` — Chrome reserves it at the OS level for *new window*; the keystroke never reaches the page, so `preventDefault()` cannot intercept it. Same for `⌘T`, `⌘W`, `⌘Q`, `⌘L`, `⌘D`, `` ⌘` ``.
+- `⌘K` — already bound to Spotlight search in Oyster.
+- `⌘E` — collides with the Claude-in-Chrome browser extension (a likely co-installed companion).
+
+`⌘/` has no Chrome reserved use, no macOS reserved use, no Oyster conflict, and isn't claimed by the Claude-in-Chrome extension. Weak mnemonic ("slash command-style entry"), but reliable. Single-letter combos were preferred over chords for typability; we accept that `⌘/` may need revisiting if it later conflicts with something on a user's machine, in which case making the shortcut user-configurable is a natural next step (deferred — out of scope for v1).
+
+The handler installs once in `App.tsx` (window-level listener), not inside the picker. The `keydown` event fires before any focused element processes the key, so the intercept is reliable for any combo Chrome actually delivers.
 
 ### 3. The picker — command palette modal
 

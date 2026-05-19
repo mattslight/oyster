@@ -8,7 +8,7 @@ export function NewSessionPill({ onClick }: { onClick: () => void }) {
       type="button"
       className="nsp-pill"
       onClick={onClick}
-      title="Start a new Claude session (⌘N)"
+      title="Start a new Claude session (⌘/)"
     >
       <span aria-hidden="true">+</span>
       <span>New session</span>
