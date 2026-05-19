@@ -743,24 +743,35 @@ export function initDb(userlandDir: string): Database.Database {
   // that pre-date this migration. The UPDATE fires session_events_au_del
   // for each (old artifact=0 → indexed in FTS), pulling those rows out of
   // the inverted index; session_events_au_ins skips the re-insert because
-  // new.is_protocol_artifact = 1. Re-running matches zero rows so it's a
-  // no-op on subsequent boots.
+  // new.is_protocol_artifact = 1.
+  //
+  // Gated via app_state so the full-table predicate scan doesn't run on
+  // every boot — session_events grows roughly linearly with usage and
+  // there's no useful index for the leading-whitespace + prefix check.
   //
   // Predicate mirrors isClaudeProtocolArtifact: strip leading whitespace
   // (space/tab/LF/CR) and check the three wrapper prefixes. Only USER
   // events qualify — assistant slash-command echoes (e.g. `/rename …`)
   // stay visible.
-  db.exec(`
-    UPDATE session_events
-       SET is_protocol_artifact = 1
-     WHERE is_protocol_artifact = 0
-       AND role = 'user'
-       AND (
-         ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<local-command-%'
-         OR ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<command-%'
-         OR ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<system-reminder>%'
-       );
-  `);
+  {
+    const flag = db.prepare(
+      `INSERT OR IGNORE INTO app_state (key, value, applied_at)
+       VALUES ('protocol_artifact_backfill_done', '1', ?)`,
+    ).run(Date.now());
+    if (flag.changes > 0) {
+      db.exec(`
+        UPDATE session_events
+           SET is_protocol_artifact = 1
+         WHERE is_protocol_artifact = 0
+           AND role = 'user'
+           AND (
+             ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<local-command-%'
+             OR ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<command-%'
+             OR ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE '<system-reminder>%'
+           );
+      `);
+    }
+  }
 
   // Backfill the FTS index if it's stale relative to the content table.
   //
@@ -790,18 +801,16 @@ export function initDb(userlandDir: string): Database.Database {
       if (sampleHits * 4 < indexableCount) {
         // rebuild reads from the content table directly, bypassing our
         // gated triggers — so it re-indexes protocol artefacts too.
-        // Sweep them back out afterwards so the post-rebuild state
-        // matches the trigger-maintained invariant.
-        db.exec("INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild')");
-        const artefacts = db.prepare(
-          "SELECT id, text FROM session_events WHERE is_protocol_artifact = 1"
-        ).all() as Array<{ id: number; text: string }>;
-        const del = db.prepare(
-          "INSERT INTO session_events_fts(session_events_fts, rowid, text) VALUES('delete', ?, ?)"
-        );
-        for (const r of artefacts) {
-          try { del.run(r.id, r.text); } catch { /* already absent */ }
-        }
+        // Sweep them back out in a single INSERT...SELECT so the cost
+        // scales with row count, not round-trips, and any unexpected
+        // FTS5 error surfaces instead of being swallowed per-row.
+        db.exec(`
+          INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild');
+          INSERT INTO session_events_fts(session_events_fts, rowid, text)
+            SELECT 'delete', id, text
+              FROM session_events
+             WHERE is_protocol_artifact = 1;
+        `);
       }
     }
   }

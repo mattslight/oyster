@@ -165,4 +165,28 @@ describe("protocol-artifact classification", () => {
     });
     expect(env.store.getEventsBySession("s1")).toHaveLength(1);
   });
+
+  it("backfill is gated so it doesn't rescan session_events on every boot", () => {
+    // First boot has already happened via makeEnv → flag is now set.
+    const flag = env.db
+      .prepare("SELECT value FROM app_state WHERE key = 'protocol_artifact_backfill_done'")
+      .get() as { value: string } | undefined;
+    expect(flag?.value).toBe("1");
+
+    // Insert a pre-migration-style row (unmarked artifact). If the backfill
+    // re-fired on the next boot, this row would flip to artifact=1.
+    env.db.prepare(
+      `INSERT INTO session_events (session_id, role, text, is_protocol_artifact)
+       VALUES ('s1', 'user', ?, 0)`,
+    ).run("<command-name>/exit</command-name>");
+
+    // Simulate a second boot on the same userland dir.
+    env.db.close();
+    const db2 = initDb(env.dir);
+    const row = db2
+      .prepare("SELECT is_protocol_artifact FROM session_events WHERE text LIKE ? LIMIT 1")
+      .get("<command-name>/exit%") as { is_protocol_artifact: number } | undefined;
+    db2.close();
+    expect(row?.is_protocol_artifact).toBe(0);
+  });
 });
