@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-05-19
+
 ### Added
 
 - **Launch and resume Claude Code sessions inside Oyster.** *Launch Claude here* on a project tile starts a fresh `claude` session in the folder, inside an in-app terminal. *Resume here* on a Session Inspector continues that conversation via `claude --resume`. The cross-device Resume dialog now offers *Open in Oyster* alongside *Copy command*.
