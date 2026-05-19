@@ -13,7 +13,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { SessionStore } from "./session-store.js";
-import type { UiCommand } from "../../shared/types.js";
+import type { UiCommand, TerminalPresenceEventPayload } from "../../shared/types.js";
 
 export interface ClaudePtyManagerDeps {
   sessionStore: SessionStore;
@@ -184,33 +184,7 @@ export class ClaudePtyManager {
       }
     });
 
-    proc.onExit(({ exitCode }: { exitCode: number }) => {
-      entry.exitedAt = Date.now();
-      const closeNote = `\r\n\x1b[90m[session ended (exit ${exitCode})]\x1b[0m\r\n`;
-      entry.scrollback += closeNote;
-      for (const ws of entry.clients) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
-      }
-      if (entry.linkedSessionId) {
-        this.sessionStore.clearTerminal(entry.linkedSessionId);
-      }
-      this.broadcastUiEvent({
-        version: 1,
-        command: "terminal:exited",
-        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: 0 },
-      });
-      if (entry.linkedSessionId) {
-        this.broadcastUiEvent({
-          version: 1,
-          command: "session_changed",
-          payload: { id: entry.linkedSessionId },
-        });
-      }
-      // Retain for late reconnects, then evict.
-      entry.evictTimer = setTimeout(() => {
-        this.terminals.delete(terminalId);
-      }, POST_EXIT_RETENTION_MS);
-    });
+    proc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
 
     return { terminalId, startedAt };
   }
@@ -225,15 +199,9 @@ export class ClaudePtyManager {
     this.broadcastUiEvent({
       version: 1,
       command: "terminal:attached",
-      payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size },
+      payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
     });
-    if (entry.linkedSessionId) {
-      this.broadcastUiEvent({
-        version: 1,
-        command: "session_changed",
-        payload: { id: entry.linkedSessionId },
-      });
-    }
+    this.notifySessionChanged(entry.linkedSessionId);
 
     if (entry.scrollback.length > 0) {
       ws.send(entry.scrollback);
@@ -264,15 +232,9 @@ export class ClaudePtyManager {
       this.broadcastUiEvent({
         version: 1,
         command: "terminal:detached",
-        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size },
+        payload: { terminalId, sessionId: entry.linkedSessionId, attachedClients: entry.clients.size } satisfies TerminalPresenceEventPayload,
       });
-      if (entry.linkedSessionId) {
-        this.broadcastUiEvent({
-          version: 1,
-          command: "session_changed",
-          payload: { id: entry.linkedSessionId },
-        });
-      }
+      this.notifySessionChanged(entry.linkedSessionId);
     });
 
     return true;
@@ -341,6 +303,33 @@ export class ClaudePtyManager {
     return ptyAvailable;
   }
 
+  private notifySessionChanged(sessionId: string | null): void {
+    if (!sessionId) return;
+    this.broadcastUiEvent({ version: 1, command: "session_changed", payload: { id: sessionId } });
+  }
+
+  private _handleExit(entry: ClaudePtyEntry, exitCode: number): void {
+    entry.exitedAt = Date.now();
+    const closeNote = `\r\n\x1b[90m[session ended (exit ${exitCode})]\x1b[0m\r\n`;
+    entry.scrollback += closeNote;
+    for (const ws of entry.clients) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
+    }
+    if (entry.linkedSessionId) {
+      this.sessionStore.clearTerminal(entry.linkedSessionId);
+    }
+    this.broadcastUiEvent({
+      version: 1,
+      command: "terminal:exited",
+      payload: { terminalId: entry.terminalId, sessionId: entry.linkedSessionId, attachedClients: 0 } satisfies TerminalPresenceEventPayload,
+    });
+    this.notifySessionChanged(entry.linkedSessionId);
+    // Retain for late reconnects, then evict.
+    entry.evictTimer = setTimeout(() => {
+      this.terminals.delete(entry.terminalId);
+    }, POST_EXIT_RETENTION_MS);
+  }
+
   /** Test-only: pair `_seedEntryForTest` with a link write in one step. */
   linkTerminalForTest(terminalId: string, sessionId: string): void { this.setLinkedSession(terminalId, sessionId); }
 
@@ -371,24 +360,7 @@ export class ClaudePtyManager {
       evictTimer: null,
     };
     // Wire the onExit listener the same way spawn() does.
-    fakeProc.onExit((event: { exitCode: number }) => {
-      entry.exitedAt = Date.now();
-      if (entry.linkedSessionId) {
-        this.sessionStore.clearTerminal(entry.linkedSessionId);
-      }
-      this.broadcastUiEvent({
-        version: 1,
-        command: "terminal:exited",
-        payload: { terminalId: input.terminalId, sessionId: entry.linkedSessionId, attachedClients: 0 },
-      });
-      if (entry.linkedSessionId) {
-        this.broadcastUiEvent({
-          version: 1,
-          command: "session_changed",
-          payload: { id: entry.linkedSessionId },
-        });
-      }
-    });
+    fakeProc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
     this.terminals.set(input.terminalId, entry);
   }
 }
