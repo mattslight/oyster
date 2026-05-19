@@ -68,7 +68,7 @@ export function NewSessionPicker({
     } else {
       setFolderSpaceId(activeSpaceId);
     }
-  }, [activeSpaceId, realSpaces, folderOpen]);
+  }, [activeSpaceId, realSpaces]);
 
   // Reset folder UI on close.
   useEffect(() => {
@@ -117,7 +117,11 @@ export function NewSessionPicker({
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        if (folderOpen) {
+          setFolderOpen(false);
+        } else {
+          onClose();
+        }
         return;
       }
       if (e.key === "ArrowDown") {

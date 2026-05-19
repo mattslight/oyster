@@ -422,6 +422,27 @@ export default function App() {
     }
   }, []);
 
+  // Shared spawn path used by NewSessionPicker — same as
+  // handleLaunchClaudeFromProject but renders errors in-modal instead
+  // of via alert(), since the picker is open and visible.
+  const handleNewSessionSpawn = useCallback(
+    async (projectId: string) => {
+      setPickerError(null);
+      const outcome = await launchAndOpen(
+        { kind: "claude_new", source: { type: "project", id: projectId } },
+        dispatch,
+      );
+      if (outcome.ok) {
+        recordRecentProjectId(projectId);
+        setPickerOpen(false);
+      } else {
+        const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
+        setPickerError(`${humanError(outcome.error)}${hint}`);
+      }
+    },
+    [],
+  );
+
   const handleLaunchClaudeFromSession = useCallback(
     async (sessionId: string) => {
       const outcome = await launchAndOpen(
@@ -515,34 +536,8 @@ export default function App() {
         spaces={spaces}
         errorMessage={pickerError}
         activeSpaceId={activeSpace}
-        onActivate={async (p) => {
-          setPickerError(null);
-          const outcome = await launchAndOpen(
-            { kind: "claude_new", source: { type: "project", id: p.id } },
-            dispatch,
-          );
-          if (outcome.ok) {
-            recordRecentProjectId(p.id);
-            setPickerOpen(false);
-          } else {
-            const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
-            setPickerError(`${humanError(outcome.error)}${hint}`);
-          }
-        }}
-        onActivateAttached={async (projectId) => {
-          setPickerError(null);
-          const outcome = await launchAndOpen(
-            { kind: "claude_new", source: { type: "project", id: projectId } },
-            dispatch,
-          );
-          if (outcome.ok) {
-            recordRecentProjectId(projectId);
-            setPickerOpen(false);
-          } else {
-            const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
-            setPickerError(`${humanError(outcome.error)}${hint}`);
-          }
-        }}
+        onActivate={(p) => handleNewSessionSpawn(p.id)}
+        onActivateAttached={handleNewSessionSpawn}
       />
       <Home
         activeSpace={activeSpace}
