@@ -11,6 +11,7 @@ import type {
   SessionStore,
 } from "../session-store.js";
 import { encodeCwd } from "../session-sync-service.js";
+import { isClaudeProtocolArtifact } from "../utils/claude-protocol-artifacts.js";
 import { activeClaudeCwdCounts } from "./claude-process-probe.js";
 
 // claude-code session log watcher (Sprint 2 of the 0.5.0 sessions arc).
@@ -456,12 +457,15 @@ export class ClaudeCodeWatcher {
 
       const rendered = renderEvent(ev);
       if (rendered) {
+        const text = rendered.text.slice(0, TEXT_PREVIEW_MAX);
         events.push({
           session_id: sessionId,
           role: rendered.role,
-          text: rendered.text.slice(0, TEXT_PREVIEW_MAX),
+          text,
           ts: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
           raw: line,
+          is_protocol_artifact:
+            rendered.role === "user" && isClaudeProtocolArtifact(text) ? 1 : 0,
         });
       }
 
@@ -786,12 +790,15 @@ export class ClaudeCodeWatcher {
 
       const rendered = renderEvent(ev);
       if (rendered && tracker.sessionId) {
+        const text = rendered.text.slice(0, TEXT_PREVIEW_MAX);
         events.push({
           session_id: tracker.sessionId,
           role: rendered.role,
-          text: rendered.text.slice(0, TEXT_PREVIEW_MAX),
+          text,
           ts: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
           raw: line,
+          is_protocol_artifact:
+            rendered.role === "user" && isClaudeProtocolArtifact(text) ? 1 : 0,
         });
         if (typeof ev.timestamp === "string") latestTimestamp = ev.timestamp;
       }
@@ -920,22 +927,14 @@ export function deriveState(ageMs: number, signal: ProbeSignal): SessionState {
 
 // Pull a usable title out of a `type:"user"` event's content, or return null.
 // claude-code wraps slash-command machinery (/compact, /clear, etc.) in
-// pseudo-user messages prefixed with <local-command-caveat>, <command-name>,
-// or <command-message>. Those are noise — keep scanning until we find a
-// real prompt the user actually typed.
+// pseudo-user messages — skip those and keep scanning for a real prompt.
 export function userMessageTitleCandidate(ev: Record<string, any>): string | null {
   if (ev?.type !== "user") return null;
   const content = ev.message?.content;
   if (typeof content !== "string") return null;
   const trimmed = content.trim();
   if (!trimmed) return null;
-  // Slash-command machinery shows up under several tag prefixes — current
-  // ones are <local-command-caveat>, <local-command-stdout>, and the older
-  // <command-name>/<command-message>. Catch the family with a single check
-  // so future variants don't slip through.
-  if (trimmed.startsWith("<local-command-") || trimmed.startsWith("<command-")) {
-    return null;
-  }
+  if (isClaudeProtocolArtifact(trimmed)) return null;
   return trimmed;
 }
 

@@ -6,6 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Fixed
 
+- **Slash-command machinery no longer clutters the session transcript.** Claude Code's internal wrapper tags (`<command-name>`, `<system-reminder>`, `<local-command-stdout>`) are now hidden from the Session Inspector and excluded from Spotlight transcript search. Existing sessions clean up on next start.
 - **Links inside shared artefacts now click through.** External links in published prototypes (`target="_blank"`, `window.open`) open as expected instead of silently failing — the share.oyster.to iframe now permits popups, matching CodePen/JSFiddle/StackBlitz.
 
 ## [0.9.3] - 2026-05-19
