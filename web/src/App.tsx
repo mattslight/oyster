@@ -334,6 +334,28 @@ export default function App() {
   const [initialPickerQuery, setInitialPickerQuery] = useState<string | undefined>(undefined);
   const { projects: allProjects } = useAllProjects(pickerOpen);
 
+  // Shared spawn path used by NewSessionPicker — same as
+  // handleLaunchClaudeFromProject but renders errors in-modal instead
+  // of via alert(), since the picker is open and visible.
+  const handleNewSessionSpawn = useCallback(
+    async (projectId: string): Promise<boolean> => {
+      setPickerError(null);
+      const outcome = await launchAndOpen(
+        { kind: "claude_new", source: { type: "project", id: projectId } },
+        dispatch,
+      );
+      if (outcome.ok) {
+        recordRecentProjectId(projectId);
+        setPickerOpen(false);
+        return true;
+      }
+      const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
+      setPickerError(`${humanError(outcome.error)}${hint}`);
+      return false;
+    },
+    [],
+  );
+
   const handleOpenNewSession = useCallback(async () => {
     if (activeSpace === "home" || activeSpace === "__all__" || activeSpace === "__archived__") {
       setInitialPickerQuery(undefined);
@@ -345,19 +367,10 @@ export default function App() {
       const all = await fetchAllProjects();
       const inSpace = all.filter((p) => p.spaceId === activeSpace && p.hasLivePath !== false);
       if (inSpace.length === 1) {
-        // Spawn silently — no palette.
-        setPickerError(null);
-        const outcome = await launchAndOpen(
-          { kind: "claude_new", source: { type: "project", id: inSpace[0].id } },
-          dispatch,
-        );
-        if (outcome.ok) {
-          recordRecentProjectId(inSpace[0].id);
-          return;
-        }
-        // Silent spawn failed — fall back to the palette with the error.
-        const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
-        setPickerError(`${humanError(outcome.error)}${hint}`);
+        // Spawn silently — no palette. On success we return; on failure
+        // we fall through to open the palette so the user sees the error.
+        const ok = await handleNewSessionSpawn(inSpace[0].id);
+        if (ok) return;
       }
       // 0 or 2+ → open palette. Pre-fill with the space name when 2+.
       const space = spaces.find((s) => s.id === activeSpace);
@@ -369,7 +382,7 @@ export default function App() {
       setPickerError(err instanceof Error ? err.message : String(err));
       setPickerOpen(true);
     }
-  }, [activeSpace, spaces, dispatch]);
+  }, [activeSpace, spaces, dispatch, handleNewSessionSpawn]);
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
@@ -447,27 +460,6 @@ export default function App() {
       alert(`${humanError(outcome.error)}${hint}`);
     }
   }, []);
-
-  // Shared spawn path used by NewSessionPicker — same as
-  // handleLaunchClaudeFromProject but renders errors in-modal instead
-  // of via alert(), since the picker is open and visible.
-  const handleNewSessionSpawn = useCallback(
-    async (projectId: string) => {
-      setPickerError(null);
-      const outcome = await launchAndOpen(
-        { kind: "claude_new", source: { type: "project", id: projectId } },
-        dispatch,
-      );
-      if (outcome.ok) {
-        recordRecentProjectId(projectId);
-        setPickerOpen(false);
-      } else {
-        const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
-        setPickerError(`${humanError(outcome.error)}${hint}`);
-      }
-    },
-    [],
-  );
 
   const handleLaunchClaudeFromSession = useCallback(
     async (sessionId: string) => {
