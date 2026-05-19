@@ -2542,11 +2542,6 @@ body {
   border-radius: 4px;
 }
 .rtp-stop:hover { color: #ff7777; background: rgba(255,119,119,0.08); }
-.rtp-divider {
-  width: 1px; height: 16px;
-  background: rgba(255,255,255,0.08);
-  margin: 0 8px;
-}
 .rtp-confirm-checkbox {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: rgba(232,233,240,0.6);

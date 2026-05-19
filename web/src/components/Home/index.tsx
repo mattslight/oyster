@@ -819,9 +819,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 <span className="home-breadcrumb-pill-label">Unsorted</span>
               </button>
             )}
+            </div>
             {onTerminalFocus && onTerminalRestore && onTerminalStop && presence.totalLive > 0 && (
-              <>
-                <span className="rtp-divider" aria-hidden="true" />
+              <div className="home-breadcrumb-inner home-breadcrumb-inner--running">
                 <RunningTerminalsPill
                   presence={presence}
                   sessions={sessions}
@@ -829,9 +829,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   onRestore={onTerminalRestore}
                   onStop={onTerminalStop}
                 />
-              </>
+              </div>
             )}
-            </div>
             </LayoutGroup>
           </nav>
 

@@ -1453,6 +1453,9 @@
   padding: 16px 32px 12px;
   display: flex;
   align-items: center;
+  /* Visible gap between the spaces cluster and the optional running pill
+   * cluster — they are two separate pill bars, not one continuous strip. */
+  gap: 10px;
 }
 .home-breadcrumb-inner {
   display: inline-flex;
