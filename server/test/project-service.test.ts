@@ -159,6 +159,10 @@ describe("ProjectService.listAll", () => {
   });
   afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
 
+  it("returns an empty array when there are no projects", () => {
+    expect(service.listAll()).toEqual([]);
+  });
+
   it("returns active projects across all spaces, sorted by name", () => {
     service.createProject({ spaceId: "work", name: "Zebra" });
     service.createProject({ spaceId: "home", name: "Alpha" });
@@ -187,6 +191,7 @@ describe("ProjectService.listAll", () => {
     const [listed] = service.listAll();
     expect(listed.hasLivePath).toBe(true);
     expect(listed.recentPath).toBe(folder);
+    expect(listed.isGitRepo).toBe(false); // no .git in the temp folder
 
     rmSync(folder, { recursive: true, force: true });
   });
