@@ -33,6 +33,7 @@ import { ApiError } from "../../data/http";
 import { useTerminalPresence } from "../../hooks/useTerminalPresence";
 import type { WindowState } from "../../stores/windows";
 import { RunningTerminalsPill } from "../Topbar/RunningTerminalsPill";
+import { NewSessionPill } from "../Topbar/NewSessionPill";
 import "./Home.css";
 
 interface Props {
@@ -72,6 +73,9 @@ interface Props {
   sessions: Session[];
   sessionsLoading?: boolean;
   sessionsError?: Error | null;
+  /** Open the new-session palette. When omitted, the pill is hidden
+   *  (e.g. in test contexts that don't wire it up). */
+  onOpenNewSession?: () => void;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -149,7 +153,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, onOpenNewSession, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
   const presence = useTerminalPresence(sessions, terminalWindows ?? []);
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();
@@ -820,8 +824,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               </button>
             )}
             </div>
-            {onTerminalFocus && onTerminalRestore && onTerminalStop && presence.totalLive > 0 && (
-              <div className="home-breadcrumb-inner home-breadcrumb-inner--running">
+            <div className="home-breadcrumb-inner home-breadcrumb-inner--right-cluster">
+              {onTerminalFocus && onTerminalRestore && onTerminalStop && presence.totalLive > 0 && (
                 <RunningTerminalsPill
                   presence={presence}
                   sessions={sessions}
@@ -829,8 +833,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   onRestore={onTerminalRestore}
                   onStop={onTerminalStop}
                 />
-              </div>
-            )}
+              )}
+              {onOpenNewSession && <NewSessionPill onClick={onOpenNewSession} />}
+            </div>
             </LayoutGroup>
           </nav>
 

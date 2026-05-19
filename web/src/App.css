@@ -2505,6 +2505,35 @@ body {
   cursor: pointer;
 }
 .rtp-pill--open { background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35); color: #5eead4; }
+
+/* ── New session pill ────────────────────────────────────────────── */
+.nsp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: rgba(124, 107, 255, 0.16);
+  border: 1px solid rgba(124, 107, 255, 0.4);
+  color: #c7bdff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 80ms;
+}
+
+.nsp-pill:hover {
+  background: rgba(124, 107, 255, 0.26);
+}
+
+/* When both pills are present, the running pill sits to the LEFT of the
+   new-session pill. Both cluster against the right edge of the breadcrumb. */
+.home-breadcrumb-inner--right-cluster {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
 /* Pulse animation applied to a standard .pip element so the dot+count
  * uses the same .pip-count layout as the space-pill badges. */
 .rtp-pulse-anim { animation: rtp-pulse 1.6s infinite; }

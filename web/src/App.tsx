@@ -332,18 +332,6 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const { projects: allProjects } = useAllProjects(pickerOpen);
-  useEffect(() => {
-    // Dev shortcut: Shift+P opens the new-session picker. Removed in
-    // Task 8 when the real pill + ⌘N handler land.
-    const h = (e: KeyboardEvent) => {
-      if (e.shiftKey && e.key === "P") {
-        e.preventDefault();
-        setPickerOpen((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, []);
 
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
@@ -577,6 +565,7 @@ export default function App() {
           const w = windows.find((x) => x.terminalId === terminalId);
           if (w) dispatch({ type: "CLOSE", id: w.id });
         }}
+        onOpenNewSession={() => setPickerOpen(true)}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
