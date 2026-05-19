@@ -332,7 +332,7 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [initialPickerQuery, setInitialPickerQuery] = useState<string | undefined>(undefined);
-  const { projects: allProjects } = useAllProjects(pickerOpen);
+  const { projects: allProjects, loading: allProjectsLoading } = useAllProjects(pickerOpen);
 
   // Shared spawn path used by NewSessionPicker — same as
   // handleLaunchClaudeFromProject but renders errors in-modal instead
@@ -573,6 +573,7 @@ export default function App() {
         spaces={spaces}
         errorMessage={pickerError}
         activeSpaceId={activeSpace}
+        loading={allProjectsLoading}
         onActivate={(p) => handleNewSessionSpawn(p.id)}
         onActivateAttached={handleNewSessionSpawn}
       />

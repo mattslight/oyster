@@ -31,8 +31,12 @@ export interface NewSessionPickerProps {
   /** Active space id when the palette was opened. Determines whether
    *  the folder form needs a space picker (only on Home / meta-spaces). */
   activeSpaceId: string;
-  /** Same callback shape onActivate uses — invoked after attach. */
-  onActivateAttached: (projectId: string) => void;
+  /** Same callback shape onActivate uses — invoked after attach.
+   *  Returns true on successful spawn, false otherwise. */
+  onActivateAttached: (projectId: string) => Promise<boolean>;
+  /** True while the projects list is still being fetched. Shows a
+   *  "Loading…" placeholder instead of the empty state. */
+  loading?: boolean;
 }
 
 interface Row {
@@ -44,7 +48,7 @@ interface Row {
 
 export function NewSessionPicker({
   open, onClose, initialQuery, projects, spaces, onActivate, errorMessage,
-  activeSpaceId, onActivateAttached,
+  activeSpaceId, onActivateAttached, loading,
 }: NewSessionPickerProps) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [highlightIdx, setHighlightIdx] = useState(0);
@@ -92,7 +96,7 @@ export function NewSessionPicker({
     setFolderError(null);
     try {
       const { project } = await attachFolder(folderSpaceId, path);
-      onActivateAttached(project.id);
+      await onActivateAttached(project.id);
     } catch (err) {
       setFolderError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -220,7 +224,9 @@ export function NewSessionPicker({
 
         <div className="nsp-list">
           {rows.length === 0 ? (
-            projects.length === 0 && realSpaces.length === 0 ? (
+            loading ? (
+              <div className="nsp-empty">Loading…</div>
+            ) : projects.length === 0 && realSpaces.length === 0 ? (
               <EmptyState onAddSpace={() => { onClose(); }} />
             ) : (
               <div className="nsp-empty">No projects match.</div>
