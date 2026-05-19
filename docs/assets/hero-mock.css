@@ -159,6 +159,16 @@
 .hm-status-a { background: #fbbf24; box-shadow: 0 0 8px rgba(251, 191, 36, 0.6); }
 .hm-status-r { background: #f87171; box-shadow: 0 0 8px rgba(248, 113, 113, 0.5); }
 .hm-status-d { background: rgba(255, 255, 255, 0.22); }
+.hm-status-running { background: #5eead4; box-shadow: 0 0 8px rgba(94, 234, 212, 0.6); animation: hmRtpPulse 2.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hm-status-running { animation: none; }
+}
+.hm-tile-running {
+  position: relative;
+  border-left: 2px solid #5eead4;
+  background: rgba(94, 234, 212, 0.05);
+}
+.hm-tile-running:hover { background: rgba(94, 234, 212, 0.1); }
 .hm-tile-body { flex: 1; min-width: 0; }
 .hm-tile-title {
   font-size: 12px;
@@ -460,7 +470,7 @@
   box-shadow: -16px 0 40px rgba(0, 0, 0, 0.4);
   overflow-y: auto;
 }
-.hero-mock:has(.hm-tile:hover) .hm-side,
+.hero-mock:has(.hm-tile:not(.hm-tile-running):hover) .hm-side,
 .hero-mock:has(.hm-mem:hover) .hm-side,
 .hero-mock.is-side-open .hm-side { transform: translateX(0); pointer-events: auto; }
 /* Back button — pill-shaped, accent-coloured so it reads as the primary action when the drawer is pinned */
@@ -635,4 +645,281 @@
   .pv-list ul { grid-template-columns: 1fr; gap: 2px; }
   .pv-list li { padding: 9px 8px; font-size: 12px; }
   .pv-chk { width: 16px; height: 16px; font-size: 11px; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Running-terminals demo — pill, popover, simulated terminal panel.  */
+/* Mirrors the in-app RunningTerminalsPill + TerminalWindow surface   */
+/* shipped in PR #531.                                                */
+/* ------------------------------------------------------------------ */
+
+.hm-rtp-wrap { position: relative; display: inline-flex; }
+
+.hm-rtp-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: rgba(94, 234, 212, 0.08);
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: rgba(167, 243, 224, 0.92);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  appearance: none;
+}
+.hm-rtp-pill:hover,
+.hm-rtp-pill[aria-expanded="true"] {
+  background: rgba(94, 234, 212, 0.16);
+  border-color: rgba(94, 234, 212, 0.5);
+  color: #ccfbf1;
+}
+.hm-rtp-pill .hm-rtp-count {
+  color: #5eead4;
+  font-variant-numeric: tabular-nums;
+}
+.hm-rtp-pip {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #5eead4;
+  box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.6);
+  animation: hmRtpPulse 2.4s ease-out infinite;
+}
+@keyframes hmRtpPulse {
+  0%   { box-shadow: 0 0 0 0   rgba(94, 234, 212, 0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(94, 234, 212, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(94, 234, 212, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-rtp-pip { animation: none; box-shadow: 0 0 6px rgba(94, 234, 212, 0.55); }
+}
+
+.hm-rtp-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  min-width: 280px;
+  max-width: min(340px, 92vw);
+  background: rgba(14, 15, 30, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+  z-index: 7;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+/* Invisible bridge so the cursor can cross the gap to the popover without
+   triggering mouseleave on the wrap. */
+.hm-rtp-popover::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: -10px;
+  height: 10px;
+}
+.hm-rtp-wrap:hover .hm-rtp-popover,
+.hm-rtp-wrap:focus-within .hm-rtp-popover,
+.hm-rtp-popover.is-pinned {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.hm-rtp-arrow {
+  position: absolute;
+  top: -5px; left: 24px;
+  width: 10px; height: 10px;
+  background: rgba(14, 15, 30, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  transform: rotate(45deg);
+}
+
+.hm-rtp-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  border-left: 2px solid #5eead4;
+  background: rgba(94, 234, 212, 0.05);
+  transition: background 0.15s;
+  outline: none;
+}
+.hm-rtp-row:hover,
+.hm-rtp-row:focus-visible { background: rgba(94, 234, 212, 0.12); }
+
+.hm-rtp-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #5eead4;
+  box-shadow: 0 0 6px rgba(94, 234, 212, 0.6);
+  flex-shrink: 0;
+}
+
+.hm-rtp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hm-rtp-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hm-rtp-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Simulated terminal panel — same footprint family as .hm-preview */
+.hm-terminal {
+  position: absolute;
+  left: 24px; right: 24px;
+  bottom: 110px;
+  height: 200px;
+  background: #0a0c12;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
+  z-index: 6;
+  overflow: hidden;
+}
+.hero-mock.is-terminal-open .hm-terminal {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.hm-terminal-chrome {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  background: #1d1f27;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5);
+}
+.hm-term-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  appearance: none;
+  border: 0.5px solid rgba(0, 0, 0, 0.25);
+  padding: 0;
+  display: inline-block;
+}
+.hm-term-dot-r { background: #ff5f57; }
+.hm-term-dot-y { background: #febc2e; }
+.hm-term-dot-g { background: #28c840; }
+.hm-term-dot-r {
+  cursor: pointer;
+  position: relative;
+  transition: filter 0.15s;
+}
+.hm-term-dot-r:hover { filter: brightness(1.15); }
+.hm-term-dot-r:hover::after {
+  content: '×';
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 1;
+}
+.hm-terminal-title {
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+  text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+}
+.hm-terminal-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px;
+  color: rgba(167, 139, 250, 0.72);
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  border-radius: 4px;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+}
+
+.hm-terminal-body {
+  padding: 14px 16px 12px;
+  height: calc(100% - 33px);
+  overflow: hidden;
+  font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #cfe3e1;
+  background:
+    radial-gradient(ellipse at top, rgba(94, 234, 212, 0.025), transparent 60%),
+    #0a0c12;
+}
+.hm-term-banner {
+  color: rgba(94, 234, 212, 0.55);
+  font-size: 11px;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.hm-term-banner .accent { color: #5eead4; }
+.hm-term-line {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translateY(2px);
+  animation: hmTermAppear 0.18s ease-out forwards;
+}
+.hm-term-line.user    { color: #ffffff; }
+.hm-term-line.tool    { color: #c4b5fd; }
+.hm-term-line.dim     { color: rgba(207, 227, 225, 0.55); padding-left: 18px; }
+.hm-term-line.exit    { color: #5eead4; margin-top: 6px; }
+.hm-term-line .pfx-user { color: #5eead4; margin-right: 8px; font-weight: 600; }
+.hm-term-line .pfx-tool { color: #a78bfa; margin-right: 8px; }
+.hm-term-line .pfx-dim  { color: rgba(207, 227, 225, 0.35); margin-right: 6px; margin-left: -18px; }
+.hm-term-cursor {
+  display: inline-block;
+  width: 8px; height: 14px;
+  vertical-align: -3px;
+  background: #5eead4;
+  margin-left: 2px;
+  animation: hmTermBlink 1.05s steps(2) infinite;
+}
+@keyframes hmTermAppear { to { opacity: 1; transform: translateY(0); } }
+@keyframes hmTermBlink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .hm-term-line { animation: none; opacity: 1; transform: none; }
+  .hm-term-cursor { animation: none; }
+}
+
+@media (max-width: 700px) {
+  .hm-rtp-pill { font-size: 11px; padding: 5px 10px; gap: 6px; }
+  .hm-rtp-popover {
+    position: fixed;
+    top: auto;
+    left: 12px; right: 12px;
+    bottom: 12px;
+    max-width: none;
+  }
+  .hm-rtp-arrow { display: none; }
+  /* Terminal fills the bottom on mobile, matching .hm-preview's mobile treatment */
+  .hero-mock.is-terminal-open .hm-terminal {
+    left: 0; right: 0; bottom: 0;
+    height: 62%;
+    border-radius: 10px 10px 0 0;
+  }
+}
+@media (max-width: 420px) {
+  /* Drop "running" label and the activity counter; keep the count + dot.
+     The popover still works on tap to reveal the rest. */
+  .hm-rtp-pill { padding: 5px 9px; font-size: 0; gap: 0; }
+  .hm-rtp-pill .hm-rtp-pip { margin-right: 5px; }
+  .hm-rtp-pill .hm-rtp-count { font-size: 11px; }
 }
