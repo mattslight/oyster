@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **New session, from anywhere.** A `+ New session` pill in the topbar (or `⌘N`) opens a searchable palette covering every project across every space. Inside a single-project space, it just starts — no extra clicks.
+
 ### Fixed
 
 - **Slash-command machinery no longer clutters the session transcript.** Claude Code's internal wrapper tags (`<command-name>`, `<system-reminder>`, `<local-command-stdout>`) are now hidden from the Session Inspector and excluded from Spotlight transcript search. Existing sessions clean up on next start.
