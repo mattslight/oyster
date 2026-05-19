@@ -38,7 +38,11 @@ export function useTerminalPresence(
 ): TerminalPresence {
   return useMemo(() => {
     const localTerminalIds = new Set(
-      windows.filter(w => w.type === "claude_terminal" && w.terminalId).map(w => w.terminalId!),
+      windows
+        .filter((w): w is WindowState & { terminalId: string } =>
+          w.type === "claude_terminal" && w.terminalId != null
+        )
+        .map(w => w.terminalId),
     );
     const attached: PresenceInfo[] = [];
     const running: PresenceInfo[] = [];
