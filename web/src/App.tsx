@@ -519,7 +519,10 @@ export default function App() {
         }}
         onTerminalStop={async (terminalId) => {
           await fetch(`/api/terminals/${encodeURIComponent(terminalId)}`, { method: "DELETE" });
-          // SSE event will trigger refetch.
+          // Also close any open panel for this terminal — Stop is a finish
+          // action; the user doesn't need the dead panel hanging around.
+          const w = windows.find((x) => x.terminalId === terminalId);
+          if (w) dispatch({ type: "CLOSE", id: w.id });
         }}
         desktopProps={{
           space: activeSpace,
@@ -636,8 +639,8 @@ export default function App() {
               ptyAlive={ptyAlive}
               onStop={ptyAlive && w.terminalId ? async () => {
                 await fetch(`/api/terminals/${encodeURIComponent(w.terminalId!)}`, { method: "DELETE" });
-                // SSE event will refresh sessions feed; the window's
-                // ptyAlive flag flips to false on next render.
+                // Close the panel too — Stop is a finish action, not a pause.
+                dispatch({ type: "CLOSE", id: w.id });
               } : undefined}
               onOpenSession={(sessionId) => {
                 // Route to /s/<space>/sessions/<id>; the space prefix is required
