@@ -806,14 +806,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 <span className="home-breadcrumb-pill-label">Unsorted</span>
               </button>
             )}
-            {onTerminalFocus && onTerminalRestore && onTerminalStop && (
-              <RunningTerminalsPill
-                presence={presence}
-                sessions={sessions}
-                onFocus={onTerminalFocus}
-                onRestore={onTerminalRestore}
-                onStop={onTerminalStop}
-              />
+            {onTerminalFocus && onTerminalRestore && onTerminalStop && presence.totalLive > 0 && (
+              <>
+                <span className="rtp-divider" aria-hidden="true" />
+                <RunningTerminalsPill
+                  presence={presence}
+                  sessions={sessions}
+                  onFocus={onTerminalFocus}
+                  onRestore={onTerminalRestore}
+                  onStop={onTerminalStop}
+                />
+              </>
             )}
             </div>
             </LayoutGroup>

@@ -2542,11 +2542,17 @@ body {
   border-radius: 4px;
 }
 .rtp-stop:hover { color: #ff7777; background: rgba(255,119,119,0.08); }
-.rtp-popover-foot {
-  padding: 8px 10px 6px; font-size: 10px;
-  color: rgba(232,233,240,0.35);
-  border-top: 1px solid rgba(255,255,255,0.05); margin-top: 4px;
+.rtp-divider {
+  width: 1px; height: 16px;
+  background: rgba(255,255,255,0.08);
+  margin: 0 8px;
 }
+.rtp-confirm-checkbox {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: rgba(232,233,240,0.6);
+  margin-top: 8px; cursor: pointer;
+}
+.rtp-confirm-checkbox input { accent-color: #5eead4; }
 
 /* ── Sessions list: live terminal row treatment (Task 13) ── */
 .home-row.sr--attached {

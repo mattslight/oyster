@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { TerminalPresence, PresenceInfo } from "../../hooks/useTerminalPresence";
 import type { Session } from "../../data/sessions-api";
+import { ConfirmModal } from "../ConfirmModal";
 
 interface Props {
   presence: TerminalPresence;
@@ -12,6 +13,8 @@ interface Props {
 
 export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, onStop }: Props) {
   const [open, setOpen] = useState(false);
+  const [pendingStopId, setPendingStopId] = useState<string | null>(null);
+  const [dontAskAgain, setDontAskAgain] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   // Close popover when count drops to 0 — the pill disappears too.
@@ -45,7 +48,7 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
         title={`${presence.totalLive} running terminal${presence.totalLive === 1 ? "" : "s"}`}
       >
         <span className="rtp-pulse" />
-        Running {presence.totalLive} ▾
+        running ({presence.totalLive})
       </button>
       {open && (
         <div className="rtp-popover" ref={popoverRef}>
@@ -74,14 +77,44 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
                 <button
                   className="rtp-stop"
                   title="Stop terminal"
-                  onClick={(e) => { e.stopPropagation(); void onStop(info.terminalId); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (localStorage.getItem("oyster-skip-stop-confirm") === "1") {
+                      void onStop(info.terminalId);
+                    } else {
+                      setDontAskAgain(false);
+                      setPendingStopId(info.terminalId);
+                    }
+                  }}
                 >■</button>
               </div>
             );
           })}
-          <div className="rtp-popover-foot">Click row to focus · Stop ends the session</div>
         </div>
       )}
+      <ConfirmModal
+        open={pendingStopId !== null}
+        title="Stop this terminal?"
+        body={
+          <>
+            <p>Ending the session kills the Claude process and discards any in-progress work. The conversation history stays in the Sessions list.</p>
+            <label className="rtp-confirm-checkbox">
+              <input type="checkbox" checked={dontAskAgain} onChange={e => setDontAskAgain(e.target.checked)} />
+              Don't ask me again
+            </label>
+          </>
+        }
+        confirmLabel="Stop terminal"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setPendingStopId(null)}
+        onConfirm={() => {
+          if (dontAskAgain) localStorage.setItem("oyster-skip-stop-confirm", "1");
+          const id = pendingStopId!;
+          setPendingStopId(null);
+          void onStop(id);
+        }}
+      />
     </div>
   );
 }
