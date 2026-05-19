@@ -173,6 +173,7 @@ export function TerminalWindow({
       defaultH={480}
       zIndex={zIndex}
       closeButtonTooltip="Minimise terminal"
+      closeButtonGlyph="−"
     >
       <div
         ref={termRef}

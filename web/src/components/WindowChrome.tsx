@@ -24,6 +24,9 @@ interface Props {
   onToggleFullscreen?: () => void;
   extraHeader?: ReactNode;
   closeButtonTooltip?: string;
+  /** Glyph shown inside the close button. Defaults to ×; pass "−" for
+   *  windows where close means "minimise" (the action is non-destructive). */
+  closeButtonGlyph?: string;
 }
 
 export function WindowChrome({
@@ -40,6 +43,7 @@ export function WindowChrome({
   onToggleFullscreen,
   extraHeader,
   closeButtonTooltip = "Close",
+  closeButtonGlyph = "×",
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const offset = useRef({ x: 0, y: 0 });
@@ -212,7 +216,7 @@ export function WindowChrome({
             </button>
           )}
           <button className="window-btn close" onClick={onClose} title={closeButtonTooltip}>
-            ×
+            {closeButtonGlyph}
           </button>
         </div>
       </div>
