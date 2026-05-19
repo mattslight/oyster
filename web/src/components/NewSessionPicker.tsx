@@ -220,7 +220,11 @@ export function NewSessionPicker({
 
         <div className="nsp-list">
           {rows.length === 0 ? (
-            <div className="nsp-empty">No projects match.</div>
+            projects.length === 0 && realSpaces.length === 0 ? (
+              <EmptyState onAddSpace={() => { onClose(); }} />
+            ) : (
+              <div className="nsp-empty">No projects match.</div>
+            )
           ) : (
             <>
               {recentRows.length > 0 && <div className="nsp-group-label">Recent</div>}
@@ -316,6 +320,17 @@ export function NewSessionPicker({
           <span><span className="nsp-kbd">esc</span>close</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ onAddSpace }: { onAddSpace: () => void }) {
+  return (
+    <div className="nsp-empty">
+      <p style={{ marginBottom: 12 }}>Create or attach a project to start a session.</p>
+      <button type="button" className="nsp-folder-btn nsp-folder-btn--primary" onClick={onAddSpace}>
+        + Add space
+      </button>
     </div>
   );
 }
