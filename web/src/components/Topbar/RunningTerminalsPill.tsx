@@ -50,10 +50,6 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
       {open && (
         <div className="rtp-popover" ref={popoverRef}>
           <div className="rtp-popover-arrow" />
-          <div className="rtp-popover-head">
-            <span>Running terminals</span>
-            <span>{presence.totalLive}</span>
-          </div>
           {rows.map(({ info, session }) => {
             const title = session?.title ?? info.sessionId.slice(0, 8);
             const space = session?.spaceId ?? "—";
