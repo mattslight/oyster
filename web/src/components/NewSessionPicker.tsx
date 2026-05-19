@@ -1,7 +1,6 @@
 // Centered command-palette modal for starting a fresh Claude session.
 // Renders search + grouped list (recents, then all). Keyboard nav +
-// disabled rows. Spawn wiring is added in a follow-up task — for now
-// `onActivate` is the seam.
+// disabled rows. `onActivate` is the seam — App.tsx owns the spawn path.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "../data/projects-api";

@@ -333,7 +333,8 @@ export default function App() {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const { projects: allProjects } = useAllProjects(pickerOpen);
   useEffect(() => {
-    // Press Shift+P to toggle the preview for now.
+    // Dev shortcut: Shift+P opens the new-session picker. Removed in
+    // Task 8 when the real pill + ⌘N handler land.
     const h = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key === "P") {
         e.preventDefault();
