@@ -2484,3 +2484,69 @@ body {
   position: relative;
   z-index: 1;
 }
+
+/* ── Topbar Running terminals pill + popover ─────────────────────── */
+.rtp-wrap { position: relative; display: inline-flex; }
+.rtp-pill {
+  padding: 4px 10px; border-radius: 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid transparent;
+  color: rgba(232,233,240,0.75);
+  font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer;
+}
+.rtp-pill--open { background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35); color: #5eead4; }
+.rtp-pulse {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #5eead4; box-shadow: 0 0 8px rgba(94,234,212,0.7);
+  animation: rtp-pulse 1.6s infinite;
+}
+@keyframes rtp-pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.45 } }
+
+.rtp-popover {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  background: #1d1f29; border: 1px solid rgba(94,234,212,0.3);
+  border-radius: 10px; padding: 6px; min-width: 340px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+}
+.rtp-popover-arrow {
+  position: absolute; top: -6px; right: 24px; width: 12px; height: 12px;
+  background: #1d1f29;
+  border-left: 1px solid rgba(94,234,212,0.3);
+  border-top: 1px solid rgba(94,234,212,0.3);
+  transform: rotate(45deg);
+}
+.rtp-popover-head {
+  padding: 8px 10px 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: rgba(232,233,240,0.4); display: flex; justify-content: space-between;
+}
+.rtp-row {
+  display: grid; grid-template-columns: 14px 1fr auto auto;
+  gap: 10px; align-items: center; padding: 8px 10px; border-radius: 6px; cursor: pointer;
+}
+.rtp-row + .rtp-row { margin-top: 2px; }
+.rtp-row:hover { background: rgba(255,255,255,0.04); }
+.rtp-dot { width: 9px; height: 9px; border-radius: 50%; }
+.rtp-dot--attached { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.6); }
+.rtp-dot--running { background: transparent; border: 2px solid #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.4); }
+.rtp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rtp-title { font-size: 12px; color: #e8e9f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rtp-meta { font-size: 10px; color: rgba(232,233,240,0.45); }
+.rtp-meta .rtp-space { color: #b39dff; }
+.rtp-chip {
+  font-size: 9px; padding: 2px 7px; border-radius: 4px;
+  letter-spacing: 0.05em; text-transform: uppercase; font-weight: 600;
+}
+.rtp-chip--restore { background: rgba(167,139,250,0.18); color: #a78bfa; }
+.rtp-stop {
+  background: transparent; border: none; cursor: pointer;
+  color: rgba(232,233,240,0.4); font-size: 12px; padding: 4px 6px;
+  border-radius: 4px;
+}
+.rtp-stop:hover { color: #ff7777; background: rgba(255,119,119,0.08); }
+.rtp-popover-foot {
+  padding: 8px 10px 6px; font-size: 10px;
+  color: rgba(232,233,240,0.35);
+  border-top: 1px solid rgba(255,255,255,0.05); margin-top: 4px;
+}
