@@ -2539,6 +2539,7 @@ body {
   letter-spacing: 0.05em; text-transform: uppercase; font-weight: 600;
 }
 .rtp-chip--restore { background: rgba(167,139,250,0.18); color: #a78bfa; }
+.rtp-chip-placeholder { display: inline-block; width: 0; }
 .rtp-stop {
   background: transparent; border: none; cursor: pointer;
   color: rgba(232,233,240,0.4); font-size: 12px; padding: 4px 6px;

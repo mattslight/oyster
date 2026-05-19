@@ -71,7 +71,10 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
                     <span className="rtp-space">{space}</span> · claude-code · {isAttached ? "open" : "minimised"}
                   </span>
                 </div>
-                {!isAttached && <span className="rtp-chip rtp-chip--restore">Restore</span>}
+                {/* Always render the chip slot to keep stop-button column aligned. */}
+                {!isAttached
+                  ? <span className="rtp-chip rtp-chip--restore">Restore</span>
+                  : <span className="rtp-chip-placeholder" />}
                 <button
                   className="rtp-stop"
                   title="Stop terminal"
