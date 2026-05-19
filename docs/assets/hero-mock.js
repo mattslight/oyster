@@ -390,7 +390,7 @@
   const termBody = document.getElementById('hm-terminal-body');
   const termClose = document.getElementById('hm-terminal-close');
 
-  if (!pill || !popover || !row || !term || !termBody) return;
+  if (!pill || !popover || !row || !term || !termBody || !termClose) return;
 
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -519,7 +519,10 @@
     activitySeconds = 1;
     setActivity('cooking 1s');
     term.setAttribute('aria-hidden', 'false');
-    mock.classList.remove('is-side-open', 'is-preview-open');
+    // Use the existing helpers so aria-hidden / active state / focus are
+    // properly restored on whatever overlay was previously open.
+    if (mock.classList.contains('is-side-open')) closeSide();
+    if (mock.classList.contains('is-preview-open')) closePreview();
     mock.classList.add('is-terminal-open');
     unpinPopover();
     playOnce();
@@ -545,6 +548,23 @@
   pill.addEventListener('keydown', e => {
     if (e.key === 'Escape' && popoverPinned) { unpinPopover(); pill.blur(); }
   });
+
+  // Sync aria-expanded with the popover's actual visibility — CSS reveals it
+  // on hover and focus, so aria-expanded must mirror those states too, not
+  // just the tap-pinned click path.
+  const wrap = pill.closest('.hm-rtp-wrap');
+  if (wrap) {
+    const setExpanded = (v) => pill.setAttribute('aria-expanded', v ? 'true' : 'false');
+    wrap.addEventListener('pointerenter', () => setExpanded(true));
+    wrap.addEventListener('pointerleave', () => { if (!popoverPinned) setExpanded(false); });
+    wrap.addEventListener('focusin', () => setExpanded(true));
+    wrap.addEventListener('focusout', () => {
+      // focusout fires before the new activeElement settles; defer one tick.
+      setTimeout(() => {
+        if (!wrap.contains(document.activeElement) && !popoverPinned) setExpanded(false);
+      }, 0);
+    });
+  }
 
   // Hover-driven open/close across three zones — the popover row, the
   // "running" top session tile, and the terminal panel itself. Cursor crossing
