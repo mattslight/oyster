@@ -1097,6 +1097,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       spaces={spaces}
                       showSpaceChip={isMetaView}
                       myDeviceId={myDeviceId}
+                      livePresence={presence.byId[session.id]}
                       onOpen={(id) => setActivePanel({ kind: "session", id })}
                     />
                   ))}
