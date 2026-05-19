@@ -138,6 +138,7 @@ const MEMORIES_PREVIEW = 5;
 
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
+  "live-terminals": "live terminals",
   active: "active",
   waiting: "waiting",
   disconnected: "disconnected",
@@ -282,7 +283,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // when a folder is selected. Everything below this point (chips,
   // list) does narrow.
   const spaceCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
+    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
     counts.live = counts.active + counts.waiting + counts.disconnected;
     return counts;
@@ -301,17 +302,28 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [scopedSessions, selectedProjectId, selectedOrphanCwd, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
+    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
     for (const s of folderScopedSessions) counts[s.state]++;
     counts.live = counts.active + counts.waiting + counts.disconnected;
+    counts["live-terminals"] = presence.totalLive;
     return counts;
-  }, [folderScopedSessions]);
+  }, [folderScopedSessions, presence.totalLive]);
 
   const visibleSessions = useMemo(() => {
-    if (stateFilter === "all") return folderScopedSessions;
-    if (stateFilter === "live") return folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
-    return folderScopedSessions.filter((s) => s.state === stateFilter);
-  }, [folderScopedSessions, stateFilter]);
+    let list: typeof folderScopedSessions;
+    if (stateFilter === "all") list = folderScopedSessions;
+    else if (stateFilter === "live") list = folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
+    else if (stateFilter === "live-terminals") list = folderScopedSessions.filter((s) => presence.byId[s.id] != null);
+    else list = folderScopedSessions.filter((s) => s.state === stateFilter);
+    // Pin live (open terminal) rows to the top; within each group preserve
+    // descending last-activity order.
+    return list.slice().sort((a, b) => {
+      const aLive = presence.byId[a.id] ? 0 : 1;
+      const bLive = presence.byId[b.id] ? 0 : 1;
+      if (aLive !== bLive) return aLive - bLive;
+      return (b.lastEventAt ?? "").localeCompare(a.lastEventAt ?? "");
+    });
+  }, [folderScopedSessions, stateFilter, presence.byId]);
 
   // Per-space session counts + a separate orphan tally (sessions with
   // spaceId === null) + a grand total for the Home card.
@@ -1021,6 +1033,14 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   </span>
                 );
               })}
+              {presence.totalLive > 0 && (
+                <button
+                  className={`stat-btn stat-btn--live-terminals${stateFilter === "live-terminals" ? " active" : ""}`}
+                  onClick={() => setStateFilter("live-terminals")}
+                >
+                  {presence.totalLive} Live
+                </button>
+              )}
             </span>
             <span className="home-section-rule" />
             <div className="home-view-toggle">
@@ -1080,7 +1100,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                         session={session}
                         spaces={spaces}
                         myDeviceId={myDeviceId}
+                        livePresence={presence.byId[session.id]}
                         onOpen={(id) => setActivePanel({ kind: "session", id })}
+                        onTerminalRestore={onTerminalRestore}
                       />
                     ))}
                   </div>

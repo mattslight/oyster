@@ -3,7 +3,7 @@
 import type { SessionState } from "../../data/sessions-api";
 
 export type ViewMode = "icons" | "table";
-export type StateFilter = SessionState | "live" | "all";
+export type StateFilter = SessionState | "live" | "live-terminals" | "all";
 // "published" and "pinned" are *statuses*, not origins — but they join the same radio
 // group on Home so users only deal with one filter dimension. The coloured pips in the
 // JSX are the visual cue that acknowledges the semantic mismatch; both pills stay visible

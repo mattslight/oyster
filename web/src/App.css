@@ -2551,3 +2551,26 @@ body {
   color: rgba(232,233,240,0.35);
   border-top: 1px solid rgba(255,255,255,0.05); margin-top: 4px;
 }
+
+/* ── Sessions list: live terminal row treatment (Task 13) ── */
+.sr--attached {
+  background: linear-gradient(90deg, rgba(94,234,212,0.06), transparent 70%);
+  border-left: 2px solid #5eead4;
+  padding-left: 12px;
+}
+.sr--running {
+  background: linear-gradient(90deg, rgba(167,139,250,0.05), transparent 70%);
+  border-left: 2px solid #a78bfa;
+  padding-left: 12px;
+}
+.home-row-status.rd--attached { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.5); }
+.home-row-status.rd--running { background: transparent; border: 2px solid #a78bfa; }
+.sl-chip--restore {
+  background: rgba(167,139,250,0.18); color: #a78bfa;
+  font-size: 9px; padding: 2px 7px; border-radius: 4px;
+  letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600;
+  border: none; cursor: pointer; margin-right: 4px;
+}
+.sl-chip--restore:hover { background: rgba(167,139,250,0.28); }
+.stat-btn--live-terminals { color: #5eead4; }
+.stat-btn--live-terminals.active { background: rgba(94,234,212,0.15); color: #5eead4; }

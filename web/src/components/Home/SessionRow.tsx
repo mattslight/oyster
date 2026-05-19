@@ -8,16 +8,21 @@ import {
   AGENT_PIP_CLASS, activeWriterChipFor, formatRelative,
   originDeviceChipFor, spaceLabelFor,
 } from "./utils";
+import type { PresenceInfo } from "../../hooks/useTerminalPresence";
 
 interface SessionRowProps {
   session: Session;
   spaces: Space[];
   /** Local device id; drives the cross-device chip. See SessionTile. */
   myDeviceId: string | null;
+  /** Presence info from useTerminalPresence; undefined when no live terminal. */
+  livePresence?: PresenceInfo;
   onOpen?: (id: string) => void;
+  /** Restore a minimised terminal window for this session. */
+  onTerminalRestore?: (sessionId: string, terminalId: string) => void;
 }
 
-export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowProps) {
+export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalRestore }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = session.state === "waiting" ? `waiting ${rel}`
@@ -32,6 +37,12 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
   const remoteChip = originDeviceChipFor(session, myDeviceId);
   const activeChip = activeWriterChipFor(session, myDeviceId);
   const isManual = session.assignmentMode === "manual";
+  const rowExtraClass = livePresence
+    ? (livePresence.state === "attached" ? " sr--attached" : " sr--running")
+    : "";
+  const statusDotClass = livePresence
+    ? (livePresence.state === "attached" ? "rd--attached" : "rd--running")
+    : session.state;
 
   const [menuOpen, setMenuOpen] = useState(false);
   // Cache keyed by the spaceId we loaded for, so an empty result (or a
@@ -102,7 +113,7 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
 
   return (
     <div
-      className="home-row"
+      className={`home-row${rowExtraClass}`}
       onClick={() => onOpen?.(session.id)}
       onKeyDown={onOpen ? (e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(session.id); }
@@ -110,7 +121,7 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
     >
-      <span className={`home-row-status ${session.state}`} />
+      <span className={`home-row-status ${statusDotClass}`} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
       <span className="home-row-title" title={title}>
         {remoteChip && (
@@ -127,6 +138,16 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
           <span className="home-manual-chip" title="Pinned manually — Oyster's heuristic won't reassign this.">
             pinned
           </span>
+        )}
+        {livePresence?.state === "running" && onTerminalRestore && (
+          <button
+            type="button"
+            className="sl-chip--restore"
+            onClick={(e) => { e.stopPropagation(); onTerminalRestore(session.id, livePresence.terminalId); }}
+            title="Restore terminal"
+          >
+            Restore
+          </button>
         )}
         {title}
       </span>
