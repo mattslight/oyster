@@ -758,7 +758,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 counts.running > 0 && `${counts.running} running`,
                 counts.active > 0 && `${counts.active} active`,
                 counts.waiting > 0 && `${counts.waiting} waiting`,
-                counts.disconnected > 0 && `${counts.disconnected} disconnected`,
                 counts.done > 0 && `${counts.done} done`,
               ].filter(Boolean).join(" · ") || "no sessions yet";
               const isSelected = scopedSpace === space.id;
@@ -781,7 +780,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       transition={{ type: "spring", stiffness: 400, damping: 35 }}
                     />
                   )}
-                  {(counts.running > 0 || counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
+                  {(counts.running > 0 || counts.active > 0 || counts.waiting > 0) && (
                     <span className="home-breadcrumb-badges">
                       {renderPipCounts(counts)}
                     </span>
@@ -800,7 +799,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   orphanCounts.running > 0 && `${orphanCounts.running} running`,
                   orphanCounts.active > 0 && `${orphanCounts.active} active`,
                   orphanCounts.waiting > 0 && `${orphanCounts.waiting} waiting`,
-                  orphanCounts.disconnected > 0 && `${orphanCounts.disconnected} disconnected`,
                   orphanCounts.done > 0 && `${orphanCounts.done} done`,
                 ].filter(Boolean).join(" · ") || "Sessions outside any registered space"}
               >
@@ -811,7 +809,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                     transition={{ type: "spring", stiffness: 400, damping: 35 }}
                   />
                 )}
-                {(orphanCounts.running > 0 || orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
+                {(orphanCounts.running > 0 || orphanCounts.active > 0 || orphanCounts.waiting > 0) && (
                   <span className="home-breadcrumb-badges">
                     {renderPipCounts(orphanCounts)}
                   </span>
@@ -889,7 +887,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       <div className="home-active-project-counts">
                         {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
                         {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
-                        {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
                       </div>
                     </button>
                     <button

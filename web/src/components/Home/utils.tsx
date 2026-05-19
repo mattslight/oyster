@@ -34,18 +34,19 @@ export function homeRelative(p: string): string {
 // the Active-projects tile signals use, just without the trailing
 // state word — fits in a breadcrumb pill while keeping counts exact
 // and the visual language consistent with the tiles.
-export function renderPipCounts(counts: { running?: number; active?: number; waiting?: number; disconnected?: number }) {
+// Disconnected sessions are folded into Done in the UI vocabulary —
+// don't render a red disconnected pip on space pills or tiles. The data
+// column still exists on the count objects, it's just not displayed.
+export function renderPipCounts(counts: { running?: number; active?: number; waiting?: number }) {
   const r = counts.running ?? 0;
   const a = counts.active ?? 0;
   const w = counts.waiting ?? 0;
-  const d = counts.disconnected ?? 0;
-  if (r + a + w + d === 0) return null;
+  if (r + a + w === 0) return null;
   return (
     <>
       {r > 0 && <span className="pip-count"><span className="pip pip-teal" />{r}</span>}
       {a > 0 && <span className="pip-count"><span className="pip pip-green" />{a}</span>}
       {w > 0 && <span className="pip-count"><span className="pip pip-amber" />{w}</span>}
-      {d > 0 && <span className="pip-count"><span className="pip pip-red" />{d}</span>}
     </>
   );
 }
