@@ -128,7 +128,7 @@ Or pick a folder…
 
 | State | What the palette shows |
 |---|---|
-| No spaces, no projects | Empty list, no folder picker exposed in the inline row. One-line copy: *"Add a space and a project to get started."* (Pill itself stays clickable; we don't hide it — discoverability over silence.) |
+| No spaces, no projects | Empty list, folder picker not yet exposed (no space to attach to). One-line copy: *"Create or attach a project to start a session."* with an inline **+ Add space** CTA that opens the existing add-space flow. Once at least one real space exists, the folder escape hatch becomes available on the next open. (Pill itself stays clickable; we don't hide it — discoverability over silence.) |
 | Spaces exist but all projects are "no folder" | All projects rendered disabled with tooltips. Folder escape hatch fully functional (real spaces in the dropdown). |
 | Live terminal already running in the same cwd | No warning — two claude procs are allowed in the same cwd (per handover note). The new spawn appears as a separate row in the running pill. |
 | `claude` binary missing | Inline error in the palette ("Couldn't start Claude…") + the existing `installHint` (`npm install -g @anthropic-ai/claude-code`). |
@@ -209,7 +209,7 @@ Suggested sequence — the writing-plans phase will break each step into indepen
 6. **Folder escape hatch**: inline path input + space dropdown (where relevant) + attach-then-spawn flow.
 7. **`NewSessionPill`**: render the pill, right-aligned with the running pill in the breadcrumb. Both pills cluster at the right edge.
 8. **Smart routing**: `⌘N`/pill-click decides palette-vs-spawn based on active space + project count.
-9. **`⌘N` global handler** with input/textarea/contenteditable guard.
+9. **`⌘N` global handler** — unconditional intercept (matches §2 and the acceptance test). No focus-aware guard.
 10. **Empty-state copy + edge-case polish**.
 11. **CHANGELOG entry** in the same PR (per `CLAUDE.md` convention).
 
@@ -226,7 +226,7 @@ Smoke tests covering the core flow:
 - **Disabled rows don't activate.** Click a `hasLivePath === false` row → nothing happens.
 - **Recents persist across reloads.** Spawn into a project, reload, reopen palette → that project is in the RECENT section.
 - **Folder escape hatch attaches then spawns.** Provide a path, pick a space (or use the only one), submit; assert `attachFolder` is called then `launchAndOpen`.
-- **Empty state on a fresh install.** No spaces, no projects, click pill → palette renders empty-state copy; folder row not exposed.
+- **Empty state on a fresh install.** No spaces, no projects, click pill → palette renders empty-state copy *"Create or attach a project to start a session."* with the **+ Add space** CTA; folder row not exposed.
 - **Server-error rendering.** Mock `POST /api/terminals` returning `binary_not_found`; assert inline error renders with install hint.
 
 ## Open questions
