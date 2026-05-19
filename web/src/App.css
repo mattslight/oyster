@@ -2497,11 +2497,9 @@ body {
   cursor: pointer;
 }
 .rtp-pill--open { background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35); color: #5eead4; }
-.rtp-pulse {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #5eead4; box-shadow: 0 0 8px rgba(94,234,212,0.7);
-  animation: rtp-pulse 1.6s infinite;
-}
+/* Pulse animation applied to a standard .pip element so the dot+count
+ * uses the same .pip-count layout as the space-pill badges. */
+.rtp-pulse-anim { animation: rtp-pulse 1.6s infinite; }
 @keyframes rtp-pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.45 } }
 
 .rtp-popover {
