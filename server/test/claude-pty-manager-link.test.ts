@@ -144,4 +144,17 @@ describe("ClaudePtyManager DB link", () => {
     expect(row.terminal_id).toBeNull();
     expect(row.terminal_attached_clients).toBe(0);
   });
+
+  it("calling kill() marks the linked session disconnected", () => {
+    env.mgr._seedEntryForTest({ terminalId: "t3", linkedSessionId: null });
+    env.mgr.setLinkedSession("t3", "s1");
+    // Seed row state to "active" so we can verify the transition.
+    env.store.updateSessionState("s1", "active", new Date().toISOString());
+    expect(env.store.getById("s1")!.state).toBe("active");
+
+    env.mgr.kill("t3");
+
+    // After kill: the session row state should be "disconnected".
+    expect(env.store.getById("s1")!.state).toBe("disconnected");
+  });
 });

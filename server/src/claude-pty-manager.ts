@@ -330,6 +330,17 @@ export class ClaudePtyManager {
     const exitedSessionId = entry.linkedSessionId;
     if (exitedSessionId) {
       this.sessionStore.clearTerminal(exitedSessionId);
+      // Oyster-managed PTY just ended (user clicked Stop, claude exited,
+      // or the process crashed). Mark the session disconnected now so
+      // the UI flips immediately, instead of waiting for the watcher's
+      // natural state-derivation poll to catch up. The watcher may later
+      // re-evaluate via deriveState, but its rules (ageMs cut-offs) will
+      // agree once the JSONL stops growing.
+      this.sessionStore.updateSessionState(
+        exitedSessionId,
+        "disconnected",
+        new Date().toISOString(),
+      );
       entry.linkedSessionId = null;
     }
     this.broadcastUiEvent({
