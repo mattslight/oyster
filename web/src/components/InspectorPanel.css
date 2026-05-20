@@ -78,6 +78,25 @@
   font-size: 11px;
   color: var(--text-dim);
 }
+/* Clickable session id — click to copy. Reads as the existing meta-line
+   text by default (no button chrome) but underlines on hover so the
+   affordance is discoverable. */
+.inspector-sub-id {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 80ms, color 80ms;
+}
+.inspector-sub-id:hover {
+  color: var(--text);
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+}
 
 .inspector-banner {
   margin: 0 28px 16px;
@@ -386,6 +405,14 @@ button.link-row:focus-visible {
 }
 .inspector-actions .btn.primary:hover {
   background: rgba(124, 107, 255, 0.24);
+}
+/* The primary CTA (Connect / Resume) uses the same uppercase, tracked
+   treatment as the row-hover chips so the same affordance reads the
+   same wherever it appears. */
+.inspector-actions .btn.inspector-cta {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
 }
 
 .inspector-footer {

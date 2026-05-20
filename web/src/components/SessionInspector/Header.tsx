@@ -43,6 +43,21 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
     && myDeviceId !== null;
   const canResume = isRemote && session.hasBytes === true;
   const [resumeOpen, setResumeOpen] = useState(false);
+  const [idCopied, setIdCopied] = useState(false);
+
+  function copySessionId() {
+    if (!navigator.clipboard) {
+      alert(`Copy failed — session id:\n${session.id}`);
+      return;
+    }
+    navigator.clipboard.writeText(session.id).then(
+      () => {
+        setIdCopied(true);
+        setTimeout(() => setIdCopied(false), 1500);
+      },
+      () => alert(`Copy failed — session id:\n${session.id}`),
+    );
+  }
 
   return (
     <header className="inspector-header">
@@ -57,7 +72,15 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
       </div>
       <div className="inspector-title">{session.title ?? "(no title yet)"}</div>
       <div className="inspector-sub">
-        {session.id} · started {formatTs(session.startedAt)}
+        <button
+          type="button"
+          className="inspector-sub-id"
+          onClick={copySessionId}
+          title="Click to copy session id"
+        >
+          {idCopied ? "Copied!" : session.id}
+        </button>
+        {" · started "}{formatTs(session.startedAt)}
         {session.model ? ` · ${session.model}` : ""}
       </div>
       <SessionActions session={session} onLaunchClaude={onLaunchClaude} onConnect={onConnect} />

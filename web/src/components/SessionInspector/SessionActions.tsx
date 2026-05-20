@@ -22,7 +22,6 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
   onConnect?: () => void;
 }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
   const [forkWarningOpen, setForkWarningOpen] = useState(false);
 
   // A session that's active or waiting AND not currently running in Oyster
@@ -58,23 +57,11 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
     );
   }
 
-  function copyId() {
-    if (!navigator.clipboard) {
-      alert(`Copy failed — session id:\n${session.id}`);
-      return;
-    }
-    navigator.clipboard.writeText(session.id).then(
-      () => {
-        setCopiedId(true);
-        setTimeout(() => setCopiedId(false), 1500);
-      },
-      () => alert(`Copy failed — session id:\n${session.id}`),
-    );
-  }
-
   // A live PTY exists for this session — primary action is "Connect"
   // (focus/restore the window), not "Resume" (which would spawn another
-  // claude on the same session id).
+  // claude on the same session id). Both buttons use the chip-style
+  // uppercase variant so the Inspector CTA matches the row's CONNECT /
+  // RESUME chips visually.
   const isLive = session.terminalId != null && !!onConnect;
 
   return (
@@ -82,7 +69,7 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
       {isLive && (
         <button
           type="button"
-          className="btn primary"
+          className="btn primary inspector-cta"
           onClick={() => onConnect!()}
           title="Bring this session's terminal window forward"
         >
@@ -92,7 +79,7 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
       {!isLive && canResumeInOyster && (
         <button
           type="button"
-          className="btn primary"
+          className="btn primary inspector-cta"
           onClick={() => forkRisk ? setForkWarningOpen(true) : onLaunchClaude!()}
           title={`Run claude --resume ${session.id} in ${session.cwd}`}
         >
@@ -101,9 +88,6 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
       )}
       <button type="button" className="btn" onClick={copyCommand}>
         {copiedCmd ? "Copied!" : "Copy resume command"}
-      </button>
-      <button type="button" className="btn" onClick={copyId}>
-        {copiedId ? "Copied!" : "Copy session ID"}
       </button>
       <ConfirmModal
         open={forkWarningOpen}
