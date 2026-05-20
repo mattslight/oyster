@@ -5,6 +5,7 @@ import { useMyDeviceId } from "../../hooks/useMyDeviceId";
 import { SessionActions } from "./SessionActions";
 import { ResumeDialog, type OpenInOysterResult } from "./ResumeDialog";
 import { formatTs } from "./utils";
+import { formatRelative } from "../Home/utils";
 
 const PIP_CLASS: Record<SessionState, string> = {
   active: "green",
@@ -80,7 +81,10 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
         >
           {idCopied ? "Copied!" : session.id}
         </button>
-        {" · started "}{formatTs(session.startedAt)}
+        {" · started "}
+        <span title={formatTs(session.startedAt)}>
+          {formatRelative(session.startedAt) ?? formatTs(session.startedAt)}
+        </span>
         {session.model ? ` · ${session.model}` : ""}
       </div>
       <SessionActions session={session} onLaunchClaude={onLaunchClaude} onConnect={onConnect} />
