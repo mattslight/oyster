@@ -33,7 +33,9 @@
   const MUSIC_MUTE_KEY = 'oyster-arcade-music-muted';   // legacy
   const SFX_MUTE_KEY   = 'oyster-arcade-sfx-muted';     // legacy
 
-  const STEPS = 5;            // 0/1/2/3/4 → 0, 25%, 50%, 75%, 100%
+  // STEPS = number of segments rendered in the bar AND number of non-zero
+  // volume levels. Volume 0 lights no segments; volume 1 lights all STEPS.
+  const STEPS = 5;
   const DEFAULT_VOLUME = 1;
 
   let paused = false;
@@ -56,11 +58,12 @@
     try { localStorage.setItem(key, String(v)); } catch (_) {}
   }
 
-  // Step ↔ continuous helpers. The slider is discrete (STEPS levels), but
-  // the underlying audio APIs are 0..1 continuous — round to the nearest
-  // step for display so the bar always matches the saved value.
-  function stepFromVolume(v) { return Math.round(Math.max(0, Math.min(1, v)) * (STEPS - 1)); }
-  function volumeFromStep(s) { return Math.max(0, Math.min(STEPS - 1, s)) / (STEPS - 1); }
+  // Step ↔ continuous helpers. The slider is discrete (0..STEPS = 6 distinct
+  // levels: mute + STEPS lit-segment levels), but the underlying audio APIs
+  // are 0..1 continuous — round to the nearest level for display so the bar
+  // always matches the saved value.
+  function levelFromVolume(v) { return Math.round(Math.max(0, Math.min(1, v)) * STEPS); }
+  function volumeFromLevel(L) { return Math.max(0, Math.min(STEPS, L)) / STEPS; }
 
   function getMusicVolume() { return readVolume(MUSIC_VOL_KEY, MUSIC_MUTE_KEY); }
   function getSfxVolume()   {
@@ -151,7 +154,10 @@
         .arcade-pause-row.is-muted { border-color: rgba(255, 255, 255, 0.25); }
         .arcade-pause-row-label {
           flex: 1; text-align: left; min-width: 80px;
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
         }
+        .arcade-pause-row-label:hover { color: #fff; }
         .arcade-pause-bar {
           display: flex; gap: 3px;
         }
@@ -202,20 +208,78 @@
       </div>
     `;
     document.body.appendChild(pauseEl);
-    // Segment clicks set the volume to (step+1)/STEPS, EXCEPT: clicking the
-    // segment that's already the last-lit one toggles down to mute (step 0).
-    // That gives a single-tap mute path without sacrificing the "click any
-    // segment to set" affordance.
-    pauseEl.querySelectorAll('.arcade-pause-seg').forEach(btn => {
-      btn.addEventListener('click', e => {
+
+    // Label click toggles mute, remembering the previous volume so unmuting
+    // restores it. This is the obvious desktop gesture — "click the label
+    // to silence this channel" — and saves a multi-tap dance on the bar.
+    const prev = { music: 1, sfx: 1 };
+    pauseEl.querySelectorAll('.arcade-pause-row-label').forEach(lbl => {
+      const kind = lbl.parentElement.dataset.row;
+      lbl.setAttribute('role', 'button');
+      lbl.setAttribute('title', 'Click to toggle mute');
+      lbl.addEventListener('click', e => {
         e.stopPropagation();
-        const kind = btn.dataset.kind;
-        const step = parseInt(btn.dataset.step, 10);
-        const cur  = stepFromVolume(kind === 'music' ? getMusicVolume() : getSfxVolume());
-        const targetStep = (step + 1 === cur) ? 0 : step + 1;
-        const v = volumeFromStep(targetStep);
-        if (kind === 'music') setMusicVolume(v); else setSfxVolume(v);
+        const cur = kind === 'music' ? getMusicVolume() : getSfxVolume();
+        if (cur > 0) {
+          prev[kind] = cur;
+          if (kind === 'music') setMusicVolume(0); else setSfxVolume(0);
+        } else {
+          const restore = prev[kind] > 0 ? prev[kind] : 1;
+          if (kind === 'music') setMusicVolume(restore); else setSfxVolume(restore);
+        }
       });
+    });
+
+    // Bar-level pointer handling: covers BOTH tap (set this level) and
+    // drag/swipe (continuously update level as the finger moves across the
+    // bar). Per-segment click handlers are deliberately avoided — they'd
+    // race with the drag and create flicker.
+    pauseEl.querySelectorAll('.arcade-pause-bar').forEach(bar => {
+      const kind = bar.parentElement.dataset.row; // 'music' | 'sfx'
+      let dragging = false;
+      let levelOnDragStart = 0;
+      let movedDuringDrag = false;
+
+      function levelFromX(clientX) {
+        const rect = bar.getBoundingClientRect();
+        const x = clientX - rect.left;
+        if (x < 0) return 0;
+        if (x >= rect.width) return STEPS;
+        // STEPS segments evenly spaced — segment N covers [N*w/STEPS, (N+1)*w/STEPS),
+        // and pointing into segment N means "I want level N+1".
+        return Math.min(STEPS, Math.floor(x / (rect.width / STEPS)) + 1);
+      }
+      function applyLevel(L) {
+        const v = volumeFromLevel(L);
+        if (kind === 'music') setMusicVolume(v); else setSfxVolume(v);
+      }
+
+      bar.addEventListener('pointerdown', e => {
+        e.stopPropagation();
+        dragging = true;
+        movedDuringDrag = false;
+        levelOnDragStart = levelFromVolume(kind === 'music' ? getMusicVolume() : getSfxVolume());
+        try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+        applyLevel(levelFromX(e.clientX));
+      });
+      bar.addEventListener('pointermove', e => {
+        if (!dragging) return;
+        const newLevel = levelFromX(e.clientX);
+        if (newLevel !== levelOnDragStart) movedDuringDrag = true;
+        applyLevel(newLevel);
+      });
+      function endDrag(e) {
+        if (!dragging) return;
+        dragging = false;
+        // Mute-toggle path: a TAP (no movement) on the segment that's already
+        // the top-lit one drops to 0. A drag never toggles — it just sets.
+        if (!movedDuringDrag) {
+          const endLevel = levelFromX(e.clientX);
+          if (endLevel === levelOnDragStart && endLevel > 0) applyLevel(0);
+        }
+      }
+      bar.addEventListener('pointerup', endDrag);
+      bar.addEventListener('pointercancel', endDrag);
     });
   }
 
@@ -225,10 +289,10 @@
       const row = pauseEl.querySelector(`[data-row="${kind}"]`);
       if (!row) return;
       row.classList.toggle('is-muted', value === 0);
-      const cur = stepFromVolume(value);
+      const lit = levelFromVolume(value);
       row.querySelectorAll('.arcade-pause-seg').forEach(seg => {
         const step = parseInt(seg.dataset.step, 10);
-        seg.classList.toggle('is-on', step < cur);
+        seg.classList.toggle('is-on', step < lit);
       });
     }
     paintRow('music', getMusicVolume());
