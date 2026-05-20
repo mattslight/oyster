@@ -844,8 +844,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 />
               )}
               {onOpenNewSession && <NewSessionPill onClick={onOpenNewSession} />}
-              <OnboardingDock userSpaceCount={userSpaceCount} />
             </div>
+            <OnboardingDock userSpaceCount={userSpaceCount} />
             </LayoutGroup>
           </nav>
 

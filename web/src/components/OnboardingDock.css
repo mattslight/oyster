@@ -173,17 +173,26 @@
 }
 
 /* Click-to-tick affordance on optional checklist items. Reset the
-   <button>-level defaults (font, padding) inherited from the browser
-   and add a hover hint so the circle reads as interactive. */
+   <button>-level defaults (background, font, padding) inherited from
+   the browser and add a hover hint so the circle reads as interactive. */
 .onboarding-item-icon--clickable {
   padding: 0;
   font: inherit;
+  color: inherit;
+  background: transparent;
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
+}
+.onboarding-item-icon--clickable.onboarding-item-icon--optional {
+  background: transparent;
 }
 .onboarding-item-icon--clickable:hover {
   border-color: rgba(255, 255, 255, 0.45);
   background: rgba(255, 255, 255, 0.05);
+}
+.onboarding-item-icon--clickable.onboarding-item-icon--done {
+  background: rgba(74, 222, 128, 0.18);
+  color: #4ade80;
 }
 .onboarding-item-icon--clickable.onboarding-item-icon--done:hover {
   background: rgba(74, 222, 128, 0.28);
