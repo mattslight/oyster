@@ -10,12 +10,16 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-export function SessionActions({ session, onLaunchClaude }: {
+export function SessionActions({ session, onLaunchClaude, onConnect }: {
   session: Session;
   /** Continue this session in an Oyster terminal (`claude --resume`).
    *  "Start new" lives on the project tile, not here — the inspector is
    *  about *this* transcript. */
   onLaunchClaude?: () => void;
+  /** Focus or restore an already-running PTY for this session. Used in
+   *  place of onLaunchClaude when session.terminalId is set, so the
+   *  primary button reads "Connect" instead of "Resume". */
+  onConnect?: () => void;
 }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -68,16 +72,31 @@ export function SessionActions({ session, onLaunchClaude }: {
     );
   }
 
+  // A live PTY exists for this session — primary action is "Connect"
+  // (focus/restore the window), not "Resume" (which would spawn another
+  // claude on the same session id).
+  const isLive = session.terminalId != null && !!onConnect;
+
   return (
     <div className="inspector-actions">
-      {canResumeInOyster && (
+      {isLive && (
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => onConnect!()}
+          title="Bring this session's terminal window forward"
+        >
+          Connect
+        </button>
+      )}
+      {!isLive && canResumeInOyster && (
         <button
           type="button"
           className="btn primary"
           onClick={() => forkRisk ? setForkWarningOpen(true) : onLaunchClaude!()}
           title={`Run claude --resume ${session.id} in ${session.cwd}`}
         >
-          Resume here
+          Resume
         </button>
       )}
       <button type="button" className="btn" onClick={copyCommand}>

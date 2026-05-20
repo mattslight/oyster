@@ -45,15 +45,19 @@ interface Props {
   onClose: () => void;
   onNotFound: () => void;
   /** Resume this session in an Oyster terminal (`claude --resume <id>`).
-   *  Optional: when omitted, the "Resume here" button is hidden and the
-   *  user falls back to copying the resume command. */
+   *  Optional: when omitted, the "Resume" button is hidden and the user
+   *  falls back to copying the resume command. */
   onLaunchClaude?: (sessionId: string) => void;
+  /** Focus / restore the live PTY for this session. When the session has
+   *  a live terminal, this callback drives the primary "Connect" button
+   *  in place of "Resume". */
+  onConnect?: (sessionId: string) => void;
   /** Launch a remote (cross-device) session in an Oyster terminal once
    *  its bytes have been reassembled. Threaded through to ResumeDialog. */
   onOpenInOyster?: (sessionId: string) => Promise<import("./ResumeDialog").OpenInOysterResult>;
 }
 
-export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onOpenArtefact, onClose, onNotFound, onLaunchClaude, onOpenInOyster }: Props) {
+export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, onSwitchTo, onOpenArtefact, onClose, onNotFound, onLaunchClaude, onConnect, onOpenInOyster }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [events, setEvents] = useState<SessionEvent[] | null>(null);
   const [artefacts, setArtefacts] = useState<SessionArtifactJoined[] | null>(null);
@@ -280,6 +284,7 @@ export function SessionInspector({ sessionId, focusEventId, initialSearchQuery, 
         session={session}
         onClose={onClose}
         onLaunchClaude={onLaunchClaude ? () => onLaunchClaude(session.id) : undefined}
+        onConnect={onConnect ? () => onConnect(session.id) : undefined}
         onOpenInOyster={onOpenInOyster}
       />
       <Banner session={session} />

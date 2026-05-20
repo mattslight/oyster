@@ -20,11 +20,13 @@ const STATE_LABEL: Record<SessionState, string> = {
   done: "done",
 };
 
-export function Header({ session, onClose, onLaunchClaude, onOpenInOyster }: {
+export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOyster }: {
   session: Session;
   onClose: () => void;
   /** Resume this session in an Oyster terminal (`claude --resume <id>`). */
   onLaunchClaude?: () => void;
+  /** Focus / restore an already-running PTY for this session. */
+  onConnect?: () => void;
   /** Launch a remote (cross-device) session in an Oyster terminal once
    *  its bytes have been reassembled. Surfaced by the ResumeDialog OkPanel. */
   onOpenInOyster?: (sessionId: string) => Promise<OpenInOysterResult>;
@@ -58,7 +60,7 @@ export function Header({ session, onClose, onLaunchClaude, onOpenInOyster }: {
         {session.id} · started {formatTs(session.startedAt)}
         {session.model ? ` · ${session.model}` : ""}
       </div>
-      <SessionActions session={session} onLaunchClaude={onLaunchClaude} />
+      <SessionActions session={session} onLaunchClaude={onLaunchClaude} onConnect={onConnect} />
 
       {isRemote && (
         <div className="inspector-resume">

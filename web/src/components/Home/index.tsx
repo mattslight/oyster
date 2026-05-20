@@ -76,6 +76,10 @@ interface Props {
   /** Open the new-session palette. When omitted, the pill is hidden
    *  (e.g. in test contexts that don't wire it up). */
   onOpenNewSession?: () => void;
+  /** Focus / restore the live terminal for a session id. Threaded into
+   *  SessionInspector so the primary action can read "Connect" when a
+   *  live PTY exists. */
+  onConnectSession?: (sessionId: string) => void;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -153,7 +157,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, onOpenNewSession, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, onOpenNewSession, onConnectSession, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
   const presence = useTerminalPresence(sessions, terminalWindows ?? []);
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();
@@ -1397,6 +1401,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               alert("Session no longer available");
             }}
             onLaunchClaude={onLaunchClaudeFromSession}
+            onConnect={onConnectSession}
             onOpenInOyster={onOpenRemoteInOyster}
           />
         )}

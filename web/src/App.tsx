@@ -496,6 +496,31 @@ export default function App() {
     [],
   );
 
+  // Connect = focus/restore an already-running PTY for a session, used by
+  // the SessionInspector's primary action and any caller that has a
+  // sessionId (not just a terminalId). Quietly no-ops when there's no
+  // live PTY — callers gate the affordance themselves.
+  const handleConnectSession = useCallback(
+    (sessionId: string) => {
+      const session = allSessions.find((s) => s.id === sessionId);
+      if (!session?.terminalId) return;
+      const w = windows.find((win) => win.terminalId === session.terminalId);
+      if (w) {
+        dispatch({ type: "FOCUS", id: w.id });
+        return;
+      }
+      dispatch({
+        type: "OPEN_CLAUDE_TERMINAL",
+        terminalId: session.terminalId,
+        title: session.title ?? "Claude",
+        cwd: session.cwd ?? "/",
+        kind: "claude_resume",
+        linkedSessionId: sessionId,
+      });
+    },
+    [allSessions, windows],
+  );
+
   // Remote-session "Open in Oyster" path (from ResumeDialog). Source is
   // `remote_session`: server resolves the cwd from the reassembled jsonl on
   // disk, so the dialog doesn't need to pass the cwd back. The dialog
@@ -619,6 +644,7 @@ export default function App() {
           if (w) dispatch({ type: "CLOSE", id: w.id });
         }}
         onOpenNewSession={handleOpenNewSession}
+        onConnectSession={handleConnectSession}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
