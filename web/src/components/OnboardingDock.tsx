@@ -279,11 +279,16 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
             Oyster", attention-grabbing. Post-required-with-optionals-pending:
             purple pill (matches "+ New session") with a gold ◐ half-circle
             glyph — the glyph is the only state cue; the pill stays quiet so
-            it doesn't out-shout the active space pill. All-done: green
-            check, glyph only — silent confirmation. */}
+            it doesn't out-shout the active space pill. All-done: green-
+            tinted pill with the 🦪 oyster emoji — on-brand silent
+            confirmation, the "you found your pearl" moment. */}
         {!requiredDone && <span className="onboarding-dock-progress" />}
         {requiredDone && !done && <span className="onboarding-dock-mid-glyph" aria-hidden="true">◐</span>}
-        {done && <span className="onboarding-dock-check">✓</span>}
+        {done && (
+          <span className="onboarding-dock-check" role="img" aria-label="Setup complete">
+            🦪
+          </span>
+        )}
         {!done && (
           <span className="onboarding-dock-label">
             {requiredDone ? "Continue setup" : "Set up Oyster"}

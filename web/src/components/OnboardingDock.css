@@ -50,7 +50,7 @@
 }
 
 .onboarding-dock--ready .onboarding-dock-check {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* Pre-required-done indicator: amber dot that softly glows + winks (slower
@@ -70,8 +70,7 @@
 }
 
 .onboarding-dock-check {
-  color: #4ade80;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
 }
 
