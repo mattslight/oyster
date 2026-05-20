@@ -13,12 +13,13 @@ directory = "../../docs/arcade"
 binding = "ASSETS"
 not_found_handling = "404-page"
 
-# Route the Worker at arcade.oyster.to. The DNS record for `arcade` is a
-# Workers route binding — Cloudflare auto-creates the corresponding DNS
-# entry when the route is first deployed.
+# Custom Domain (NOT a plain Workers Route): Cloudflare provisions the DNS
+# record AND the TLS cert automatically on first deploy. A plain route
+# requires a pre-existing DNS record on the subdomain; we don't have one
+# and don't want to add a placeholder.
 [[routes]]
-pattern = "arcade.oyster.to/*"
-zone_name = "oyster.to"
+pattern = "arcade.oyster.to"
+custom_domain = true
 
 # Observability: lets `wrangler tail` work for debugging.
 [observability]
