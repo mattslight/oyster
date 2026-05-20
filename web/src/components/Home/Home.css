@@ -239,8 +239,10 @@
 .pip-red   { background: var(--home-red);   box-shadow: 0 0 6px var(--home-red); }
 .pip-dim   { background: var(--home-text-muted); }
 /* Class name kept as "teal" for backwards-compat; the colour is now
-   violet to keep "running" visually distinct from the green of "active". */
-.pip-teal  { background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.6); }
+   violet to keep "running" visually distinct from the green of "active".
+   Violet at the same alpha reads dimmer than teal, so the shadow opacity
+   is higher than the green/amber pips' to match perceived brightness. */
+.pip-teal  { background: #a78bfa; box-shadow: 0 0 8px rgba(167,139,250,0.85); }
 .pip-published { background: #a78bfa; }
 .pip-pinned    { background: #fbbf24; }
 

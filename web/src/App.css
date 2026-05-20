@@ -2561,7 +2561,7 @@ body {
 /* Both Open and Minimised terminals are "running" — share the teal dot.
  * The Restore chip on Minimised rows is the only state-distinguishing
  * signal in the popover. */
-.rtp-dot { width: 9px; height: 9px; border-radius: 50%; background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.6); }
+.rtp-dot { width: 9px; height: 9px; border-radius: 50%; background: #a78bfa; box-shadow: 0 0 8px rgba(167,139,250,0.85); }
 .rtp-dot--attached, .rtp-dot--running { /* same — kept as separate classes for any future per-state styling */ }
 .rtp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rtp-title { font-size: 12px; color: #e8e9f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2587,20 +2587,26 @@ body {
 .rtp-confirm-checkbox input { accent-color: #a78bfa; }
 
 /* ── Sessions list: live terminal row treatment ──
- * Both Open and Minimised are "running" — same teal stripe + dot.
- * Clicking the row focuses (Open) or restores (Minimised) — no chip needed. */
+ * Both Open and Minimised are "running" — same violet stripe + dot.
+ * Clicking the row focuses (Open) or restores (Minimised) — no chip needed.
+ * padding-left compensates for the 2px border-left so the row's grid
+ * columns line up with non-running rows (16 + 2 = 18, matches the
+ * default `padding: 12px 18px` on .home-row). */
 .home-row.sr--attached,
 .home-row.sr--running {
   background: linear-gradient(90deg, rgba(167,139,250,0.06), transparent 70%);
   border-left: 2px solid #a78bfa;
-  padding-left: 12px;
+  padding-left: 16px;
 }
 .home-row.sr--attached:hover,
 .home-row.sr--running:hover {
   background: linear-gradient(90deg, rgba(167,139,250,0.10), rgba(124,107,255,0.05) 70%);
 }
+/* Violet at the same alpha reads dimmer than teal; bump shadow opacity
+   and radius so the running pip carries a visible halo like the active
+   green and waiting amber pips. */
 .home-row-status.rd--attached,
-.home-row-status.rd--running { background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.5); }
+.home-row-status.rd--running { background: #a78bfa; box-shadow: 0 0 8px rgba(167,139,250,0.85); }
 .sl-chip--inspect {
   background: rgba(255,255,255,0.06); color: rgba(232,233,240,0.7);
   font-size: 9px; padding: 2px 7px; border-radius: 4px;
@@ -2632,4 +2638,4 @@ body {
 }
 /* Both Open and Minimised tiles get the same teal dot — they're both running. */
 .tile-presence-dot.tpd--attached::before,
-.tile-presence-dot.tpd--running::before { background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.6); }
+.tile-presence-dot.tpd--running::before { background: #a78bfa; box-shadow: 0 0 8px rgba(167,139,250,0.85); }
