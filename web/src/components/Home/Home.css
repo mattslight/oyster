@@ -705,6 +705,23 @@
   white-space: nowrap;
 }
 
+/* Sessions-table column header — same 5-col grid as .home-row so labels
+   sit above the data cells, but with quieter type and no hover/cursor
+   so it doesn't read as clickable. */
+.home-row--header {
+  cursor: default;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.6;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.home-row--header:hover { background: transparent; }
+.home-row--header > :last-child { text-align: right; }
+
 /* Session-row ⋯ menu — same shape as ProjectTile's. Positioned at the
    right edge of the row, fades in on hover. The row itself is a CSS grid
    without an extra column for the button; absolute positioning keeps the

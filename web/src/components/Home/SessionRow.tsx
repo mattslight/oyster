@@ -28,8 +28,7 @@ interface SessionRowProps {
 
 export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalFocus, onTerminalRestore, onResume }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
-  const rel = formatRelative(session.lastEventAt) ?? "—";
-  const time = `last active ${rel}`;
+  const time = formatRelative(session.lastEventAt) ?? "—";
   const hasTitle = !!session.title;
   const title = session.title ?? "Untitled";
   // Prefer the most specific label available: space > cwd basename for

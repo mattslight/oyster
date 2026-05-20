@@ -1131,6 +1131,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               ) : (
                 <div className="home-table-wrap">
                   <div className="home-table">
+                    <div className="home-row home-row--header" role="row">
+                      <span aria-hidden="true" />
+                      <span role="columnheader">Project</span>
+                      <span role="columnheader">Title</span>
+                      <span role="columnheader">Agent</span>
+                      <span role="columnheader">Last active</span>
+                    </div>
                     {visibleSessions.slice(0, sessionsLimit).map((session) => (
                       <SessionRow
                         key={session.id}
