@@ -715,11 +715,14 @@
 <body>
 <audio id="bgm" src="rocket-music.mp3" loop preload="auto"></audio>
 <audio id="bgm-game" src="rocket-game-music.mp3" loop preload="auto"></audio>
-<audio id="sfx-powerup" src="sfx-powerup.mp3" preload="auto"></audio>
-<audio id="sfx-explosion" src="sfx-explosion.mp3" preload="auto"></audio>
-<audio id="sfx-lose" src="sfx-lose.mp3" preload="auto"></audio>
-<audio id="sfx-thruster" src="sfx-thruster.mp3" preload="auto"></audio>
-<audio id="sfx-glitch" src="sfx-glitch.mp3" preload="auto"></audio>
+<!-- Shared SFX live under docs/arcade/shared/ so the arcade-site
+     worker (which serves only docs/arcade/) can reach them too —
+     Space Jumper references the same files via ../shared/. -->
+<audio id="sfx-powerup"   src="arcade/shared/sfx-powerup.mp3"   preload="auto"></audio>
+<audio id="sfx-explosion" src="arcade/shared/sfx-explosion.mp3" preload="auto"></audio>
+<audio id="sfx-lose"      src="arcade/shared/sfx-lose.mp3"      preload="auto"></audio>
+<audio id="sfx-thruster"  src="arcade/shared/sfx-thruster.mp3"  preload="auto"></audio>
+<audio id="sfx-glitch"    src="arcade/shared/sfx-glitch.mp3"    preload="auto"></audio>
 <div class="screen">
   <div class="tube">
     <canvas id="c"></canvas>
@@ -1516,11 +1519,11 @@ if (window.self !== window.top) document.body.classList.add('is-embedded');
 // The <audio> elements in HTML stay as a fallback for the short window
 // between page load and first decode completing.
 const SFX_FILES = {
-  'sfx-powerup':   'sfx-powerup.mp3',
-  'sfx-explosion': 'sfx-explosion.mp3',
-  'sfx-lose':      'sfx-lose.mp3',
-  'sfx-thruster':  'sfx-thruster.mp3',
-  'sfx-glitch':    'sfx-glitch.mp3',
+  'sfx-powerup':   'arcade/shared/sfx-powerup.mp3',
+  'sfx-explosion': 'arcade/shared/sfx-explosion.mp3',
+  'sfx-lose':      'arcade/shared/sfx-lose.mp3',
+  'sfx-thruster':  'arcade/shared/sfx-thruster.mp3',
+  'sfx-glitch':    'arcade/shared/sfx-glitch.mp3',
 };
 // `var` (not `let`) is deliberate: the sound-toggle IIFE above runs at
 // module init and calls setSfxMuted to apply the persisted muted state.

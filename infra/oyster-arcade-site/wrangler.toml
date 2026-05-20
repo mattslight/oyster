@@ -1,0 +1,25 @@
+name = "oyster-arcade-site"
+main = "src/worker.ts"
+compatibility_date = "2026-04-01"
+
+# Static assets — Cloudflare serves files from this directory at the edge.
+# The relative path is resolved from this wrangler.toml's location, so the
+# build doesn't depend on the worktree being checked out at any particular
+# absolute path.
+#
+# Files under docs/arcade/ are checked into git; no build step needed.
+[assets]
+directory = "../../docs/arcade"
+binding = "ASSETS"
+not_found_handling = "404-page"
+
+# Route the Worker at arcade.oyster.to. The DNS record for `arcade` is a
+# Workers route binding — Cloudflare auto-creates the corresponding DNS
+# entry when the route is first deployed.
+[[routes]]
+pattern = "arcade.oyster.to/*"
+zone_name = "oyster.to"
+
+# Observability: lets `wrangler tail` work for debugging.
+[observability]
+enabled = true
