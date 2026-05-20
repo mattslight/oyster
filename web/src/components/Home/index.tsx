@@ -1131,6 +1131,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                         onOpen={(id) => setActivePanel({ kind: "session", id })}
                         onTerminalFocus={onTerminalFocus}
                         onTerminalRestore={onTerminalRestore}
+                        onResume={onLaunchClaudeFromSession}
                       />
                     ))}
                   </div>
