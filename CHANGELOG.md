@@ -12,6 +12,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 ### Changed
 
 - **In-app terminals get a black chrome.** The Claude/OpenCode terminal panels now match the website's terminal mock — black titlebar, deep-black body, teal cursor — and pick up your system terminal font (MesloLGM Nerd Font, falling back to Menlo / SF Mono). The header buttons stay subtle at rest and light up in macOS traffic-light colours on hover — red Stop, amber Minimise, green Expand.
+- **Sessions list reads "last active".** The right-hand column on the Sessions list now says *last active 2m / 16h / 44d* instead of *disconnected 2m* or a stale date — matching the wording under the Session Inspector header. Older rows stay in days-elapsed instead of jumping to a calendar date.
 
 ## [0.9.4] - 2026-05-19
 

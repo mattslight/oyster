@@ -29,9 +29,7 @@ interface SessionRowProps {
 export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalFocus, onTerminalRestore, onResume }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
-  const time = session.state === "waiting" ? `waiting ${rel}`
-    : session.state === "disconnected" ? `disconnected ${rel}`
-    : rel;
+  const time = `last active ${rel}`;
   const title = session.title ?? "(no title yet)";
   // Prefer the most specific label available: space > cwd basename for
   // orphan sessions. Always tooltip the full cwd so the user can identify

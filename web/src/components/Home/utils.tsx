@@ -118,9 +118,7 @@ export function activeWriterChipFor(
 
 export function metaForSession(session: Session): string {
   const rel = formatRelative(session.lastEventAt) ?? "—";
-  if (session.state === "waiting") return `${session.agent} · waiting ${rel}`;
-  if (session.state === "disconnected") return `${session.agent} · disconnected ${rel}`;
-  return `${session.agent} · ${rel}`;
+  return `${session.agent} · last active ${rel}`;
 }
 
 export function formatRelative(iso: string): string | null {
@@ -135,8 +133,7 @@ export function formatRelative(iso: string): string | null {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d`;
-  return new Date(t).toLocaleDateString();
+  return `${d}d`;
 }
 
 export function pluralize(n: number, unit: string): string {
