@@ -233,6 +233,7 @@
 <audio id="sfx-explosion" src="../shared/sfx-explosion.mp3" preload="auto"></audio>
 <audio id="sfx-lose"      src="../shared/sfx-lose.mp3"      preload="auto"></audio>
 <audio id="sfx-glitch"    src="../shared/sfx-glitch.mp3"    preload="auto"></audio>
+<audio id="sfx-thruster"  src="../shared/sfx-thruster.mp3"  preload="auto"></audio>
 <audio id="sfx-win"       src="sfx-win.mp3"             preload="auto"></audio>
 <audio id="sfx-jump"      src="sfx-jump.mp3"            preload="auto"></audio>
 <audio id="bgm"           src="bgm.mp3?v=2"             preload="auto" loop></audio>
@@ -263,7 +264,10 @@
           <span class="go-slot" data-slot="1">A</span>
           <span class="go-slot" data-slot="2">A</span>
         </div>
-        <div class="go-initials-hint"><span class="key-only">↑↓ CHANGE · ←→ MOVE · ENTER SAVE</span><span class="touch-only">◀ ▶ LETTER · ▲ NEXT</span></div>
+        <div class="go-initials-hint">
+          <span class="key-only">↑↓ LETTER · ←→ SLOT · ENTER SAVE</span>
+          <span class="touch-only">TAP SLOT · SWIPE LETTER · SELECT SAVES</span>
+        </div>
       </div>
     </div>
     <div class="splash" id="splash">
@@ -312,6 +316,17 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys[e.key] = false);
 
+// Debug overlay — press H to toggle hitbox visualisation (player, enemies,
+// solid tiles, pickups, goal). Ignored while a text input is focused so
+// initials entry isn't blocked.
+let debugHitboxes = false;
+window.addEventListener('keydown', e => {
+  if (e.key !== 'h' && e.key !== 'H') return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  debugHitboxes = !debugHitboxes;
+});
+
 // Forward-declared so the touch closures can route to initials entry when
 // it's active. Defined fully further down (after the leaderboard module).
 let initialsActive = false;
@@ -344,15 +359,18 @@ Arcade.Audio.init({
     'sfx-explosion': '../shared/sfx-explosion.mp3',
     'sfx-lose':      '../shared/sfx-lose.mp3',
     'sfx-glitch':    '../shared/sfx-glitch.mp3',
+    'sfx-thruster': '../shared/sfx-thruster.mp3',
     'sfx-win':       'sfx-win.mp3',
     'sfx-jump':      'sfx-jump.mp3',
   },
-  mutedKey: 'oyster-arcade-sfx-muted',  // global across all arcade games
+  volumeKey: 'oyster-arcade-sfx-volume',  // global across all arcade games
+  mutedKey:  'oyster-arcade-sfx-muted',   // legacy fallback
 });
-function playCoin() { Arcade.Audio.play('sfx-powerup', 0.5); }
-function playHurt() { Arcade.Audio.play('sfx-lose',    0.5); }
-function playWin()  { Arcade.Audio.play('sfx-win',     0.55); }
-function playJump() { Arcade.Audio.play('sfx-jump',    0.4); }
+function playCoin()    { Arcade.Audio.play('sfx-powerup',  0.5); }
+function playHurt()    { Arcade.Audio.play('sfx-lose',     0.5); }
+function playWin()     { Arcade.Audio.play('sfx-win',      0.55); }
+function playJump()    { Arcade.Audio.play('sfx-jump',     0.4); }
+function playThrust()  { Arcade.Audio.play('sfx-thruster', 0.45); }
 // BGM controls — paused at end-of-run (win or final death) so the
 // jingle plays cleanly, resumed on restart.
 function pauseBgm()  { const a = document.getElementById('bgm'); if (a) a.pause(); }
@@ -461,12 +479,83 @@ window.addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft')   action = 'slot-prev';
   else if (e.key === 'ArrowRight')  action = 'slot-next';
   else if (e.key === 'Enter' || e.key === ' ') action = 'advance';
+  // Single-letter typed input: jump to that letter at the active slot and
+  // auto-advance — fastest path on a real keyboard.
+  else if (e.key.length === 1) {
+    const c = e.key.toUpperCase();
+    const idx = LETTERS.indexOf(c);
+    if (idx >= 0) {
+      initialsLetters[initialsSlot] = idx;
+      if (initialsSlot < 2) {
+        initialsSlot++;
+        paintInitials();
+      } else {
+        paintInitials();
+        finishInitialsEntry();
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+  }
   if (action) {
     initialsAction(action);
     e.preventDefault();
     e.stopPropagation();
   }
 });
+
+// Touch UX during initials entry — three affordances on top of the existing
+// ◀/▶/SELECT buttons, so a player who tapped the wrong letter isn't stuck:
+//   1. Tap a slot directly → jump to that slot (fixes typos cheaply)
+//   2. Horizontal swipe across the overlay → cycle letters quickly (~40px/letter)
+//   3. (Existing buttons unchanged: ◀/▶ = letter prev/next, SELECT = advance)
+(function wireInitialsTouch() {
+  // Slots tappable. Each carries data-slot="N" — clicking sets initialsSlot.
+  const slots = document.querySelectorAll('#go-initials .go-slot');
+  slots.forEach(s => {
+    s.style.cursor = 'pointer';
+    s.addEventListener('click', e => {
+      if (!initialsActive) return;
+      const idx = parseInt(s.dataset.slot, 10);
+      if (Number.isInteger(idx) && idx >= 0 && idx <= 2) {
+        initialsSlot = idx;
+        paintInitials();
+      }
+      e.stopPropagation();
+    });
+  });
+
+  // Horizontal-drag → letter cycling on the overlay (not on slots themselves,
+  // so taps still land on the slots). 40px per letter — a fast swipe scrolls
+  // ~5 letters in one gesture.
+  const container = document.getElementById('go-initials');
+  if (!container) return;
+  let dragStartX = 0;
+  let dragStartLetter = 0;
+  let dragging = false;
+  container.addEventListener('pointerdown', e => {
+    if (!initialsActive) return;
+    if (e.target && e.target.classList && e.target.classList.contains('go-slot')) return;
+    dragStartX = e.clientX;
+    dragStartLetter = initialsLetters[initialsSlot];
+    dragging = true;
+    try { container.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  container.addEventListener('pointermove', e => {
+    if (!dragging || !initialsActive) return;
+    const dx = e.clientX - dragStartX;
+    const step = Math.round(dx / 40);
+    const newLetter = ((dragStartLetter + step) % LETTERS.length + LETTERS.length) % LETTERS.length;
+    if (newLetter !== initialsLetters[initialsSlot]) {
+      initialsLetters[initialsSlot] = newLetter;
+      paintInitials();
+    }
+  });
+  function endDrag() { dragging = false; }
+  container.addEventListener('pointerup', endDrag);
+  container.addEventListener('pointercancel', endDrag);
+})();
 
 // ============================================
 // END-OF-RUN OVERLAY (HTML). One panel for both win and loss states,
@@ -602,63 +691,96 @@ splash.addEventListener('pointerdown', e => {
 });
 
 // ============================================
-// LEVEL — tile grid. '.' = empty, '#' = solid, 'S' = spawn marker (treated
-// as empty at runtime; only used to derive spawn coords if not given).
-// Designed in a string for easy editing; will move to JSON when there are
-// multiple levels.
-// ============================================
-// Test level: 7 step-up platforms — each 3 tiles wide, 3-tile horizontal
-// gaps between them, each one row higher than the previous. Tests how
-// far the player can reliably jump diagonally up onto the next ledge.
+// LEVELS — world-stage progression (Mario-style: 1-1, 1-2, 1-3 boss, then
+// 2-1 moon, 2-2, 2-3 boss). Each entry is self-describing so the renderer,
+// physics, and audio key off it.
 //
-// P1 row 11 (1 above ground)  P2 row 10  P3 row 9  P4 row 8
-// P5 row 7  P6 row 6  P7 row 5
-const LEVEL = {
-  width: 60,
-  height: 14,
-  spawn: { col: 2, row: 12 },
-  tiles: [
-    '............................................................',
-    '............................................................',
-    '............................................................',
-    '............................................................',
-    '............................................................',
-    '..........................................###...............',
-    '....................................###.....................',
-    '..............................###...........................',
-    '........................###.................................',
-    '..................###.......................................',
-    '............###.............................................',
-    '......###...................................................',
-    '############################################################',
-    '############################################################',
-  ],
-  // One coin centred above each platform (rows are the row immediately
-  // above the platform top, so the player picks them up as they land).
-  coins: [
-    { col:  7, row: 10 },
-    { col: 13, row:  9 },
-    { col: 19, row:  8 },
-    { col: 25, row:  7 },
-    { col: 31, row:  6 },
-    { col: 37, row:  5 },
-  ],
-  // Goal flag sits on top of the last platform (row 5, cols 42-44).
-  // The flag visual extends ~2 tiles above this anchor.
-  goal: { col: 43, row: 5 },
-  // Walker enemies pace back and forth on their starting platform. The
-  // col/row anchors place the enemy's feet at the top-left of the tile.
-  enemies: [
-    { col: 13, row: 10, type: 'walker' },
-    { col: 25, row:  8, type: 'walker' },
-  ],
-};
-function tileAt(col, row) {
-  if (col < 0 || row < 0 || col >= LEVEL.width || row >= LEVEL.height) {
-    // Treat horizontal out-of-bounds as solid wall; below as void (death).
-    return (col < 0 || col >= LEVEL.width) ? '#' : '.';
+// Required at runtime (currently consulted by the engine):
+//   id, world, stage   — display + progression
+//   type               — 'platformer' (reach goal) or 'boss' (defeat boss)
+//   width, height      — tile grid
+//   spawn              — { col, row } player start
+//   tiles              — array of row strings; '.' empty, '#' solid
+//   coins, enemies     — { col, row, … }[]
+//   goal               — { col, row } (platformer only; bosses use boss.x)
+//   jetpacks           — { col, row }[] (0 or more pickups in the stage)
+//   bgm                — background music src (loaded into <audio id="bgm">)
+//   gravityScale       — multiplier on GRAVITY (1 = earth, 0.55 = moon)
+//
+// Declared for forward compatibility (read by upcoming work, not consulted
+// by the engine yet — see milestone 2-1 moon level, 1-3 / 2-3 bosses):
+//   hasTorch           — true → darkness overlay + radial light on player
+//   boss               — { type, hp, … } for type:'boss', else null
+const LEVELS = [
+  // 1-1 — the existing tutorial step-ladder. 7 platforms ascending right.
+  {
+    id: '1-1', world: 1, stage: 1, type: 'platformer',
+    width: 60, height: 14,
+    spawn: { col: 2, row: 12 },
+    tiles: [
+      '............................................................',
+      '............................................................',
+      '............................................................',
+      '............................................................',
+      '............................................................',
+      '..........................................###...............',
+      '....................................###.....................',
+      '..............................###...........................',
+      '........................###.................................',
+      '..................###.......................................',
+      '............###.............................................',
+      '......###...................................................',
+      '############################################################',
+      '############################################################',
+    ],
+    coins: [
+      { col:  7, row: 10 },
+      { col: 13, row:  9 },
+      { col: 19, row:  8 },
+      { col: 25, row:  7 },
+      { col: 31, row:  6 },
+      { col: 37, row:  5 },
+    ],
+    goal: { col: 43, row: 5 },
+    enemies: [
+      { col: 13, row: 10, type: 'walker' },
+      { col: 25, row:  8, type: 'walker' },
+    ],
+    // Floating on the lane between platforms — players can grab it with a
+    // ground-launched jump while running through 1-1. Once they have it the
+    // remaining diagonal jumps are trivially skippable with thrust.
+    jetpacks: [
+      { col: 21, row: 11 },
+    ],
+    bgm: 'bgm.mp3?v=2',
+    gravityScale: 1,
+    hasTorch: false,
+    boss: null,
+  },
+];
+
+let currentLevelIndex = 0;
+let level = LEVELS[currentLevelIndex];
+function loadLevel(idx) {
+  currentLevelIndex = Math.max(0, Math.min(idx, LEVELS.length - 1));
+  level = LEVELS[currentLevelIndex];
+  if (typeof recomputeScale === 'function') recomputeScale();
+  // Swap the BGM track to whatever the level declares. Guarded so a first
+  // load before the <audio> element is parsed (script-init order) just no-ops
+  // — the inline src in HTML serves the same file for 1-1 in that window.
+  const bgmEl = document.getElementById('bgm');
+  if (bgmEl && level.bgm && bgmEl.dataset.src !== level.bgm) {
+    bgmEl.dataset.src = level.bgm;
+    bgmEl.src = level.bgm;
   }
-  return LEVEL.tiles[row][col];
+}
+
+function tileAt(col, row) {
+  if (col < 0 || row < 0 || col >= level.width || row >= level.height) {
+    // Treat horizontal out-of-bounds as solid wall; below as void (death).
+    return (col < 0 || col >= level.width) ? '#' : '.';
+  }
+  return level.tiles[row][col];
 }
 function isSolid(col, row) { return tileAt(col, row) === '#'; }
 
@@ -673,15 +795,19 @@ let PLAYER_H = 40;
 let ENEMY_W = 28;
 let ENEMY_H = 28;
 const PLAYER_W_FRAC = 0.85;
-const PLAYER_H_FRAC = 1.25;
-// Goombas are shorter than Steve on purpose — mooks should feel
-// mookable, not boss-like. Steve is 0.85w × 1.25h tiles; enemies are
-// 0.85w × 0.65h, so the player towers roughly 2× the enemy.
+// Hitbox kept just under one tile so the player can walk under any 1-tile
+// vertical gap (e.g. under the row-10 platforms in 1-1). The visual sprite
+// is taller — see the render block in draw(); it offsets so the bottom of
+// the sprite aligns with the hitbox bottom and the head pokes ABOVE the
+// hitbox top. Without this split, players bonk on every low overhang.
+const PLAYER_H_FRAC = 0.95;
+// Goombas are shorter than Rogers on purpose — mooks should feel
+// mookable, not boss-like. Enemies are 0.85w × 0.65h.
 const ENEMY_W_FRAC = 0.85;
 const ENEMY_H_FRAC = 0.65;
 
 function recomputeScale() {
-  TILE_PX = Math.max(16, Math.floor(H / LEVEL.height));
+  TILE_PX = Math.max(16, Math.floor(H / level.height));
   PLAYER_W = Math.round(TILE_PX * PLAYER_W_FRAC);
   PLAYER_H = Math.round(TILE_PX * PLAYER_H_FRAC);
   ENEMY_W = Math.round(TILE_PX * ENEMY_W_FRAC);
@@ -690,16 +816,25 @@ function recomputeScale() {
 recomputeScale();
 
 // Movement tuning (in screen px / frame at 60fps).
-// Peak jump = JUMP_VEL^2 / (2 * GRAVITY) ≈ 141 px ≈ 2.35 tiles at typical
-// scale, so the player can comfortably land on 2-tile-high platforms.
+// Peak jump = JUMP_VEL^2 / (2 * GRAVITY) ≈ 163 px ≈ 2.7 tiles at typical
+// scale, so the player can comfortably clear the step-up platforms in 1-1
+// from a running start without needing the jetpack.
 const MOVE_ACCEL = 0.75;
 const MOVE_MAX = 5.0;
 const FRICTION = 0.82;
 const GRAVITY = 0.6;
-const JUMP_VEL = -13;
+const JUMP_VEL = -14;
 const JUMP_CUT = 0.4;
 const COYOTE_MS = 100;
 const JUMP_BUFFER_MS = 130;
+
+// Jetpack — once picked up (one per level), holding JUMP in mid-air burns
+// fuel for upward thrust. Fuel refills on landing. Numbers tuned for 60fps:
+// FUEL_MAX = ~1.0s of burn; THRUST is stronger than gravity so net rise is
+// gentle (~0.45 px/f²); MAX_VY caps how fast a thrust burst can fling you.
+const JETPACK_FUEL_MAX     = 60;
+const JETPACK_THRUST_ACCEL = -1.05;
+const JETPACK_MAX_VY       = -7;
 
 const player = {
   x: 0, y: 0,            // world pixels, top-left
@@ -710,6 +845,9 @@ const player = {
   jumpPressedAt: -Infinity,
   jumpHeld: false,
   invulnAt: -Infinity,   // last time a hit was taken
+  hasJetpack: false,
+  fuel: 0,
+  thrusting: false,
 };
 
 const cam = { x: 0 };
@@ -724,6 +862,7 @@ const ENEMY_SPEED_FRAC = 0.04;     // per-tile / frame; ENEMY_SPEED computed bel
 let score = 0;
 let lives = MAX_LIVES;
 const coinsCollected = new Set();
+const jetpacksTaken = new Set();
 let levelComplete = false;
 let levelCompleteAt = 0;
 let gameOver = false;
@@ -737,7 +876,7 @@ function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
 function initEnemies() {
   enemies.length = 0;
   const speed = Math.max(1.2, TILE_PX * ENEMY_SPEED_FRAC * 60 / 60);
-  for (const e of LEVEL.enemies) {
+  for (const e of level.enemies) {
     enemies.push({
       x: e.col * TILE_PX + (TILE_PX - ENEMY_W) / 2,
       y: e.row * TILE_PX - ENEMY_H,
@@ -754,6 +893,7 @@ function resetRun() {
   score = 0;
   lives = MAX_LIVES;
   coinsCollected.clear();
+  jetpacksTaken.clear();
   levelComplete = false; levelCompleteAt = 0;
   gameOver = false; gameOverAt = 0;
   dying = false; livesScreen = false;
@@ -822,8 +962,8 @@ function stepDeathSequence(now) {
     if (now - livesScreenAt < LIVES_MS) return true;
     // Lives screen done — restart the level.
     livesScreen = false;
-    player.x = LEVEL.spawn.col * TILE_PX + (TILE_PX - PLAYER_W) / 2;
-    player.y = LEVEL.spawn.row * TILE_PX - PLAYER_H;
+    player.x = level.spawn.col * TILE_PX + (TILE_PX - PLAYER_W) / 2;
+    player.y = level.spawn.row * TILE_PX - PLAYER_H;
     player.vx = 0; player.vy = 0;
     player.facing = 1;
     player.invulnAt = now;
@@ -836,8 +976,8 @@ function stepDeathSequence(now) {
 }
 
 function resetPlayer() {
-  player.x = LEVEL.spawn.col * TILE_PX + (TILE_PX - PLAYER_W) / 2;
-  player.y = LEVEL.spawn.row * TILE_PX - PLAYER_H;
+  player.x = level.spawn.col * TILE_PX + (TILE_PX - PLAYER_W) / 2;
+  player.y = level.spawn.row * TILE_PX - PLAYER_H;
   player.vx = 0;
   player.vy = 0;
   player.facing = 1;
@@ -845,6 +985,9 @@ function resetPlayer() {
   player.lastGroundedAt = performance.now();
   player.jumpPressedAt = -Infinity;
   player.jumpHeld = false;
+  player.hasJetpack = false;
+  player.fuel = 0;
+  player.thrusting = false;
   cam.x = 0;
 }
 resetRun();
@@ -906,6 +1049,7 @@ function resolveY(dy) {
         player.vy = 0;
         player.grounded = true;
         player.lastGroundedAt = performance.now();
+        player.fuel = JETPACK_FUEL_MAX;
         return;
       }
     }
@@ -979,8 +1123,25 @@ function update() {
   // takes over normally afterward.
   if (jumpJustReleased && player.vy < 0) player.vy *= JUMP_CUT;
 
-  // Gravity
-  player.vy += GRAVITY;
+  // Jetpack thrust — held JUMP in mid-air burns fuel for an upward burst.
+  // Doesn't replace the initial jump (that still launches at JUMP_VEL); it
+  // kicks in *after* the player is airborne and offsets gravity for as long
+  // as fuel + held-input both hold. Capped at JETPACK_MAX_VY so chained
+  // taps don't launch the player off the screen. Sound plays on rising
+  // edge — the thruster clip is short, replays each fresh burst.
+  const wasThrusting = player.thrusting;
+  player.thrusting = false;
+  if (player.hasJetpack && jumpDown && !player.grounded && player.fuel > 0) {
+    player.vy += JETPACK_THRUST_ACCEL;
+    if (player.vy < JETPACK_MAX_VY) player.vy = JETPACK_MAX_VY;
+    player.fuel--;
+    player.thrusting = true;
+  }
+  if (player.thrusting && !wasThrusting) playThrust();
+
+  // Gravity — level can scale it (moon = ~0.55) for different feel.
+  const gScale = (typeof level.gravityScale === 'number') ? level.gravityScale : 1;
+  player.vy += GRAVITY * gScale;
   if (player.vy > 16) player.vy = 16;
 
   // Integrate with tile collision (X then Y)
@@ -988,7 +1149,7 @@ function update() {
   resolveY(player.vy);
 
   // Death by falling below the level → lose a life (keep score + coins).
-  if (player.y > LEVEL.height * TILE_PX + 200) {
+  if (player.y > level.height * TILE_PX + 200) {
     hurtPlayer();
     return;
   }
@@ -1042,9 +1203,9 @@ function update() {
   }
 
   // Coin pickups — small AABB centred on the coin tile.
-  for (let i = 0; i < LEVEL.coins.length; i++) {
+  for (let i = 0; i < level.coins.length; i++) {
     if (coinsCollected.has(i)) continue;
-    const c = LEVEL.coins[i];
+    const c = level.coins[i];
     const cw = TILE_PX * 0.6;
     const cx = c.col * TILE_PX + (TILE_PX - cw) / 2;
     const cy = c.row * TILE_PX + (TILE_PX - cw) / 2;
@@ -1055,10 +1216,28 @@ function update() {
     }
   }
 
+  // Jetpack pickups — one-shot per pickup; flips hasJetpack on and fills
+  // fuel. The pickup stays in level.jetpacks so the renderer just consults
+  // jetpacksTaken to hide it.
+  for (let i = 0; i < level.jetpacks.length; i++) {
+    if (jetpacksTaken.has(i)) continue;
+    const jp = level.jetpacks[i];
+    const jw = TILE_PX * 0.7;
+    const jx = jp.col * TILE_PX + (TILE_PX - jw) / 2;
+    const jy = jp.row * TILE_PX + (TILE_PX - jw) / 2;
+    if (aabbOverlap(player.x, player.y, PLAYER_W, PLAYER_H, jx, jy, jw, jw)) {
+      jetpacksTaken.add(i);
+      player.hasJetpack = true;
+      player.fuel = JETPACK_FUEL_MAX;
+      score += 25;
+      Arcade.Audio.play('sfx-powerup', 0.85);
+    }
+  }
+
   // Goal flag — collision box covers the pole + flag (2 tiles tall, anchored
   // at the goal column on row 5 = top of the last platform).
   {
-    const g = LEVEL.goal;
+    const g = level.goal;
     const gx = g.col * TILE_PX;
     const gy = (g.row - 2) * TILE_PX;
     const gw = TILE_PX * 0.8;
@@ -1076,7 +1255,7 @@ function update() {
   // 40% from the left edge once at speed. Clamp to level bounds.
   const targetX = player.x - W * 0.4;
   cam.x += (targetX - cam.x) * 0.15;
-  const maxCamX = Math.max(0, LEVEL.width * TILE_PX - W);
+  const maxCamX = Math.max(0, level.width * TILE_PX - W);
   if (cam.x < 0) cam.x = 0;
   if (cam.x > maxCamX) cam.x = maxCamX;
 }
@@ -1193,8 +1372,52 @@ function drawCoin(col, row, t) {
   ctx.fillRect(cx - 1, cy - r * 0.5, 2, r);
 }
 
+// Jetpack pickup — TWIN cylindrical fuel tanks joined by a hazard band.
+// Two distinct tanks side-by-side, each with its own flame below, makes the
+// silhouette read as machinery (NOT a mushroom). 8×10 pixel-art grid scaled
+// by PXL so it stays crisp at any tile size.
+function drawJetpack(col, row, t) {
+  // Pickup sits at roughly half a tile wide so it reads as a collectible
+  // rather than crowding the platform it floats over.
+  const PXL = Math.max(2, Math.floor(TILE_PX / 16));
+  const bob = Math.round(Math.sin(t * 0.005 + col) * 2);
+  const ox = Math.round(col * TILE_PX - cam.x + (TILE_PX - 8 * PXL) / 2);
+  const oy = Math.round(row * TILE_PX + bob + (TILE_PX - 10 * PXL) / 2);
+  if (ox + 8 * PXL < 0 || ox > W) return;
+
+  // Tank bodies — two cylinders, cols 0-1 (left) and cols 6-7 (right).
+  function tank(colStart) {
+    ctx.fillStyle = '#67e8f9';                                                  // light cap
+    ctx.fillRect(ox + colStart * PXL, oy,           2 * PXL, 1 * PXL);
+    ctx.fillStyle = '#2dd4ff';                                                  // body
+    ctx.fillRect(ox + colStart * PXL, oy + 1 * PXL, 2 * PXL, 6 * PXL);
+    ctx.fillStyle = '#0891b2';                                                  // shaded bottom
+    ctx.fillRect(ox + colStart * PXL, oy + 6 * PXL, 2 * PXL, 1 * PXL);
+    ctx.fillStyle = '#475569';                                                  // nozzle
+    ctx.fillRect(ox + colStart * PXL, oy + 7 * PXL, 2 * PXL, 1 * PXL);
+  }
+  tank(0);
+  tank(6);
+
+  // Hazard band linking the tanks — yellow stripes top/bottom, gray harness mid.
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(ox + 2 * PXL, oy + 3 * PXL, 4 * PXL, 1 * PXL);
+  ctx.fillRect(ox + 2 * PXL, oy + 5 * PXL, 4 * PXL, 1 * PXL);
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillRect(ox + 2 * PXL, oy + 4 * PXL, 4 * PXL, 1 * PXL);
+
+  // Twin flickering flames below each nozzle.
+  const flicker = Math.floor(t / 80) % 2 === 0;
+  ctx.fillStyle = flicker ? '#ffd84a' : '#ff8800';
+  ctx.fillRect(ox + 0 * PXL, oy + 8 * PXL, 2 * PXL, 1 * PXL);
+  ctx.fillRect(ox + 6 * PXL, oy + 8 * PXL, 2 * PXL, 1 * PXL);
+  ctx.fillStyle = flicker ? '#ff8800' : '#ff3aa1';
+  ctx.fillRect(ox + 0 * PXL, oy + 9 * PXL, 2 * PXL, 1 * PXL);
+  ctx.fillRect(ox + 6 * PXL, oy + 9 * PXL, 2 * PXL, 1 * PXL);
+}
+
 function drawGoal(t) {
-  const g = LEVEL.goal;
+  const g = level.goal;
   const poleX = g.col * TILE_PX + TILE_PX / 2 - cam.x;
   const poleTop = (g.row - 2) * TILE_PX;
   const poleBot = g.row * TILE_PX;
@@ -1239,6 +1462,27 @@ function drawHUD() {
     const ix = iconStartX + i * (iconSize + 5);
     ctx.fillStyle = i < lives ? '#ff3aa1' : 'rgba(255,58,161,0.22)';
     ctx.fillRect(ix, iconY, iconSize, iconSize);
+  }
+
+  // Fuel bar — only shown after picking up a jetpack. Sits under the
+  // score, sized relative to the score text so it scales with the HUD.
+  if (player.hasJetpack) {
+    const barW = Math.max(80, Math.floor(TILE_PX * 2.2));
+    const barH = Math.max(6, Math.floor(size * 0.45));
+    const barX = pad;
+    const barY = pad + size + 10;
+    const ratio = Math.max(0, Math.min(1, player.fuel / JETPACK_FUEL_MAX));
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.fillStyle = ratio > 0.3 ? '#2dd4ff' : '#ff8800';
+    ctx.fillRect(barX, barY, Math.round(barW * ratio), barH);
+    // Compact 'FUEL' label tucked to the right of the bar.
+    const labelSize = Math.max(8, Math.floor(size * 0.6));
+    ctx.font = `${labelSize}px 'Press Start 2P', ui-monospace, monospace`;
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('FUEL', barX + barW + 8, barY + Math.floor((barH - labelSize) / 2));
   }
 }
 
@@ -1501,14 +1745,14 @@ function draw() {
 
   // ---- Moon — cached offscreen canvas, blitted via drawImage. ----
   const moonImg = getMoonCanvas();
-  const moonCx  = LEVEL.width * TILE_PX - 110 - cam.x * 0.05;
+  const moonCx  = level.width * TILE_PX - 110 - cam.x * 0.05;
   const moonCy  = Math.round(H * 0.16);
   ctx.drawImage(moonImg, Math.round(moonCx - moonImg.width / 2), Math.round(moonCy - moonImg.height / 2));
 
   // ---- Distant star field — small static dots far away. ----
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
   for (let i = 0; i < 70; i++) {
-    const baseX = (i * 53) % (LEVEL.width * TILE_PX);
+    const baseX = (i * 53) % (level.width * TILE_PX);
     const baseY = (i * 91) % Math.max(1, Math.round(H * 0.7));
     const sx = baseX - cam.x * 0.15;
     const wrapped = ((sx % W) + W) % W;
@@ -1522,7 +1766,7 @@ function draw() {
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   for (let i = 0; i < nearTotal; i++) {
     if (i % 5 === 0) continue;
-    const baseX = (i * 73) % (LEVEL.width * TILE_PX);
+    const baseX = (i * 73) % (level.width * TILE_PX);
     const baseY = (i * 137) % Math.max(1, Math.round(H * 0.65));
     const sx = baseX - cam.x * 0.32;
     const wrapped = ((sx % W) + W) % W;
@@ -1531,7 +1775,7 @@ function draw() {
   for (let i = 0; i < nearTotal; i += 5) {
     const a = 0.45 + (Math.sin(t * 0.003 + i) * 0.5 + 0.5) * 0.45;
     ctx.fillStyle = 'rgba(255,255,255,' + a.toFixed(2) + ')';
-    const baseX = (i * 73) % (LEVEL.width * TILE_PX);
+    const baseX = (i * 73) % (level.width * TILE_PX);
     const baseY = (i * 137) % Math.max(1, Math.round(H * 0.65));
     const sx = baseX - cam.x * 0.32;
     const wrapped = ((sx % W) + W) % W;
@@ -1581,17 +1825,23 @@ function draw() {
 
   // Visible tile range
   const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
-  const c1 = Math.min(LEVEL.width - 1, Math.ceil((cam.x + W) / TILE_PX));
-  for (let row = 0; row < LEVEL.height; row++) {
+  const c1 = Math.min(level.width - 1, Math.ceil((cam.x + W) / TILE_PX));
+  for (let row = 0; row < level.height; row++) {
     for (let col = c0; col <= c1; col++) {
       if (isSolid(col, row)) drawTile(col, row);
     }
   }
 
   // Coins (skip collected)
-  for (let i = 0; i < LEVEL.coins.length; i++) {
+  for (let i = 0; i < level.coins.length; i++) {
     if (coinsCollected.has(i)) continue;
-    drawCoin(LEVEL.coins[i].col, LEVEL.coins[i].row, t);
+    drawCoin(level.coins[i].col, level.coins[i].row, t);
+  }
+
+  // Jetpack pickups (skip collected)
+  for (let i = 0; i < level.jetpacks.length; i++) {
+    if (jetpacksTaken.has(i)) continue;
+    drawJetpack(level.jetpacks[i].col, level.jetpacks[i].row, t);
   }
 
   // Goal flag
@@ -1605,15 +1855,18 @@ function draw() {
     if (enemies[i].alive) drawEnemy(enemies[i], t);
   }
 
-  // Player — Steve. Rendered as a literal scaled-up version of the
+  // Player — Rogers. Rendered as a literal scaled-up version of the
   // preview-platformer SVG thumbnail so the in-game character reads the
-  // same way (chunky 3-game-pixel "preview units" per cell). Walk-cycle
-  // alternates leg height every ~150ms; jump tucks both legs up. The
-  // sprite mirrors horizontally based on facing.
+  // same way (chunky pixel-units per cell). Walk-cycle alternates leg
+  // height every ~150ms; jump tucks both legs up. The sprite mirrors
+  // horizontally based on facing.
   const invulnLeft = player.invulnAt + INVULN_MS - t;
   const flashOff = invulnLeft > 0 && Math.floor(t / 80) % 2 === 0;
   if (!flashOff) {
-    const PXL = 3;     // game pixels per preview unit
+    // Scale the sprite with TILE_PX so it stays proportional to the
+    // hitbox on larger viewports. Divisor tuned so Rogers sits at roughly
+    // ~70% tile width — small enough that he doesn't tower over the level.
+    const PXL = Math.max(2, Math.round(TILE_PX / 14));
     const SW  = 10;    // sprite width in preview units (incl. arms)
     const SH  = 13;    // sprite height in preview units
     const sw  = SW * PXL;
@@ -1667,21 +1920,149 @@ function draw() {
     // Feet (dark) — slightly wider than the leg, anchored to its bottom
     block(1, 10 + lLen - 1, 3, 1, '#0a0a0a');
     block(6, 10 + rLen - 1, 3, 1, '#0a0a0a');
+
+    // Jetpack tank — when equipped, sits on the back. `block` mirrors with
+    // facing so col 0 maps to "back side" automatically. A yellow hazard
+    // stripe + visible nozzle keeps it readable as a piece of hardware.
+    if (player.hasJetpack) {
+      block(0, 5, 2, 5, '#2dd4ff');     // tank cylinder
+      block(0, 5, 2, 1, '#67e8f9');     // cap highlight
+      block(0, 7, 2, 1, '#ffd84a');     // yellow hazard stripe
+      block(0, 9, 2, 1, '#0891b2');     // shaded bottom
+      block(0, 10, 2, 1, '#475569');    // nozzle (full-width)
+    }
+
+    // Thrust effect — only while burning fuel. Three-layer flame (outer
+    // yellow → mid orange → magenta/white hot core) plus a few drifting
+    // ember particles for motion. Compact size; intent is "I can see I'm
+    // boosting" rather than a full vfx spectacle.
+    if (player.thrusting) {
+      const fW = Math.max(6, Math.floor(PLAYER_W * 0.4));
+      const fH = Math.max(8, Math.floor(PLAYER_H * 0.3));
+      const fX = Math.round(player.x - cam.x) + Math.floor((PLAYER_W - fW) / 2);
+      const fY = Math.round(player.y) + PLAYER_H;
+      const flicker = Math.floor(t / 60) % 2 === 0;
+      // Outer flame — yellow/orange flicker.
+      ctx.fillStyle = flicker ? '#ffd84a' : '#ff8800';
+      ctx.fillRect(fX, fY, fW, fH);
+      // Mid flame — narrower, brighter.
+      const mW = Math.floor(fW * 0.65);
+      const mH = Math.floor(fH * 0.85);
+      ctx.fillStyle = flicker ? '#ff8800' : '#ffd84a';
+      ctx.fillRect(fX + Math.floor((fW - mW) / 2), fY, mW, mH);
+      // Hot core — narrow magenta/white core, alternating.
+      const iW = Math.max(2, Math.floor(fW * 0.35));
+      const iH = Math.floor(fH * 0.55);
+      ctx.fillStyle = flicker ? '#ff3aa1' : '#ffffff';
+      ctx.fillRect(fX + Math.floor((fW - iW) / 2), fY, iW, iH);
+      // Drift particles — small ember dots fanning out left/right/down.
+      const epx = Math.max(2, Math.floor(TILE_PX / 16));
+      const driftPhase = (t / 90) % 1;
+      ctx.fillStyle = '#ffd84a';
+      ctx.fillRect(fX - epx * 2, fY + Math.floor(fH * driftPhase),       epx, epx);
+      ctx.fillRect(fX + fW + epx, fY + Math.floor(fH * (1 - driftPhase)), epx, epx);
+      ctx.fillStyle = '#ff8800';
+      ctx.fillRect(fX + Math.floor(fW / 2) - epx, fY + fH + epx, epx * 2, epx);
+    }
   }
 
   // HUD on top
   drawHUD();
+
+  // Debug hitbox overlay — sits between HUD and lives screen so it's
+  // visible during gameplay but doesn't obscure end-of-run UI.
+  if (debugHitboxes) drawDebugHitboxes();
 
   // Mario-style lives screen — sprite + "× N" on a dim overlay between
   // dying and the level restart.
   if (livesScreen) drawLivesScreen();
 }
 
-// Steve — static sprite at (originX, originY) using the same 10×13
+// Press H in-game to toggle. Renders every collision rectangle the
+// physics actually checks against: tile cells, player, enemies, pickups,
+// goal — colour-coded so it's obvious which hitbox is blocking you.
+function drawDebugHitboxes() {
+  ctx.save();
+  ctx.lineWidth = 1;
+  // Solid tiles — translucent red fill + thin border on each cell.
+  const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
+  const c1 = Math.min(level.width - 1, Math.ceil((cam.x + W) / TILE_PX));
+  ctx.fillStyle = 'rgba(255, 0, 0, 0.18)';
+  ctx.strokeStyle = 'rgba(255, 80, 80, 0.5)';
+  for (let row = 0; row < level.height; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (!isSolid(col, row)) continue;
+      const x = Math.round(col * TILE_PX - cam.x);
+      const y = Math.round(row * TILE_PX);
+      ctx.fillRect(x, y, TILE_PX, TILE_PX);
+      ctx.strokeRect(x + 0.5, y + 0.5, TILE_PX - 1, TILE_PX - 1);
+    }
+  }
+  // Player hitbox — bright green so it stands out against everything.
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#00ff66';
+  ctx.strokeRect(
+    Math.round(player.x - cam.x) + 0.5,
+    Math.round(player.y) + 0.5,
+    PLAYER_W - 1,
+    PLAYER_H - 1,
+  );
+  // Enemies — yellow for alive, dim grey for squashed.
+  for (const e of enemies) {
+    ctx.strokeStyle = e.alive ? '#ffd84a' : 'rgba(140,60,30,0.5)';
+    ctx.strokeRect(
+      Math.round(e.x - cam.x) + 0.5,
+      Math.round(e.y) + 0.5,
+      ENEMY_W - 1,
+      ENEMY_H - 1,
+    );
+  }
+  // Coin pickups (uncollected) — cyan.
+  ctx.strokeStyle = '#2dd4ff';
+  for (let i = 0; i < level.coins.length; i++) {
+    if (coinsCollected.has(i)) continue;
+    const c = level.coins[i];
+    const cw = TILE_PX * 0.6;
+    const cx = c.col * TILE_PX + (TILE_PX - cw) / 2 - cam.x;
+    const cy = c.row * TILE_PX + (TILE_PX - cw) / 2;
+    ctx.strokeRect(Math.round(cx) + 0.5, Math.round(cy) + 0.5, cw - 1, cw - 1);
+  }
+  // Jetpack pickups (uncollected) — magenta.
+  ctx.strokeStyle = '#ff3aa1';
+  for (let i = 0; i < level.jetpacks.length; i++) {
+    if (jetpacksTaken.has(i)) continue;
+    const jp = level.jetpacks[i];
+    const jw = TILE_PX * 0.7;
+    const jx = jp.col * TILE_PX + (TILE_PX - jw) / 2 - cam.x;
+    const jy = jp.row * TILE_PX + (TILE_PX - jw) / 2;
+    ctx.strokeRect(Math.round(jx) + 0.5, Math.round(jy) + 0.5, jw - 1, jw - 1);
+  }
+  // Goal — white.
+  ctx.strokeStyle = '#ffffff';
+  const g = level.goal;
+  const gx = g.col * TILE_PX - cam.x;
+  const gy = (g.row - 2) * TILE_PX;
+  const gw = TILE_PX * 0.8;
+  const gh = TILE_PX * 2;
+  ctx.strokeRect(Math.round(gx) + 0.5, Math.round(gy) + 0.5, gw - 1, gh - 1);
+  // Legend in the bottom-left corner.
+  const legendY = H - 14;
+  ctx.font = `10px ui-monospace, monospace`;
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(6, legendY - 12, 280, 18);
+  ctx.fillStyle = '#00ff66';
+  ctx.fillText('HITBOX DEBUG — H to toggle  ', 10, legendY);
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillText(`pos ${Math.round(player.x)},${Math.round(player.y)}  v ${player.vx.toFixed(1)},${player.vy.toFixed(1)}  ${player.grounded ? 'GND' : 'AIR'}`, 10, legendY - 12);
+  ctx.restore();
+}
+
+// Rogers — static sprite at (originX, originY) using the same 10×13
 // preview-unit grid as the in-game render. Same colours, same shapes,
 // just no walk cycle. PXL is the size of one preview unit in canvas
 // pixels (use a bigger value for splash/lives-screen displays).
-function drawSteveSprite(originX, originY, PXL, facingR) {
+function drawRogersSprite(originX, originY, PXL, facingR) {
   const SW = 10;
   function block(col, row, w, h, color) {
     const c = facingR ? col : SW - col - w;
@@ -1726,7 +2107,7 @@ function drawLivesScreen() {
   const elapsed = performance.now() - livesScreenAt;
   const display = elapsed < LIVES_MS / 2 ? lives + 1 : lives;
 
-  // Steve sprite — scale up the 10×13 grid for a chunky display
+  // Rogers sprite — scale up the 10×13 grid for a chunky display
   const PXL = 6;
   const sw  = 10 * PXL;
   const sh  = 13 * PXL;
@@ -1740,7 +2121,7 @@ function drawLivesScreen() {
   const sx = Math.round((W - totalW) / 2);
   const sy = Math.round((H - sh) / 2);
 
-  drawSteveSprite(sx, sy, PXL, true);
+  drawRogersSprite(sx, sy, PXL, true);
 
   // "× N"
   ctx.fillStyle = '#fff';
