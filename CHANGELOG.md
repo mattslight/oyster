@@ -14,6 +14,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 - **In-app terminals get a black chrome.** The Claude/OpenCode terminal panels now match the website's terminal mock — black titlebar, deep-black body, teal cursor — and pick up your system terminal font (MesloLGM Nerd Font, falling back to Menlo / SF Mono). The header buttons stay subtle at rest and light up in macOS traffic-light colours on hover — red Stop, amber Minimise, green Expand.
 - **Sessions list reads "last active".** The right-hand column on the Sessions list now says *last active 2m / 16h / 44d* instead of *disconnected 2m* or a stale date — matching the wording under the Session Inspector header. Older rows stay in days-elapsed instead of jumping to a calendar date.
 - **Project tile menu uses "New session".** The first item in a project tile's ⋯ menu is now *New session* (was *Launch Claude here*), matching the topbar pill. A divider separates it from *Rename* / *Merge into* / *Delete*.
+- **Setup chip moves next to "+ New session".** The Oyster setup affordance now sits inline beside the *+ New session* pill in the home breadcrumb instead of floating at the viewport's top-right. The mid-progress state ("required step done, optionals pending") gets a gold pill with a *◐* half-circle glyph in place of the green check — the pill now reads amber → gold → green across the three setup states.
 
 ## [0.9.4] - 2026-05-19
 

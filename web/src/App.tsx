@@ -6,7 +6,6 @@ import { PublishModal } from "./components/PublishModal";
 import { ViewerWindow } from "./components/ViewerWindow";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { SpotlightSearch } from "./components/SpotlightSearch";
-import { OnboardingDock } from "./components/OnboardingDock";
 import { SetupProposalPanel } from "./components/SetupProposalPanel";
 import { windowsReducer } from "./stores/windows";
 import {
@@ -651,6 +650,7 @@ export default function App() {
         }}
         onOpenNewSession={handleOpenNewSession}
         onConnectSession={handleConnectSession}
+        userSpaceCount={FORCE_ONBOARDING ? 0 : spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
@@ -875,10 +875,6 @@ export default function App() {
           onClose={() => setSpotlightOpen(false)}
         />
       )}
-
-      <OnboardingDock
-        userSpaceCount={FORCE_ONBOARDING ? 0 : spaces.filter((s) => s.id !== "home" && s.id !== "__all__" && s.id !== "__archived__").length}
-      />
 
       {setupProposal && (
         <SetupProposalPanel

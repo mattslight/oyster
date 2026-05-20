@@ -255,7 +255,7 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
       <button
         type="button"
         ref={dockRef}
-        className={`onboarding-dock${done ? " onboarding-dock--ready" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
+        className={`onboarding-dock${done ? " onboarding-dock--ready" : !done && requiredDone ? " onboarding-dock--mid" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
         onClick={togglePopover}
         aria-expanded={popoverOpen}
         aria-label={
@@ -266,13 +266,13 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
               : "Set up Oyster"
         }
       >
+        {/* Three pill states. Pre-required: amber pulsing dot + "Set up
+            Oyster", attention-grabbing. Post-required-with-optionals-pending:
+            gold half-circle + "Continue setup" — semantic "halfway through".
+            All-done: green check, glyph only — silent confirmation. */}
         {!requiredDone && <span className="onboarding-dock-progress" />}
-        {requiredDone && <span className="onboarding-dock-check">✓</span>}
-        {/* Three pill states. Pre-required: amber dot + "Set up Oyster",
-            attention-grabbing. Post-required-with-optionals-pending: green
-            check + "Continue setup", invites further exploration without
-            implying anything's broken. All-done: green-tinted pill, glyph
-            only — silent confirmation. */}
+        {requiredDone && !done && <span className="onboarding-dock-mid-glyph" aria-hidden="true">◐</span>}
+        {done && <span className="onboarding-dock-check">✓</span>}
         {!done && (
           <span className="onboarding-dock-label">
             {requiredDone ? "Continue setup" : "Set up Oyster"}
