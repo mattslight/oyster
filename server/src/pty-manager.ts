@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
-import type { Server } from "node:http";
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 
 const SCROLLBACK_LIMIT = 50_000; // chars to replay on reconnect
 
@@ -70,13 +71,27 @@ export function spawnSession(
   return proc;
 }
 
+// WSS in noServer mode — `index.ts` owns the single `upgrade` listener on
+// the http server and routes by pathname. We just handle whatever upgrade
+// is forwarded to us.
+const wss = new WebSocketServer({ noServer: true });
+let attachedSpawnParams: { shell: string; shellArgs: string[]; cwd: string; env: Record<string, string> } | null = null;
+
 export function attachWebSocket(
-  httpServer: Server,
   spawnParams?: { shell: string; shellArgs: string[]; cwd: string; env: Record<string, string> },
 ) {
-  const wss = new WebSocketServer({ server: httpServer });
+  attachedSpawnParams = spawnParams ?? null;
+}
 
-  wss.on("connection", (ws: WebSocket) => {
+/** Called by `index.ts` when an upgrade arrives on the legacy WS path
+ *  (root). Behaviour identical to the previous `wss.on("connection", …)`
+ *  handler — only the dispatch route differs. */
+export function handleLegacyUpgrade(
+  req: IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
+): void {
+  wss.handleUpgrade(req, socket, head, (ws) => {
     console.log(`Client connected (${clients.size + 1} total)`);
     clients.add(ws);
 
@@ -90,8 +105,8 @@ export function attachWebSocket(
     // startup time (~11s) because two opencode-ai processes initialised in
     // parallel and competed for CPU. The terminal window is rarely opened —
     // most users never trigger this. See #385.
-    if (spawnParams && !proc) {
-      spawnSession(spawnParams.shell, spawnParams.shellArgs, spawnParams.cwd, spawnParams.env);
+    if (attachedSpawnParams && !proc) {
+      spawnSession(attachedSpawnParams.shell, attachedSpawnParams.shellArgs, attachedSpawnParams.cwd, attachedSpawnParams.env);
     }
 
     // Replay scrollback so reconnecting clients see current state

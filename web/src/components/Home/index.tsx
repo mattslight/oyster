@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
-import type { SessionState } from "../../data/sessions-api";
+import type { Session, SessionState } from "../../data/sessions-api";
 import type { Artifact, Space } from "../../../../shared/types";
-import { useSessions } from "../../hooks/useSessions";
 import { useMemories } from "../../hooks/useMemories";
 import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
 import { useMyDeviceId } from "../../hooks/useMyDeviceId";
@@ -31,6 +30,9 @@ import { VAULT, type ArtefactSource, type StateFilter, type ViewMode } from "./t
 import { attachFolder } from "../../data/projects-api";
 import { deleteMemory, type Memory } from "../../data/memories-api";
 import { ApiError } from "../../data/http";
+import { useTerminalPresence } from "../../hooks/useTerminalPresence";
+import type { WindowState } from "../../stores/windows";
+import { RunningTerminalsPill } from "../Topbar/RunningTerminalsPill";
 import "./Home.css";
 
 interface Props {
@@ -51,6 +53,25 @@ interface Props {
    *  drop the chat bar out of hero mode so it stops occluding sub-view
    *  content. */
   onSubViewActiveChange?: (active: boolean) => void;
+  /** Spawn an in-app Claude PTY in the given project's recent path. */
+  onLaunchClaude?: (projectId: string) => void;
+  /** Resume a session in an Oyster terminal (`claude --resume <id>`). */
+  onLaunchClaudeFromSession?: (sessionId: string) => void;
+  /** Launch a remote (cross-device) session in an Oyster terminal once
+   *  reassemble has completed. Threaded to ResumeDialog via SessionInspector. */
+  onOpenRemoteInOyster?: (sessionId: string) => Promise<import("../SessionInspector/ResumeDialog").OpenInOysterResult>;
+  /** Running-terminals pill: client-side window list for presence fusion. */
+  terminalWindows?: WindowState[];
+  /** Running-terminals pill: focus an already-open terminal window. */
+  onTerminalFocus?: (terminalId: string) => void;
+  /** Running-terminals pill: restore a minimised terminal. */
+  onTerminalRestore?: (sessionId: string, terminalId: string) => void;
+  /** Running-terminals pill: stop (DELETE) a running terminal. */
+  onTerminalStop?: (terminalId: string) => Promise<void>;
+  /** Sessions feed — hoisted to App to avoid duplicate SSE-triggered refetches. */
+  sessions: Session[];
+  sessionsLoading?: boolean;
+  sessionsError?: Error | null;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -102,10 +123,10 @@ function useStickyView(key: string, defaultValue: ViewMode): [ViewMode, (v: View
 // is review/history, not active inventory. The dot after "live" indicates
 // the live cluster ends; the per-state chips after it are for fine-grained
 // filtering.
-const FILTER_ORDER: StateFilter[] = ["live", "active", "waiting", "disconnected", "done", "all"];
-const LIVE_STATES: SessionState[] = ["active", "waiting", "disconnected"];
+const FILTER_ORDER: StateFilter[] = ["live-terminals", "live", "active", "waiting", "done", "all"];
+const LIVE_STATES: SessionState[] = ["active", "waiting"];
 
-const EMPTY_COUNTS = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+const EMPTY_COUNTS = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
 
 // Sessions list cap. Busy spaces can run dozens of concurrent sessions
 // and previously pushed Artefacts below the fold; ten keeps the section
@@ -120,6 +141,7 @@ const MEMORIES_PREVIEW = 5;
 
 const FILTER_LABELS: Record<StateFilter, string> = {
   live: "live",
+  "live-terminals": "running",
   active: "active",
   waiting: "waiting",
   disconnected: "disconnected",
@@ -127,8 +149,8 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange }: Props) {
-  const { sessions, error, loading } = useSessions();
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
+  const presence = useTerminalPresence(sessions, terminalWindows ?? []);
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();
   const myDeviceId = myDevice?.deviceId ?? null;
@@ -253,6 +275,16 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     setSelectedOrphanCwd(null);
   }, [scopedSpace, showElsewhere, isHomeView]);
 
+  // Auto-reset the live-terminals filter if there are no live terminals
+  // (e.g. the last terminal was stopped, or the user switched to a space
+  // with none). Without this the pill disappears but the filter sticks,
+  // leaving a silently empty session list.
+  useEffect(() => {
+    if (stateFilter === "live-terminals" && presence.totalLive === 0) {
+      setStateFilter("all");
+    }
+  }, [stateFilter, presence.totalLive]);
+
   const scopedSessions = useMemo(() => {
     if (showElsewhere && isHomeView) return sessions.filter((s) => s.spaceId === null);
     return scopedSpace ? sessions.filter((s) => s.spaceId === scopedSpace) : sessions;
@@ -263,9 +295,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // when a folder is selected. Everything below this point (chips,
   // list) does narrow.
   const spaceCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
+    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
     for (const s of scopedSessions) counts[s.state]++;
-    counts.live = counts.active + counts.waiting + counts.disconnected;
+    counts.done += counts.disconnected;
+    counts.disconnected = 0;
+    counts.live = counts.active + counts.waiting;
     return counts;
   }, [scopedSessions]);
 
@@ -282,39 +316,56 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [scopedSessions, selectedProjectId, selectedOrphanCwd, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
+    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
     for (const s of folderScopedSessions) counts[s.state]++;
-    counts.live = counts.active + counts.waiting + counts.disconnected;
+    counts.done += counts.disconnected;
+    counts.disconnected = 0;
+    counts.live = counts.active + counts.waiting;
+    counts["live-terminals"] = folderScopedSessions.filter((s) => presence.byId[s.id] != null).length;
     return counts;
-  }, [folderScopedSessions]);
+  }, [folderScopedSessions, presence.byId]);
 
   const visibleSessions = useMemo(() => {
-    if (stateFilter === "all") return folderScopedSessions;
-    if (stateFilter === "live") return folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
-    return folderScopedSessions.filter((s) => s.state === stateFilter);
-  }, [folderScopedSessions, stateFilter]);
+    let list: typeof folderScopedSessions;
+    if (stateFilter === "all") list = folderScopedSessions;
+    else if (stateFilter === "live") list = folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
+    else if (stateFilter === "live-terminals") list = folderScopedSessions.filter((s) => presence.byId[s.id] != null);
+    else if (stateFilter === "done") list = folderScopedSessions.filter((s) => s.state === "done" || s.state === "disconnected");
+    else list = folderScopedSessions.filter((s) => s.state === stateFilter);
+    // Pin live (open terminal) rows to the top; within each group preserve
+    // descending last-activity order.
+    return list.slice().sort((a, b) => {
+      const aLive = presence.byId[a.id] ? 0 : 1;
+      const bLive = presence.byId[b.id] ? 0 : 1;
+      if (aLive !== bLive) return aLive - bLive;
+      return (b.lastEventAt ?? "").localeCompare(a.lastEventAt ?? "");
+    });
+  }, [folderScopedSessions, stateFilter, presence.byId]);
 
   // Per-space session counts + a separate orphan tally (sessions with
   // spaceId === null) + a grand total for the Home card.
   const { sessionCountsBySpace, orphanCounts, totalCounts } = useMemo(() => {
-    const bySpace: Record<string, { total: number; active: number; waiting: number; disconnected: number; done: number }> = {};
-    const orphans = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
-    const total = { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const bySpace: Record<string, { total: number; running: number; active: number; waiting: number; disconnected: number; done: number }> = {};
+    const orphans = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const total = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
     for (const s of sessions) {
       total.total++;
       total[s.state]++;
+      if (presence.byId[s.id]) total.running++;
       if (s.spaceId) {
-        const c = bySpace[s.spaceId] ?? { total: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+        const c = bySpace[s.spaceId] ?? { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
         c.total++;
         c[s.state]++;
+        if (presence.byId[s.id]) c.running++;
         bySpace[s.spaceId] = c;
       } else {
         orphans.total++;
         orphans[s.state]++;
+        if (presence.byId[s.id]) orphans.running++;
       }
     }
     return { sessionCountsBySpace: bySpace, orphanCounts: orphans, totalCounts: total };
-  }, [sessions]);
+  }, [sessions, presence.byId]);
 
   // Active projects on Home: collapse sessions by projectId, count
   // non-done states, drop projects with no live activity. Each entry
@@ -356,17 +407,20 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // ProjectTileGrid so a project tile can show "1 active · 1 waiting"
   // when sessions are running for that project.
   const sessionCountsByProject = useMemo(() => {
-    const out: Record<string, { active: number; waiting: number; disconnected: number }> = {};
+    const out: Record<string, { running: number; active: number; waiting: number; disconnected: number }> = {};
     for (const s of sessions) {
-      if (!s.projectId || s.state === "done") continue;
-      const c = out[s.projectId] ?? { active: 0, waiting: 0, disconnected: 0 };
+      if (!s.projectId) continue;
+      const isRunning = presence.byId[s.id] != null;
+      if (s.state === "done" && !isRunning) continue;
+      const c = out[s.projectId] ?? { running: 0, active: 0, waiting: 0, disconnected: 0 };
+      if (isRunning) c.running++;
       if (s.state === "active") c.active++;
       else if (s.state === "waiting") c.waiting++;
       else if (s.state === "disconnected") c.disconnected++;
       out[s.projectId] = c;
     }
     return out;
-  }, [sessions]);
+  }, [sessions, presence.byId]);
 
   // Orphan-cwd "projects" on Elsewhere — sessions whose cwd doesn't
   // match any registered source still came from somewhere. Group by
@@ -703,9 +757,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
             {realSpaces.map((space) => {
               const counts = sessionCountsBySpace[space.id] ?? EMPTY_COUNTS;
               const tip = [
+                counts.running > 0 && `${counts.running} running`,
                 counts.active > 0 && `${counts.active} active`,
                 counts.waiting > 0 && `${counts.waiting} waiting`,
-                counts.disconnected > 0 && `${counts.disconnected} disconnected`,
                 counts.done > 0 && `${counts.done} done`,
               ].filter(Boolean).join(" · ") || "no sessions yet";
               const isSelected = scopedSpace === space.id;
@@ -728,7 +782,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       transition={{ type: "spring", stiffness: 400, damping: 35 }}
                     />
                   )}
-                  {(counts.active > 0 || counts.waiting > 0 || counts.disconnected > 0) && (
+                  {(counts.running > 0 || counts.active > 0 || counts.waiting > 0) && (
                     <span className="home-breadcrumb-badges">
                       {renderPipCounts(counts)}
                     </span>
@@ -744,9 +798,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 onClick={() => { onSpaceChange("home"); setShowElsewhere(true); setShowVault(false); }}
                 onContextMenu={(e) => e.preventDefault()}
                 title={[
+                  orphanCounts.running > 0 && `${orphanCounts.running} running`,
                   orphanCounts.active > 0 && `${orphanCounts.active} active`,
                   orphanCounts.waiting > 0 && `${orphanCounts.waiting} waiting`,
-                  orphanCounts.disconnected > 0 && `${orphanCounts.disconnected} disconnected`,
                   orphanCounts.done > 0 && `${orphanCounts.done} done`,
                 ].filter(Boolean).join(" · ") || "Sessions outside any registered space"}
               >
@@ -757,7 +811,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                     transition={{ type: "spring", stiffness: 400, damping: 35 }}
                   />
                 )}
-                {(orphanCounts.active > 0 || orphanCounts.waiting > 0 || orphanCounts.disconnected > 0) && (
+                {(orphanCounts.running > 0 || orphanCounts.active > 0 || orphanCounts.waiting > 0) && (
                   <span className="home-breadcrumb-badges">
                     {renderPipCounts(orphanCounts)}
                   </span>
@@ -766,6 +820,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               </button>
             )}
             </div>
+            {onTerminalFocus && onTerminalRestore && onTerminalStop && presence.totalLive > 0 && (
+              <div className="home-breadcrumb-inner home-breadcrumb-inner--running">
+                <RunningTerminalsPill
+                  presence={presence}
+                  sessions={sessions}
+                  onFocus={onTerminalFocus}
+                  onRestore={onTerminalRestore}
+                  onStop={onTerminalStop}
+                />
+              </div>
+            )}
             </LayoutGroup>
           </nav>
 
@@ -824,7 +889,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       <div className="home-active-project-counts">
                         {p.counts.active > 0 && <span className="signal"><span className="pip pip-green" />{p.counts.active} active</span>}
                         {p.counts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{p.counts.waiting} waiting</span>}
-                        {p.counts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{p.counts.disconnected} disconnected</span>}
                       </div>
                     </button>
                     <button
@@ -967,6 +1031,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               setShowAttachForm={setShowAttachForm}
               onProjectsChanged={refreshSpaceProjects}
               onSpaceDelete={onSpaceDelete}
+              onLaunchClaude={onLaunchClaude}
             />
           )
         )}
@@ -978,6 +1043,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               {FILTER_ORDER.map((f) => {
                 const count = stateCounts[f];
                 if (count === 0 && f !== "all" && f !== "live") return null;
+                const isLiveTerminals = f === "live-terminals";
                 const showPip = f !== "all" && f !== "live";
                 return (
                   <span key={f} style={{ display: "contents" }}>
@@ -985,7 +1051,11 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       className={`stat-btn${stateFilter === f ? " active" : ""}`}
                       onClick={() => setStateFilter(f)}
                     >
-                      {showPip && <span className={`pip pip-${stateColor(f as SessionState)}`} />}
+                      {showPip && (
+                        isLiveTerminals
+                          ? <span className="pip pip-teal" />
+                          : <span className={`pip pip-${stateColor(f as SessionState)}`} />
+                      )}
                       {count} {FILTER_LABELS[f]}
                     </button>
                     {f === "live" && <span className="stat-divider" aria-hidden="true" />}
@@ -1038,6 +1108,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       spaces={spaces}
                       showSpaceChip={isMetaView}
                       myDeviceId={myDeviceId}
+                      livePresence={presence.byId[session.id]}
                       onOpen={(id) => setActivePanel({ kind: "session", id })}
                     />
                   ))}
@@ -1051,7 +1122,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                         session={session}
                         spaces={spaces}
                         myDeviceId={myDeviceId}
+                        livePresence={presence.byId[session.id]}
                         onOpen={(id) => setActivePanel({ kind: "session", id })}
+                        onTerminalFocus={onTerminalFocus}
+                        onTerminalRestore={onTerminalRestore}
                       />
                     ))}
                   </div>
@@ -1313,6 +1387,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               setActivePanel(null);
               alert("Session no longer available");
             }}
+            onLaunchClaude={onLaunchClaudeFromSession}
+            onOpenInOyster={onOpenRemoteInOyster}
           />
         )}
         {activePanel?.kind === "artefact" && activeArtefact && (

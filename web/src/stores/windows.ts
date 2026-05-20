@@ -1,4 +1,4 @@
-export type WindowType = "chat" | "viewer" | "terminal";
+export type WindowType = "chat" | "viewer" | "terminal" | "claude_terminal";
 
 export interface WindowState {
   id: string;
@@ -8,15 +8,34 @@ export interface WindowState {
   artifactPath?: string;
   zIndex: number;
   fullscreen: boolean;
+  /** Claude terminal: identifier passed back to /ws/terminal?id=…. */
+  terminalId?: string;
+  /** Claude terminal: cwd shown in the title bar. */
+  cwd?: string;
+  /** Claude terminal: kind drives the title prefix ("claude" vs "resume"). */
+  terminalKind?: "claude_new" | "claude_resume";
+  /** Claude terminal: session id once auto-link succeeds; turns the title
+   *  into a link to the Session Inspector. */
+  linkedSessionId?: string;
 }
 
 export type WindowAction =
   | { type: "OPEN_CHAT" }
   | { type: "OPEN_VIEWER"; title: string; path: string; fullscreen?: boolean }
   | { type: "CLOSE"; id: string }
+  | { type: "MINIMISE"; id: string }
   | { type: "CLOSE_ALL_VIEWERS" }
   | { type: "UPDATE_STATUS"; id: string; statusText: string }
   | { type: "OPEN_TERMINAL" }
+  | {
+      type: "OPEN_CLAUDE_TERMINAL";
+      terminalId: string;
+      title: string;
+      cwd: string;
+      kind: "claude_new" | "claude_resume";
+      linkedSessionId?: string;
+    }
+  | { type: "LINK_TERMINAL_SESSION"; terminalId: string; sessionId: string }
   | { type: "FOCUS"; id: string }
   | { type: "TOGGLE_FULLSCREEN"; id: string }
   | { type: "NAVIGATE_VIEWER"; id: string; title: string; artifactPath: string };
@@ -94,6 +113,11 @@ export function windowsReducer(
     }
     case "CLOSE":
       return state.filter((w) => w.id !== action.id);
+    case "MINIMISE":
+      // Same state change as CLOSE for the windows array (drop the window).
+      // Behavioural difference lives at the call site: terminal panels do
+      // NOT call DELETE /api/terminals/:id — the PTY survives.
+      return state.filter((w) => w.id !== action.id);
     case "CLOSE_ALL_VIEWERS":
       return state.filter((w) => w.type !== "viewer");
     case "UPDATE_STATUS":
@@ -120,6 +144,32 @@ export function windowsReducer(
           fullscreen: false,
         },
       ];
+    }
+    case "OPEN_CLAUDE_TERMINAL": {
+      // Always appends — multiple Claude terminals can coexist.
+      topZ++;
+      return [
+        ...state,
+        {
+          id: "claude-term-" + nextId++,
+          type: "claude_terminal",
+          title: action.title,
+          statusText: "",
+          zIndex: topZ,
+          fullscreen: false,
+          terminalId: action.terminalId,
+          cwd: action.cwd,
+          terminalKind: action.kind,
+          linkedSessionId: action.linkedSessionId,
+        },
+      ];
+    }
+    case "LINK_TERMINAL_SESSION": {
+      return state.map((w) =>
+        w.type === "claude_terminal" && w.terminalId === action.terminalId
+          ? { ...w, linkedSessionId: action.sessionId }
+          : w
+      );
     }
     case "FOCUS": {
       topZ++;

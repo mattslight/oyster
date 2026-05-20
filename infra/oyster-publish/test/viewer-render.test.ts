@@ -141,8 +141,15 @@ describe("renderChromeWithIframe", () => {
   it("contains a sandboxed iframe pointing at /p/<token>/raw", async () => {
     const res = renderChromeWithIframe(ROW);
     const body = await res.text();
-    expect(body).toContain('sandbox="allow-scripts allow-same-origin"');
+    expect(body).toContain('sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"');
     expect(body).toContain('src="/p/app1/raw"');
+  });
+
+  it("permits popups so artifacts can link to external resources (CodePen/StackBlitz baseline)", async () => {
+    const res = renderChromeWithIframe(ROW);
+    const body = await res.text();
+    expect(body).toMatch(/sandbox="[^"]*allow-popups[^"]*"/);
+    expect(body).toMatch(/sandbox="[^"]*allow-popups-to-escape-sandbox[^"]*"/);
   });
 });
 

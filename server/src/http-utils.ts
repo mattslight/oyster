@@ -109,6 +109,22 @@ export function makeRouteCtx(req: IncomingMessage, res: ServerResponse): RouteCt
   return { sendJson, sendError, readJsonBody, rejectIfNonLocalOrigin };
 }
 
+/** Same loopback + Origin check as `rejectIfNonLocalOrigin`, but for the
+ *  WebSocket upgrade path where we don't have a usable response object —
+ *  on rejection we just destroy the socket. Browsers can open cross-origin
+ *  WebSocket connections to localhost; without this check a same-machine
+ *  page from a different port could read/write any active Claude PTY. */
+export function isLocalUpgradeOrigin(req: import("node:http").IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin.length > 0) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  }
+  // No Origin header (curl, native WS clients) — fall back to the
+  // socket-level loopback check.
+  const remote = req.socket.remoteAddress || "";
+  return remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+}
+
 /** Safely percent-decode a URL path segment. `decodeURIComponent` throws
  *  `URIError` on malformed encoding (e.g. `/api/artifacts/%E0%A4%A`); an
  *  unguarded throw inside a route handler would crash the server process.

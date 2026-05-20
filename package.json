@@ -1,6 +1,6 @@
 {
   "name": "oyster-os",
-  "version": "0.9.1",
+  "version": "0.9.4",
   "description": "Oyster keeps your AI work synced, remembered and publishable across devices and agents.",
   "type": "module",
   "bin": {
@@ -47,12 +47,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^12.10.0",
     "chokidar": "^4.0.3",
     "ignore": "^7.0.5",
     "marked": "^18.0.3",
-    "opencode-ai": "^1.14.41",
-    "ws": "^8.20.0"
+    "opencode-ai": "^1.15.3",
+    "ws": "^8.20.1"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.2.0-beta.12"

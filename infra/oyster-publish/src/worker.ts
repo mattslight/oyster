@@ -6,11 +6,12 @@ import { CAPS, generateShareToken, IFRAME_KINDS, parseMetadataHeader, parseShare
 import { resolveViewerAccess } from "./viewer-access";
 import { signViewerCookie } from "./viewer-cookie";
 import {
-  passwordGatePage, gonePage, notFoundPage, internalErrorPage, rateLimitedPage,
+  passwordGatePage, gonePage, notFoundPage, noAccessPage, internalErrorPage, rateLimitedPage,
 } from "./viewer-pages";
 import {
   renderMarkdownPage, renderMermaidPage, renderChromeWithIframe, renderRawHtmlBody, renderImageInline,
 } from "./viewer-render";
+import { mintAccessNonce } from "./access-nonce";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -22,6 +23,27 @@ export default {
 
     if (url.pathname === "/api/publish/mine" && req.method === "GET") {
       return handlePublishMine(req, env);
+    }
+
+    if (url.pathname.startsWith("/api/publish/access-redirect/") && req.method === "GET") {
+      // Canonical host is oyster.to (where the apex session cookie lives).
+      // www. and share. get a 308 mirroring the /p/* legacy-origin pattern;
+      // without this the handler on a non-apex host fails session checks and
+      // burns an extra hop through sign-in.
+      if (url.hostname === "www.oyster.to" || url.hostname === "share.oyster.to") {
+        return new Response(null, {
+          status: 308,
+          headers: {
+            location: `https://oyster.to${url.pathname}${url.search}`,
+            "cache-control": "public, max-age=3600",
+          },
+        });
+      }
+      const token = url.pathname.slice("/api/publish/access-redirect/".length);
+      if (!token || token.includes("/")) {
+        return new Response("Not Found", { status: 404 });
+      }
+      return handleAccessRedirect(req, env, token);
     }
 
     if (url.pathname.startsWith("/api/publish/") && req.method === "DELETE") {
@@ -696,7 +718,7 @@ async function collectWithSizeCap(
 // ─── Viewer handlers (#316) ────────────────────────────────────────────────
 
 async function handleViewerGet(req: Request, env: Env, shareToken: string): Promise<Response> {
-  const access = await resolveViewerAccess(req, env, shareToken);
+  const access = await resolveViewerAccess(req, env, shareToken, { consumeNonce: true });
   switch (access.kind) {
     case "not_found":
       return htmlPage(404, notFoundPage());
@@ -711,11 +733,30 @@ async function handleViewerGet(req: Request, env: Env, shareToken: string): Prom
       return htmlPage(200, passwordGatePage(shareToken));
     case "ok":
       return renderForRow(env, access.row, req);
+    case "ok_via_nonce": {
+      // The visitor proved they have access (owner of a password share,
+      // or any signed-in user for a signin share) via
+      // /api/publish/access-redirect. Mint the standard recent-access
+      // cookie and 302 to the clean URL so that ?key=<nonce> does not
+      // linger in the address bar / Referer.
+      const cookieValue = await signViewerCookie(access.row.share_token, env.VIEWER_COOKIE_SECRET);
+      const host = new URL(req.url).host;
+      const secureFlag = isLoopback(host) ? "" : " Secure;";
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "set-cookie": `oyster_view_${access.row.share_token}=${cookieValue}; HttpOnly;${secureFlag} SameSite=Lax; Path=/p/${access.row.share_token}; Max-Age=86400`,
+          "location": `/p/${access.row.share_token}`,
+          "cache-control": "private, no-store",
+          "referrer-policy": "no-referrer",
+        },
+      });
+    }
   }
 }
 
 async function handleViewerRaw(req: Request, env: Env, shareToken: string): Promise<Response> {
-  const access = await resolveViewerAccess(req, env, shareToken);
+  const access = await resolveViewerAccess(req, env, shareToken, { consumeNonce: false });
   if (access.kind === "not_found") return htmlPage(404, notFoundPage());
   if (access.kind === "gone") return htmlPage(410, gonePage());
   if (access.kind === "redirect") {
@@ -736,7 +777,7 @@ async function handleViewerRaw(req: Request, env: Env, shareToken: string): Prom
 }
 
 async function handleViewerPost(req: Request, env: Env, shareToken: string): Promise<Response> {
-  const access = await resolveViewerAccess(req, env, shareToken);
+  const access = await resolveViewerAccess(req, env, shareToken, { consumeNonce: false });
   if (access.kind === "not_found") return htmlPage(404, notFoundPage());
   if (access.kind === "gone") return htmlPage(410, gonePage());
   if (access.kind === "redirect") {
@@ -785,6 +826,51 @@ async function handleViewerPost(req: Request, env: Env, shareToken: string): Pro
       "set-cookie": `oyster_view_${shareToken}=${cookieValue}; HttpOnly;${secureFlag} SameSite=Lax; Path=/p/${shareToken}; Max-Age=86400`,
       "location": `/p/${shareToken}`,
       "cache-control": "private, no-store",
+    },
+  });
+}
+
+async function handleAccessRedirect(req: Request, env: Env, shareToken: string): Promise<Response> {
+  type Row = { mode: "open" | "password" | "signin"; owner_user_id: string; unpublished_at: number | null };
+  const row = await env.DB.prepare(
+    "SELECT mode, owner_user_id, unpublished_at FROM published_artifacts WHERE share_token = ?",
+  ).bind(shareToken).first<Row>();
+
+  if (!row) return htmlPage(404, notFoundPage());
+  if (row.unpublished_at !== null) return htmlPage(410, gonePage());
+
+  // Open mode: no gate to clear, no nonce to mint.
+  if (row.mode === "open") {
+    return redirectNoStore(`https://share.oyster.to/p/${shareToken}`);
+  }
+
+  const session = await resolveSession(req, env);
+  if (!session) {
+    return redirectNoStore(
+      `https://oyster.to/auth/sign-in?return=${encodeURIComponent(`/api/publish/access-redirect/${shareToken}`)}`,
+    );
+  }
+
+  // Access predicates — widen the password case to an ACL when sharing-
+  // to-specific-user lands. resolveSession() in this worker returns flat
+  // { id, email, tier } (see the existing resolveSession declaration).
+  let mayAccess = false;
+  if (row.mode === "signin")   mayAccess = true;
+  if (row.mode === "password") mayAccess = session.id === row.owner_user_id;
+
+  if (!mayAccess) return htmlPage(403, noAccessPage(shareToken));
+
+  const nonce = await mintAccessNonce(env, shareToken, session.id);
+  return redirectNoStore(`https://share.oyster.to/p/${shareToken}?key=${nonce}`);
+}
+
+function redirectNoStore(location: string): Response {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location,
+      "cache-control": "private, no-store",
+      "referrer-policy": "no-referrer",
     },
   });
 }

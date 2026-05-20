@@ -69,3 +69,27 @@ describe("validateReturnPath — rejects everything else", () => {
     expect(validateReturnPath("/p/ab\x00c")).toBeNull();
   });
 });
+
+describe("validateReturnPath — accepts access-redirect path", () => {
+  it("accepts /api/publish/access-redirect/<token>", () => {
+    expect(validateReturnPath("/api/publish/access-redirect/abc123"))
+      .toBe("/api/publish/access-redirect/abc123");
+  });
+
+  it("accepts /api/publish/access-redirect/<token> with - and _ in the token", () => {
+    expect(validateReturnPath("/api/publish/access-redirect/AaBb_-_-9"))
+      .toBe("/api/publish/access-redirect/AaBb_-_-9");
+  });
+
+  it("rejects /api/publish/access-redirect/ with no token", () => {
+    expect(validateReturnPath("/api/publish/access-redirect/")).toBeNull();
+  });
+
+  it("rejects /api/publish/access-redirect/<token>/extra", () => {
+    expect(validateReturnPath("/api/publish/access-redirect/abc123/raw")).toBeNull();
+  });
+
+  it("rejects /api/publish/access-redirect/<token>?evil=1", () => {
+    expect(validateReturnPath("/api/publish/access-redirect/abc?x=1")).toBeNull();
+  });
+});

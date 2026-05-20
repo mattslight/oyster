@@ -41,6 +41,10 @@ export interface SessionRow {
    *  watcher refresh on each ingest; `'manual'` is pinned by the user (or
    *  an MCP-driven move_session) and is never overwritten by the watcher. */
   assignment_mode: AssignmentMode;
+  /** ClaudePtyManager terminal id this session is linked to, or null. */
+  terminal_id: string | null;
+  /** Count of currently-attached WS clients on the linked terminal. 0 + non-null terminal_id = Minimised. */
+  terminal_attached_clients: number;
 }
 
 export interface SessionEventRow {
@@ -50,6 +54,11 @@ export interface SessionEventRow {
   text: string;
   ts: string;
   raw: string | null;
+  /** 1 when this row is slash-command machinery from claude-code (e.g.
+   *  `<command-name>/exit</command-name>`, `<system-reminder>…`). Such
+   *  rows are kept on disk for audit but hidden from the transcript
+   *  reader and excluded from the FTS index. See #530. */
+  is_protocol_artifact: 0 | 1;
 }
 
 export interface SessionArtifactRow {
@@ -73,6 +82,25 @@ export interface SessionEventSearchHit {
   ts: string;
   /** Highlighted excerpt with `[…]` ellipsis around the match. */
   snippet: string;
+}
+
+/** A session-grouped search hit. One row per session, picking the
+ *  best-ranked matching event as the representative snippet. Used by
+ *  the Spotlight UI so a single session with many matches collapses
+ *  to a single row instead of flooding the result list. */
+export interface SessionSearchHit {
+  session_id: string;
+  session_title: string | null;
+  space_id: string | null;
+  /** Best-ranked matching event id, for click-through deep-linking. */
+  event_id: number;
+  role: SessionEventRole;
+  /** Timestamp of the *session* (last_event_at), for date display. */
+  last_event_at: string | null;
+  /** Highlighted excerpt of the best-ranked match. */
+  snippet: string;
+  /** Number of distinct matching events in this session. */
+  match_count: number;
 }
 
 // ── Insert shapes (let SQLite supply timestamps + auto-id) ──
@@ -106,6 +134,10 @@ export interface InsertSessionEvent {
   text: string;
   ts?: string;
   raw?: string | null;
+  /** Defaults to 0 when omitted. Set to 1 for claude-code slash-command
+   *  machinery so the row is excluded from the transcript and the FTS
+   *  index. See server/src/utils/claude-protocol-artifacts.ts. */
+  is_protocol_artifact?: 0 | 1;
 }
 
 export interface InsertSessionArtifact {
@@ -145,6 +177,16 @@ export interface SessionStore {
    *  `query` is natural language; tokenised to OR-joined terms inside the
    *  implementation. `sessionId` optionally scopes to one session. */
   searchEvents(query: string, opts?: { limit?: number; sessionId?: string; spaceId?: string }): SessionEventSearchHit[];
+  /** Same FTS5 search, but grouped by session — returns one row per
+   *  matching session with the best-ranked event as the representative
+   *  snippet plus a match_count. Used by the Spotlight UI. */
+  searchSessions(query: string, opts?: { limit?: number; spaceId?: string }): SessionSearchHit[];
+  /** Mark a session as linked to a running PTY. Idempotent. */
+  linkTerminal(sessionId: string, terminalId: string): void;
+  /** Clear the link and zero the attached-clients counter. Idempotent. */
+  clearTerminal(sessionId: string): void;
+  /** Update the attached-clients counter on the linked session. No-op if the session row is missing. */
+  setAttachedClients(sessionId: string, count: number): void;
 }
 
 // ── SQLite implementation ──
@@ -254,20 +296,25 @@ export class SqliteSessionStore implements SessionStore {
         "UPDATE sessions SET state = ?, last_event_at = ? WHERE id = ?"
       ),
       insertEvent: db.prepare(`
-        INSERT INTO session_events (session_id, role, text, ts, raw)
-        VALUES (@session_id, @role, @text, COALESCE(@ts, datetime('now')), @raw)
+        INSERT INTO session_events (session_id, role, text, ts, raw, is_protocol_artifact)
+        VALUES (@session_id, @role, @text, COALESCE(@ts, datetime('now')), @raw, @is_protocol_artifact)
       `),
+      // Transcript reads filter out protocol artefacts (#530). The FTS
+      // search path filters implicitly via the JOIN (artefacts are never
+      // indexed). getEventById stays unfiltered — it's a primitive "fetch
+      // by id" used by the inspector to lazy-load the raw JSONL for tool
+      // turns; future "show hidden" toggles can lean on it.
       getEventsBySession: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? ORDER BY id"
+        "SELECT * FROM session_events WHERE session_id = ? AND is_protocol_artifact = 0 ORDER BY id"
       ),
       getEventsBySessionLimit: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? ORDER BY id DESC LIMIT ?"
+        "SELECT * FROM session_events WHERE session_id = ? AND is_protocol_artifact = 0 ORDER BY id DESC LIMIT ?"
       ),
       getEventsBefore: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?"
+        "SELECT * FROM session_events WHERE session_id = ? AND id < ? AND is_protocol_artifact = 0 ORDER BY id DESC LIMIT ?"
       ),
       getEventsAfter: db.prepare(
-        "SELECT * FROM session_events WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT ?"
+        "SELECT * FROM session_events WHERE session_id = ? AND id > ? AND is_protocol_artifact = 0 ORDER BY id ASC LIMIT ?"
       ),
       getEventById: db.prepare(
         "SELECT * FROM session_events WHERE session_id = ? AND id = ? LIMIT 1"
@@ -295,7 +342,7 @@ export class SqliteSessionStore implements SessionStore {
     const insertOne = this.stmts.insertEvent;
     this.insertEventsTxn = db.transaction((rows: InsertSessionEvent[]) => {
       for (const r of rows) {
-        insertOne.run({ ts: null, raw: null, ...r });
+        insertOne.run({ ts: null, raw: null, is_protocol_artifact: 0, ...r });
       }
     });
   }
@@ -364,7 +411,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   insertEvent(row: InsertSessionEvent): number {
-    const info = this.stmts.insertEvent.run({ ts: null, raw: null, ...row });
+    const info = this.stmts.insertEvent.run({ ts: null, raw: null, is_protocol_artifact: 0, ...row });
     return Number(info.lastInsertRowid);
   }
 
@@ -476,5 +523,80 @@ export class SqliteSessionStore implements SessionStore {
                  LIMIT ?`;
     params.push(limit);
     return this.db.prepare(sql).all(...params) as SessionEventSearchHit[];
+  }
+
+  searchSessions(
+    query: string,
+    opts: { limit?: number; spaceId?: string } = {},
+  ): SessionSearchHit[] {
+    // Same query-shape logic as searchEvents — keep them in sync.
+    const trimmed = query.trim();
+    if (trimmed.length === 0) return [];
+    if (!/[A-Za-z0-9]/.test(trimmed)) return [];
+    const isPlainWord = /^[A-Za-z0-9]+$/.test(trimmed);
+    let ftsQuery: string;
+    if (isPlainWord) {
+      if (trimmed.length < 2) return [];
+      ftsQuery = `${trimmed}*`;
+    } else {
+      ftsQuery = `"${trimmed.replace(/"/g, '""')}"`;
+    }
+    const limit = opts.limit ?? 20;
+
+    // FTS5's snippet() auxiliary can't be used in a SELECT that also wraps
+    // window functions ("unable to use function snippet in the requested
+    // context") — it needs to live in a query that directly scans the FTS
+    // virtual table under MATCH. So we materialize the snippet + raw rank
+    // in an inner CTE and let the outer CTE handle ROW_NUMBER / COUNT over
+    // those plain columns.
+    const innerWhere: string[] = ["session_events_fts MATCH ?"];
+    const innerParams: unknown[] = [ftsQuery];
+    if (opts.spaceId) { innerWhere.push("s.space_id = ?"); innerParams.push(opts.spaceId); }
+
+    const sql = `WITH matches AS (
+                   SELECT e.id, e.session_id, e.role,
+                          fts.rank AS m_rank,
+                          snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet
+                   FROM session_events e
+                   JOIN session_events_fts fts ON e.id = fts.rowid
+                   JOIN sessions s             ON s.id = e.session_id
+                   WHERE ${innerWhere.join(" AND ")}
+                 ),
+                 ranked AS (
+                   SELECT id, session_id, role, m_rank, snippet,
+                          ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY m_rank) AS rn,
+                          COUNT(*)     OVER (PARTITION BY session_id)                 AS match_count
+                   FROM matches
+                 )
+                 SELECT r.id AS event_id, r.session_id, r.role,
+                        r.snippet, r.match_count,
+                        s.title         AS session_title,
+                        s.space_id      AS space_id,
+                        s.last_event_at AS last_event_at
+                 FROM ranked r
+                 JOIN sessions s ON s.id = r.session_id
+                 WHERE r.rn = 1
+                 ORDER BY r.m_rank ASC
+                 LIMIT ?`;
+    innerParams.push(limit);
+    return this.db.prepare(sql).all(...innerParams) as SessionSearchHit[];
+  }
+
+  linkTerminal(sessionId: string, terminalId: string): void {
+    this.db.prepare(
+      "UPDATE sessions SET terminal_id = ?, terminal_attached_clients = 0 WHERE id = ?",
+    ).run(terminalId, sessionId);
+  }
+
+  clearTerminal(sessionId: string): void {
+    this.db.prepare(
+      "UPDATE sessions SET terminal_id = NULL, terminal_attached_clients = 0 WHERE id = ?",
+    ).run(sessionId);
+  }
+
+  setAttachedClients(sessionId: string, count: number): void {
+    this.db.prepare(
+      "UPDATE sessions SET terminal_attached_clients = ? WHERE id = ?",
+    ).run(Math.max(0, count | 0), sessionId);
   }
 }

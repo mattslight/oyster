@@ -6,6 +6,7 @@ import {
   putR2Object, seedActiveOpenWithBody,
 } from "./fixtures/seed";
 import { signViewerCookie } from "../src/viewer-cookie";
+import { mintAccessNonce, consumeAccessNonce } from "../src/access-nonce";
 
 beforeAll(() => {
   // VIEWER_PASSWORD_LIMIT is an unsafe ratelimit binding; miniflare doesn't auto-mock it.
@@ -139,7 +140,7 @@ describe("GET /p/:token — open mode", () => {
     expect(res.headers.get("content-type")).toMatch(/^text\/html/);
     const body = await res.text();
     expect(body).toContain(`src="/p/${shareToken}/raw"`);
-    expect(body).toContain('sandbox="allow-scripts allow-same-origin"');
+    expect(body).toContain('sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"');
   });
 });
 
@@ -379,7 +380,7 @@ describe("GET /p/:token — unknown artifact_kind", () => {
 });
 
 describe("GET /p/:token — signin mode", () => {
-  it("unsigned visitor → 302 to /auth/sign-in?return=/p/<token>", async () => {
+  it("unsigned visitor → 302 to /api/publish/access-redirect/<token>", async () => {
     const u = await seedUser();
     const token = await seedActivePublication({
       ownerUserId: u.id, artifactId: "art3", mode: "signin",
@@ -387,7 +388,7 @@ describe("GET /p/:token — signin mode", () => {
     const res = await call(getReq(`/p/${token}`));
     expect(res.status).toBe(302);
     const location = res.headers.get("location") ?? "";
-    expect(location).toBe(`https://oyster.to/auth/sign-in?return=/p/${token}`);
+    expect(location).toBe(`https://oyster.to/api/publish/access-redirect/${token}`);
   });
 
   it("signed-in visitor → content", async () => {
@@ -404,6 +405,25 @@ describe("GET /p/:token — signin mode", () => {
     expect(await res.text()).toContain("private");
   });
 
+  it("signed-in cookie-only visitor (no apex session) → content", async () => {
+    // Models the post-nonce-consumption follow-up GET: the viewer cookie
+    // was minted by the consume handler, but the apex session cookie was
+    // NEVER on share.oyster.to in the first place. Without the signin-mode
+    // cookie acceptance change, this would loop back to access-redirect.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art3cookie", body: "# private",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const viewerCookie = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+    const res = await call(getReq(`/p/${shareToken}`, {
+      cookie: `oyster_view_${shareToken}=${viewerCookie}`,  // no oyster_session
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("private");
+  });
 });
 
 describe("GET /p/:token — footer copy is mode-invariant", () => {
@@ -428,5 +448,215 @@ describe("GET /p/:token — footer copy is mode-invariant", () => {
     const res = await call(getReq(`/p/${shareToken}`, { cookie }));
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("Published with");
+  });
+});
+
+describe("nonce pre-check — consumeNonce flag", () => {
+  it("/p/<token>?key=<valid_nonce> sets viewer cookie, 302s to clean URL, no-referrer", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n1", body: "# nonce content",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    const res = await call(getReq(`/p/${shareToken}?key=${nonce}`));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`/p/${shareToken}`);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain(`oyster_view_${shareToken}=`);
+    expect(setCookie).toContain(`Path=/p/${shareToken}`);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+
+    // Follow-up GET with the cookie returns content. We pass NO oyster_session
+    // here on purpose — the cookie is the only proof on share.oyster.to.
+    const cookieValue = setCookie.match(/oyster_view_[^=]+=([^;]+)/)?.[1] ?? "";
+    const follow = await call(getReq(`/p/${shareToken}`, {
+      cookie: `oyster_view_${shareToken}=${cookieValue}`,
+    }));
+    expect(follow.status).toBe(200);
+    expect(await follow.text()).toContain("nonce content");
+
+    // The nonce is consumed.
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).not.toBeNull();
+  });
+
+  it("/p/<token>/raw?key=<valid_nonce> does NOT consume the nonce", async () => {
+    // Regression for the explicit consumeNonce: false on /raw. If a future
+    // change drops the flag, this test fails.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n_raw", body: "<h1>iframe</h1>",
+      artifactKind: "app", contentType: "text/html",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    await call(getReq(`/p/${shareToken}/raw?key=${nonce}`));
+
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
+
+    // The nonce remains usable on the proper /p endpoint.
+    expect(await consumeAccessNonce(env, nonce, shareToken)).toBe(true);
+  });
+
+  it("/p/<token>/raw?key=<valid_nonce> does NOT consume — password mode", async () => {
+    // Password mode is the higher-stakes case for the /raw non-consume
+    // invariant: it has an owner-bound password and the most surface area.
+    // A future regression that started consuming on /raw in password mode
+    // would burn the nonce before the outer /p page could use it.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n_raw_pw", body: "<h1>iframe</h1>",
+      artifactKind: "app", contentType: "text/html",
+    });
+    await env.DB.prepare(
+      "UPDATE published_artifacts SET mode = 'password', password_hash = 'pbkdf2$100000$AAAA$BBBB' WHERE share_token = ?",
+    ).bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    await call(getReq(`/p/${shareToken}/raw?key=${nonce}`));
+
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
+
+    expect(await consumeAccessNonce(env, nonce, shareToken)).toBe(true);
+  });
+
+  it("/p/<token>?key=<nonce_for_other_share> falls through silently AND leaves the nonce unconsumed", async () => {
+    const u = await seedUser();
+    const tokA = await seedActivePublication({ ownerUserId: u.id, artifactId: "art_A", mode: "signin" });
+    const tokB = await seedActivePublication({ ownerUserId: u.id, artifactId: "art_B", mode: "signin" });
+
+    const nonce = await mintAccessNonce(env, tokA, u.id);
+    const res = await call(getReq(`/p/${tokB}?key=${nonce}`));
+    // signin mode, no cookie/session → 302 to access-redirect (silent fall-through).
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `https://oyster.to/api/publish/access-redirect/${tokB}`,
+    );
+
+    // Nonce is still alive for its real share.
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
+  });
+
+  it("a replayed key falls through to the standard mode dispatch", async () => {
+    const u = await seedUser();
+    const token = await seedActivePublication({ ownerUserId: u.id, artifactId: "art_replay", mode: "signin" });
+    const nonce = await mintAccessNonce(env, token, u.id);
+
+    // First call consumes.
+    const first = await call(getReq(`/p/${token}?key=${nonce}`));
+    expect(first.status).toBe(302);
+    expect(first.headers.get("location")).toBe(`/p/${token}`);
+
+    // Second call with the same (now-consumed) key behaves identically to
+    // a no-key request: signin mode, no cookie → 302 to access-redirect.
+    const second = await call(getReq(`/p/${token}?key=${nonce}`));
+    expect(second.status).toBe(302);
+    expect(second.headers.get("location"))
+      .toBe(`https://oyster.to/api/publish/access-redirect/${token}`);
+  });
+
+  it("does NOT consume the nonce when the visitor already has a valid viewer cookie", async () => {
+    // Models a visitor who clicked the access-redirect link earlier (got
+    // the cookie), then re-lands on the ?key= URL via back-button /
+    // bookmark / cached page. The nonce must NOT be burned.
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_n_cookie", body: "# content",
+    });
+    await env.DB.prepare("UPDATE published_artifacts SET mode = 'signin' WHERE share_token = ?")
+      .bind(shareToken).run();
+
+    const nonce = await mintAccessNonce(env, shareToken, u.id);
+    const viewerCookie = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+
+    const res = await call(getReq(`/p/${shareToken}?key=${nonce}`, {
+      cookie: `oyster_view_${shareToken}=${viewerCookie}`,
+    }));
+    expect(res.status).toBe(200);  // standard mode dispatch admits via cookie
+
+    const row = await env.DB.prepare(
+      "SELECT consumed_at FROM viewer_access_nonces WHERE nonce = ?",
+    ).bind(nonce).first<{ consumed_at: number | null }>();
+    expect(row?.consumed_at).toBeNull();
+  });
+});
+
+describe("password gate — sign-in link", () => {
+  it('shows "Have access? Sign in to view" link pointing at access-redirect', async () => {
+    const u = await seedUser();
+    const token = await seedActivePublication({
+      ownerUserId: u.id, artifactId: "art_gate", mode: "password",
+    });
+    const res = await call(getReq(`/p/${token}`));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("Have access?");
+    expect(body).toContain(`https://oyster.to/api/publish/access-redirect/${token}`);
+  });
+
+  it("link is present on the wrong-password error state too", async () => {
+    const u = await seedUser();
+    // Use a stub PBKDF2 hash that verifyPbkdf2 will reject for any input
+    // (well-formed but not derivable). Submitting "wrong" produces the error block.
+    const token = await seedActivePublication({
+      ownerUserId: u.id, artifactId: "art_gate2", mode: "password",
+      passwordHash: "pbkdf2$100000$AAAA$BBBB",
+    });
+    const res = await call(postReq(`/p/${token}`, { password: "wrong" }));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("Incorrect password.");
+    expect(body).toContain("Have access?");
+  });
+});
+
+describe("rendered viewer responses — Referrer-Policy", () => {
+  it("open-mode markdown render carries referrer-policy: no-referrer", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_rp_open", body: "# hi",
+    });
+    const res = await call(getReq(`/p/${shareToken}`));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("password-mode (post-unlock) render carries referrer-policy: no-referrer", async () => {
+    const u = await seedUser();
+    const { shareToken } = await seedActiveOpenWithBody({
+      ownerUserId: u.id, artifactId: "art_rp_pw", body: "# secret",
+    });
+    await env.DB.prepare(
+      "UPDATE published_artifacts SET mode = 'password', password_hash = 'pbkdf2$100000$AAAA$BBBB' WHERE share_token = ?",
+    ).bind(shareToken).run();
+
+    // Hand-mint a valid viewer cookie so we exercise the rendered response path.
+    const cookieValue = await signViewerCookie(shareToken, env.VIEWER_COOKIE_SECRET);
+    const res = await call(getReq(`/p/${shareToken}`, {
+      cookie: `oyster_view_${shareToken}=${cookieValue}`,
+    }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
   });
 });

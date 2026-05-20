@@ -192,6 +192,10 @@
   // Hover is the transient "peek" — but stop swapping content once the user has pinned a panel,
   // otherwise the active highlight on one tile would mismatch the content showing for another.
   document.querySelectorAll('.hm-tile').forEach(tile => {
+    // Tiles marked .hm-tile-running are the demo entry point for the running
+    // terminal — handled in the running-terminals block further down. Skip the
+    // generic side-panel wiring so hovering doesn't pop the side panel.
+    if (tile.classList.contains('hm-tile-running')) return;
     tile.addEventListener('mouseenter', () => {
       if (mock.classList.contains('is-side-open')) return;
       renderSession(tile.dataset.session);
@@ -373,4 +377,261 @@
       }
     });
   });
+
+  // ----------------------------------------------------------------
+  // Running-terminals demo: pill, popover, simulated terminal panel.
+  // Inspired by the in-app RunningTerminalsPill + TerminalWindow.
+  // ----------------------------------------------------------------
+  const pill = document.getElementById('hm-rtp-pill');
+  const popover = document.getElementById('hm-rtp-popover');
+  const row = document.getElementById('hm-rtp-row');
+  const activity = document.getElementById('hm-rtp-activity');
+  const term = document.getElementById('hm-terminal');
+  const termBody = document.getElementById('hm-terminal-body');
+  const termClose = document.getElementById('hm-terminal-close');
+
+  if (!pill || !popover || !row || !term || !termBody || !termClose) return;
+
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Canned scrollback — short, believable Claude Code session. The last entry
+  // is the session-ended marker that ends the run; demo loops after a pause.
+  const SCRIPT = [
+    { delay: 0,    kind: 'user', text: 'refactor billing module to handle multi-currency' },
+    { delay: 700,  kind: 'tool', text: 'Read(src/checkout/cart.ts)' },
+    { delay: 1300, kind: 'tool', text: 'Read(src/checkout/payment.ts)' },
+    { delay: 2100, kind: 'tool', text: 'Edit(src/checkout/cart.ts)',     result: '24 lines changed' },
+    { delay: 3000, kind: 'tool', text: 'Edit(src/checkout/payment.ts)',  result: '18 lines changed' },
+    { delay: 3900, kind: 'tool', text: 'Bash(npm test)',                 result: '9 passed in 1.2s' },
+    { delay: 5000, kind: 'tool', text: 'Bash(gh pr create)',             result: 'opened PR #218' },
+    { delay: 6100, kind: 'text', text: 'Ready for review — handing back to you.' },
+    { delay: 7000, kind: 'exit', text: '[session ended (exit 0)]' },
+  ];
+  const LOOP_PAUSE_MS = 2400;
+  const ACTIVITY_TICK_MS = 1000;
+
+  let popoverPinned = false;
+  let terminalOpen = false;
+  let playTimers = [];
+  let loopTimer = null;
+  let activityTimer = null;
+  let activitySeconds = 4;
+  let closeGraceTimer = null;
+  const CLOSE_GRACE_MS = 220;   // forgive cursor crossings between hover zones
+
+  function esc(s) { return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+  function setActivity(text) { if (activity) activity.textContent = text; }
+
+  function startActivityTicker() {
+    stopActivityTicker();
+    activityTimer = setInterval(() => {
+      activitySeconds += 1;
+      setActivity('cooking ' + activitySeconds + 's');
+    }, ACTIVITY_TICK_MS);
+  }
+  function stopActivityTicker() {
+    if (activityTimer) { clearInterval(activityTimer); activityTimer = null; }
+  }
+
+  function pinPopover() {
+    popoverPinned = true;
+    popover.classList.add('is-pinned');
+    pill.setAttribute('aria-expanded', 'true');
+  }
+  function unpinPopover() {
+    popoverPinned = false;
+    popover.classList.remove('is-pinned');
+    pill.setAttribute('aria-expanded', 'false');
+  }
+
+  function clearPlayTimers() {
+    playTimers.forEach(t => clearTimeout(t));
+    playTimers = [];
+    if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
+  }
+
+  function renderBanner() {
+    const banner = document.createElement('div');
+    banner.className = 'hm-term-banner';
+    banner.innerHTML = '<span class="accent">✻ Welcome to Claude Code</span>  <span style="color: rgba(207,227,225,0.35)">/Users/you/acme-app</span>';
+    termBody.appendChild(banner);
+  }
+
+  function appendLine(step) {
+    const line = document.createElement('div');
+    line.className = 'hm-term-line ' + step.kind;
+    if (step.kind === 'user') {
+      line.innerHTML = '<span class="pfx-user">&gt;</span>' + esc(step.text);
+    } else if (step.kind === 'tool') {
+      const result = step.result ? '  <span class="pfx-dim">⎿</span><span style="color: rgba(207,227,225,0.55)">' + esc(step.result) + '</span>' : '';
+      line.innerHTML = '<span class="pfx-tool">⏺</span>' + esc(step.text) + result;
+    } else if (step.kind === 'text') {
+      line.innerHTML = '<span class="pfx-tool">⏺</span><span style="color: #cfe3e1">' + esc(step.text) + '</span>';
+    } else if (step.kind === 'exit') {
+      line.textContent = step.text;
+    }
+    termBody.appendChild(line);
+  }
+
+  function appendCursor() {
+    if (termBody.querySelector('.hm-term-cursor')) return;
+    const last = termBody.querySelector('.hm-term-line:last-child');
+    if (!last) return;
+    const c = document.createElement('span');
+    c.className = 'hm-term-cursor';
+    last.appendChild(c);
+  }
+  function removeCursor() {
+    const c = termBody.querySelector('.hm-term-cursor');
+    if (c) c.remove();
+  }
+
+  function playOnce() {
+    clearPlayTimers();
+    termBody.innerHTML = '';
+    renderBanner();
+
+    if (reducedMotion) {
+      SCRIPT.forEach(s => appendLine(s));
+      return;
+    }
+
+    SCRIPT.forEach((step, idx) => {
+      const t = setTimeout(() => {
+        removeCursor();
+        appendLine(step);
+        if (step.kind === 'exit') {
+          loopTimer = setTimeout(() => {
+            if (terminalOpen) playOnce();
+          }, LOOP_PAUSE_MS);
+        } else if (idx < SCRIPT.length - 1) {
+          appendCursor();
+        }
+      }, step.delay);
+      playTimers.push(t);
+    });
+  }
+
+  function openTerminal() {
+    if (terminalOpen) return;
+    terminalOpen = true;
+    activitySeconds = 1;
+    setActivity('cooking 1s');
+    term.setAttribute('aria-hidden', 'false');
+    // Use the existing helpers so aria-hidden / active state / focus are
+    // properly restored on whatever overlay was previously open.
+    if (mock.classList.contains('is-side-open')) closeSide();
+    if (mock.classList.contains('is-preview-open')) closePreview();
+    mock.classList.add('is-terminal-open');
+    unpinPopover();
+    playOnce();
+  }
+
+  function closeTerminal() {
+    if (!terminalOpen) return;
+    terminalOpen = false;
+    activitySeconds = 1;
+    setActivity('cooking 1s');
+    term.setAttribute('aria-hidden', 'true');
+    mock.classList.remove('is-terminal-open');
+    clearPlayTimers();
+  }
+
+  // --- Wire interactions ---
+  // CSS :hover and :focus-within reveal the popover on desktop. Tap on touch
+  // pins it open via .is-pinned.
+  pill.addEventListener('click', e => {
+    e.stopPropagation();
+    if (popoverPinned) unpinPopover(); else pinPopover();
+  });
+  pill.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && popoverPinned) { unpinPopover(); pill.blur(); }
+  });
+
+  // Sync aria-expanded with the popover's actual visibility — CSS reveals it
+  // on hover and focus, so aria-expanded must mirror those states too, not
+  // just the tap-pinned click path.
+  const wrap = pill.closest('.hm-rtp-wrap');
+  if (wrap) {
+    const setExpanded = (v) => pill.setAttribute('aria-expanded', v ? 'true' : 'false');
+    wrap.addEventListener('pointerenter', () => setExpanded(true));
+    wrap.addEventListener('pointerleave', () => { if (!popoverPinned) setExpanded(false); });
+    wrap.addEventListener('focusin', () => setExpanded(true));
+    wrap.addEventListener('focusout', () => {
+      // focusout fires before the new activeElement settles; defer one tick.
+      setTimeout(() => {
+        if (!wrap.contains(document.activeElement) && !popoverPinned) setExpanded(false);
+      }, 0);
+    });
+  }
+
+  // Hover-driven open/close across three zones — the popover row, the
+  // "running" top session tile, and the terminal panel itself. Cursor crossing
+  // between zones is forgiven by CLOSE_GRACE_MS so the panel doesn't flicker.
+  function cancelGraceClose() {
+    if (closeGraceTimer) { clearTimeout(closeGraceTimer); closeGraceTimer = null; }
+  }
+  function scheduleGraceClose() {
+    cancelGraceClose();
+    closeGraceTimer = setTimeout(() => {
+      closeGraceTimer = null;
+      closeTerminal();
+    }, CLOSE_GRACE_MS);
+  }
+
+  row.addEventListener('mouseenter', () => { cancelGraceClose(); if (!terminalOpen) openTerminal(); });
+  row.addEventListener('mouseleave', scheduleGraceClose);
+  row.addEventListener('click', e => {
+    e.stopPropagation();
+    cancelGraceClose();
+    if (!terminalOpen) openTerminal();
+  });
+  row.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cancelGraceClose(); openTerminal(); }
+  });
+
+  // Top session tile — same trigger as the popover row.
+  const runningTile = mock.querySelector('.hm-tile-running');
+  if (runningTile) {
+    runningTile.addEventListener('mouseenter', () => { cancelGraceClose(); if (!terminalOpen) openTerminal(); });
+    runningTile.addEventListener('mouseleave', scheduleGraceClose);
+    runningTile.addEventListener('click', e => {
+      e.stopPropagation();
+      cancelGraceClose();
+      if (!terminalOpen) openTerminal();
+    });
+    runningTile.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cancelGraceClose(); openTerminal(); }
+    });
+  }
+
+  // Hovering the terminal itself keeps it open.
+  term.addEventListener('mouseenter', cancelGraceClose);
+  term.addEventListener('mouseleave', scheduleGraceClose);
+
+  termClose.addEventListener('click', e => { e.stopPropagation(); cancelGraceClose(); closeTerminal(); });
+
+  // Click-outside unpins the popover. Only matters for touch tap-pin.
+  document.addEventListener('mousedown', e => {
+    if (!popoverPinned) return;
+    if (e.target.closest('.hm-rtp-wrap')) return;
+    unpinPopover();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && popoverPinned) unpinPopover();
+  });
+
+  // The terminal panel shares its bottom footprint with the side and preview
+  // panels — close the terminal when another overlay opens. The running tile
+  // is excluded since clicking it is *how* you open the terminal.
+  document.querySelectorAll('.hm-tile:not(.hm-tile-running), .hm-mem[data-memory], .hm-art-cell[data-artefact]').forEach(el => {
+    el.addEventListener('click', () => {
+      unpinPopover();
+      if (terminalOpen) closeTerminal();
+    });
+  });
+
+  // Kick the demo into life — the activity counter ticks even before any hover.
+  startActivityTicker();
 })();

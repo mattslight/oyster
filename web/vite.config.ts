@@ -43,6 +43,12 @@ export default defineConfig(({ mode }) => ({
         headers: { Accept: 'text/event-stream' },
       },
       '/api': target,
+      '/ws/terminal': {
+        // Backend uses `ws://localhost:<serverPort>/ws/terminal?id=…`.
+        // `ws: true` upgrades the HTTP proxy to a WebSocket proxy.
+        target: target.replace(/^http/, 'ws'),
+        ws: true,
+      },
       '/mcp': target,
       '/docs': target,
       '/artifacts': target,

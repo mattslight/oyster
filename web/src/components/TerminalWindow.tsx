@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { WindowChrome } from "./WindowChrome";
+import { ConfirmModal } from "./ConfirmModal";
 
 interface Props {
   defaultX: number;
@@ -11,9 +12,25 @@ interface Props {
   zIndex: number;
   onFocus?: () => void;
   onClose: () => void;
+  /** When set, connect to /ws/terminal?id=<terminalId> (Claude PTY).
+   *  When absent, connect to the legacy root path (OpenCode singleton). */
+  terminalId?: string;
+  /** Title shown in the window chrome. Defaults to "opencode" for legacy
+   *  shells. */
+  title?: string;
+  /** When non-null, render the title as a button that opens the inspector
+   *  for this session. */
+  linkedSessionId?: string;
+  /** Optional callback fired when the user clicks a linked title. */
+  onOpenSession?: (sessionId: string) => void;
+  /** True when the underlying PTY is alive on the server. Controls whether
+   *  the close button means "minimise" (alive — glyph −) or "close" (dead,
+   *  PTY was stopped or exited — glyph ×). Defaults to true. */
+  ptyAlive?: boolean;
+  /** Optional handler to kill the PTY. When provided AND `ptyAlive`, a Stop
+   *  (■) button is rendered in the header. Mirrors the popover Stop. */
+  onStop?: () => void | Promise<void>;
 }
-
-const WS_URL = `ws://${window.location.host}`;
 
 export function TerminalWindow({
   defaultX,
@@ -21,11 +38,44 @@ export function TerminalWindow({
   zIndex,
   onFocus,
   onClose,
+  terminalId,
+  title,
+  linkedSessionId,
+  onOpenSession,
+  ptyAlive = true,
+  onStop,
 }: Props) {
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
+  const [dontAskAgain, setDontAskAgain] = useState(false);
+
+  // Stop button click — same fork in behaviour as the popover's Stop
+  // button (shared localStorage flag, so the user only needs to ack once
+  // across both surfaces).
+  function requestStop() {
+    if (!onStop) return;
+    if (localStorage.getItem("oyster-skip-stop-confirm") === "1") {
+      void onStop();
+    } else {
+      setDontAskAgain(false);
+      setStopConfirmOpen(true);
+    }
+  }
   const termRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+
+  const wsUrl = useMemo(() => {
+    const proto = window.location.protocol === "https:" ? "wss" : "ws";
+    const host = window.location.host;
+    if (terminalId) {
+      return `${proto}://${host}/ws/terminal?id=${encodeURIComponent(terminalId)}`;
+    }
+    // Legacy singleton — root path.
+    return `${proto}://${host}`;
+  }, [terminalId]);
+
+  const isClaudeTerm = !!terminalId;
 
   useEffect(() => {
     if (!termRef.current) return;
@@ -67,16 +117,21 @@ export function TerminalWindow({
     terminal.open(termRef.current);
     fitAddon.fit();
 
-    // Connect to WebSocket PTY server
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      // Send initial size
-      const dims = fitAddon.proposeDimensions();
-      if (dims) {
-        ws.send(`\x01resize:${dims.cols},${dims.rows}`);
+    const sendResize = (cols: number, rows: number): void => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (isClaudeTerm) {
+        ws.send(JSON.stringify({ type: "resize", cols, rows }));
+      } else {
+        ws.send(`\x01resize:${cols},${rows}`);
       }
+    };
+
+    ws.onopen = () => {
+      const dims = fitAddon.proposeDimensions();
+      if (dims) sendResize(dims.cols, dims.rows);
     };
 
     ws.onmessage = (event) => {
@@ -93,20 +148,16 @@ export function TerminalWindow({
       );
     };
 
-    // Terminal input → WebSocket
     terminal.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data);
       }
     });
 
-    // Handle resize
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
       const dims = fitAddon.proposeDimensions();
-      if (dims && ws.readyState === WebSocket.OPEN) {
-        ws.send(`\x01resize:${dims.cols},${dims.rows}`);
-      }
+      if (dims) sendResize(dims.cols, dims.rows);
     });
     resizeObserver.observe(termRef.current);
 
@@ -115,23 +166,76 @@ export function TerminalWindow({
       ws.close();
       terminal.dispose();
     };
-  }, []);
+  }, [wsUrl, isClaudeTerm]);
+
+  const titleNode: React.ReactNode = linkedSessionId && onOpenSession ? (
+    <button
+      type="button"
+      onClick={() => onOpenSession(linkedSessionId)}
+      style={{
+        background: "none",
+        border: "none",
+        color: "inherit",
+        font: "inherit",
+        cursor: "pointer",
+        textDecoration: "underline",
+        padding: 0,
+      }}
+      title="Open in Session Inspector"
+    >
+      {title ?? "claude"}
+    </button>
+  ) : (title ?? "opencode");
 
   return (
-    <WindowChrome
-      title="opencode"
-      onFocus={onFocus}
-      onClose={onClose}
-      defaultX={defaultX}
-      defaultY={defaultY}
-      defaultW={720}
-      defaultH={480}
-      zIndex={zIndex}
-    >
-      <div
-        ref={termRef}
-        style={{ width: "100%", height: "100%", padding: "4px" }}
+    <>
+      <WindowChrome
+        title={titleNode}
+        onFocus={onFocus}
+        onClose={onClose}
+        defaultX={defaultX}
+        defaultY={defaultY}
+        defaultW={720}
+        defaultH={480}
+        zIndex={zIndex}
+        closeButtonTooltip={ptyAlive ? "Minimise terminal" : "Close window"}
+        closeButtonGlyph={ptyAlive ? "−" : "×"}
+        extraHeader={ptyAlive && onStop ? (
+          <button
+            type="button"
+            className="window-btn window-btn--stop"
+            onClick={requestStop}
+            title="Stop terminal"
+          >■</button>
+        ) : undefined}
+      >
+        <div
+          ref={termRef}
+          style={{ width: "100%", height: "100%", padding: "4px" }}
+        />
+      </WindowChrome>
+      <ConfirmModal
+        open={stopConfirmOpen}
+        title="Stop this terminal?"
+        body={
+          <>
+            <p>Ending the session kills the Claude process and discards any in-progress work. The conversation history stays in the Sessions list.</p>
+            <label className="rtp-confirm-checkbox">
+              <input type="checkbox" checked={dontAskAgain} onChange={(e) => setDontAskAgain(e.target.checked)} />
+              Don't ask me again
+            </label>
+          </>
+        }
+        confirmLabel="Stop terminal"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setStopConfirmOpen(false)}
+        onConfirm={() => {
+          if (dontAskAgain) localStorage.setItem("oyster-skip-stop-confirm", "1");
+          setStopConfirmOpen(false);
+          void onStop?.();
+        }}
       />
-    </WindowChrome>
+    </>
   );
 }

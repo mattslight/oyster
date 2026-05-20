@@ -8,16 +8,23 @@ import {
   AGENT_PIP_CLASS, activeWriterChipFor, formatRelative,
   originDeviceChipFor, spaceLabelFor,
 } from "./utils";
+import type { PresenceInfo } from "../../hooks/useTerminalPresence";
 
 interface SessionRowProps {
   session: Session;
   spaces: Space[];
   /** Local device id; drives the cross-device chip. See SessionTile. */
   myDeviceId: string | null;
+  /** Presence info from useTerminalPresence; undefined when no live terminal. */
+  livePresence?: PresenceInfo;
   onOpen?: (id: string) => void;
+  /** Focus an already-open terminal window for this session. */
+  onTerminalFocus?: (terminalId: string) => void;
+  /** Restore a minimised terminal window for this session. */
+  onTerminalRestore?: (sessionId: string, terminalId: string) => void;
 }
 
-export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowProps) {
+export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalFocus, onTerminalRestore }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = session.state === "waiting" ? `waiting ${rel}`
@@ -32,6 +39,12 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
   const remoteChip = originDeviceChipFor(session, myDeviceId);
   const activeChip = activeWriterChipFor(session, myDeviceId);
   const isManual = session.assignmentMode === "manual";
+  const rowExtraClass = livePresence
+    ? (livePresence.state === "attached" ? " sr--attached" : " sr--running")
+    : "";
+  const statusDotClass = livePresence
+    ? (livePresence.state === "attached" ? "rd--attached" : "rd--running")
+    : session.state;
 
   const [menuOpen, setMenuOpen] = useState(false);
   // Cache keyed by the spaceId we loaded for, so an empty result (or a
@@ -100,35 +113,61 @@ export function SessionRow({ session, spaces, myDeviceId, onOpen }: SessionRowPr
     }
   }
 
+  // Row click priority: if this row has a live terminal, focus it (Open) or
+  // restore it (Minimised) — bringing the panel to the user is the most
+  // likely intent. Falls through to onOpen (Session Inspector) otherwise.
+  // The Inspect chip below gives a deliberate path to the inspector when the
+  // row is live.
+  const handleRowActivate = () => {
+    if (livePresence?.state === "attached" && onTerminalFocus) {
+      onTerminalFocus(livePresence.terminalId);
+    } else if (livePresence?.state === "running" && onTerminalRestore) {
+      onTerminalRestore(session.id, livePresence.terminalId);
+    } else if (onOpen) {
+      onOpen(session.id);
+    }
+  };
   return (
     <div
-      className="home-row"
-      onClick={() => onOpen?.(session.id)}
-      onKeyDown={onOpen ? (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(session.id); }
+      className={`home-row${rowExtraClass}`}
+      onClick={handleRowActivate}
+      onKeyDown={onOpen || livePresence ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowActivate(); }
       } : undefined}
-      role={onOpen ? "button" : undefined}
-      tabIndex={onOpen ? 0 : undefined}
+      role={onOpen || livePresence ? "button" : undefined}
+      tabIndex={onOpen || livePresence ? 0 : undefined}
     >
-      <span className={`home-row-status ${session.state}`} />
+      <span className={`home-row-status ${statusDotClass}`} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
-      <span className="home-row-title" title={title}>
-        {remoteChip && (
-          <span className="home-remote-chip" title={remoteChip.titleTooltip}>
-            <span aria-hidden="true">↗</span> {remoteChip.label}
-          </span>
+      <span className="home-row-title">
+        <span className="home-row-title-inner" title={title}>
+          {remoteChip && (
+            <span className="home-remote-chip" title={remoteChip.titleTooltip}>
+              <span aria-hidden="true">↗</span> {remoteChip.label}
+            </span>
+          )}
+          {activeChip && (
+            <span className="home-active-chip" title={activeChip.titleTooltip}>
+              {activeChip.label}
+            </span>
+          )}
+          {isManual && (
+            <span className="home-manual-chip" title="Pinned manually — Oyster's heuristic won't reassign this.">
+              pinned
+            </span>
+          )}
+          {title}
+        </span>
+        {livePresence && onOpen && (
+          <button
+            type="button"
+            className="sl-chip--inspect"
+            onClick={(e) => { e.stopPropagation(); onOpen(session.id); }}
+            title="Open the Session Inspector for this conversation"
+          >
+            Inspect
+          </button>
         )}
-        {activeChip && (
-          <span className="home-active-chip" title={activeChip.titleTooltip}>
-            {activeChip.label}
-          </span>
-        )}
-        {isManual && (
-          <span className="home-manual-chip" title="Pinned manually — Oyster's heuristic won't reassign this.">
-            pinned
-          </span>
-        )}
-        {title}
       </span>
       <span className={`home-row-agent ${AGENT_PIP_CLASS[session.agent]}`}>
         <span className="home-agent-pip" />

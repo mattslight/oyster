@@ -7,9 +7,11 @@
 <script>
   // The arcade cabinet (arcade.oyster.to) appends `?embedded=1` when
   // launching this page so it can suppress the SYSTEM BOOT intro — the
-  // arcade already runs its own splash. Flagged on <html> early so the
-  // boot CSS below renders in the embedded state without a flash.
-  // Direct visits (the easter egg) skip this and show the full boot.
+  // arcade already runs its own splash. Any presence of the `embedded`
+  // param flips this on (value isn't inspected). Flagged on <html>
+  // early so the boot CSS below renders in the embedded state without
+  // a flash. Direct visits (the easter egg) skip this and show the
+  // full boot.
   if (new URLSearchParams(location.search).has('embedded')) {
     document.documentElement.classList.add('is-arcade-embedded');
   }
@@ -151,6 +153,11 @@
   @media (pointer: coarse) {
     .key-only { display: none; }
     .touch-only { display: revert; }
+    /* Touch devices — drop the cabinet bezel + rounded tube edges so
+       the splash + playfield go edge-to-edge. Phones and tablets
+       don't have screen real estate to spare for chrome. */
+    .screen { padding: 0; background: #000; }
+    .tube   { border-radius: 0; box-shadow: none; }
   }
 
   /* CRT scanlines + RGB sub-pixel overlay */
@@ -425,9 +432,12 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .splash { animation: none; }
-    .splash .boot, .splash .splash-main { animation: boot-show 0.3s forwards; }
+    .splash .boot         { animation: boot-show 0.3s forwards; }
+    /* splash-reveal flips visibility — without it, .splash-main starts
+       hidden and never becomes visible for reduced-motion users. */
+    .splash .splash-main  { animation: boot-show 0.3s forwards, splash-reveal 0.3s forwards; }
     .splash .boot.is-running .boot-bar-fill { animation: boot-fill 0.6s linear forwards; }
-    .splash .start { animation: none; opacity: 1; }
+    .splash .start        { animation: none; opacity: 1; }
   }
 
   .splash .hiscore-row {
@@ -1517,10 +1527,13 @@ const SFX_FILES = {
 // That call lands here before this line would have executed under `let`,
 // which would throw a TDZ ReferenceError, halt the script, and prevent
 // the splash IIFE further down from registering its click handlers.
+// `sfxMuted` has no initializer for the same reason: the IIFE has
+// already written the persisted value, and re-initializing here to
+// `false` would clobber it.
 var audioCtx = null;
 var sfxMasterGain = null;
 var sfxBuffers = {};
-var sfxMuted = false;
+var sfxMuted;
 
 // Called from the first user gesture (see Splash IIFE). Idempotent —
 // creates the context, kicks off all decodes in parallel, and resumes
@@ -1881,13 +1894,17 @@ const Splash = (function () {
     if (typeof ensurePlayToken === 'function') ensurePlayToken();
   }
 
-  // First-load: boot ends → title music starts AND title/leaderboard begin cycling
+  // First-load: boot ends → title music starts AND title/leaderboard
+  // begin cycling. When embedded inside the arcade cabinet the boot is
+  // hidden via CSS, so wait 0ms — otherwise taps/keys on the visible
+  // title card would be ignored for ~2.75s while phase stays 'booting'.
+  const embedded = document.documentElement.classList.contains('is-arcade-embedded');
   setTimeout(() => {
     if (phase !== 'booting') return;
     phase = 'title';
     startTitleMusic();
     startCycle(0);
-  }, BOOT_MS);
+  }, embedded ? 0 : BOOT_MS);
 
   // Global dismiss listener
   window.addEventListener('keydown', (e) => {

@@ -11,10 +11,11 @@ import { PromptModal } from "../PromptModal";
 export function ProjectTile({
   project, artefactCount, sessionCounts, selected, onSelect, onChanged,
   isLastProject, spaceTotalSessions, onSpaceDelete, otherProjects,
+  onLaunchClaude,
 }: {
   project: Project;
   artefactCount: number;
-  sessionCounts?: { active: number; waiting: number; disconnected: number };
+  sessionCounts?: { running: number; active: number; waiting: number; disconnected: number };
   selected: boolean;
   onSelect: () => void;
   onChanged: () => void;
@@ -24,6 +25,9 @@ export function ProjectTile({
   onSpaceDelete?: (spaceId: string) => Promise<void> | void;
   /** Other projects in the same space — populates the "Merge into…" picker. */
   otherProjects: Project[];
+  /** Spawn a Claude PTY in this project's folder. Disabled when the
+   *  project has no live path. */
+  onLaunchClaude?: (projectId: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -115,9 +119,9 @@ export function ProjectTile({
             <span style={{ minWidth: 0, wordBreak: "break-word" }}>{project.name}</span>
           </div>
           <div className="home-space-card-counts">
+            {sessionCounts && sessionCounts.running > 0 && <span className="signal"><span className="pip pip-teal" />{sessionCounts.running} running</span>}
             {sessionCounts && sessionCounts.active > 0 && <span className="signal"><span className="pip pip-green" />{sessionCounts.active} active</span>}
             {sessionCounts && sessionCounts.waiting > 0 && <span className="signal"><span className="pip pip-amber" />{sessionCounts.waiting} waiting</span>}
-            {sessionCounts && sessionCounts.disconnected > 0 && <span className="signal"><span className="pip pip-red" />{sessionCounts.disconnected} disconnected</span>}
             <span className="signal"><span className="pip pip-dim" />{artefactCount} {artefactCount === 1 ? "artefact" : "artefacts"}</span>
             {project.hasLivePath === false && (
               <span
@@ -142,6 +146,20 @@ export function ProjectTile({
         </button>
         {menuOpen && !mergePickerOpen && (
           <div className="home-project-tile-menu" role="menu">
+            {onLaunchClaude && (
+              <button
+                type="button"
+                className="home-project-tile-menu-item"
+                disabled={project.hasLivePath === false}
+                title={project.hasLivePath === false ? "This project has no folder on this machine." : `Run claude in ${project.recentPath ?? project.name}`}
+                onClick={() => {
+                  onLaunchClaude(project.id);
+                  setMenuOpen(false);
+                }}
+              >
+                Launch Claude here
+              </button>
+            )}
             <button
               type="button"
               className="home-project-tile-menu-item"

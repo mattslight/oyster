@@ -44,6 +44,11 @@ export function cacheHeaders(row: PublicationRow, contentType: string): HeadersI
   }
   // Block content-type sniffing across all responses.
   headers["x-content-type-options"] = "nosniff";
+  // Defence in depth: don't surface URL info on subresource fetches or
+  // onward navigation from the rendered page. Consistent with the
+  // nonce-consumption 302; matters most if a future change introduces
+  // any URL-shaped sensitive parameter on the viewer URL.
+  headers["referrer-policy"] = "no-referrer";
   return headers;
 }
 
@@ -110,9 +115,12 @@ export function renderChromeWithIframe(row: PublicationRow): Response {
   // served from share.oyster.to, separate from the main app's cookies and
   // storage. allow-same-origin is now safe — apps can use real localStorage
   // / sessionStorage / IndexedDB, scoped to share.oyster.to. Sandbox stays
-  // as defense-in-depth (no plugins, no top-nav, no popups).
+  // as defense-in-depth (no plugins, no top-nav). allow-popups +
+  // allow-popups-to-escape-sandbox match the CodePen/JSFiddle/StackBlitz
+  // baseline so artifacts can link to external resources; popups open as
+  // fresh browsing contexts and do not inherit oyster privileges.
   const iframe = `
-<iframe sandbox="allow-scripts allow-same-origin" src="/p/${escapeAttr(row.share_token)}/raw"
+<iframe sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" src="/p/${escapeAttr(row.share_token)}/raw"
         style="border:0;width:100%;flex:1;display:block;"></iframe>`;
   // Iframe view: main fills remaining flex space and stretches the iframe to it.
   // Avoids vh-math that would drift when header height changes at responsive breakpoints.

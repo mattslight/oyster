@@ -11,6 +11,7 @@ import type {
   SessionStore,
 } from "../session-store.js";
 import { encodeCwd } from "../session-sync-service.js";
+import { isClaudeProtocolArtifact } from "../utils/claude-protocol-artifacts.js";
 import { activeClaudeCwdCounts } from "./claude-process-probe.js";
 
 // claude-code session log watcher (Sprint 2 of the 0.5.0 sessions arc).
@@ -193,6 +194,118 @@ export class ClaudeCodeWatcher {
     this.fileLocks.clear();
   }
 
+  /** Resolve once a new `.jsonl` lands under `<root>/<encodedCwd>/`. Used by
+   *  the terminal-launch flow to auto-link a freshly spawned claude PTY to
+   *  the session row the watcher will produce.
+   *
+   *  Belt-and-braces:
+   *   1. Sync directory scan — covers the race where claude writes its
+   *      first line before any chokidar `add` event fires. Exactly one
+   *      qualifying file → resolve with its uuid. More than one → resolve
+   *      `null` (ambiguous; wrong link is worse than no link).
+   *   2. Subscribe to the watcher's existing chokidar `add` events for
+   *      `timeoutMs`. First match resolves; a second arrival before
+   *      resolution rejects to `null`.
+   *   3. Timeout → resolve `null`.
+   *
+   *  Never throws — auto-link is strictly best-effort. */
+  async onceNewJsonl(
+    encodedCwd: string,
+    sinceMs: number,
+    timeoutMs = 5_000,
+  ): Promise<{ sessionId: string } | null> {
+    const targetDir = join(this.root, encodedCwd);
+
+    // Step 1 — sync scan with a 1s back-window to absorb mtime resolution
+    // and the gap between sinceMs capture and the JSONL write.
+    try {
+      const entries = await fs.readdir(targetDir);
+      const matched: string[] = [];
+      for (const name of entries) {
+        if (!name.endsWith(".jsonl")) continue;
+        try {
+          const st = await fs.stat(join(targetDir, name));
+          if (st.mtimeMs >= sinceMs - 1000) matched.push(name);
+        } catch { /* file vanished between readdir and stat */ }
+      }
+      if (matched.length === 1) {
+        return { sessionId: filenameToSessionId(matched[0]!) };
+      }
+      if (matched.length > 1) return null; // ambiguous
+    } catch {
+      // Directory doesn't exist yet — claude will create it. Fall through
+      // to the watcher subscription path.
+    }
+
+    // Step 2 — subscribe to the chokidar `add` event for the remainder of
+    // `timeoutMs`. If chokidar hasn't started yet (rare: server still
+    // booting), the subscriber resolves only via timeout.
+    if (!this.watcher) {
+      return new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs));
+    }
+
+    return new Promise<{ sessionId: string } | null>((resolve) => {
+      const watcher = this.watcher!;
+      let resolved = false;
+      let outerTimer: NodeJS.Timeout | null = null;
+      // The 100ms grace timer that waits for a second `add` before resolving
+      // with the first match. Tracked separately so cleanup() can cancel it —
+      // without that, a 5s outer timeout firing mid-grace would call
+      // resolve(null) and then the 100ms timer would later try to
+      // resolve({sessionId}) on the already-settled promise (silently
+      // dropped), losing a perfectly good link.
+      let graceTimer: NodeJS.Timeout | null = null;
+
+      const cleanup = (): void => {
+        if (outerTimer) clearTimeout(outerTimer);
+        if (graceTimer) clearTimeout(graceTimer);
+        watcher.off("add", onAdd);
+      };
+
+      const onAdd = (path: string): void => {
+        if (resolved) return;
+        if (!path.endsWith(".jsonl")) return;
+        if (basename(dirname(path)) !== encodedCwd) return;
+        // mtime check — only count files actually fresh relative to spawn.
+        fs.stat(path).then(
+          (st) => {
+            if (resolved) return;
+            if (st.mtimeMs < sinceMs - 1000) return;
+            // Ambiguity: if another candidate already appeared, reject.
+            if (resolveState.firstSessionId) {
+              resolved = true;
+              cleanup();
+              resolve(null);
+              return;
+            }
+            resolveState.firstSessionId = filenameToSessionId(path);
+            // Slight delay to detect simultaneous additions racing each other.
+            // 100ms is short enough to be invisible to users yet long enough
+            // to catch two claudes spawned in the same beat.
+            graceTimer = setTimeout(() => {
+              if (resolved) return;
+              resolved = true;
+              cleanup();
+              resolve({ sessionId: resolveState.firstSessionId! });
+            }, 100);
+          },
+          () => { /* stat failed; ignore */ },
+        );
+      };
+
+      const resolveState: { firstSessionId: string | null } = { firstSessionId: null };
+
+      watcher.on("add", onAdd);
+
+      outerTimer = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve(null);
+      }, timeoutMs);
+    });
+  }
+
   // ── Boot reconciliation ─────────────────────────────────────────────────
   // Walk every .jsonl already on disk, upsert a session row for it, and seed
   // the offset tracker with the current file size so we don't replay history
@@ -344,12 +457,15 @@ export class ClaudeCodeWatcher {
 
       const rendered = renderEvent(ev);
       if (rendered) {
+        const text = rendered.text.slice(0, TEXT_PREVIEW_MAX);
         events.push({
           session_id: sessionId,
           role: rendered.role,
-          text: rendered.text.slice(0, TEXT_PREVIEW_MAX),
+          text,
           ts: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
           raw: line,
+          is_protocol_artifact:
+            rendered.role === "user" && isClaudeProtocolArtifact(text) ? 1 : 0,
         });
       }
 
@@ -674,12 +790,15 @@ export class ClaudeCodeWatcher {
 
       const rendered = renderEvent(ev);
       if (rendered && tracker.sessionId) {
+        const text = rendered.text.slice(0, TEXT_PREVIEW_MAX);
         events.push({
           session_id: tracker.sessionId,
           role: rendered.role,
-          text: rendered.text.slice(0, TEXT_PREVIEW_MAX),
+          text,
           ts: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
           raw: line,
+          is_protocol_artifact:
+            rendered.role === "user" && isClaudeProtocolArtifact(text) ? 1 : 0,
         });
         if (typeof ev.timestamp === "string") latestTimestamp = ev.timestamp;
       }
@@ -808,22 +927,14 @@ export function deriveState(ageMs: number, signal: ProbeSignal): SessionState {
 
 // Pull a usable title out of a `type:"user"` event's content, or return null.
 // claude-code wraps slash-command machinery (/compact, /clear, etc.) in
-// pseudo-user messages prefixed with <local-command-caveat>, <command-name>,
-// or <command-message>. Those are noise — keep scanning until we find a
-// real prompt the user actually typed.
+// pseudo-user messages — skip those and keep scanning for a real prompt.
 export function userMessageTitleCandidate(ev: Record<string, any>): string | null {
   if (ev?.type !== "user") return null;
   const content = ev.message?.content;
   if (typeof content !== "string") return null;
   const trimmed = content.trim();
   if (!trimmed) return null;
-  // Slash-command machinery shows up under several tag prefixes — current
-  // ones are <local-command-caveat>, <local-command-stdout>, and the older
-  // <command-name>/<command-message>. Catch the family with a single check
-  // so future variants don't slip through.
-  if (trimmed.startsWith("<local-command-") || trimmed.startsWith("<command-")) {
-    return null;
-  }
+  if (isClaudeProtocolArtifact(trimmed)) return null;
   return trimmed;
 }
 

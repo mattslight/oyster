@@ -12,14 +12,8 @@ export function Banner({ session }: { session: Session }) {
       </div>
     );
   }
-  if (session.state === "waiting") {
-    return (
-      <div className="inspector-banner waiting">
-        <div>
-          The agent is waiting on you — usually for tool approval. Open the terminal where it's running to respond.
-        </div>
-      </div>
-    );
-  }
+  // "Waiting" banner removed — the Resume actions cover the recovery
+  // path, and the Resume button shows a fork warning when the session is
+  // active/waiting outside Oyster.
   return null;
 }

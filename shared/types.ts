@@ -133,6 +133,10 @@ export interface Session {
    *  it. Returned by GET /api/sessions/:id and PATCH; absent on older
    *  rows from before this column existed, which the UI treats as 'auto'. */
   assignmentMode?: "auto" | "manual";
+  /** Linked PTY terminal id, or null when no live terminal. */
+  terminalId: string | null;
+  /** Count of currently-attached WS clients on the linked terminal. */
+  terminalAttachedClients: number;
 }
 
 /** POST /api/sessions/:id/resume response shapes. */
@@ -198,6 +202,14 @@ export interface Space {
   summaryContent: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Payload for the `terminal:attached` / `terminal:detached` / `terminal:exited`
+ *  UiCommand variants. SessionId is null when the PTY was not yet linked. */
+export interface TerminalPresenceEventPayload {
+  terminalId: string;
+  sessionId: string | null;
+  attachedClients: number;
 }
 
 /** SSE message broadcast on /api/ui/events. The web app subscribes via

@@ -109,15 +109,20 @@ export async function fetchSessionMemory(id: string, signal?: AbortSignal): Prom
 }
 
 /** A transcript-search hit returned by GET /api/sessions/search.
- *  Slim by design — snippet already covers what the UI renders, and
- *  click-through loads the full event from the inspector. */
+ *  Grouped by session — one row per matching session, with the
+ *  best-ranked event as the representative snippet. `event_id` deep-
+ *  links to that event in the inspector. */
 export interface TranscriptHit {
   event_id: number;
   session_id: string;
   session_title: string | null;
+  space_id: string | null;
+  /** Session's last_event_at — used for the date column in the UI. */
+  last_event_at: string | null;
   role: string;
-  ts: string;
   snippet: string;
+  /** Total matches in this session (≥1). Surfaces "+N more" affordance. */
+  match_count: number;
 }
 
 export async function searchTranscripts(

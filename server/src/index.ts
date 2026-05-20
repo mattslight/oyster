@@ -25,7 +25,7 @@ import { SqliteSpaceStore } from "./space-store.js";
 import { SpaceService } from "./space-service.js";
 import { SessionService } from "./session-service.js";
 import { slugify } from "./utils.js";
-import { makeRouteCtx } from "./http-utils.js";
+import { makeRouteCtx, isLocalUpgradeOrigin } from "./http-utils.js";
 import { tryHandleSessionRoute } from "./routes/sessions.js";
 import { tryHandleArtifactRoute } from "./routes/artifacts.js";
 import { tryHandleSpaceRoute } from "./routes/spaces.js";
@@ -66,7 +66,9 @@ import {
 } from "./opencode-manager.js";
 import { attachChatEventClient } from "./opencode-events.js";
 import { sweepOrphanOpenCodeProcesses } from "./opencode-orphan-sweep.js";
-import { attachWebSocket } from "./pty-manager.js";
+import { attachWebSocket, handleLegacyUpgrade } from "./pty-manager.js";
+import { ClaudePtyManager } from "./claude-pty-manager.js";
+import { tryHandleTerminalRoute } from "./routes/terminals.js";
 import { SqliteFtsMemoryProvider } from "./memory-store.js";
 import { AuthService } from "./auth-service.js";
 import { bootMark, bootTime, bootTimeAsync } from "./boot-timer.js";
@@ -556,6 +558,12 @@ sessionSnapshotHandle.unref();
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const projectService = new ProjectService(db);
 const sessionService = new SessionService(db, sessionStore);
+const claudePtyManager = new ClaudePtyManager({ sessionStore, broadcastUiEvent });
+// Forward-declared so the terminal route can hold a stable reference even
+// though the watcher is constructed inside `httpServer.listen`. The route
+// is only ever called after the server is listening (and therefore after
+// this is assigned).
+let claudeCodeWatcherRef: import("./watchers/claude-code.js").ClaudeCodeWatcher | null = null;
 const publishService = createPublishService({
   db,
   readArtifactBytes: async (artifactId) => {
@@ -708,6 +716,7 @@ startAutoApprover(getOpenCodePort, (file) => handleFileEdited(file, ARTIFACTS_DI
 // lock left behind is more annoying than the failure that triggered the exit.
 function shutdown(code: number): never {
   markShuttingDown();
+  try { claudePtyManager.disposeAll(); } catch { /* best effort */ }
   try { killOpenCode(); } catch { /* best effort */ }
   try { db.close(); } catch { /* best effort */ }
   try { memoryProvider.close(); } catch { /* best effort */ }
@@ -773,6 +782,18 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
     db, sessionStore, spaceStore, artifactService, memoryProvider, sessionSync,
     currentUserId: () => authService.getState().user?.id ?? null,
     sessionService, broadcastUiEvent,
+  })) return;
+
+  // /api/terminals/* — spawn / list / kill Claude Code PTYs. Source-typed
+  // launch contract: no raw cwd accepted from the client. The watcher may
+  // still be initialising during the boot window (between listen() and the
+  // listen-callback running); the route handler surfaces that as 503 rather
+  // than letting the request fall through to the 404 catchall.
+  if (await tryHandleTerminalRoute(req, res, url, ctx, {
+    db, sessionStore, projectService, claudeCodeWatcher: claudeCodeWatcherRef,
+    claudePtyManager, packageRoot: PACKAGE_ROOT, cleanEnv,
+    currentUserId: () => authService.getState().user?.id ?? null,
+    broadcastUiEvent,
   })) return;
 
   // /api/artifacts/*, /api/groups/*, /api/plugins/:id/uninstall.
@@ -1051,7 +1072,32 @@ writeFileSync(join(USERLAND_DIR, "opencode.json"), JSON.stringify(sourceOpencode
 bootMark("opencode config written, about to listen");
 
 const httpServer = createServer(handleHttpRequest);
-attachWebSocket(httpServer, { shell: SHELL, shellArgs: SHELL_ARGS, cwd: WORKSPACE, env: cleanEnv });
+// Legacy OpenCode terminal — still attached via the singleton in
+// pty-manager.ts, just routed by pathname now (root path "/"). See the
+// upgrade dispatcher below.
+attachWebSocket({ shell: SHELL, shellArgs: SHELL_ARGS, cwd: WORKSPACE, env: cleanEnv });
+
+// Explicit WS upgrade routing. Unknown paths get socket.destroy() so we
+// don't silently accept any URL the way `WebSocketServer({server})` did.
+// Origin gate: same loopback + Origin policy as `rejectIfNonLocalOrigin`
+// on the REST side — browsers can open cross-origin WebSockets to
+// localhost, so without this a same-machine page from a different
+// port could read/write any active Claude PTY (or the legacy shell).
+httpServer.on("upgrade", (req, socket, head) => {
+  if (!isLocalUpgradeOrigin(req)) { socket.destroy(); return; }
+  const u = new URL(req.url ?? "/", "http://localhost");
+  if (u.pathname === "/ws/terminal") {
+    const id = u.searchParams.get("id");
+    if (!id) { socket.destroy(); return; }
+    claudePtyManager.handleUpgrade(req, socket, head, id);
+    return;
+  }
+  if (u.pathname === "/") {
+    handleLegacyUpgrade(req, socket, head);
+    return;
+  }
+  socket.destroy();
+});
 
 // Wipe any stale .dev-port from a prior crash before we listen, so wait-on
 // can never succeed against a dead server's port. (See declaration above.)
@@ -1152,6 +1198,9 @@ httpServer.listen(port, "127.0.0.1", () => {
   claudeCodeWatcher.start().catch((err) => {
     console.warn(`[claude-code-watcher] start failed: ${err instanceof Error ? err.message : err}`);
   });
+  // Publish for the /api/terminals route. Auto-link consults this watcher
+  // to resolve the new JSONL produced by a freshly spawned `claude`.
+  claudeCodeWatcherRef = claudeCodeWatcher;
 
   // Reap any orphaned opencode-ai processes from a prior Oyster run that
   // didn't shut down cleanly (SIGKILL, crash, laptop sleep). See #191.

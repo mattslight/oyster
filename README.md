@@ -138,4 +138,6 @@ npm run dev
 
 Copyright (c) 2026 Matthew Slight
 
-You can use, modify, and distribute this software freely. If you run a modified version as a network service, you must make your source code available under the same licence.
+The source code in this repository is licensed under AGPL-3.0. If you run a modified version as a network service, you must make your source code available under the same licence.
+
+The names “Oyster”, associated logos, icons, mascots, word marks and brand assets are trademarks. No trademark licence is granted. You may not use these marks to identify, promote or distribute modified versions of this software, or to imply affiliation, endorsement or official status.
