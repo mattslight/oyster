@@ -2534,34 +2534,6 @@ body {
   margin-left: auto;
 }
 
-/* Bottom-right whisper hints. Fixed position, low contrast, no
-   interaction — discoverable without competing for attention. Hidden
-   on narrow viewports where they'd crowd the chat bar. */
-.home-shortcut-hints {
-  position: fixed;
-  right: 22px;
-  bottom: 22px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.28);
-  letter-spacing: 0.02em;
-  pointer-events: none;
-  user-select: none;
-  z-index: 1;
-}
-
-.home-shortcut-hints kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.45);
-  background: transparent;
-  border: none;
-  padding: 0 2px 0 0;
-}
-
-@media (max-width: 720px) {
-  .home-shortcut-hints { display: none; }
-}
-
 /* Pulse animation applied to a standard .pip element so the dot+count
  * uses the same .pip-count layout as the space-pill badges. */
 .rtp-pulse-anim { animation: rtp-pulse 1.6s infinite; }

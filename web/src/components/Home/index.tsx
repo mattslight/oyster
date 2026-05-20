@@ -1140,6 +1140,8 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 <ShowMore
                   onClick={() => setSessionsLimit((n) => n + SESSIONS_PREVIEW)}
                   remaining={visibleSessions.length - sessionsLimit}
+                  searchHint
+                  newSessionHint
                 />
               )}
             </>
@@ -1372,6 +1374,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 <ShowMore
                   onClick={() => setMemoriesLimit((n) => n + MEMORIES_PREVIEW)}
                   remaining={scopedMemories.length - memoriesLimit}
+                  searchHint
                 />
               )}
             </div>
@@ -1527,15 +1530,6 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           onCancel={() => setPendingMemoryDelete(null)}
         />
       )}
-
-      {/* Whisper hints — sit at the bottom-right edge of the surface,
-          dim and uninteractive, just so the two shortcuts are
-          discoverable without competing with anything. */}
-      <div className="home-shortcut-hints" aria-hidden="true">
-        <kbd>⌘K</kbd> search
-        <span>&nbsp;&nbsp;&nbsp;</span>
-        <kbd>⌘/</kbd> new session
-      </div>
     </div>
   );
 }
