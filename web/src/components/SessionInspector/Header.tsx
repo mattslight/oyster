@@ -44,21 +44,6 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
     && myDeviceId !== null;
   const canResume = isRemote && session.hasBytes === true;
   const [resumeOpen, setResumeOpen] = useState(false);
-  const [idCopied, setIdCopied] = useState(false);
-
-  function copySessionId() {
-    if (!navigator.clipboard) {
-      alert(`Copy failed — session id:\n${session.id}`);
-      return;
-    }
-    navigator.clipboard.writeText(session.id).then(
-      () => {
-        setIdCopied(true);
-        setTimeout(() => setIdCopied(false), 1500);
-      },
-      () => alert(`Copy failed — session id:\n${session.id}`),
-    );
-  }
 
   return (
     <header className="inspector-header">
@@ -71,18 +56,8 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
         <span>{STATE_LABEL[session.state]}</span>
         <button type="button" className="close" onClick={onClose} aria-label="Close inspector">✕</button>
       </div>
-      <div className="inspector-title">{session.title ?? "(no title yet)"}</div>
-      <div className="inspector-sub">
-        <button
-          type="button"
-          className="inspector-sub-id"
-          onClick={copySessionId}
-          title="Click to copy session id"
-        >
-          {idCopied ? "Copied!" : session.id}
-        </button>
-        {" · started "}
-        <span title={formatTs(session.startedAt)}>
+      <div className="inspector-timestamps">
+        started <span title={formatTs(session.startedAt)}>
           {formatRelative(session.startedAt) ?? formatTs(session.startedAt)}
         </span>
         {session.lastEventAt && session.lastEventAt !== session.startedAt && (
@@ -93,8 +68,8 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
             </span>
           </>
         )}
-        {session.model ? ` · ${session.model}` : ""}
       </div>
+      <div className="inspector-title">{session.title ?? "(no title yet)"}</div>
       <SessionActions session={session} onLaunchClaude={onLaunchClaude} onConnect={onConnect} />
 
       {isRemote && (

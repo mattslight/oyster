@@ -22,6 +22,7 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
   onConnect?: () => void;
 }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [forkWarningOpen, setForkWarningOpen] = useState(false);
 
   // A session that's active or waiting AND not currently running in Oyster
@@ -57,6 +58,20 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
     );
   }
 
+  function copyId() {
+    if (!navigator.clipboard) {
+      alert(`Copy failed — session id:\n${session.id}`);
+      return;
+    }
+    navigator.clipboard.writeText(session.id).then(
+      () => {
+        setCopiedId(true);
+        setTimeout(() => setCopiedId(false), 1500);
+      },
+      () => alert(`Copy failed — session id:\n${session.id}`),
+    );
+  }
+
   // A live PTY exists for this session — primary action is "Connect"
   // (focus/restore the window), not "Resume" (which would spawn another
   // claude on the same session id). Both buttons use the chip-style
@@ -88,6 +103,9 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
       )}
       <button type="button" className="btn" onClick={copyCommand}>
         {copiedCmd ? "Copied!" : "Copy resume command"}
+      </button>
+      <button type="button" className="btn" onClick={copyId} title={`Copy session id: ${session.id}`}>
+        {copiedId ? "Copied!" : "Copy ID"}
       </button>
       <ConfirmModal
         open={forkWarningOpen}
