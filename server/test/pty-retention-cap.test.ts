@@ -10,7 +10,7 @@ function makeEnv() {
   const dir = mkdtempSync(join(tmpdir(), "oyster-pty-cap-"));
   const db = initDb(dir);
   const store = new SqliteSessionStore(db);
-  const mgr = new ClaudePtyManager({ sessionStore: store, broadcastUiEvent: () => {} });
+  const mgr = new ClaudePtyManager({ sessionStore: store, db, broadcastUiEvent: () => {} });
   return { db, store, mgr, dispose: () => { mgr.disposeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 

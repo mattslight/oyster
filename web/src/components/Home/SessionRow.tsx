@@ -22,9 +22,11 @@ interface SessionRowProps {
   onTerminalFocus?: (terminalId: string) => void;
   /** Restore a minimised terminal window for this session. */
   onTerminalRestore?: (sessionId: string, terminalId: string) => void;
+  /** Resume a non-live session (spawns `claude --resume <id>`). */
+  onResume?: (sessionId: string) => void;
 }
 
-export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalFocus, onTerminalRestore }: SessionRowProps) {
+export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, onTerminalFocus, onTerminalRestore, onResume }: SessionRowProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = session.state === "waiting" ? `waiting ${rel}`
@@ -113,29 +115,36 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
     }
   }
 
-  // Row click priority: if this row has a live terminal, focus it (Open) or
-  // restore it (Minimised) — bringing the panel to the user is the most
-  // likely intent. Falls through to onOpen (Session Inspector) otherwise.
-  // The Inspect chip below gives a deliberate path to the inspector when the
-  // row is live.
+  // Row click always opens the Session Inspector. The Connect chip (live
+  // sessions) and Resume chip (non-live sessions) handle the terminal
+  // restore / resume paths so the row's primary action stays predictable.
   const handleRowActivate = () => {
-    if (livePresence?.state === "attached" && onTerminalFocus) {
-      onTerminalFocus(livePresence.terminalId);
-    } else if (livePresence?.state === "running" && onTerminalRestore) {
-      onTerminalRestore(session.id, livePresence.terminalId);
-    } else if (onOpen) {
-      onOpen(session.id);
-    }
+    if (onOpen) onOpen(session.id);
   };
+
+  // Connect (live row): focus the open terminal or restore the minimised one.
+  // Resume (non-live row): spawn claude --resume in this session's cwd.
+  const handleConnect = () => {
+    if (!livePresence) return;
+    if (livePresence.state === "attached") onTerminalFocus?.(livePresence.terminalId);
+    else onTerminalRestore?.(session.id, livePresence.terminalId);
+  };
+  const canResume = !livePresence && !!onResume;
+  // Only render the Connect chip when we actually have the callback that
+  // will handle this presence state. Otherwise clicking would silently
+  // no-op via the ?. in handleConnect.
+  const canConnect = livePresence
+    ? (livePresence.state === "attached" ? !!onTerminalFocus : !!onTerminalRestore)
+    : false;
   return (
     <div
       className={`home-row${rowExtraClass}`}
       onClick={handleRowActivate}
-      onKeyDown={onOpen || livePresence ? (e) => {
+      onKeyDown={onOpen ? (e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowActivate(); }
       } : undefined}
-      role={onOpen || livePresence ? "button" : undefined}
-      tabIndex={onOpen || livePresence ? 0 : undefined}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
     >
       <span className={`home-row-status ${statusDotClass}`} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
@@ -158,14 +167,24 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
           )}
           {title}
         </span>
-        {livePresence && onOpen && (
+        {livePresence && canConnect && (
           <button
             type="button"
-            className="sl-chip--inspect"
-            onClick={(e) => { e.stopPropagation(); onOpen(session.id); }}
-            title="Open the Session Inspector for this conversation"
+            className="sl-chip sl-chip--connect"
+            onClick={(e) => { e.stopPropagation(); handleConnect(); }}
+            title={livePresence.state === "attached" ? "Bring the open terminal forward" : "Restore this minimised terminal"}
           >
-            Inspect
+            Connect
+          </button>
+        )}
+        {canResume && (
+          <button
+            type="button"
+            className="sl-chip sl-chip--resume"
+            onClick={(e) => { e.stopPropagation(); onResume!(session.id); }}
+            title="Start a new claude --resume in this session's folder"
+          >
+            Resume
           </button>
         )}
       </span>

@@ -58,7 +58,7 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
         <div className="rtp-popover">
           <div className="rtp-popover-arrow" />
           {rows.map(({ info, session }) => {
-            const title = session?.title ?? info.sessionId.slice(0, 8);
+            const title = session?.title ?? "(no title yet)";
             const space = session?.spaceId ?? "—";
             const isAttached = info.state === "attached";
             return (

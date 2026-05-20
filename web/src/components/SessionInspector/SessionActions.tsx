@@ -10,12 +10,16 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-export function SessionActions({ session, onLaunchClaude }: {
+export function SessionActions({ session, onLaunchClaude, onConnect }: {
   session: Session;
   /** Continue this session in an Oyster terminal (`claude --resume`).
    *  "Start new" lives on the project tile, not here — the inspector is
    *  about *this* transcript. */
   onLaunchClaude?: () => void;
+  /** Focus or restore an already-running PTY for this session. Used in
+   *  place of onLaunchClaude when session.terminalId is set, so the
+   *  primary button reads "Connect" instead of "Resume". */
+  onConnect?: () => void;
 }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -68,23 +72,48 @@ export function SessionActions({ session, onLaunchClaude }: {
     );
   }
 
+  // A live PTY exists for this session — primary action is "Connect"
+  // (focus/restore the window), not "Resume" (which would spawn another
+  // claude on the same session id). Both buttons use the chip-style
+  // uppercase variant so the Inspector CTA matches the row's CONNECT /
+  // RESUME chips visually.
+  //
+  // Important: gate Resume on the ABSENCE of a live PTY, not on
+  // `!isLive`. Otherwise an Inspector mounted without onConnect (which
+  // makes isLive false even when session.terminalId is set) would fall
+  // back to showing Resume, and clicking Resume on a live session forks
+  // the conversation by spawning a second claude on the same id.
+  const hasLivePty = session.terminalId != null;
+  const showConnect = hasLivePty && !!onConnect;
+  const showResume = !hasLivePty && canResumeInOyster;
+
   return (
     <div className="inspector-actions">
-      {canResumeInOyster && (
+      {showConnect && (
         <button
           type="button"
-          className="btn primary"
+          className="btn primary inspector-cta"
+          onClick={() => onConnect!()}
+          title="Bring this session's terminal window forward"
+        >
+          Connect
+        </button>
+      )}
+      {showResume && (
+        <button
+          type="button"
+          className="btn primary inspector-cta"
           onClick={() => forkRisk ? setForkWarningOpen(true) : onLaunchClaude!()}
           title={`Run claude --resume ${session.id} in ${session.cwd}`}
         >
-          Resume here
+          Resume
         </button>
       )}
       <button type="button" className="btn" onClick={copyCommand}>
         {copiedCmd ? "Copied!" : "Copy resume command"}
       </button>
-      <button type="button" className="btn" onClick={copyId}>
-        {copiedId ? "Copied!" : "Copy session ID"}
+      <button type="button" className="btn" onClick={copyId} title={`Copy session id: ${session.id}`}>
+        {copiedId ? "Copied!" : "Copy ID"}
       </button>
       <ConfirmModal
         open={forkWarningOpen}

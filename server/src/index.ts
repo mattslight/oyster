@@ -68,6 +68,7 @@ import { attachChatEventClient } from "./opencode-events.js";
 import { sweepOrphanOpenCodeProcesses } from "./opencode-orphan-sweep.js";
 import { attachWebSocket, handleLegacyUpgrade } from "./pty-manager.js";
 import { ClaudePtyManager } from "./claude-pty-manager.js";
+import { cleanupGhostSessionsAtBoot } from "./ghost-session-cleanup.js";
 import { tryHandleTerminalRoute } from "./routes/terminals.js";
 import { SqliteFtsMemoryProvider } from "./memory-store.js";
 import { AuthService } from "./auth-service.js";
@@ -274,6 +275,10 @@ const db = bootTime("initDb (migrations)", () => initDb(DB_DIR));
 const store = new SqliteArtifactStore(db);
 const spaceStore = new SqliteSpaceStore(db);
 const sessionStore = new SqliteSessionStore(db);
+const { deleted: ghostsDeleted } = cleanupGhostSessionsAtBoot(sessionStore, db);
+if (ghostsDeleted > 0) {
+  console.log(`[oyster] cleaned up ${ghostsDeleted} ghost session row${ghostsDeleted === 1 ? "" : "s"} from previous runs`);
+}
 const WORKER_BASE = process.env.OYSTER_AUTH_BASE
   ? process.env.OYSTER_AUTH_BASE.replace(/\/auth$/, "")
   : "https://oyster.to";
@@ -558,7 +563,7 @@ sessionSnapshotHandle.unref();
 const spaceService = new SpaceService(spaceStore, store, artifactService, sessionStore, spaceSync);
 const projectService = new ProjectService(db);
 const sessionService = new SessionService(db, sessionStore);
-const claudePtyManager = new ClaudePtyManager({ sessionStore, broadcastUiEvent });
+const claudePtyManager = new ClaudePtyManager({ sessionStore, db, broadcastUiEvent });
 // Forward-declared so the terminal route can hold a stable reference even
 // though the watcher is constructed inside `httpServer.listen`. The route
 // is only ever called after the server is listening (and therefore after

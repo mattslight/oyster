@@ -13,7 +13,7 @@ function makeEnv() {
   const store = new SqliteSessionStore(db);
   const events: { command: string; payload: unknown }[] = [];
   const broadcast = (cmd: { command: string; payload: unknown }) => { events.push(cmd); };
-  const mgr = new ClaudePtyManager({ sessionStore: store, broadcastUiEvent: broadcast });
+  const mgr = new ClaudePtyManager({ sessionStore: store, db, broadcastUiEvent: broadcast });
   store.insertSession({ id: "s1", space_id: null, agent: "claude-code", state: "done" });
   return {
     db, store, mgr, events,
@@ -69,6 +69,8 @@ describe("ClaudePtyManager attached clients", () => {
   });
 
   it("attach after PTY exit does NOT update terminal_attached_clients", () => {
+    // Give s1 a real event so it is not a ghost and won't be deleted on exit.
+    env.store.insertEvent({ session_id: "s1", role: "user", text: "hello" });
     env.mgr._seedEntryForTest({ terminalId: "t1", linkedSessionId: null });
     env.mgr.linkTerminalForTest("t1", "s1");
     // Kill the PTY — fires _handleExit synchronously via the fake proc.
@@ -88,6 +90,8 @@ describe("ClaudePtyManager attached clients", () => {
   });
 
   it("ws close after PTY exit does NOT update terminal_attached_clients", () => {
+    // Give s1 a real event so it is not a ghost and won't be deleted on exit.
+    env.store.insertEvent({ session_id: "s1", role: "user", text: "hello" });
     env.mgr._seedEntryForTest({ terminalId: "t1", linkedSessionId: null });
     env.mgr.linkTerminalForTest("t1", "s1");
 
@@ -135,6 +139,8 @@ describe("ClaudePtyManager DB link", () => {
   });
 
   it("calling kill() clears terminal_id on the linked session row", () => {
+    // Give s1 a real event so it is not a ghost and won't be deleted on exit.
+    env.store.insertEvent({ session_id: "s1", role: "user", text: "hello" });
     env.mgr._seedEntryForTest({ terminalId: "t2", linkedSessionId: null });
     env.mgr.setLinkedSession("t2", "s1");
     env.mgr.kill("t2");
@@ -143,5 +149,32 @@ describe("ClaudePtyManager DB link", () => {
     const row = env.store.getById("s1")!;
     expect(row.terminal_id).toBeNull();
     expect(row.terminal_attached_clients).toBe(0);
+  });
+
+  it("calling kill() marks the linked session disconnected", () => {
+    // Give s1 a real event so it is not a ghost and won't be deleted on exit.
+    env.store.insertEvent({ session_id: "s1", role: "user", text: "hello" });
+    env.mgr._seedEntryForTest({ terminalId: "t3", linkedSessionId: null });
+    env.mgr.setLinkedSession("t3", "s1");
+    // Seed row state to "active" so we can verify the transition.
+    env.store.updateSessionState("s1", "active", new Date().toISOString());
+    expect(env.store.getById("s1")!.state).toBe("active");
+
+    env.mgr.kill("t3");
+
+    // After kill: the session row state should be "disconnected".
+    expect(env.store.getById("s1")!.state).toBe("disconnected");
+  });
+
+  it("calling kill() deletes a ghost session (no events, no JSONL)", () => {
+    // s1 was inserted in makeEnv but has no events — a ghost.
+    env.mgr._seedEntryForTest({ terminalId: "t4", linkedSessionId: null });
+    env.mgr.setLinkedSession("t4", "s1");
+    expect(env.store.getById("s1")).toBeDefined();
+
+    env.mgr.kill("t4");
+
+    // Ghost row should be deleted entirely.
+    expect(env.store.getById("s1")).toBeUndefined();
   });
 });

@@ -24,7 +24,10 @@ import type { Space, SetupProposal } from "../../shared/types";
 import { createSession, sendMessage } from "./data/chat-api";
 import { unpublishArtifact } from "./data/publish-api";
 import { launchAndOpen, humanError } from "./lib/launch-terminal";
+import { recordRecentProjectId } from "./lib/new-session-recents";
 import { useSessions } from "./hooks/useSessions";
+import { NewSessionPicker } from "./components/NewSessionPicker";
+import { useAllProjects, fetchAllProjects } from "./data/all-projects";
 import "./App.css";
 
 // `?onboarding=force` wipes the dock's persisted state and pretends this
@@ -332,6 +335,82 @@ export default function App() {
 
   const { sessions: allSessions, loading: sessionsLoading, error: sessionsError } = useSessions();
 
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [initialPickerQuery, setInitialPickerQuery] = useState<string | undefined>(undefined);
+  const { projects: allProjects, loading: allProjectsLoading } = useAllProjects(pickerOpen);
+
+  // Shared spawn path used by NewSessionPicker — same as
+  // handleLaunchClaudeFromProject but renders errors in-modal instead
+  // of via alert(), since the picker is open and visible.
+  const handleNewSessionSpawn = useCallback(
+    async (projectId: string): Promise<boolean> => {
+      setPickerError(null);
+      const outcome = await launchAndOpen(
+        { kind: "claude_new", source: { type: "project", id: projectId } },
+        dispatch,
+      );
+      if (outcome.ok) {
+        recordRecentProjectId(projectId);
+        setPickerOpen(false);
+        return true;
+      }
+      const hint = outcome.installHint ? ` (${outcome.installHint})` : "";
+      setPickerError(`${humanError(outcome.error)}${hint}`);
+      return false;
+    },
+    [],
+  );
+
+  const handleOpenNewSession = useCallback(async () => {
+    if (activeSpace === "home" || activeSpace === "__all__" || activeSpace === "__archived__") {
+      setInitialPickerQuery(undefined);
+      setPickerOpen(true);
+      return;
+    }
+    // Inside a real space: count live-folder projects to decide.
+    try {
+      const all = await fetchAllProjects();
+      const inSpace = all.filter((p) => p.spaceId === activeSpace && p.hasLivePath !== false);
+      if (inSpace.length === 1) {
+        // Spawn silently — no palette. On success we return; on failure
+        // we fall through to open the palette so the user sees the error.
+        const ok = await handleNewSessionSpawn(inSpace[0].id);
+        if (ok) return;
+      }
+      // 0 or 2+ → open palette. Pre-fill with the space name when 2+.
+      const space = spaces.find((s) => s.id === activeSpace);
+      setInitialPickerQuery(inSpace.length >= 2 ? (space?.displayName ?? "") : undefined);
+      setPickerOpen(true);
+    } catch (err) {
+      // Network failure — open the palette with the error so the user
+      // can retry / pick manually.
+      setPickerError(err instanceof Error ? err.message : String(err));
+      setPickerOpen(true);
+    }
+  }, [activeSpace, spaces, dispatch, handleNewSessionSpawn]);
+
+  // ⌘/ (or Ctrl+/ off-Mac) opens the New Session palette. Unconditional —
+  // intercepts even inside text inputs, textareas, contenteditable, and
+  // the xterm.js helper textarea. Single-letter combos were considered
+  // and rejected: ⌘N / ⌘T / ⌘W / ⌘L / ⌘D / ⌘` are browser- or OS-reserved
+  // (uninterceptable), ⌘K is taken by Spotlight, ⌘E collides with the
+  // Claude-in-Chrome extension. ⌘/ has no Chrome or macOS reserved use
+  // and is unlikely to collide with extensions.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const cmd = e.metaKey || e.ctrlKey;
+      // Only the bare combo — ignore shift/alt variants so we don't trample
+      // any chord shortcut a user has come to expect.
+      if (cmd && !e.shiftKey && !e.altKey && e.key === "/") {
+        e.preventDefault();
+        void handleOpenNewSession();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleOpenNewSession]);
+
   async function handleArtifactClick(artifact: Artifact) {
     if (artifact.status === "generating") return;
 
@@ -423,6 +502,31 @@ export default function App() {
     [],
   );
 
+  // Connect = focus/restore an already-running PTY for a session, used by
+  // the SessionInspector's primary action and any caller that has a
+  // sessionId (not just a terminalId). Quietly no-ops when there's no
+  // live PTY — callers gate the affordance themselves.
+  const handleConnectSession = useCallback(
+    (sessionId: string) => {
+      const session = allSessions.find((s) => s.id === sessionId);
+      if (!session?.terminalId) return;
+      const w = windows.find((win) => win.terminalId === session.terminalId);
+      if (w) {
+        dispatch({ type: "FOCUS", id: w.id });
+        return;
+      }
+      dispatch({
+        type: "OPEN_CLAUDE_TERMINAL",
+        terminalId: session.terminalId,
+        title: session.title ?? "Claude",
+        cwd: session.cwd ?? "/",
+        kind: "claude_resume",
+        linkedSessionId: sessionId,
+      });
+    },
+    [allSessions, windows],
+  );
+
   // Remote-session "Open in Oyster" path (from ResumeDialog). Source is
   // `remote_session`: server resolves the cwd from the reassembled jsonl on
   // disk, so the dialog doesn't need to pass the cwd back. The dialog
@@ -495,6 +599,18 @@ export default function App() {
           <span>{aiError}</span>
         </div>
       )}
+      <NewSessionPicker
+        open={pickerOpen}
+        onClose={() => { setPickerOpen(false); setPickerError(null); setInitialPickerQuery(undefined); }}
+        initialQuery={initialPickerQuery}
+        projects={allProjects}
+        spaces={spaces}
+        errorMessage={pickerError}
+        activeSpaceId={activeSpace}
+        loading={allProjectsLoading}
+        onActivate={(p) => handleNewSessionSpawn(p.id)}
+        onActivateAttached={handleNewSessionSpawn}
+      />
       <Home
         activeSpace={activeSpace}
         spaces={spaces}
@@ -533,6 +649,8 @@ export default function App() {
           const w = windows.find((x) => x.terminalId === terminalId);
           if (w) dispatch({ type: "CLOSE", id: w.id });
         }}
+        onOpenNewSession={handleOpenNewSession}
+        onConnectSession={handleConnectSession}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),

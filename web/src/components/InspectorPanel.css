@@ -72,7 +72,10 @@
   font-weight: 600;
   color: var(--text);
 }
-.inspector-sub {
+/* Lifecycle timestamps row — sits tight under the meta eyebrow so the
+   "started 14h · last active 52m" lifecycle reads as part of the same
+   identity block, not separate metadata. Title gets the floor below. */
+.inspector-timestamps {
   margin-top: 4px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -386,6 +389,14 @@ button.link-row:focus-visible {
 }
 .inspector-actions .btn.primary:hover {
   background: rgba(124, 107, 255, 0.24);
+}
+/* The primary CTA (Connect / Resume) uses the same uppercase, tracked
+   treatment as the row-hover chips so the same affordance reads the
+   same wherever it appears. */
+.inspector-actions .btn.inspector-cta {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
 }
 
 .inspector-footer {

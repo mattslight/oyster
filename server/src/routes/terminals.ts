@@ -36,7 +36,6 @@ import type { SessionStore } from "../session-store.js";
 import type { ProjectService } from "../project-service.js";
 import type { ClaudeCodeWatcher } from "../watchers/claude-code.js";
 import { pickJsonlCwd } from "../watchers/claude-code.js";
-import { encodeCwd } from "../session-sync-service.js";
 import { ClaudePtyManager, TerminalCapError, PtyUnavailableError } from "../claude-pty-manager.js";
 import { resolveClaudeBinary, buildLaunchArgs } from "../terminal-launcher.js";
 import type { UiCommand } from "../../../shared/types.js";
@@ -64,7 +63,15 @@ export interface TerminalRouteDeps {
   broadcastUiEvent: (event: UiCommand) => void;
 }
 
-type ResolveOk = { cwd: string; displayName: string };
+type ResolveOk = {
+  cwd: string;
+  displayName: string;
+  /** Project ID for binding new session rows. Null when the source
+   *  is `remote_session` or the source session had no project. */
+  projectId: string | null;
+  /** Space ID for binding new session rows. Same nullable rationale. */
+  spaceId: string | null;
+};
 type ResolveErr =
   | { error: "project_not_found" }
   | { error: "project_homeless" }
@@ -85,7 +92,7 @@ export function resolveSourceCwd(
       return { error: "project_homeless" };
     }
     if (!isLiveDirectory(project.recentPath)) return { error: "project_homeless" };
-    return { cwd: project.recentPath, displayName: project.name };
+    return { cwd: project.recentPath, displayName: project.name, projectId: project.id, spaceId: project.spaceId };
   }
 
   if (source.type === "session") {
@@ -93,7 +100,7 @@ export function resolveSourceCwd(
     if (!row) return { error: "session_not_found" };
     if (!row.cwd) return { error: "session_no_cwd" };
     if (!isLiveDirectory(row.cwd)) return { error: "session_cwd_missing" };
-    return { cwd: row.cwd, displayName: row.title ?? basename(row.cwd) };
+    return { cwd: row.cwd, displayName: row.title ?? basename(row.cwd), projectId: row.project_id, spaceId: row.space_id };
   }
 
   // remote_session — bytes already reassembled to disk by /api/sessions/:id/resume.
@@ -115,7 +122,7 @@ export function resolveSourceCwd(
   const candidates = headEventCwds(row.jsonl_local_path);
   const resolved = pickJsonlCwd(row.jsonl_local_path, candidates);
   if (!resolved || !isLiveDirectory(resolved)) return { error: "cwd_not_on_this_device" };
-  return { cwd: resolved, displayName: basename(resolved) };
+  return { cwd: resolved, displayName: basename(resolved), projectId: null, spaceId: null };
 }
 
 /** Read a few KB from the head of a jsonl and collect any `cwd` fields seen.
@@ -226,11 +233,29 @@ export async function tryHandleTerminalRoute(
       return true;
     }
 
-    // Capture BEFORE spawn so any JSONL claude writes during init is inside
-    // the auto-link window. The watcher's `onceNewJsonl` allows a 1s back-
-    // window on top of this for mtime resolution slop.
-    const sinceMs = Date.now();
-    const args = buildLaunchArgs(kind, source.type === "session" || source.type === "remote_session" ? source.id : undefined);
+    // Generate (claude_new) or echo (claude_resume) the session id upfront.
+    // This is the key to avoiding the JSONL-watcher race: by passing
+    // --session-id to claude we know the id synchronously and can link
+    // the PTY to its session row at spawn time.
+    const sourceSessionId = source.type === "session" || source.type === "remote_session" ? source.id : undefined;
+    const { args, sessionId } = buildLaunchArgs(kind, sourceSessionId);
+
+    // For claude_new, pre-insert a stub session row so the running pill
+    // picks it up immediately. The watcher's later upsertSession on the
+    // same id idempotently fills in title, jsonl_path, model, etc.
+    if (kind === "claude_new") {
+      const nowIso = new Date().toISOString();
+      deps.sessionStore.insertSession({
+        id: sessionId,
+        space_id: resolved.spaceId,
+        project_id: resolved.projectId,
+        cwd: resolved.cwd,
+        agent: "claude-code",
+        state: "active",
+        started_at: nowIso,
+        last_event_at: nowIso,
+      });
+    }
 
     let spawned: { terminalId: string; startedAt: number };
     try {
@@ -242,6 +267,12 @@ export async function tryHandleTerminalRoute(
         env: deps.cleanEnv,
       });
     } catch (err) {
+      // Spawn failed — drop the stub session row we just inserted so it
+      // doesn't sit forever as a permanent ghost (the PTY-exit cleanup
+      // path can't see this case because no PTY was ever registered).
+      if (kind === "claude_new") {
+        try { deps.sessionStore.deleteSession(sessionId); } catch { /* best-effort */ }
+      }
       if (err instanceof TerminalCapError) {
         sendJson({ error: "too_many_terminals" }, 429);
         return true;
@@ -256,41 +287,14 @@ export async function tryHandleTerminalRoute(
 
     const { terminalId, startedAt } = spawned;
 
-    // Auto-link is fire-and-forget. claude_resume: we already know the id —
-    // attach it synchronously and broadcast. claude_new: watch for the next
-    // JSONL in the encoded-cwd dir.
-    //
-    // Both `session` and `remote_session` sources carry the session id as
-    // `source.id` (a reassembled remote session has the same uuid as on the
-    // origin device). Link both — otherwise the ResumeDialog "Open in Oyster"
-    // path would never get its title linked to the Inspector.
-    if (kind === "claude_resume" && (source.type === "session" || source.type === "remote_session")) {
-      deps.claudePtyManager.setLinkedSession(terminalId, source.id);
-      deps.broadcastUiEvent({
-        version: 1,
-        command: "terminal_session_linked",
-        payload: { terminalId, sessionId: source.id },
-      });
-    } else if (kind === "claude_new") {
-      const encoded = encodeCwd(resolved.cwd);
-      // Local binding so the closure below doesn't depend on TS narrowing
-      // surviving through the .then arrow.
-      const watcher = deps.claudeCodeWatcher;
-      watcher
-        .onceNewJsonl(encoded, sinceMs)
-        .then((result) => {
-          if (!result) return;
-          const entry = deps.claudePtyManager.getEntry(terminalId);
-          if (!entry || entry.exitedAt !== null) return;
-          deps.claudePtyManager.setLinkedSession(terminalId, result.sessionId);
-          deps.broadcastUiEvent({
-            version: 1,
-            command: "terminal_session_linked",
-            payload: { terminalId, sessionId: result.sessionId },
-          });
-        })
-        .catch(() => { /* best-effort */ });
-    }
+    // Synchronous link — no more onceNewJsonl race. Both claude_new (we
+    // generated the id) and claude_resume (caller supplied it) end here.
+    deps.claudePtyManager.setLinkedSession(terminalId, sessionId);
+    deps.broadcastUiEvent({
+      version: 1,
+      command: "terminal_session_linked",
+      payload: { terminalId, sessionId },
+    });
 
     sendJson({
       terminalId,

@@ -12,11 +12,14 @@ import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type Database from "better-sqlite3";
 import type { SessionStore } from "./session-store.js";
 import type { UiCommand, TerminalPresenceEventPayload } from "../../shared/types.js";
+import { deleteIfGhostOnExit } from "./ghost-session-cleanup.js";
 
 export interface ClaudePtyManagerDeps {
   sessionStore: SessionStore;
+  db: Database.Database;
   broadcastUiEvent: (cmd: UiCommand) => void;
 }
 
@@ -107,10 +110,12 @@ export class ClaudePtyManager {
   private terminals = new Map<string, ClaudePtyEntry>();
   private wss = new WebSocketServer({ noServer: true });
   private sessionStore: SessionStore;
+  private db: Database.Database;
   private broadcastUiEvent: (cmd: UiCommand) => void;
 
   constructor(deps: ClaudePtyManagerDeps) {
     this.sessionStore = deps.sessionStore;
+    this.db = deps.db;
     this.broadcastUiEvent = deps.broadcastUiEvent;
   }
 
@@ -329,7 +334,22 @@ export class ClaudePtyManager {
     }
     const exitedSessionId = entry.linkedSessionId;
     if (exitedSessionId) {
+      // Clear the terminal link first so the row no longer claims a
+      // live PTY no matter which branch below runs.
       this.sessionStore.clearTerminal(exitedSessionId);
+      // If the session never produced content (no events AND no JSONL
+      // file), the stub row inserted at spawn time is a ghost — drop it
+      // entirely rather than leaving an un-resumable "(no title yet)"
+      // entry in the list. Otherwise, mark disconnected so the UI flips
+      // immediately (see commit 63c64e5).
+      const deleted = deleteIfGhostOnExit(this.sessionStore, this.db, exitedSessionId, entry.cwd);
+      if (!deleted) {
+        this.sessionStore.updateSessionState(
+          exitedSessionId,
+          "disconnected",
+          new Date().toISOString(),
+        );
+      }
       entry.linkedSessionId = null;
     }
     this.broadcastUiEvent({

@@ -2,6 +2,7 @@
 // Replaces /api/spaces/:id/sources* during the sources→projects cut.
 //
 // Endpoints:
+//   GET  /api/projects                    list ALL active projects (flat)
 //   GET  /api/projects?space_id=X         list active projects in space X
 //   POST /api/projects                    create a project { space_id, name }
 //   POST /api/projects/attach-folder      idempotent attach { space_id, path,
@@ -43,11 +44,7 @@ export async function tryHandleProjectsRoute(
     if (rejectIfNonLocalOrigin()) return true;
     try {
       const spaceId = query.get("space_id");
-      if (!spaceId) {
-        sendJson({ error: "space_id query parameter is required" }, 400);
-        return true;
-      }
-      sendJson(projectService.listForSpace(spaceId));
+      sendJson(spaceId ? projectService.listForSpace(spaceId) : projectService.listAll());
     } catch (err) { sendError(err); }
     return true;
   }

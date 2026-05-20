@@ -5,6 +5,7 @@ import { useMyDeviceId } from "../../hooks/useMyDeviceId";
 import { SessionActions } from "./SessionActions";
 import { ResumeDialog, type OpenInOysterResult } from "./ResumeDialog";
 import { formatTs } from "./utils";
+import { formatRelative } from "../Home/utils";
 
 const PIP_CLASS: Record<SessionState, string> = {
   active: "green",
@@ -20,11 +21,13 @@ const STATE_LABEL: Record<SessionState, string> = {
   done: "done",
 };
 
-export function Header({ session, onClose, onLaunchClaude, onOpenInOyster }: {
+export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOyster }: {
   session: Session;
   onClose: () => void;
   /** Resume this session in an Oyster terminal (`claude --resume <id>`). */
   onLaunchClaude?: () => void;
+  /** Focus / restore an already-running PTY for this session. */
+  onConnect?: () => void;
   /** Launch a remote (cross-device) session in an Oyster terminal once
    *  its bytes have been reassembled. Surfaced by the ResumeDialog OkPanel. */
   onOpenInOyster?: (sessionId: string) => Promise<OpenInOysterResult>;
@@ -53,12 +56,21 @@ export function Header({ session, onClose, onLaunchClaude, onOpenInOyster }: {
         <span>{STATE_LABEL[session.state]}</span>
         <button type="button" className="close" onClick={onClose} aria-label="Close inspector">✕</button>
       </div>
-      <div className="inspector-title">{session.title ?? "(no title yet)"}</div>
-      <div className="inspector-sub">
-        {session.id} · started {formatTs(session.startedAt)}
-        {session.model ? ` · ${session.model}` : ""}
+      <div className="inspector-timestamps">
+        started <span title={formatTs(session.startedAt)}>
+          {formatRelative(session.startedAt) ?? formatTs(session.startedAt)}
+        </span>
+        {session.lastEventAt && session.lastEventAt !== session.startedAt && (
+          <>
+            {" · last active "}
+            <span title={formatTs(session.lastEventAt)}>
+              {formatRelative(session.lastEventAt) ?? formatTs(session.lastEventAt)}
+            </span>
+          </>
+        )}
       </div>
-      <SessionActions session={session} onLaunchClaude={onLaunchClaude} />
+      <div className="inspector-title">{session.title ?? "(no title yet)"}</div>
+      <SessionActions session={session} onLaunchClaude={onLaunchClaude} onConnect={onConnect} />
 
       {isRemote && (
         <div className="inspector-resume">
