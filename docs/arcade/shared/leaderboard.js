@@ -8,7 +8,7 @@
 // refreshed asynchronously on init and after a successful submit.
 //
 // Usage:
-//   Arcade.Leaderboard.init({ game: 'platformer', max: 10 });
+//   Arcade.Leaderboard.init({ game: 'space-jumper', max: 10 });
 //   Arcade.Leaderboard.refresh();           // fire-and-forget, updates mirror
 //   if (Arcade.Leaderboard.qualifies(score)) ...
 //   const r = await Arcade.Leaderboard.submit(score, 'ABC');

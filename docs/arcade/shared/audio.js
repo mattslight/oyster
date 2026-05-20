@@ -11,9 +11,10 @@
 // for the short window between page load and first decode completing.
 // They MUST share their `id` with the keys passed to init({ sfx }).
 //
-// Usage:
+// Usage (use the arcade-wide mute key so MUSIC / SFX state is shared
+// across every cabinet game — see shared/pause.js):
 //   Arcade.Audio.init({ sfx: { 'sfx-coin': 'sfx-coin.mp3', ... },
-//                       mutedKey: 'oyster-platformer-muted' });
+//                       mutedKey: 'oyster-arcade-sfx-muted' });
 //   // ...on first user gesture (e.g. splash dismiss):
 //   Arcade.Audio.ensureCtx();
 //   // ...in-game:

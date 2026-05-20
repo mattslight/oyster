@@ -242,7 +242,7 @@
     <canvas id="c"></canvas>
     <div class="overlay"></div>
     <div class="vignette"></div>
-    <div class="touch-controls" aria-hidden="true">
+    <div class="touch-controls">
       <div class="tc-group tc-move">
         <button type="button" class="tc-btn" id="tc-left"  aria-label="Move left"  tabindex="-1">◀</button>
         <button type="button" class="tc-btn" id="tc-right" aria-label="Move right" tabindex="-1">▶</button>
@@ -360,8 +360,8 @@ function resumeBgm() { const a = document.getElementById('bgm'); if (a) { a.curr
 
 // ============================================
 // LEADERBOARD — local mirror in localStorage, cloud source-of-truth via
-// /api/leaderboard (Cloudflare Worker). Scoped to game='platformer' so the
-// rocket-ship board stays separate.
+// /api/leaderboard (Cloudflare Worker). Scoped to game='space-jumper' so
+// the rocket-ship board stays separate.
 // ============================================
 Arcade.Leaderboard.init({ game: 'space-jumper', max: 10 });
 function paintSplashHiScore() {

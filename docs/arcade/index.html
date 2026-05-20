@@ -719,7 +719,7 @@
       </div>
     </div>
 
-    <div class="touch-controls" aria-hidden="true">
+    <div class="touch-controls">
       <div class="tc-group">
         <button type="button" class="tc-btn" id="tc-left"  aria-label="Previous game" tabindex="-1">◀</button>
         <button type="button" class="tc-btn" id="tc-right" aria-label="Next game"     tabindex="-1">▶</button>
@@ -1141,11 +1141,19 @@ const SPLASH_FADE_MS        = 450;
 const splashEl = document.getElementById('game-splash');
 
 let splashTimers = [];
+// Cleanup for the per-launch skip listeners — hoisted so `close()` /
+// `resetSplash()` can always tear them down. Without this, a close
+// mid-splash leaves pointerdown + keydown listeners attached that
+// close over the previous `g`, and the next user input fires
+// dismissSplash() with the OLD URL.
+let splashSkipCleanup = null;
 function clearSplashTimers() { splashTimers.forEach(clearTimeout); splashTimers = []; }
 function resetSplash() {
   if (!splashEl) return;
   clearSplashTimers();
+  if (splashSkipCleanup) splashSkipCleanup();
   splashEl.classList.remove('is-active', 'is-fading');
+  splashEl.setAttribute('aria-hidden', 'true');
 }
 
 // ============================================
@@ -1229,6 +1237,7 @@ function launch() {
   resetSplash();
   void splashEl.offsetWidth;
   splashEl.classList.add('is-active');
+  splashEl.setAttribute('aria-hidden', 'false');
 
   // Ba-ding fires part-way through the splash, after the wordmark has
   // settled and glitched a few times.
@@ -1262,16 +1271,19 @@ function launch() {
   splashTimers.push(setTimeout(dismissSplash, SPLASH_READY_MS + SPLASH_HOLD_MS));
 
   // Any tap / click / keypress on the splash skips ahead and dismisses
-  // it early. One-shot — once it fires (or the auto-dismiss fires), the
-  // listeners detach.
-  function skip() { detach(); clearSplashTimers(); dismissSplash(); }
+  // it early. Cleanup is tracked at module scope so a close-mid-splash
+  // (via close()/resetSplash()) reliably tears the listeners down —
+  // otherwise they'd close over the old `g` and fire on a future
+  // launch.
+  function skip() { if (splashSkipCleanup) splashSkipCleanup(); clearSplashTimers(); dismissSplash(); }
   function detach() {
     splashEl.removeEventListener('pointerdown', skip);
     window.removeEventListener('keydown', skip);
   }
   splashEl.addEventListener('pointerdown', skip, { once: true });
   window.addEventListener('keydown', skip, { once: true });
-  splashTimers.push(setTimeout(detach, SPLASH_READY_MS + SPLASH_HOLD_MS + 50));
+  splashSkipCleanup = () => { detach(); splashSkipCleanup = null; };
+  splashTimers.push(setTimeout(() => { if (splashSkipCleanup) splashSkipCleanup(); }, SPLASH_READY_MS + SPLASH_HOLD_MS + 50));
 
   wrap.classList.remove('is-shutting-down');
   wrap.classList.add('is-launched', 'is-launching');

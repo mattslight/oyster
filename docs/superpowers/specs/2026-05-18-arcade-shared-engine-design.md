@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-18
 **Status:** Design / pre-plan
-**Worktree:** `~/Dev/oyster.worktrees/arcade-platformer` (branch `feat/arcade-platformer`)
+**Branch:** `feat/arcade-platformer`
 
 ## Vision
 
