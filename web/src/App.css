@@ -2525,59 +2525,41 @@ body {
   background: rgba(124, 107, 255, 0.26);
 }
 
-/* Vertical wrapper so the keyboard hint sits cleanly UNDER its pill,
-   not crammed inside the button. Used for the New session pill in the
-   topbar cluster; the running pill is a bare sibling (no hint). */
-.topbar-pill-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-
-/* The kbd glyph that hangs under a pill. Dim and monospaced so it reads
-   as a label, not a control. Also reused in the Sessions header
-   ⌘K hint. */
-.topbar-pill-hint {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.42);
-}
-
-/* The cluster against the right edge of the breadcrumb. Items are
-   top-aligned so the pill row lines up even when one item has a kbd
-   hint underneath. */
+/* Right cluster against the right edge of the breadcrumb (running pill
+   + new-session pill). */
 .home-breadcrumb-inner--right-cluster {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
-  margin-left: auto;
-  padding-top: 2px;
-}
-
-/* Quiet text-button in the Sessions section header that opens Spotlight.
-   Treated as a hint, not a primary affordance — sits at the right edge
-   of the header next to the icon/table view toggle. */
-.home-section-search-hint {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  margin-left: 8px;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text-dim, #888);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color 80ms, background 80ms, border-color 80ms;
+  margin-left: auto;
 }
 
-.home-section-search-hint:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary, #e8e8ee);
+/* Bottom-right whisper hints. Fixed position, low contrast, no
+   interaction — discoverable without competing for attention. Hidden
+   on narrow viewports where they'd crowd the chat bar. */
+.home-shortcut-hints {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.28);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+.home-shortcut-hints kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  background: transparent;
+  border: none;
+  padding: 0 2px 0 0;
+}
+
+@media (max-width: 720px) {
+  .home-shortcut-hints { display: none; }
 }
 
 /* Pulse animation applied to a standard .pip element so the dot+count

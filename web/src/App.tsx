@@ -619,7 +619,6 @@ export default function App() {
           if (w) dispatch({ type: "CLOSE", id: w.id });
         }}
         onOpenNewSession={handleOpenNewSession}
-        onOpenSpotlight={() => setSpotlightOpen(true)}
         desktopProps={{
           space: activeSpace,
           spaces: spaces.map((s) => s.id),
