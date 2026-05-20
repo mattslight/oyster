@@ -6,7 +6,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ### Added
 
-- **Fullscreen terminals show tabs across live terminals.** Maximise a terminal and a tab bar appears with one tab per open terminal — click to switch without leaving fullscreen. Esc, or the ⤢ button on the right, drops back to the desktop.
+- **Fullscreen terminals show tabs across live terminals.** Maximise a terminal and a tab bar appears with one tab per open terminal — click to switch without leaving fullscreen. The ⤢ button on the right drops back to the desktop.
 
 ### Changed
 

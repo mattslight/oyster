@@ -187,21 +187,6 @@ export function TerminalWindow({
     };
   }, [wsUrl, isClaudeTerm]);
 
-  // Esc exits fullscreen — explicit, keyboard-only escape hatch on top of
-  // the toolbar button. Only listen while we're the fullscreen terminal so
-  // multiple terminals don't fight for the same keypress.
-  useEffect(() => {
-    if (!fullscreen || !onToggleFullscreen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onToggleFullscreen?.();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullscreen, onToggleFullscreen]);
-
   const titleNode: React.ReactNode = linkedSessionId && onOpenSession ? (
     <button
       type="button"
@@ -271,7 +256,7 @@ export function TerminalWindow({
                 type="button"
                 className="terminal-fs-tabs-exit"
                 onClick={onToggleFullscreen}
-                title="Exit fullscreen (Esc)"
+                title="Exit fullscreen"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="4 14 10 14 10 20" />
