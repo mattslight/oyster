@@ -2504,7 +2504,7 @@ body {
   display: inline-flex; align-items: center;
   cursor: pointer;
 }
-.rtp-pill--open { background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35); color: #5eead4; }
+.rtp-pill--open { background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.35); color: #a78bfa; }
 
 /* ── New session pill ────────────────────────────────────────────── */
 .nsp-pill {
@@ -2569,15 +2569,15 @@ body {
 
 .rtp-popover {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
-  background: #1d1f29; border: 1px solid rgba(94,234,212,0.3);
+  background: #1d1f29; border: 1px solid rgba(167,139,250,0.3);
   border-radius: 10px; padding: 6px; min-width: 340px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.6);
 }
 .rtp-popover-arrow {
   position: absolute; top: -6px; right: 24px; width: 12px; height: 12px;
   background: #1d1f29;
-  border-left: 1px solid rgba(94,234,212,0.3);
-  border-top: 1px solid rgba(94,234,212,0.3);
+  border-left: 1px solid rgba(167,139,250,0.3);
+  border-top: 1px solid rgba(167,139,250,0.3);
   transform: rotate(45deg);
 }
 .rtp-row {
@@ -2589,7 +2589,7 @@ body {
 /* Both Open and Minimised terminals are "running" — share the teal dot.
  * The Restore chip on Minimised rows is the only state-distinguishing
  * signal in the popover. */
-.rtp-dot { width: 9px; height: 9px; border-radius: 50%; background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.6); }
+.rtp-dot { width: 9px; height: 9px; border-radius: 50%; background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.6); }
 .rtp-dot--attached, .rtp-dot--running { /* same — kept as separate classes for any future per-state styling */ }
 .rtp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rtp-title { font-size: 12px; color: #e8e9f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2612,23 +2612,23 @@ body {
   font-size: 12px; color: rgba(232,233,240,0.6);
   margin-top: 8px; cursor: pointer;
 }
-.rtp-confirm-checkbox input { accent-color: #5eead4; }
+.rtp-confirm-checkbox input { accent-color: #a78bfa; }
 
 /* ── Sessions list: live terminal row treatment ──
  * Both Open and Minimised are "running" — same teal stripe + dot.
  * Clicking the row focuses (Open) or restores (Minimised) — no chip needed. */
 .home-row.sr--attached,
 .home-row.sr--running {
-  background: linear-gradient(90deg, rgba(94,234,212,0.06), transparent 70%);
-  border-left: 2px solid #5eead4;
+  background: linear-gradient(90deg, rgba(167,139,250,0.06), transparent 70%);
+  border-left: 2px solid #a78bfa;
   padding-left: 12px;
 }
 .home-row.sr--attached:hover,
 .home-row.sr--running:hover {
-  background: linear-gradient(90deg, rgba(94,234,212,0.10), rgba(124,107,255,0.05) 70%);
+  background: linear-gradient(90deg, rgba(167,139,250,0.10), rgba(124,107,255,0.05) 70%);
 }
 .home-row-status.rd--attached,
-.home-row-status.rd--running { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.5); }
+.home-row-status.rd--running { background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.5); }
 .sl-chip--inspect {
   background: rgba(255,255,255,0.06); color: rgba(232,233,240,0.7);
   font-size: 9px; padding: 2px 7px; border-radius: 4px;
@@ -2636,8 +2636,8 @@ body {
   border: none; cursor: pointer; margin-right: 4px;
 }
 .sl-chip--inspect:hover { background: rgba(255,255,255,0.12); color: #e8e9f0; }
-.stat-btn--live-terminals { color: #5eead4; }
-.stat-btn--live-terminals.active { background: rgba(94,234,212,0.15); color: #5eead4; }
+.stat-btn--live-terminals { color: #a78bfa; }
+.stat-btn--live-terminals.active { background: rgba(167,139,250,0.15); color: #a78bfa; }
 
 /* ── Sessions icon-view: live terminal tile dot ── */
 .tile-presence-dot {
@@ -2660,4 +2660,4 @@ body {
 }
 /* Both Open and Minimised tiles get the same teal dot — they're both running. */
 .tile-presence-dot.tpd--attached::before,
-.tile-presence-dot.tpd--running::before { background: #5eead4; box-shadow: 0 0 6px rgba(94,234,212,0.6); }
+.tile-presence-dot.tpd--running::before { background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.6); }
