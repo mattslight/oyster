@@ -17,7 +17,8 @@ body {
   background: #0a0a0a;
   margin: 0;
   overflow: hidden;
-  height: 100vh;
+  height: 100vh;     /* fallback */
+  height: 100svh;    /* iOS Safari/Chrome: clip to visible viewport */
   width: 100vw;
   /* Suppress iOS text selection / Copy popup when a tap drifts slightly
      during gameplay or on the splash. Everything in the game is visual —

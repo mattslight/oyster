@@ -4,7 +4,11 @@
 .screen {
   position: relative;
   width: 100vw;
-  height: 100vh;
+  height: 100vh;     /* fallback */
+  height: 100svh;    /* small viewport height — stays inside the visible
+                        browser UI on iOS Safari / Chrome iOS so the
+                        cabinet bottom (PLAY button, touch controls)
+                        doesn't get clipped below the toolbar. */
   overflow: hidden;
   /* Bezel: dark gradient simulating molded plastic frame, with a soft inner
      shadow giving the bezel depth. */
@@ -140,4 +144,13 @@ canvas {
 @keyframes arcade-blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+
+/* Touch devices — drop the cabinet bezel + rounded tube edges so the
+   playfield + CRT layers go edge-to-edge. Phones and tablets don't
+   have screen real estate to spare for chrome. CRT scanlines and the
+   vignette stay (part of the arcade identity). */
+@media (pointer: coarse) {
+  .screen { padding: 0; background: #000; }
+  .tube   { border-radius: 0; box-shadow: none; }
 }

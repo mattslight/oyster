@@ -45,19 +45,64 @@
     );
     border-radius: 2px;
     opacity: 0.45;
+    z-index: 2;
   }
   .marquee-text {
     font-family: 'Press Start 2P', ui-monospace, monospace;
-    font-size: clamp(15px, 5vw, 52px);
-    color: #ffd84a;
+    font-size: clamp(11px, 3vw, 32px);
     letter-spacing: 0.14em;
     text-align: center;
     line-height: 1.15;
     white-space: nowrap;
-    text-shadow:
-      3px 3px 0 #ff3aa1,
-      6px 6px 0 #2dd4ff,
-      0 0 30px rgba(255, 216, 74, 0.55);
+    /* Chrome-blue fill — horizontal bands clipped to the glyph shape. */
+    background-image: linear-gradient(180deg,
+      #1c4296 0%,
+      #2a5fc2 16%,
+      #5d92ee 30%,
+      #b8d8ff 42%,
+      #ffffff 50%,
+      #b8d8ff 58%,
+      #5d92ee 70%,
+      #2a5fc2 84%,
+      #1c4296 100%);
+    -webkit-background-clip: text;
+            background-clip: text;
+    color: transparent;
+    /* Crisp 1px violet outline + soft violet glow via chained
+       drop-shadows. Each drop-shadow operates on the previous filter
+       stage so the outline composes cleanly around the gradient fill
+       (text-shadow stacked behind the gradient ends up swamping it). */
+    filter:
+      drop-shadow( 1px  0 0 #a855f7)
+      drop-shadow(-1px  0 0 #a855f7)
+      drop-shadow( 0  1px 0 #a855f7)
+      drop-shadow( 0 -1px 0 #a855f7)
+      drop-shadow( 0  0 10px rgba(168, 85, 247, 0.55));
+  }
+
+  /* Pixel-chrome marquee ornaments — 4-point sparkle + fading speed
+     lines flanking OYSTER ARCADE. Same SVG used on both sides; the
+     left copy is horizontally mirrored so both sparkles point inward. */
+  .marquee-ornament {
+    flex: 0 0 auto;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 clamp(8px, 1.5vw, 18px);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .marquee-ornament svg {
+    width: clamp(28px, 5vw, 56px);
+    height: auto;
+    display: block;
+    opacity: 0.45;
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.15));
+  }
+  .marquee-ornament-left svg { transform: scaleX(-1); }
+  @media (max-width: 480px) {
+    .marquee-ornament { display: none; }
   }
 
   /* Selector layout: the strip viewport fills the cabinet so the focused
@@ -277,6 +322,234 @@
   .arcade-credit a { color: #2dd4ff; text-decoration: none; pointer-events: auto; }
   .arcade-credit a:hover { text-decoration: underline; }
 
+  /* Mute toggle — small, unobtrusive, top-right of the tube. Hidden when
+     a game is launched (the embedded game owns its own audio). */
+  .arcade-mute {
+    position: absolute;
+    top: clamp(10px, 1.6vw, 18px);
+    right: clamp(10px, 1.6vw, 18px);
+    z-index: 3;
+    appearance: none;
+    width: clamp(36px, 4.5vw, 44px);
+    height: clamp(36px, 4.5vw, 44px);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.7);
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    font-size: clamp(13px, 1.8vw, 16px);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+  }
+  .arcade-mute:hover,
+  .arcade-mute:focus-visible {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.55);
+    outline: none;
+  }
+  .arcade-mute.is-muted { color: rgba(255, 255, 255, 0.35); }
+  body.is-game-launched .arcade-mute { display: none; }
+
+  /* Launch overlay — the Oyster Arcade splash. CRT power-on snaps the
+     splash open, the wordmark glitches intermittently (chromatic split,
+     skew tears, hue bursts) for the hold window, then fades to reveal
+     the embedded game. JS toggles `.is-active` to start the sequence
+     and `.is-fading` at the end. */
+  .game-splash {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: none;
+    background: #000;
+    pointer-events: none;
+  }
+  .game-splash.is-active {
+    display: block;
+    animation: splash-poweron 0.45s ease-out;
+    pointer-events: auto;   /* catch taps to skip the splash */
+    cursor: pointer;
+  }
+  .game-splash.is-fading { animation: game-splash-fade 0.45s ease-out forwards; }
+  @keyframes game-splash-fade { to { opacity: 0; } }
+
+  .game-splash .game-splash-main {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+    background: #000;
+  }
+  .game-splash-img {
+    max-width: min(78%, 720px);
+    max-height: 72%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  /* Quick TV-tear glitch just after the splash lands — horizontal skew
+     + offset, snapping back to clean in <0.25s. */
+  .game-splash.is-active .game-splash-img {
+    animation: oyster-glitch 0.22s steps(5, end) 0.5s 1;
+  }
+  @keyframes oyster-glitch {
+    0%, 100% { transform: translate(0, 0); }
+    20%      { transform: translate(-7px, 0) skewX(9deg); }
+    45%      { transform: translate(5px, 1px) skewX(-7deg); }
+    70%      { transform: translate(-3px, 0) skewX(4deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .game-splash.is-active           { animation: none; }
+    .game-splash.is-active .game-splash-img { animation: none; }
+    .game-splash.is-fading            { animation-duration: 0.01s; }
+  }
+
+  /* Coming-soon ADVERT — retro arcade marketing flyer that pops up
+     when a coming-soon game with a tagline is clicked. Title, tagline,
+     numbered features, slanted COMING SOON stamp. CRT scanlines from
+     .crt-global still render on top so it reads as a poster in the
+     cabinet's TV. */
+  .game-advert {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+    display: none;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(125, 80, 255, 0.30) 0%, transparent 60%),
+      linear-gradient(180deg, var(--ad-bg1, #1a0d3a) 0%, var(--ad-bg2, #050a25) 100%);
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .game-advert.is-visible {
+    display: block;
+    pointer-events: auto;
+    animation: splash-poweron 0.4s ease-out;
+  }
+  .game-advert.is-fading { animation: game-splash-fade 0.35s ease-out forwards; }
+
+  /* Faint pixel-star backdrop (decorative). */
+  .game-advert::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 12% 18%, #fff 99%, transparent 100%),
+      radial-gradient(1px 1px at 78% 24%, #fff 99%, transparent 100%),
+      radial-gradient(1px 1px at 34% 62%, #fff 99%, transparent 100%),
+      radial-gradient(1px 1px at 88% 78%, #fff 99%, transparent 100%),
+      radial-gradient(1px 1px at 22% 86%, #fff 99%, transparent 100%),
+      radial-gradient(1px 1px at 62% 12%, #fff 99%, transparent 100%);
+    opacity: 0.55;
+  }
+
+  .game-advert .ad-stamp {
+    position: absolute;
+    top: clamp(14px, 3vw, 28px);
+    left: clamp(14px, 3vw, 28px);
+    transform: rotate(-8deg);
+    padding: 6px 10px;
+    border: 3px solid var(--ad-neon, #ff3aa1);
+    color: var(--ad-neon, #ff3aa1);
+    font-size: clamp(9px, 1.4vw, 12px);
+    letter-spacing: 0.22em;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.4);
+  }
+  .game-advert .ad-close {
+    position: absolute;
+    top: clamp(10px, 1.6vw, 18px);
+    right: clamp(10px, 1.6vw, 18px);
+    width: clamp(40px, 5vw, 50px);
+    height: clamp(40px, 5vw, 50px);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.9);
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    font-size: clamp(18px, 2.4vw, 24px);
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+  }
+  .game-advert .ad-close:hover,
+  .game-advert .ad-close:focus-visible {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.7);
+    outline: none;
+  }
+
+  .game-advert .ad-content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(28px, 6vw, 60px) clamp(18px, 4vw, 40px);
+    text-align: center;
+    gap: clamp(12px, 2vw, 20px);
+  }
+  .game-advert .ad-title {
+    font-size: clamp(26px, 6vw, 64px);
+    letter-spacing: 0.10em;
+    color: var(--ad-accent, #ffd84a);
+    text-shadow:
+      4px 4px 0 var(--ad-neon, #ff3aa1),
+      8px 8px 0 #2dd4ff,
+      0 0 28px rgba(255, 216, 74, 0.45);
+    line-height: 1;
+  }
+  .game-advert .ad-tagline {
+    font-size: clamp(11px, 1.9vw, 18px);
+    letter-spacing: 0.10em;
+    color: #e9d8ff;
+    line-height: 1.45;
+    max-width: 80%;
+  }
+  .game-advert .ad-features {
+    list-style: none;
+    padding: 0;
+    margin: clamp(10px, 1.6vw, 18px) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1.2vw, 12px);
+    font-size: clamp(10px, 1.6vw, 14px);
+    letter-spacing: 0.06em;
+    color: #fff;
+    text-align: left;
+  }
+  .game-advert .ad-features li {
+    position: relative;
+    padding-left: 1.6em;
+  }
+  .game-advert .ad-features li::before {
+    content: '▸';
+    position: absolute;
+    left: 0; top: 0;
+    color: #2dd4ff;
+  }
+  .game-advert .ad-footer {
+    margin-top: clamp(14px, 2.4vw, 22px);
+    font-size: clamp(9px, 1.4vw, 12px);
+    letter-spacing: 0.24em;
+    color: rgba(255, 255, 255, 0.5);
+    animation: arcade-blink 1.2s steps(1) infinite;
+  }
+
   /* PLAY touch button — orange to distinguish from cyan ◀ ▶. */
   .touch-controls .tc-select {
     width: auto;
@@ -304,18 +577,62 @@
     .nav-arrow { display: none; }
   }
 
-  /* When a game is launched, the arcade's outer cabinet chrome hides so
-     it doesn't double up with the embedded game's own bezel + scanlines
-     + vignette. */
-  body.is-game-launched .marquee,
-  body.is-game-launched .selector,
-  body.is-game-launched .arcade-credit,
-  body.is-game-launched .tube > .overlay,
-  body.is-game-launched .tube > .vignette {
+  /* GLOBAL CRT — single scanline + sub-pixel + curved-mask layer that
+     sits on top of EVERYTHING (marquee, tube, splash, boot screen). One
+     source of truth so a future setting can toggle / tune it in one
+     place. Uses a bright-on-dark scanline so it reads against pure
+     black; on lighter content the dark sub-stripe takes over.
+     Hidden once the iframe takes over so the embedded game's own CRT
+     doesn't double up. */
+  .crt-global {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+  }
+  .crt-global::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.045) 50%, rgba(0, 0, 0, 0.28) 50%),
+      linear-gradient(90deg, rgba(255, 0, 0, 0.08), rgba(0, 255, 0, 0.03), rgba(0, 0, 255, 0.08));
+    background-size: 100% 3px, 3px 100%;
+  }
+  .crt-global::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url('../assets/crt.png');
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    opacity: 0.55;
+  }
+  /* In arcade home the global CRT supersedes the cabinet's tube overlay
+     (.overlay stays in shared/cabinet.css for per-game pages, but is
+     redundant here). Vignette still adds the rounded-corner falloff. */
+  .tube > .overlay { display: none; }
+  body.is-game-launched .crt-global { display: none; }
+
+  /* Selecting a game flips the whole surface into fullscreen — cabinet
+     chrome (marquee, padding, rounded tube, vignette, controls) all
+     hide the moment .is-launching is set, so the boot scene, Oyster
+     splash, and the game itself share one unbroken canvas. The global
+     CRT stays on through boot+splash and only drops off when
+     .is-game-launched takes over (the embedded game's own CRT then
+     takes the baton). */
+  body.is-launching .marquee,
+  body.is-launching .selector,
+  body.is-launching .arcade-credit,
+  body.is-launching .arcade-mute,
+  body.is-launching .tube > .vignette {
     display: none;
   }
-  body.is-game-launched .screen { padding: 0; gap: 0; background: #000; }
-  body.is-game-launched .tube { border-radius: 0; box-shadow: none; }
+  /* `.tube.is-ready .touch-controls` in shared/touch.css has higher
+     specificity than `body.is-launching …`, so escalate. */
+  body.is-launching .touch-controls { display: none !important; }
+  body.is-launching .screen { padding: 0; gap: 0; background: #000; }
+  body.is-launching .tube   { border-radius: 0; box-shadow: none; }
 
   @media (prefers-reduced-motion: reduce) {
     .strip,
@@ -327,8 +644,45 @@
 <body>
 <div class="screen">
   <div class="marquee">
+    <span class="marquee-ornament marquee-ornament-left" aria-hidden="true">
+      <svg viewBox="0 0 64 26">
+        <!-- 4-point pixel sparkle, centred near the left of the SVG -->
+        <rect x="11" y="2"  width="2"  height="22" fill="#fff"/>
+        <rect x="12" y="0"  width="1"  height="2"  fill="#fff"/>
+        <rect x="12" y="24" width="1"  height="2"  fill="#fff"/>
+        <rect x="2"  y="12" width="22" height="2"  fill="#fff"/>
+        <rect x="0"  y="12" width="2"  height="2"  fill="#fff"/>
+        <rect x="24" y="12" width="2"  height="2"  fill="#fff"/>
+        <rect x="9"  y="10" width="6"  height="6"  fill="#fff"/>
+        <rect x="10" y="8"  width="4"  height="2"  fill="#fff" opacity="0.7"/>
+        <rect x="10" y="16" width="4"  height="2"  fill="#fff" opacity="0.7"/>
+        <!-- Four fading speed lines stacked to the right -->
+        <rect x="30" y="3"  width="32" height="2" fill="#fff" opacity="0.55"/>
+        <rect x="30" y="9"  width="32" height="2" fill="#fff" opacity="0.42"/>
+        <rect x="30" y="15" width="32" height="2" fill="#fff" opacity="0.30"/>
+        <rect x="30" y="21" width="32" height="2" fill="#fff" opacity="0.20"/>
+      </svg>
+    </span>
     <div class="marquee-text">OYSTER ARCADE</div>
+    <span class="marquee-ornament marquee-ornament-right" aria-hidden="true">
+      <svg viewBox="0 0 64 26">
+        <rect x="11" y="2"  width="2"  height="22" fill="#fff"/>
+        <rect x="12" y="0"  width="1"  height="2"  fill="#fff"/>
+        <rect x="12" y="24" width="1"  height="2"  fill="#fff"/>
+        <rect x="2"  y="12" width="22" height="2"  fill="#fff"/>
+        <rect x="0"  y="12" width="2"  height="2"  fill="#fff"/>
+        <rect x="24" y="12" width="2"  height="2"  fill="#fff"/>
+        <rect x="9"  y="10" width="6"  height="6"  fill="#fff"/>
+        <rect x="10" y="8"  width="4"  height="2"  fill="#fff" opacity="0.7"/>
+        <rect x="10" y="16" width="4"  height="2"  fill="#fff" opacity="0.7"/>
+        <rect x="30" y="3"  width="32" height="2" fill="#fff" opacity="0.55"/>
+        <rect x="30" y="9"  width="32" height="2" fill="#fff" opacity="0.42"/>
+        <rect x="30" y="15" width="32" height="2" fill="#fff" opacity="0.30"/>
+        <rect x="30" y="21" width="32" height="2" fill="#fff" opacity="0.20"/>
+      </svg>
+    </span>
   </div>
+  <div class="crt-global" aria-hidden="true"></div>
   <div class="tube is-ready">
     <div class="overlay"></div>
     <div class="vignette"></div>
@@ -346,6 +700,25 @@
       <button class="game-frame-exit" id="game-frame-exit" type="button" aria-label="Close game">×</button>
     </div>
 
+    <div class="game-splash" id="game-splash" aria-hidden="true">
+      <div class="game-splash-main">
+        <img class="game-splash-img" src="oyster-arcade-splash.png" alt="Oyster Arcade" draggable="false">
+      </div>
+    </div>
+
+    <!-- Coming-soon advert overlay — populated from GAMES entries that
+         have a `tagline` and `features` array. -->
+    <div class="game-advert" id="game-advert" aria-hidden="true">
+      <button class="ad-close" id="ad-close" type="button" aria-label="Back to selector">×</button>
+      <div class="ad-stamp">COMING SOON</div>
+      <div class="ad-content">
+        <div class="ad-title" id="ad-title">—</div>
+        <div class="ad-tagline" id="ad-tagline">—</div>
+        <ul class="ad-features" id="ad-features"></ul>
+        <div class="ad-footer">PRESS ANY KEY · TAP TO RETURN</div>
+      </div>
+    </div>
+
     <div class="touch-controls" aria-hidden="true">
       <div class="tc-group">
         <button type="button" class="tc-btn" id="tc-left"  aria-label="Previous game" tabindex="-1">◀</button>
@@ -356,9 +729,18 @@
       </div>
     </div>
 
+    <button class="arcade-mute" id="arcade-mute" type="button" aria-label="Toggle music" aria-pressed="false">♪</button>
+
     <div class="arcade-credit">© OYSTER 2026 · <a href="https://oyster.to/">oyster.to</a></div>
   </div>
 </div>
+
+<!-- Arcade SFX. Loaded via shared/audio.js so mute mirrors here and
+     persists across reloads. The <audio> tags also act as fallbacks for
+     the brief window before Web Audio finishes decoding each buffer. -->
+<audio id="sfx-select"     src="sfx-select.mp3"     preload="auto"></audio>
+<audio id="sfx-game-start" src="sfx-game-start.mp3" preload="auto"></audio>
+<audio id="sfx-game-intro" src="sfx-oyster.wav"     preload="auto"></audio>
 
 <!-- Pixel-art previews. -->
 <template id="preview-rocket-ship">
@@ -406,7 +788,7 @@
     <rect x="14" y="27" width="1" height="1" fill="#fff" opacity="0.25"/>
   </svg>
 </template>
-<template id="preview-platformer">
+<template id="preview-space-jumper">
   <svg viewBox="0 0 32 32" aria-hidden="true">
     <rect width="32" height="32" fill="#1a1535"/>
     <rect x="4"  y="3" width="1" height="1" fill="#fff"/>
@@ -418,9 +800,43 @@
     <rect x="0" y="26" width="32" height="1" fill="#2dd4ff" opacity="0.65"/>
     <rect x="13" y="18" width="7" height="3" fill="#3b2f1a"/>
     <rect x="13" y="18" width="7" height="1" fill="#2dd4ff" opacity="0.6"/>
-    <rect x="4" y="18" width="5" height="8" fill="#ff3aa1"/>
-    <rect x="5" y="20" width="3" height="1" fill="#ffd84a"/>
-    <rect x="7" y="21" width="1" height="1" fill="#0a0a0a"/>
+    <!-- Alien — green critter with antennae, on the right side of the floor -->
+    <rect x="22" y="19" width="1" height="1" fill="#ff3aa1"/>
+    <rect x="25" y="19" width="1" height="1" fill="#ff3aa1"/>
+    <rect x="22" y="20" width="1" height="1" fill="#22c55e"/>
+    <rect x="25" y="20" width="1" height="1" fill="#22c55e"/>
+    <rect x="21" y="21" width="6" height="2" fill="#4ade80"/>
+    <rect x="22" y="22" width="1" height="1" fill="#0a0a14"/>
+    <rect x="25" y="22" width="1" height="1" fill="#0a0a14"/>
+    <rect x="22" y="23" width="4" height="2" fill="#22c55e"/>
+    <rect x="21" y="25" width="2" height="1" fill="#0f5132"/>
+    <rect x="25" y="25" width="2" height="1" fill="#0f5132"/>
+    <!-- Steve — chunky pixel hero. Cap + face + shirt + belt + legs. -->
+    <!-- Cap (red): crown + overhanging brim + peak fringe -->
+    <rect x="5"  y="13" width="6" height="2" fill="#a855f7"/>
+    <rect x="4"  y="15" width="8" height="1" fill="#a855f7"/>
+    <rect x="9"  y="16" width="2" height="1" fill="#a855f7"/>
+    <!-- Face (skin) -->
+    <rect x="5"  y="16" width="6" height="3" fill="#ffd6c8"/>
+    <!-- Eye + mouth -->
+    <rect x="8"  y="17" width="2" height="1" fill="#0a0a0a"/>
+    <rect x="6"  y="19" width="3" height="1" fill="#0a0a0a"/>
+    <!-- Shirt (pink) -->
+    <rect x="5"  y="20" width="6" height="3" fill="#ff3aa1"/>
+    <!-- Shoulder shading + arms (darker pink) + skin hands -->
+    <rect x="5"  y="20" width="6" height="1" fill="#c92670"/>
+    <rect x="3"  y="20" width="2" height="2" fill="#c92670"/>
+    <rect x="11" y="20" width="2" height="2" fill="#c92670"/>
+    <rect x="3"  y="22" width="2" height="1" fill="#ffd6c8"/>
+    <rect x="11" y="22" width="2" height="1" fill="#ffd6c8"/>
+    <!-- Belt + brass buckle -->
+    <rect x="5"  y="22" width="6" height="1" fill="#ffd84a"/>
+    <rect x="7"  y="22" width="2" height="1" fill="#c79b00"/>
+    <!-- Legs (cyan) + feet (dark) -->
+    <rect x="5"  y="23" width="2" height="3" fill="#2dd4ff"/>
+    <rect x="9"  y="23" width="2" height="3" fill="#2dd4ff"/>
+    <rect x="4"  y="25" width="3" height="1" fill="#0a0a0a"/>
+    <rect x="9"  y="25" width="3" height="1" fill="#0a0a0a"/>
     <circle cx="16" cy="14" r="1.6" fill="#ffd84a"/>
     <circle cx="16" cy="14" r="0.7" fill="#c79b00"/>
     <rect x="28" y="14" width="1" height="12" fill="#fff"/>
@@ -430,16 +846,93 @@
 
 <script src="shared/touch.js"></script>
 <script src="shared/leaderboard.js"></script>
+<script src="shared/audio.js"></script>
 <script>
 // ============================================
 // CATALOGUE — add a new game here + its preview <template> above.
 // ============================================
 const GAMES = [
   { id: 'rocket-ship', name: 'ROCKET SHIP', url: 'https://oyster.to/rocket-ship.html', preview: 'preview-rocket-ship' },
-  { id: 'platformer',  name: 'PLATFORMER',  url: 'platformer/',                         preview: 'preview-platformer'  },
-  { id: 'soon-1', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
-  { id: 'soon-2', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
-  { id: 'soon-3', name: 'COMING SOON', preview: 'preview-coming-soon', comingSoon: true },
+  { id: 'space-jumper', name: 'SPACE JUMPER', url: 'space-jumper/',                      preview: 'preview-space-jumper' },
+  {
+    id: 'black-hole-fishing', name: 'BLACK HOLE FISHING',
+    preview: 'preview-coming-soon', comingSoon: true,
+    tagline: 'Reel in space junk through warped gravity',
+    features: [
+      'Cast a gravity hook into deep space',
+      'Time slingshots around black holes',
+      'Watch out for hungry star-fish',
+    ],
+    palette: { bg1: '#1a0c3a', bg2: '#04081f', accent: '#2dd4ff', neon: '#a855f7' },
+  },
+  {
+    id: 'comet-race', name: 'COMET RACE',
+    preview: 'preview-coming-soon', comingSoon: true,
+    tagline: 'Burn neon trails through asteroid lanes',
+    features: [
+      'Ride a comet down a winding lane',
+      'Drift around moons for a speed boost',
+      'Outrun a rival rocket on every lap',
+    ],
+    palette: { bg1: '#3a0d22', bg2: '#0c0418', accent: '#ff8800', neon: '#ffd84a' },
+  },
+  {
+    id: 'star-fight', name: 'STAR FIGHT',
+    preview: 'preview-coming-soon', comingSoon: true,
+    tagline: 'Side-scrolling shmup against the alien armada',
+    features: [
+      'Pilot a fighter through enemy waves',
+      'Power up your weapons between bosses',
+      'Memorise bullet patterns to survive',
+    ],
+    palette: { bg1: '#2a0822', bg2: '#04050f', accent: '#ff3aa1', neon: '#2dd4ff' },
+  },
+  {
+    id: 'zero-g-trainer', name: 'ZERO-G TRAINER',
+    preview: 'preview-coming-soon', comingSoon: true,
+    tagline: 'Pump iron in low gravity',
+    features: [
+      'Rhythm-press lifts in slow-mo',
+      'Heavier plates = more drift to wrestle',
+      'Don’t let the dumbbells float away',
+    ],
+    palette: { bg1: '#0c1438', bg2: '#020414', accent: '#2dd4ff', neon: '#a855f7' },
+  },
+  {
+    id: 'dead-station', name: 'DEAD STATION',
+    preview: 'preview-coming-soon', comingSoon: true,
+    tagline: 'Explore an abandoned space station',
+    features: [
+      'A torchlight is all you have',
+      'Listen for the things that listen back',
+      'Find out what happened to the crew',
+    ],
+    palette: { bg1: '#0a1a14', bg2: '#020806', accent: '#4ade80', neon: '#a855f7' },
+  },
+  {
+    id: 'star-troopers', name: 'STAR TROOPERS',
+    preview: 'preview-coming-soon', comingSoon: true,
+    tagline: 'Run and gun across alien battlefields',
+    features: [
+      'Storm enemy strongholds on foot',
+      'Pick up weapon power-ups mid-mission',
+      'Take down massive end-of-level bosses',
+    ],
+    palette: { bg1: '#1c2a0c', bg2: '#04080a', accent: '#a3e635', neon: '#ffd84a' },
+  },
+  {
+    id: 'astro-courier',
+    name: 'ASTRO COURIER',
+    preview: 'preview-coming-soon',
+    comingSoon: true,
+    tagline: 'Deliver packages between tiny planets',
+    features: [
+      'Ration fuel like your life depends on it',
+      'Slingshot around moons for speed',
+      'Outrun — or outgun — space pirates',
+    ],
+    palette: { bg1: '#1a0d3a', bg2: '#050a25', accent: '#ffd84a', neon: '#ff3aa1' },
+  },
 ];
 const N = GAMES.length;
 const TRANSITION_MS = 400;
@@ -467,7 +960,11 @@ let suppressClickUntil = 0;
 // some pixel-level reconciliation in the GPU compositor surfaces it
 // as a tiny jolt. No post-slide normalize → no jolt.
 // ============================================
-const COPIES = 5;
+// 3 copies gives N=9 → 27 cards (vs 5×9=45). Plenty of buffer before
+// the silent overflow-normalize kicks in, and ~40% less DOM / fewer
+// composited layers — meaningful on iPad where each transformed card
+// became its own paint layer.
+const COPIES = 3;
 const CANONICAL_COPY = Math.floor(COPIES / 2);
 
 function buildCard(game, realIdx, isClone) {
@@ -531,17 +1028,18 @@ function mountStrip() {
 // Canonical strip-idx for a real-idx: the middle copy.
 function canonicalStripFor(realIdx) { return CANONICAL_COPY * N + realIdx; }
 
-// Stable cardCentre formula — doesn't depend on a particular card's
-// offsetLeft, which can drift sub-pixel-wise when sibling cards change
-// content (focused vs not). All cards have identical flex-basis and a
-// uniform `gap`, so K * (w + g) + w/2 is exact for any stripIdx.
+// cardCentre = layout position of the target card's centre within the
+// strip. Measured directly on the DOM — offsetLeft / offsetWidth are
+// pre-transform layout values, so they're correct even with the cards'
+// scale() transform. A forced reflow on the strip's offsetWidth right
+// before measuring guarantees layout has settled (covers the early-
+// bootstrap timing where measurements could otherwise be stale).
 function cardCentreFor(stripIdx) {
   const strip = document.getElementById('strip');
-  const first = strip.children[0];
-  if (!first) return 0;
-  const w = first.offsetWidth;
-  const g = parseFloat(getComputedStyle(strip).gap) || 0;
-  return stripIdx * (w + g) + w / 2;
+  const target = strip && strip.children[stripIdx];
+  if (!target) return 0;
+  void strip.offsetWidth;                          // force layout
+  return target.offsetLeft + target.offsetWidth / 2;
 }
 
 // Translate the strip so the card at `stripIdx` sits centred in the
@@ -599,6 +1097,7 @@ function navigate(delta) {
   sel = (sel + delta + N) % N;
   stripPos += delta;
   translateStripTo(stripPos, true);
+  Arcade.Audio.play('sfx-select', 0.4);
 }
 
 // Click / direct jump to a specific real index. Picks the strip-idx
@@ -615,6 +1114,7 @@ function navigateTo(newSel) {
   sel = newSel;
   stripPos = target;
   translateStripTo(stripPos, true);
+  Arcade.Audio.play('sfx-select', 0.4);
 }
 
 function next() { navigate(+1); }
@@ -628,30 +1128,163 @@ const wrap = document.getElementById('game-frame-wrap');
 const frame = document.getElementById('game-frame');
 const exitBtn = document.getElementById('game-frame-exit');
 
+// Launch flow:
+//   tap PLAY → click sfx → CRT power-on snaps the Oyster Arcade splash
+//   open → glitch animation runs across the wordmark → ba-ding chime
+//   fires ~3s in → splash fades, iframe takes over.
+// SPLASH_READY_MS is the time from .is-active being added to the splash
+// being fully on-screen (the CRT power-on lands at ~450ms).
+const SPLASH_READY_MS       = 450;
+const SPLASH_HOLD_MS        = 4000;   // how long the splash stays after it lands
+const SPLASH_CHIME_DELAY_MS = 2000;   // delay after splash lands before ba-ding plays
+const SPLASH_FADE_MS        = 450;
+const splashEl = document.getElementById('game-splash');
+
+let splashTimers = [];
+function clearSplashTimers() { splashTimers.forEach(clearTimeout); splashTimers = []; }
+function resetSplash() {
+  if (!splashEl) return;
+  clearSplashTimers();
+  splashEl.classList.remove('is-active', 'is-fading');
+}
+
+// ============================================
+// COMING-SOON ADVERT — populated per-game from GAMES entries that have
+// `tagline` and optional `features` / `palette` fields. Dismisses on
+// the × button, ESC, or any tap/keypress while visible.
+// ============================================
+const advertEl = document.getElementById('game-advert');
+function showAdvert(g) {
+  if (!advertEl) return;
+  advertEl.querySelector('#ad-title').textContent   = g.name;
+  advertEl.querySelector('#ad-tagline').textContent = g.tagline || '';
+  const list = advertEl.querySelector('#ad-features');
+  list.innerHTML = '';
+  (g.features || []).forEach(f => {
+    const li = document.createElement('li');
+    li.textContent = f;
+    list.appendChild(li);
+  });
+  // Per-game palette via CSS custom properties (with sensible defaults).
+  const p = g.palette || {};
+  advertEl.style.setProperty('--ad-bg1',    p.bg1    || '#1a0d3a');
+  advertEl.style.setProperty('--ad-bg2',    p.bg2    || '#050a25');
+  advertEl.style.setProperty('--ad-accent', p.accent || '#ffd84a');
+  advertEl.style.setProperty('--ad-neon',   p.neon   || '#ff3aa1');
+  advertEl.classList.remove('is-fading');
+  void advertEl.offsetWidth;
+  advertEl.classList.add('is-visible');
+  advertEl.setAttribute('aria-hidden', 'false');
+  // One-shot dismiss listeners — any input or the close button returns.
+  function dismiss() { hideAdvert(); cleanup(); }
+  function cleanup() {
+    window.removeEventListener('keydown', dismiss);
+    advertEl.removeEventListener('pointerdown', onTap);
+  }
+  function onTap(e) {
+    // Close button has its own handler; let other clicks dismiss too.
+    if (e.target.closest('#ad-close')) return;
+    dismiss();
+  }
+  window.addEventListener('keydown', dismiss, { once: true });
+  advertEl.addEventListener('pointerdown', onTap);
+}
+function hideAdvert() {
+  if (!advertEl) return;
+  advertEl.classList.add('is-fading');
+  setTimeout(() => {
+    advertEl.classList.remove('is-visible', 'is-fading');
+    advertEl.setAttribute('aria-hidden', 'true');
+  }, 350);
+}
+document.getElementById('ad-close').addEventListener('click', e => {
+  e.stopPropagation();
+  hideAdvert();
+});
+
 function launch() {
   if (launched) return;
   const g = GAMES[sel];
-  if (g.comingSoon) return;
+  if (g.comingSoon) {
+    // Coming-soon games with marketing copy open an advert instead of
+    // launching. Plain "COMING SOON" cards (no tagline) just no-op.
+    if (g.tagline) showAdvert(g);
+    return;
+  }
   launched = true;
-  frame.src = g.url;
+
+  Arcade.Audio.play('sfx-game-start', 0.55);
+
+  // Toggle .is-active off → reflow → on so the CRT power-on + glitch
+  // animations retrigger every launch.
+  resetSplash();
+  void splashEl.offsetWidth;
+  splashEl.classList.add('is-active');
+
+  // Ba-ding fires part-way through the splash, after the wordmark has
+  // settled and glitched a few times.
+  splashTimers.push(setTimeout(() => Arcade.Audio.play('sfx-game-intro', 0.6), SPLASH_READY_MS + SPLASH_CHIME_DELAY_MS));
+
+  function dismissSplash() {
+    if (!launched) return;
+    splashEl.classList.add('is-fading');
+    // Load the iframe NOW (not at launch start) so the game's title
+    // music doesn't kick in during the splash. The fade window + load
+    // latency hide the gap before the title screen appears.
+    // `embedded=1` tells the game it's running inside the arcade
+    // cabinet so it can hide its own boot intro (the arcade already
+    // showed one). Direct visits — e.g. the rocket-ship easter egg on
+    // oyster.to — keep their boot.
+    const sep = g.url.includes('?') ? '&' : '?';
+    frame.src = g.url + sep + 'embedded=1';
+    splashTimers.push(setTimeout(() => {
+      splashEl.classList.remove('is-active', 'is-fading');
+      // Splash done — embedded game's own CRT takes over. Keep
+      // .is-launching set so the cabinet stays in its fullscreen state;
+      // .is-game-launched adds on top and hides the global CRT.
+      document.body.classList.add('is-game-launched');
+      tube.classList.add('is-game-launched');
+      // Hand off keyboard focus to the iframe now that the splash is
+      // gone. Before this, focus must stay in the parent so the
+      // any-key-to-skip handler on `window` can actually fire.
+      try { frame.focus(); } catch (_) {}
+    }, SPLASH_FADE_MS));
+  }
+  splashTimers.push(setTimeout(dismissSplash, SPLASH_READY_MS + SPLASH_HOLD_MS));
+
+  // Any tap / click / keypress on the splash skips ahead and dismisses
+  // it early. One-shot — once it fires (or the auto-dismiss fires), the
+  // listeners detach.
+  function skip() { detach(); clearSplashTimers(); dismissSplash(); }
+  function detach() {
+    splashEl.removeEventListener('pointerdown', skip);
+    window.removeEventListener('keydown', skip);
+  }
+  splashEl.addEventListener('pointerdown', skip, { once: true });
+  window.addEventListener('keydown', skip, { once: true });
+  splashTimers.push(setTimeout(detach, SPLASH_READY_MS + SPLASH_HOLD_MS + 50));
+
   wrap.classList.remove('is-shutting-down');
   wrap.classList.add('is-launched', 'is-launching');
   wrap.setAttribute('aria-hidden', 'false');
-  tube.classList.add('is-game-launched');
-  document.body.classList.add('is-game-launched');
+  document.body.classList.add('is-launching');
   setTimeout(() => wrap.classList.remove('is-launching'), 600);
-  setTimeout(() => { try { frame.focus(); } catch (_) {} }, 60);
+  // (frame.focus is now deferred to after the splash dismisses so the
+  // any-key-skip listener on window can fire during the splash.)
 }
 
 function close() {
   if (!launched) return;
   launched = false;
+
+  resetSplash();
+
   wrap.classList.add('is-shutting-down');
   setTimeout(() => {
     wrap.classList.remove('is-launched', 'is-shutting-down', 'is-launching');
     wrap.setAttribute('aria-hidden', 'true');
     tube.classList.remove('is-game-launched');
-    document.body.classList.remove('is-game-launched');
+    document.body.classList.remove('is-launching', 'is-game-launched');
     try { frame.src = 'about:blank'; } catch (_) {}
     paintHi();
     Arcade.Leaderboard.init({ game: GAMES[sel].id, max: 10 });
@@ -724,7 +1357,11 @@ Arcade.Touch.bind(document.getElementById('tc-select'), launch, () => {});
 // ============================================
 mountStrip();
 stripPos = canonicalStripFor(sel);
-translateStripTo(stripPos, false);
+// Defer to the next frame so card layout (clamp() widths, flex gap)
+// is fully resolved before we measure offsetWidth — measuring during
+// the synchronous post-mount window can return 0 / stale values and
+// leave the strip translated to the wrong x.
+requestAnimationFrame(() => translateStripTo(stripPos, false));
 window.addEventListener('resize', () => {
   stripPos = canonicalStripFor(sel);
   translateStripTo(stripPos, false);
@@ -738,6 +1375,48 @@ window.addEventListener('resize', () => {
     if (GAMES[sel].id === g.id) paintHi();
   }
 })();
+
+// ============================================
+// AUDIO — short SFX only (no looping BGM on the select screen).
+// `select` blips on left/right navigation; `game-start` on PLAY tap;
+// `game-intro` rides the post-load boot splash. Mute state mirrors to
+// every <audio> element via Arcade.Audio.setMuted and persists
+// (mutedKey). AudioContext spins up on the first user gesture so iOS
+// allows playback.
+// ============================================
+Arcade.Audio.init({
+  sfx: {
+    'sfx-select':     'sfx-select.mp3',
+    'sfx-game-start': 'sfx-game-start.mp3',
+    'sfx-game-intro': 'sfx-oyster.wav',
+  },
+  mutedKey: 'oyster-arcade-select-muted',
+});
+
+// Prime the AudioContext on the first user gesture (autoplay policy).
+let audioPrimed = false;
+function primeAudio() {
+  if (audioPrimed) return;
+  audioPrimed = true;
+  Arcade.Audio.ensureCtx();
+}
+['keydown', 'pointerdown', 'touchstart'].forEach(ev => {
+  window.addEventListener(ev, primeAudio, { passive: true });
+});
+
+const muteBtn = document.getElementById('arcade-mute');
+function paintMute() {
+  const m = Arcade.Audio.isMuted();
+  muteBtn.classList.toggle('is-muted', m);
+  muteBtn.textContent = m ? '✕' : '♪';
+  muteBtn.setAttribute('aria-pressed', m ? 'true' : 'false');
+}
+muteBtn.addEventListener('click', () => {
+  primeAudio();
+  Arcade.Audio.setMuted(!Arcade.Audio.isMuted());
+  paintMute();
+});
+paintMute();
 </script>
 </body>
 </html>
