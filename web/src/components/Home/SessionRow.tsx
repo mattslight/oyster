@@ -130,6 +130,12 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
     else onTerminalRestore?.(session.id, livePresence.terminalId);
   };
   const canResume = !livePresence && !!onResume;
+  // Only render the Connect chip when we actually have the callback that
+  // will handle this presence state. Otherwise clicking would silently
+  // no-op via the ?. in handleConnect.
+  const canConnect = livePresence
+    ? (livePresence.state === "attached" ? !!onTerminalFocus : !!onTerminalRestore)
+    : false;
   return (
     <div
       className={`home-row${rowExtraClass}`}
@@ -161,7 +167,7 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
           )}
           {title}
         </span>
-        {livePresence && (
+        {livePresence && canConnect && (
           <button
             type="button"
             className="sl-chip sl-chip--connect"

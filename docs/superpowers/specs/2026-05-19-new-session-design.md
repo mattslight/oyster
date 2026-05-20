@@ -61,7 +61,7 @@ The handler installs once in `App.tsx` (window-level listener), not inside the p
 A centered modal (`web/src/components/NewSessionPicker.tsx`). Built from scratch — Oyster does not currently have a generic palette primitive to reuse.
 
 ```
-┌─ Search projects…                         ⌘N ─┐
+┌─ Search projects…                         ⌘/ ─┐
 │                                                │
 │  RECENT                                        │
 │  ▸ oyster-dev          Oyster · ~/Dev/…        │
@@ -79,7 +79,7 @@ A centered modal (`web/src/components/NewSessionPicker.tsx`). Built from scratch
 
 **Behaviour:**
 
-- Opens on pill click OR `⌘N`.
+- Opens on pill click OR `⌘/`.
 - Single text input at the top filters across `project.name` + `project.recentPath` + `space.name`. Case-insensitive substring match (no fuzzy scoring v1 — keep it predictable).
 - **Recents:** localStorage cache (`oyster-new-session-recents`) keyed `projectId`. Updated on successful spawn. Last 5, LRU. Server-side recent tracking is explicitly out of scope.
 - **"No folder" projects** (those with `hasLivePath === false`) are rendered disabled with a tooltip — visible so the user understands they exist, un-clickable so they can't trigger a spawn that the server would reject with `project_homeless`.
@@ -88,7 +88,7 @@ A centered modal (`web/src/components/NewSessionPicker.tsx`). Built from scratch
 
 ### 4. Routing logic
 
-When the pill or `⌘N` fires:
+When the pill or `⌘/` fires:
 
 ```
 on Home?
@@ -172,7 +172,7 @@ Today `GET /api/projects?space_id=…` is per-space. The new flat form is the si
 | `web/src/components/NewSessionPicker.tsx` *(new)* | The modal. Renders search + grouped list + folder escape hatch. |
 | `web/src/components/Topbar/NewSessionPill.tsx` *(new)* | The `+ New session` pill. Mirrors `RunningTerminalsPill`'s visual API. |
 | `web/src/components/Home/index.tsx` *(modify)* | Mount the new pill next to the running pill. Adjust right-align styling so the cluster stays right-edged whether 1 or 2 pills are visible. |
-| `web/src/App.tsx` *(modify)* | Lift `handleLaunchClaudeFromProject` to a stable callback (already is — keep). Add a `useNewSessionPicker()` mount + `⌘N` global handler. Pass `onLaunchClaude` + `activeSpace` + all-projects data into the picker. |
+| `web/src/App.tsx` *(modify)* | Lift `handleLaunchClaudeFromProject` to a stable callback (already is — keep). Add a `useNewSessionPicker()` mount + `⌘/` global handler. Pass `onLaunchClaude` + `activeSpace` + all-projects data into the picker. |
 | `web/src/data/projects-api.ts` *(modify)* | Add `fetchAllProjects()` + `useAllProjects()` hook. |
 | `web/src/data/recents.ts` *(new, tiny)* | localStorage LRU for recents. ~30 lines. |
 
@@ -192,7 +192,7 @@ CSS: extend `App.css` (or a new `NewSessionPicker.css` colocated with the compon
 - **Agent dropdown** on the pill / palette — a `[Claude ▾]` split-button or a row of agent chips. Today everything is Claude; surfacing the choice prematurely promises a feature the UI can't deliver. Spec note: the `POST /api/terminals` body already carries `kind`; an `agent` field would be the natural extension point.
 - **Server-side recents** — if we ever want recents to sync across browsers/devices, the right move is a small `user_preferences` row, not bolting it onto the sessions table. Out of scope.
 - **Resume picker** — different surface, different problem (the existing Sessions list and Inspector handle this). Not unified here.
-- **Workspace-style cmd+K** — a broader command palette covering nav, search, settings, etc. would subsume `⌘N` as a special-case row. Out of scope; `⌘N` lives standalone for now.
+- **Workspace-style cmd+K** — a broader command palette covering nav, search, settings, etc. would subsume `⌘/` as a special-case row. Out of scope; `⌘/` lives standalone for now.
 
 ## Out of scope (v1)
 
@@ -216,8 +216,8 @@ Suggested sequence — the writing-plans phase will break each step into indepen
 5. **Wire spawn**: hook `onActivate` to `handleLaunchClaudeFromProject`. Smoke-test that picking a project starts a terminal.
 6. **Folder escape hatch**: inline path input + space dropdown (where relevant) + attach-then-spawn flow.
 7. **`NewSessionPill`**: render the pill, right-aligned with the running pill in the breadcrumb. Both pills cluster at the right edge.
-8. **Smart routing**: `⌘N`/pill-click decides palette-vs-spawn based on active space + project count.
-9. **`⌘N` global handler** — unconditional intercept (matches §2 and the acceptance test). No focus-aware guard.
+8. **Smart routing**: `⌘/`/pill-click decides palette-vs-spawn based on active space + project count.
+9. **`⌘/` global handler** — unconditional intercept (matches §2 and the acceptance test). No focus-aware guard.
 10. **Empty-state copy + edge-case polish**.
 11. **CHANGELOG entry** in the same PR (per `CLAUDE.md` convention).
 
@@ -229,7 +229,7 @@ Smoke tests covering the core flow:
 - **Pill click on Home opens the palette.** Assert the modal is mounted, no pre-fill in the search.
 - **Pill click in a single-project space spawns silently.** Mount a space with one live-folder project; click the pill; assert `POST /api/terminals` was called with the right project source and the palette was *not* opened.
 - **Pill click in a multi-project space opens the palette pre-scoped.** Search input value matches the active space name.
-- **`⌘N` opens the palette unconditionally.** From Home, from a space view, and while focus is inside any `<input>`, `<textarea>`, or `contenteditable` node. Browser's "new window" default never fires inside Oyster.
+- **`⌘/` opens the palette unconditionally.** From Home, from a space view, and while focus is inside any `<input>`, `<textarea>`, or `contenteditable` node. The page handles the keystroke (Chrome doesn't reserve `⌘/`).
 - **Search filters substring on name, path, and space name.**
 - **Disabled rows don't activate.** Click a `hasLivePath === false` row → nothing happens.
 - **Recents persist across reloads.** Spawn into a project, reload, reopen palette → that project is in the RECENT section.

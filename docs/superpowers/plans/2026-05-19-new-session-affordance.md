@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A `+ New session` pill right-aligned next to the running pill, plus a `⌘N` command-palette modal to start a fresh Claude session from anywhere in Oyster. Smart routing when inside a single-project space. Quiet "or pick a folder" escape hatch for un-attached folders.
+**Goal:** A `+ New session` pill right-aligned next to the running pill, plus a `⌘/` command-palette modal to start a fresh Claude session from anywhere in Oyster. Smart routing when inside a single-project space. Quiet "or pick a folder" escape hatch for un-attached folders.
+
+> **Historical note:** Task 10 below was originally written for `⌘N`. During implementation we discovered Chrome reserves `⌘N` at the OS level (and `⌘E` collides with the Claude-in-Chrome extension) — the shipped shortcut is `⌘/`. The Task 10 code block is kept as the original plan for traceability; the actual implementation uses `⌘/` (see `web/src/App.tsx` and the spec at `docs/superpowers/specs/2026-05-19-new-session-design.md` §2).
 
 **Architecture:** Reuses the existing terminal spawn path (`POST /api/terminals` with `source: { type: "project", id }`) untouched. Adds one flat-list server method + one route change. New React components (`NewSessionPicker`, `NewSessionPill`) mount from `App.tsx`. Recents persist in localStorage. Folder escape hatch reuses the existing `attachFolder()` → spawn pattern.
 
@@ -27,7 +29,7 @@
 - `server/src/project-service.ts` — add `listAll(): Project[]`
 - `server/src/routes/projects.ts:42-53` — route handler calls `listAll()` when `space_id` is absent
 - `server/test/project-service.test.ts` — add `describe("ProjectService.listAll")` block
-- `web/src/App.tsx` — mount picker, install `⌘N` handler, pass `activeSpace` + handlers
+- `web/src/App.tsx` — mount picker, install global shortcut handler (planned `⌘N`; shipped `⌘/` — see header note), pass `activeSpace` + handlers
 - `web/src/components/Home/index.tsx:821-831` — render `NewSessionPill` next to running pill in the breadcrumb cluster
 
 ---

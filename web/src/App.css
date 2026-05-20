@@ -1407,6 +1407,155 @@ body {
   width: 100%;
 }
 
+/* ── Terminal chrome variant ──
+   Black/glassless look matching the website's terminal mock (docs/assets/
+   hero-mock.css → .hm-terminal). Applied to .window-chrome.terminal only,
+   so viewer/artifact windows keep the purple-glass default. */
+.window-chrome.terminal {
+  background: linear-gradient(180deg, #0b0d18 0%, #060810 100%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.window-chrome.terminal .window-titlebar {
+  background: #1d1f27;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5);
+}
+
+.window-chrome.terminal .window-title {
+  color: rgba(255, 255, 255, 0.62);
+  letter-spacing: 0.02em;
+}
+
+.window-chrome.terminal .window-body {
+  background: #0a0c12;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Terminal header buttons — macOS traffic-light cues on hover only.
+   At rest the buttons stay subtle (matching the website's terminal mock);
+   on hover they pick up the conventional colour for each action:
+     red    Stop ■    /  Close × (destructive)
+     amber  Minimise − (non-destructive — PTY keeps running)
+     green  Expand ⤢ (fullscreen) */
+.window-chrome.terminal .window-btn--stop:hover {
+  background: rgba(255, 95, 87, 0.22);
+  color: #ff5f57;
+}
+.window-chrome.terminal .window-btn.close[data-color="red"]:hover {
+  background: rgba(255, 95, 87, 0.22);
+  color: #ff5f57;
+}
+.window-chrome.terminal .window-btn.close[data-color="amber"]:hover {
+  background: rgba(254, 188, 46, 0.22);
+  color: #febc2e;
+}
+.window-chrome.terminal .window-expand-btn:hover {
+  background: rgba(40, 200, 64, 0.22);
+  color: #28c840;
+}
+.window-chrome.terminal .window-expand-btn:hover svg {
+  opacity: 1;
+}
+
+/* ── Fullscreen terminal tabs ──
+   When a terminal goes fullscreen, the parent (App.tsx) hands every open
+   terminal as `liveTerminals` so we render a tab per terminal at the top
+   of the body. Click a tab → SWITCH_FULLSCREEN_TERMINAL. The exit button
+   on the right (and Esc) drops back out of fullscreen. */
+.terminal-fs-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.45);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.terminal-fs-tabs-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.terminal-fs-tabs-list::-webkit-scrollbar { display: none; }
+
+.terminal-fs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgba(232, 233, 240, 0.6);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.terminal-fs-tab:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(232, 233, 240, 0.9);
+}
+
+.terminal-fs-tab.is-active {
+  background: rgba(124, 107, 255, 0.16);
+  border-color: rgba(124, 107, 255, 0.4);
+  color: #a597ff;
+  cursor: default;
+}
+
+.terminal-fs-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #5eead4;
+  box-shadow: 0 0 6px rgba(94, 234, 212, 0.5);
+  flex-shrink: 0;
+}
+.terminal-fs-tab.is-active .terminal-fs-tab-dot {
+  background: #a597ff;
+  box-shadow: 0 0 6px rgba(165, 151, 255, 0.6);
+}
+
+.terminal-fs-tab-label {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 220px;
+}
+
+.terminal-fs-tabs-exit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: rgba(232, 233, 240, 0.55);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.terminal-fs-tabs-exit:hover {
+  background: rgba(40, 200, 64, 0.15);
+  color: #28c840;
+}
+
 /* ── Archived-view shortcut ── */
 /* Etched into the surface — icon only, very low contrast by default.
    No pill chrome, no label. Matches the subtle view-toggle aesthetic in
@@ -2588,7 +2737,8 @@ body {
 
 /* ── Sessions list: live terminal row treatment ──
  * Both Open and Minimised are "running" — same violet stripe + dot.
- * Clicking the row focuses (Open) or restores (Minimised) — no chip needed.
+ * Row click always opens the Session Inspector; the hover CONNECT chip
+ * focuses (Open) or restores (Minimised). RESUME chip is for dormant rows.
  * padding-left compensates for the 2px border-left so the row's grid
  * columns line up with non-running rows (16 + 2 = 18, matches the
  * default `padding: 12px 18px` on .home-row). */

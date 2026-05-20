@@ -326,6 +326,12 @@ export default function App() {
   const viewers = windows.filter((w) => w.type === "viewer");
   const terminalWindow = windows.find((w) => w.type === "terminal");
   const claudeTerminals = windows.filter((w) => w.type === "claude_terminal");
+  // Tabs in the fullscreen terminal toolbar list every open terminal so
+  // the user can switch without leaving fullscreen.
+  const liveTerminals: Array<{ id: string; title: string }> = [
+    ...(terminalWindow ? [{ id: terminalWindow.id, title: terminalWindow.title || "opencode" }] : []),
+    ...claudeTerminals.map((t) => ({ id: t.id, title: t.title || "claude" })),
+  ];
 
   const { sessions: allSessions, loading: sessionsLoading, error: sessionsError } = useSessions();
 
@@ -732,11 +738,16 @@ export default function App() {
         {terminalWindow && (
           <TerminalWindow
             key={terminalWindow.id}
+            id={terminalWindow.id}
             defaultX={120}
             defaultY={60}
             zIndex={terminalWindow.zIndex}
             onFocus={() => dispatch({ type: "FOCUS", id: terminalWindow.id })}
             onClose={() => dispatch({ type: "MINIMISE", id: terminalWindow.id })}
+            fullscreen={terminalWindow.fullscreen}
+            onToggleFullscreen={() => dispatch({ type: "TOGGLE_FULLSCREEN", id: terminalWindow.id })}
+            liveTerminals={liveTerminals}
+            onSwitchTerminal={(targetId) => dispatch({ type: "SWITCH_FULLSCREEN_TERMINAL", id: targetId })}
           />
         )}
         {claudeTerminals.map((w, i) => {
@@ -749,11 +760,16 @@ export default function App() {
           return (
             <TerminalWindow
               key={w.id}
+              id={w.id}
               defaultX={140 + i * 24}
               defaultY={80 + i * 24}
               zIndex={w.zIndex}
               onFocus={() => dispatch({ type: "FOCUS", id: w.id })}
               onClose={() => dispatch({ type: ptyAlive ? "MINIMISE" : "CLOSE", id: w.id })}
+              fullscreen={w.fullscreen}
+              onToggleFullscreen={() => dispatch({ type: "TOGGLE_FULLSCREEN", id: w.id })}
+              liveTerminals={liveTerminals}
+              onSwitchTerminal={(targetId) => dispatch({ type: "SWITCH_FULLSCREEN_TERMINAL", id: targetId })}
               terminalId={w.terminalId}
               title={w.title}
               linkedSessionId={w.linkedSessionId}

@@ -267,6 +267,12 @@ export async function tryHandleTerminalRoute(
         env: deps.cleanEnv,
       });
     } catch (err) {
+      // Spawn failed — drop the stub session row we just inserted so it
+      // doesn't sit forever as a permanent ghost (the PTY-exit cleanup
+      // path can't see this case because no PTY was ever registered).
+      if (kind === "claude_new") {
+        try { deps.sessionStore.deleteSession(sessionId); } catch { /* best-effort */ }
+      }
       if (err instanceof TerminalCapError) {
         sendJson({ error: "too_many_terminals" }, 429);
         return true;

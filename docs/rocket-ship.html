@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rocket Ship</title>
+<script>
+  // The arcade cabinet (arcade.oyster.to) appends `?embedded=1` when
+  // launching this page so it can suppress the SYSTEM BOOT intro — the
+  // arcade already runs its own splash. Any presence of the `embedded`
+  // param flips this on (value isn't inspected). Flagged on <html>
+  // early so the boot CSS below renders in the embedded state without
+  // a flash. Direct visits (the easter egg) skip this and show the
+  // full boot.
+  if (new URLSearchParams(location.search).has('embedded')) {
+    document.documentElement.classList.add('is-arcade-embedded');
+  }
+</script>
 <style>
   /* Self-hosted to ensure the full glyph set is available. Google Fonts
      subsets Press Start 2P into per-script WOFF2 files and arrow/symbol
@@ -21,7 +33,8 @@
     background: #0a0a0a;
     margin: 0;
     overflow: hidden;
-    height: 100vh;
+    height: 100vh;     /* fallback */
+    height: 100svh;    /* iOS Safari/Chrome: clip to visible viewport */
     width: 100vw;
     /* Suppress iOS text selection / Copy popup when a tap drifts slightly
        during gameplay or on the splash. Everything in the game is visual
@@ -36,7 +49,8 @@
   .screen {
     position: relative;
     width: 100vw;
-    height: 100vh;
+    height: 100vh;     /* fallback */
+    height: 100svh;    /* clip to visible viewport on iOS Safari/Chrome */
     overflow: hidden;
     /* Bezel: dark gradient simulating molded plastic frame, with
        a soft inner shadow giving the bezel depth. */
@@ -139,6 +153,11 @@
   @media (pointer: coarse) {
     .key-only { display: none; }
     .touch-only { display: revert; }
+    /* Touch devices — drop the cabinet bezel + rounded tube edges so
+       the splash + playfield go edge-to-edge. Phones and tablets
+       don't have screen real estate to spare for chrome. */
+    .screen { padding: 0; background: #000; }
+    .tube   { border-radius: 0; box-shadow: none; }
   }
 
   /* CRT scanlines + RGB sub-pixel overlay */
@@ -229,8 +248,11 @@
     100% { transform: scale(1, 1); filter: brightness(1); }
   }
 
-  .splash .boot,
-  .splash .splash-main {
+  /* SYSTEM BOOT — easter-egg-only intro on direct visits (not embedded
+     in the arcade cabinet, which has its own splash). Phosphor-cyan
+     progress bar with a brief flicker, then fades out as .splash-main
+     fades in. */
+  .splash .boot {
     position: absolute;
     inset: 0;
     display: flex;
@@ -239,29 +261,16 @@
     justify-content: center;
     text-align: center;
     padding: 40px 24px;
-  }
-  .splash .boot {
     gap: clamp(18px, 2.8vw, 28px);
     opacity: 0;
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+  }
+  .splash .boot.is-running {
     animation:
-      boot-show 0.3s 0.55s forwards,
+      boot-show    0.30s 0.55s forwards,
       boot-flicker 0.18s 0.55s 2 steps(2),
-      boot-hide 0.35s 2.5s forwards;
+      boot-hide    0.35s 2.50s forwards;
   }
-  .splash .splash-main {
-    gap: clamp(18px, 3vw, 32px);
-    opacity: 0;
-    visibility: hidden;
-    animation: boot-show 0.45s 2.75s forwards, splash-reveal 0.45s 2.75s forwards;
-  }
-  @keyframes boot-show { to { opacity: 1; } }
-  @keyframes splash-reveal { to { visibility: visible; } }
-  @keyframes boot-hide { to { opacity: 0; visibility: hidden; } }
-  @keyframes boot-flicker {
-    0%, 100% { filter: brightness(1); }
-    50% { filter: brightness(2.2) contrast(1.4); transform: translateX(2px); }
-  }
-
   .splash .boot-msg {
     font-size: clamp(10px, 1.6vw, 14px);
     letter-spacing: 0.22em;
@@ -280,13 +289,44 @@
     width: 0;
     background: #2dd4ff;
     box-shadow: 0 0 6px #2dd4ff;
+  }
+  .splash .boot.is-running .boot-bar-fill {
     animation: boot-fill 1.9s linear 0.55s forwards;
   }
-  @keyframes boot-fill { to { width: 100%; } }
   .splash .boot-pct {
     font-size: clamp(8px, 1.2vw, 11px);
     letter-spacing: 0.18em;
     color: #ffd84a;
+  }
+  @keyframes boot-show    { to { opacity: 1; } }
+  @keyframes boot-hide    { to { opacity: 0; visibility: hidden; } }
+  @keyframes splash-reveal { to { visibility: visible; } }
+  @keyframes boot-flicker {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(2.2) contrast(1.4); transform: translateX(2px); }
+  }
+  @keyframes boot-fill    { to { width: 100%; } }
+
+  .splash .splash-main {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+    gap: clamp(18px, 3vw, 32px);
+    opacity: 0;
+    visibility: hidden;
+    animation: boot-show 0.45s 2.75s forwards, splash-reveal 0.45s 2.75s forwards;
+  }
+  /* Inside the arcade cabinet, suppress the SYSTEM BOOT and skip the
+     2.75s post-boot delay so the title card reveals immediately under
+     the arcade's own splash. */
+  html.is-arcade-embedded .boot { display: none; }
+  html.is-arcade-embedded .splash .splash-main {
+    animation: boot-show 0.3s forwards, splash-reveal 0s forwards;
   }
 
   .splash .title {
@@ -392,9 +432,12 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .splash { animation: none; }
-    .splash .boot, .splash .splash-main { animation: boot-show 0.3s forwards; }
-    .splash .boot-bar-fill { animation: boot-fill 0.6s linear forwards; }
-    .splash .start { animation: none; opacity: 1; }
+    .splash .boot         { animation: boot-show 0.3s forwards; }
+    /* splash-reveal flips visibility — without it, .splash-main starts
+       hidden and never becomes visible for reduced-motion users. */
+    .splash .splash-main  { animation: boot-show 0.3s forwards, splash-reveal 0.3s forwards; }
+    .splash .boot.is-running .boot-bar-fill { animation: boot-fill 0.6s linear forwards; }
+    .splash .start        { animation: none; opacity: 1; }
   }
 
   .splash .hiscore-row {
@@ -672,11 +715,14 @@
 <body>
 <audio id="bgm" src="rocket-music.mp3" loop preload="auto"></audio>
 <audio id="bgm-game" src="rocket-game-music.mp3" loop preload="auto"></audio>
-<audio id="sfx-powerup" src="sfx-powerup.mp3" preload="auto"></audio>
-<audio id="sfx-explosion" src="sfx-explosion.mp3" preload="auto"></audio>
-<audio id="sfx-lose" src="sfx-lose.mp3" preload="auto"></audio>
-<audio id="sfx-thruster" src="sfx-thruster.mp3" preload="auto"></audio>
-<audio id="sfx-glitch" src="sfx-glitch.mp3" preload="auto"></audio>
+<!-- Shared SFX live under docs/arcade/shared/ so the arcade-site
+     worker (which serves only docs/arcade/) can reach them too —
+     Space Jumper references the same files via ../shared/. -->
+<audio id="sfx-powerup"   src="arcade/shared/sfx-powerup.mp3"   preload="auto"></audio>
+<audio id="sfx-explosion" src="arcade/shared/sfx-explosion.mp3" preload="auto"></audio>
+<audio id="sfx-lose"      src="arcade/shared/sfx-lose.mp3"      preload="auto"></audio>
+<audio id="sfx-thruster"  src="arcade/shared/sfx-thruster.mp3"  preload="auto"></audio>
+<audio id="sfx-glitch"    src="arcade/shared/sfx-glitch.mp3"    preload="auto"></audio>
 <div class="screen">
   <div class="tube">
     <canvas id="c"></canvas>
@@ -692,7 +738,7 @@
       </div>
     </div>
     <div class="splash" id="splash">
-      <div class="boot">
+      <div class="boot is-running">
         <div class="boot-msg">SYSTEM BOOT</div>
         <div class="boot-bar"><div class="boot-bar-fill"></div></div>
         <div class="boot-pct">LOADING&hellip;</div>
@@ -1473,11 +1519,11 @@ if (window.self !== window.top) document.body.classList.add('is-embedded');
 // The <audio> elements in HTML stay as a fallback for the short window
 // between page load and first decode completing.
 const SFX_FILES = {
-  'sfx-powerup':   'sfx-powerup.mp3',
-  'sfx-explosion': 'sfx-explosion.mp3',
-  'sfx-lose':      'sfx-lose.mp3',
-  'sfx-thruster':  'sfx-thruster.mp3',
-  'sfx-glitch':    'sfx-glitch.mp3',
+  'sfx-powerup':   'arcade/shared/sfx-powerup.mp3',
+  'sfx-explosion': 'arcade/shared/sfx-explosion.mp3',
+  'sfx-lose':      'arcade/shared/sfx-lose.mp3',
+  'sfx-thruster':  'arcade/shared/sfx-thruster.mp3',
+  'sfx-glitch':    'arcade/shared/sfx-glitch.mp3',
 };
 // `var` (not `let`) is deliberate: the sound-toggle IIFE above runs at
 // module init and calls setSfxMuted to apply the persisted muted state.
@@ -1485,8 +1531,8 @@ const SFX_FILES = {
 // which would throw a TDZ ReferenceError, halt the script, and prevent
 // the splash IIFE further down from registering its click handlers.
 // `sfxMuted` has no initializer for the same reason: the IIFE has
-// already assigned it, and `= false` would run afterwards and clobber
-// the persisted value back to unmuted.
+// already written the persisted value, and re-initializing here to
+// `false` would clobber it.
 var audioCtx = null;
 var sfxMasterGain = null;
 var sfxBuffers = {};
@@ -1840,6 +1886,7 @@ const Splash = (function () {
     phase = 'playing';
     splash.classList.add('is-hidden');
     if (tube) tube.classList.add('is-ready');
+    document.body.classList.add('is-ingame');
     stopCycle();
     stopTitleMusic();
     startGameMusic();
@@ -1850,13 +1897,17 @@ const Splash = (function () {
     if (typeof ensurePlayToken === 'function') ensurePlayToken();
   }
 
-  // First-load: boot ends → title music starts AND title/leaderboard begin cycling
+  // First-load: boot ends → title music starts AND title/leaderboard
+  // begin cycling. When embedded inside the arcade cabinet the boot is
+  // hidden via CSS, so wait 0ms — otherwise taps/keys on the visible
+  // title card would be ignored for ~2.75s while phase stays 'booting'.
+  const embedded = document.documentElement.classList.contains('is-arcade-embedded');
   setTimeout(() => {
     if (phase !== 'booting') return;
     phase = 'title';
     startTitleMusic();
     startCycle(0);
-  }, BOOT_MS);
+  }, embedded ? 0 : BOOT_MS);
 
   // Global dismiss listener
   window.addEventListener('keydown', (e) => {
@@ -1894,6 +1945,7 @@ const Splash = (function () {
       phase = 'playing';
       splash.classList.add('is-hidden');
       if (tube) tube.classList.add('is-ready');
+      document.body.classList.add('is-ingame');
       stopCycle();
       stopTitleMusic();
       startGameMusic();
@@ -1917,6 +1969,7 @@ const Splash = (function () {
       phase = 'title';
       splash.classList.remove('is-hidden');
       if (tube) tube.classList.remove('is-ready');
+      document.body.classList.remove('is-ingame');
       if (bootEl) bootEl.style.display = 'none';
       if (mainEl) { mainEl.style.opacity = '1'; mainEl.style.visibility = 'visible'; }
       startCycle(1); // start on leaderboard, cycle to title

@@ -7,6 +7,18 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 ### Added
 
 - **New session, from anywhere.** A `+ New session` pill in the topbar (or `⌘/`) opens a searchable palette covering every project across every space. Inside a single-project space, it just starts — no extra clicks.
+- **Fullscreen terminals show tabs across live terminals.** Maximise a terminal and a tab bar appears with one tab per open terminal — click to switch without leaving fullscreen. The ⤢ button on the right drops back to the desktop.
+
+### Changed
+
+- **In-app terminals get a black chrome.** The Claude/OpenCode terminal panels now match the website's terminal mock — black titlebar, deep-black body, teal cursor — and pick up your system terminal font (MesloLGM Nerd Font, falling back to Menlo / SF Mono). The header buttons stay subtle at rest and light up in macOS traffic-light colours on hover — red Stop, amber Minimise, green Expand.
+
+## [0.9.4] - 2026-05-19
+
+### Added
+
+- **Live terminal mission control.** A new *Running N* pill in the topbar lists every Claude session currently running in Oyster — click a row to jump back to it, ■ to stop (with a first-time *Don't ask again* confirmation). Closing × on a Claude terminal panel now means *minimise* — the conversation keeps going, and you can find it again from the pill, the Sessions list, or the space pills which now show a running count.
+- **Fork-safe Resume.** Clicking *Resume here* on a session that's still active outside Oyster now warns that resuming would fork the conversation, instead of silently spawning a duplicate `claude --resume`.
 
 ### Fixed
 

@@ -38,6 +38,11 @@ export type WindowAction =
   | { type: "LINK_TERMINAL_SESSION"; terminalId: string; sessionId: string }
   | { type: "FOCUS"; id: string }
   | { type: "TOGGLE_FULLSCREEN"; id: string }
+  /** Tab-click inside the fullscreen terminal toolbar. Sets the target
+   *  terminal to fullscreen and clears fullscreen on every other terminal
+   *  (so only one terminal occupies fullscreen at a time). Bumps z-index
+   *  so the new fullscreen wins paint order. */
+  | { type: "SWITCH_FULLSCREEN_TERMINAL"; id: string }
   | { type: "NAVIGATE_VIEWER"; id: string; title: string; artifactPath: string };
 
 let nextId = 1;
@@ -183,6 +188,17 @@ export function windowsReducer(
         const newFs = !w.fullscreen;
         if (w.artifactPath) saveFsPref(w.artifactPath, newFs);
         return { ...w, fullscreen: newFs };
+      });
+    }
+    case "SWITCH_FULLSCREEN_TERMINAL": {
+      topZ++;
+      const targetZ = topZ;
+      return state.map((w) => {
+        if (w.type !== "terminal" && w.type !== "claude_terminal") return w;
+        if (w.id === action.id) {
+          return { ...w, fullscreen: true, zIndex: targetZ };
+        }
+        return w.fullscreen ? { ...w, fullscreen: false } : w;
       });
     }
     case "NAVIGATE_VIEWER": {

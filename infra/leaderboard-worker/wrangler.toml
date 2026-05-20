@@ -9,14 +9,20 @@ binding = "DB"
 database_name = "oyster-leaderboard"
 database_id = "ae5ea426-d959-4f19-8eba-7959eff29d72"
 
-# Route the Worker at both oyster.to/api/leaderboard* and www.oyster.to/api/leaderboard*.
-# The wildcards cover the score POST + the /start token-mint endpoint.
+# Route the Worker at oyster.to + www.oyster.to + arcade.oyster.to. The
+# wildcards cover the score POST + the /start token-mint endpoint. The
+# arcade subdomain is added so games served from arcade.oyster.to can hit
+# /api/leaderboard via the same relative path that works on oyster.to.
 [[routes]]
 pattern = "oyster.to/api/leaderboard*"
 zone_name = "oyster.to"
 
 [[routes]]
 pattern = "www.oyster.to/api/leaderboard*"
+zone_name = "oyster.to"
+
+[[routes]]
+pattern = "arcade.oyster.to/api/leaderboard*"
 zone_name = "oyster.to"
 
 # Per-IP rate limit is enforced in the worker against a D1 table

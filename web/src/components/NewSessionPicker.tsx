@@ -130,15 +130,24 @@ export function NewSessionPicker({
       }
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setHighlightIdx((i) => Math.min(i + 1, rows.length - 1));
+        setHighlightIdx((i) => {
+          for (let j = i + 1; j < rows.length; j++) if (!rows[j].disabled) return j;
+          return i;
+        });
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setHighlightIdx((i) => Math.max(i - 1, 0));
+        setHighlightIdx((i) => {
+          for (let j = i - 1; j >= 0; j--) if (!rows[j].disabled) return j;
+          return i;
+        });
         return;
       }
       if (e.key === "Enter") {
+        // Folder form owns Enter when open — submit there, don't activate a
+        // project row in parallel.
+        if (folderOpen) return;
         e.preventDefault();
         const row = rows[highlightIdx];
         if (row && !row.disabled) onActivate(row.project);
@@ -192,11 +201,21 @@ export function NewSessionPicker({
     ];
   }, [projects, query, recentIds, spaceNameById]);
 
-  // Keep highlight in range when rows shrink (e.g. user types and the
-  // list filters to fewer items).
+  // Keep highlight in range AND land it on a non-disabled row when
+  // possible — initial mount and post-filter shrink both go through here.
   useEffect(() => {
-    if (highlightIdx >= rows.length) setHighlightIdx(Math.max(0, rows.length - 1));
-  }, [rows.length, highlightIdx]);
+    if (rows.length === 0) return;
+    const current = rows[highlightIdx];
+    if (current && !current.disabled && highlightIdx < rows.length) return;
+    // Walk forward from the current position looking for an enabled row;
+    // wrap from the start if nothing found going forward.
+    for (let j = 0; j < rows.length; j++) {
+      const idx = (highlightIdx + j) % rows.length;
+      if (!rows[idx].disabled) { setHighlightIdx(idx); return; }
+    }
+    // All disabled — clamp to last index so we don't read undefined.
+    setHighlightIdx(Math.max(0, rows.length - 1));
+  }, [rows, highlightIdx]);
 
   const recentRows = rows.filter((r) => r.group === "recent");
   const allRows = rows.filter((r) => r.group === "all");
@@ -222,7 +241,7 @@ export function NewSessionPicker({
 
         {errorMessage && <div className="nsp-error">{errorMessage}</div>}
 
-        <div className="nsp-list">
+        <div className="nsp-list" role="listbox" aria-label="Projects">
           {rows.length === 0 ? (
             loading ? (
               <div className="nsp-empty">Loading…</div>
@@ -357,6 +376,10 @@ function RowView({ row, highlighted, onClick }: {
       ].filter(Boolean).join(" ")}
       onClick={onClick}
       title={row.disabled ? "This project has no folder on this machine." : undefined}
+      role="option"
+      aria-selected={highlighted}
+      aria-disabled={row.disabled || undefined}
+      tabIndex={-1}
     >
       <span className="nsp-row-name">{row.project.name}</span>
       <span className="nsp-row-meta">{meta}</span>

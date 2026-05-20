@@ -27,6 +27,14 @@ interface Props {
   /** Glyph shown inside the close button. Defaults to ×; pass "−" for
    *  windows where close means "minimise" (the action is non-destructive). */
   closeButtonGlyph?: string;
+  /** Visual variant. `terminal` swaps the default purple-glass chrome for a
+   *  black chrome matching the website's terminal mock. */
+  variant?: "default" | "terminal";
+  /** Dot colour for the close button in the `terminal` variant. Red signals
+   *  a destructive close (× — PTY already gone); amber signals minimise
+   *  (− — PTY keeps running in the topbar Running pill). Ignored by the
+   *  default variant. */
+  closeButtonColor?: "red" | "amber";
 }
 
 export function WindowChrome({
@@ -44,6 +52,8 @@ export function WindowChrome({
   extraHeader,
   closeButtonTooltip = "Close",
   closeButtonGlyph = "×",
+  variant = "default",
+  closeButtonColor = "red",
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const offset = useRef({ x: 0, y: 0 });
@@ -152,7 +162,7 @@ export function WindowChrome({
     onToggleFullscreen?.();
   }, [onToggleFullscreen]);
 
-  const className = `window-chrome window-enter${fullscreen ? " fullscreen" : ""}`;
+  const className = `window-chrome window-enter${fullscreen ? " fullscreen" : ""}${variant === "terminal" ? " terminal" : ""}`;
 
   const style: React.CSSProperties = fullscreen
     ? { position: "fixed", inset: 0, zIndex: 9999 }
@@ -192,32 +202,70 @@ export function WindowChrome({
         <span className="window-title">{title}</span>
         <div className="window-controls" onMouseDown={(e) => e.stopPropagation()}>
           {extraHeader}
-          {onToggleFullscreen && (
-            <button
-              className="window-btn window-expand-btn"
-              onClick={onToggleFullscreen}
-              title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            >
-              {fullscreen ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 14 10 14 10 20" />
-                  <polyline points="20 10 14 10 14 4" />
-                  <line x1="14" y1="10" x2="21" y2="3" />
-                  <line x1="3" y1="21" x2="10" y2="14" />
-                </svg>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 3 21 3 21 9" />
-                  <polyline points="9 21 3 21 3 15" />
-                  <line x1="21" y1="3" x2="14" y2="10" />
-                  <line x1="3" y1="21" x2="10" y2="14" />
-                </svg>
+          {variant === "terminal" ? (
+            <>
+              <button
+                className="window-btn close"
+                data-color={closeButtonColor}
+                onClick={onClose}
+                title={closeButtonTooltip}
+              >
+                {closeButtonGlyph}
+              </button>
+              {onToggleFullscreen && (
+                <button
+                  className="window-btn window-expand-btn"
+                  onClick={onToggleFullscreen}
+                  title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                >
+                  {fullscreen ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="4 14 10 14 10 20" />
+                      <polyline points="20 10 14 10 14 4" />
+                      <line x1="14" y1="10" x2="21" y2="3" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 3 21 3 21 9" />
+                      <polyline points="9 21 3 21 3 15" />
+                      <line x1="21" y1="3" x2="14" y2="10" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                  )}
+                </button>
               )}
-            </button>
+            </>
+          ) : (
+            <>
+              {onToggleFullscreen && (
+                <button
+                  className="window-btn window-expand-btn"
+                  onClick={onToggleFullscreen}
+                  title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                >
+                  {fullscreen ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="4 14 10 14 10 20" />
+                      <polyline points="20 10 14 10 14 4" />
+                      <line x1="14" y1="10" x2="21" y2="3" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 3 21 3 21 9" />
+                      <polyline points="9 21 3 21 3 15" />
+                      <line x1="21" y1="3" x2="14" y2="10" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                  )}
+                </button>
+              )}
+              <button className="window-btn close" onClick={onClose} title={closeButtonTooltip}>
+                {closeButtonGlyph}
+              </button>
+            </>
           )}
-          <button className="window-btn close" onClick={onClose} title={closeButtonTooltip}>
-            {closeButtonGlyph}
-          </button>
         </div>
       </div>
       <div className="window-body">{children}</div>
