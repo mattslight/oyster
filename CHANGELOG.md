@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/rename` and other slash-command machinery no longer leak into the transcript.** A second path for Claude Code's internal wrapper tags — emitted as `SYSTEM` rows under the `local_command` subtype — is now hidden from the Session Inspector and excluded from Spotlight transcript search. Existing sessions clean up on next start.
+
 ## [0.9.5] - 2026-05-20
 
 ### Added

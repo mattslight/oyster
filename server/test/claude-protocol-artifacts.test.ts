@@ -11,6 +11,21 @@ describe("isClaudeProtocolArtifact", () => {
     expect(isClaudeProtocolArtifact("<system-reminder>\nThe user named this session ...\n</system-reminder>")).toBe(true);
   });
 
+  it("matches the `system`-event `local_command:` subtype prefix (#536)", () => {
+    // claude-code also emits slash-command machinery as
+    // `{ type: "system", subtype: "local_command", content: "<command-name>…" }`,
+    // which renderEvent stringifies as `local_command: <command-name>…`. The
+    // rendered text never starts with one of the wrapper tags, so we need an
+    // additional prefix check for the subtype label itself.
+    expect(isClaudeProtocolArtifact("local_command: <command-name>/rename</command-name>")).toBe(true);
+    expect(isClaudeProtocolArtifact("local_command: <local-command-stdout>Session renamed</local-command-stdout>")).toBe(true);
+  });
+
+  it("does not match messages that merely mention `local_command:` inside their body", () => {
+    expect(isClaudeProtocolArtifact("we should rename the local_command: handler")).toBe(false);
+    expect(isClaudeProtocolArtifact("local commander reporting in")).toBe(false);
+  });
+
   it("tolerates leading whitespace (real claude-code indents some variants)", () => {
     expect(isClaudeProtocolArtifact("  \n\t<command-name>/exit</command-name>")).toBe(true);
   });

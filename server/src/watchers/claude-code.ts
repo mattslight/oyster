@@ -464,8 +464,7 @@ export class ClaudeCodeWatcher {
           text,
           ts: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
           raw: line,
-          is_protocol_artifact:
-            rendered.role === "user" && isClaudeProtocolArtifact(text) ? 1 : 0,
+          is_protocol_artifact: isClaudeProtocolArtifact(text) ? 1 : 0,
         });
       }
 
@@ -797,8 +796,7 @@ export class ClaudeCodeWatcher {
           text,
           ts: typeof ev.timestamp === "string" ? ev.timestamp : undefined,
           raw: line,
-          is_protocol_artifact:
-            rendered.role === "user" && isClaudeProtocolArtifact(text) ? 1 : 0,
+          is_protocol_artifact: isClaudeProtocolArtifact(text) ? 1 : 0,
         });
         if (typeof ev.timestamp === "string") latestTimestamp = ev.timestamp;
       }
