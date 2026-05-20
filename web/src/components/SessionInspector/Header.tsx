@@ -69,7 +69,9 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
           </>
         )}
       </div>
-      <div className="inspector-title">{session.title ?? "(no title yet)"}</div>
+      <div className="inspector-title">
+        {session.title ?? <span className="session-untitled">Untitled</span>}
+      </div>
       <SessionActions session={session} onLaunchClaude={onLaunchClaude} onConnect={onConnect} />
 
       {isRemote && (

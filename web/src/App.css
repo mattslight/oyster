@@ -2714,6 +2714,12 @@ body {
 .rtp-dot--attached, .rtp-dot--running { /* same — kept as separate classes for any future per-state styling */ }
 .rtp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rtp-title { font-size: 12px; color: #e8e9f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Untitled-session placeholder. Shown wherever we'd otherwise render a
+   session.title that's null/empty — italic + dimmed reads as
+   "placeholder, not real text" across the row, tile, inspector header,
+   and running-terminals popover. */
+.session-untitled { font-style: italic; opacity: 0.7; }
 .rtp-meta { font-size: 10px; color: rgba(232,233,240,0.45); }
 .rtp-meta .rtp-space { color: #b39dff; }
 .rtp-chip {

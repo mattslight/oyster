@@ -30,7 +30,8 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
   const rel = formatRelative(session.lastEventAt) ?? "—";
   const time = `last active ${rel}`;
-  const title = session.title ?? "(no title yet)";
+  const hasTitle = !!session.title;
+  const title = session.title ?? "Untitled";
   // Prefer the most specific label available: space > cwd basename for
   // orphan sessions. Always tooltip the full cwd so the user can identify
   // where the session was running.
@@ -163,7 +164,7 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
               pinned
             </span>
           )}
-          {title}
+          {hasTitle ? title : <span className="session-untitled">{title}</span>}
         </span>
         {livePresence && canConnect && (
           <button
