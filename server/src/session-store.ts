@@ -187,6 +187,9 @@ export interface SessionStore {
   clearTerminal(sessionId: string): void;
   /** Update the attached-clients counter on the linked session. No-op if the session row is missing. */
   setAttachedClients(sessionId: string, count: number): void;
+  /** Hard-delete a session row. Cascades to session_events and
+   *  session_artefacts via the existing FK ON DELETE CASCADE. */
+  deleteSession(id: string): void;
 }
 
 // ── SQLite implementation ──
@@ -210,6 +213,7 @@ export class SqliteSessionStore implements SessionStore {
     getSessionsByArtifact: Database.Statement;
     getLastOffset: Database.Statement;
     setLastOffset: Database.Statement;
+    deleteSession: Database.Statement;
   };
 
   private insertEventsTxn: (rows: InsertSessionEvent[]) => void;
@@ -335,6 +339,7 @@ export class SqliteSessionStore implements SessionStore {
       setLastOffset: db.prepare(
         "UPDATE sessions SET last_offset = ? WHERE id = ?"
       ),
+      deleteSession: db.prepare("DELETE FROM sessions WHERE id = ?"),
     };
 
     // Bulk insert helper. Wrap N inserts in a single transaction so a JSONL
@@ -598,5 +603,9 @@ export class SqliteSessionStore implements SessionStore {
     this.db.prepare(
       "UPDATE sessions SET terminal_attached_clients = ? WHERE id = ?",
     ).run(Math.max(0, count | 0), sessionId);
+  }
+
+  deleteSession(id: string): void {
+    this.stmts.deleteSession.run(id);
   }
 }

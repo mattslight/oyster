@@ -6,6 +6,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { ClaudePtyManager, TerminalCapError, PtyUnavailableError } from "../src/claude-pty-manager.js";
 import { tmpdir, homedir } from "node:os";
 
+const stubDb = {
+  prepare: () => ({ get: () => undefined, run: () => {} }),
+} as any;
+
 const stubDeps = {
   sessionStore: {
     getAll: () => [],
@@ -31,7 +35,9 @@ const stubDeps = {
     linkTerminal: () => {},
     clearTerminal: () => {},
     setAttachedClients: () => {},
+    deleteSession: () => {},
   } as any,
+  db: stubDb,
   broadcastUiEvent: () => {},
 };
 
