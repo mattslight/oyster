@@ -227,6 +227,15 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
     setState((s) => ({ ...s, [COMPLETE_KEY[key]]: true }));
   }, []);
 
+  // Toggle for the click-to-tick affordance on optional checklist items.
+  // Spaces (required) and MCP auto-derive from real state, so flipping
+  // them by hand would be undone on the next derive — they stay non-
+  // clickable. Publish + memories have no signal to listen for, so the
+  // tick has to be user-driven.
+  const toggleDone = useCallback((key: ItemKey) => {
+    setState((s) => ({ ...s, [COMPLETE_KEY[key]]: !s[COMPLETE_KEY[key]] }));
+  }, []);
+
   const handleSetUpSpaces = useCallback(() => {
     // Send the canonical setup prompt to the chat. ChatBar listens for this
     // event and routes through the same handleSend path as its hero
@@ -291,6 +300,7 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
               done={done}
               onSetUpSpaces={handleSetUpSpaces}
               onShowStep={(key) => setView({ kind: "step", key })}
+              onToggleDone={toggleDone}
               onReset={resetAll}
             />
           ) : view.kind === "step" && view.key === "publish" ? (
@@ -327,10 +337,11 @@ interface ChecklistProps {
   done: boolean;
   onSetUpSpaces: () => void;
   onShowStep: (key: Exclude<ItemKey, "spaces">) => void;
+  onToggleDone: (key: ItemKey) => void;
   onReset: () => void;
 }
 
-function Checklist({ state, requiredDone, done, onSetUpSpaces, onShowStep, onReset }: ChecklistProps) {
+function Checklist({ state, requiredDone, done, onSetUpSpaces, onShowStep, onToggleDone, onReset }: ChecklistProps) {
   return (
     <div className="onboarding-checklist">
       {ITEMS.map((item) => {
@@ -344,11 +355,26 @@ function Checklist({ state, requiredDone, done, onSetUpSpaces, onShowStep, onRes
           : item.required
             ? "required"
             : "optional";
+        // Click-to-tick for optionals — spaces (required) auto-derives
+        // from userSpaceCount and would fight a manual toggle.
+        const canToggle = !item.required;
+        const iconClass = `onboarding-item-icon onboarding-item-icon--${tag}${canToggle ? " onboarding-item-icon--clickable" : ""}`;
         return (
           <div key={item.key} className={`onboarding-item${itemDone ? " onboarding-item--done" : ""}`}>
-            <span className={`onboarding-item-icon onboarding-item-icon--${tag}`}>
-              {itemDone && "✓"}
-            </span>
+            {canToggle ? (
+              <button
+                type="button"
+                className={iconClass}
+                onClick={() => onToggleDone(item.key)}
+                aria-label={itemDone ? `Mark ${item.title} as not done` : `Mark ${item.title} as done`}
+              >
+                {itemDone && "✓"}
+              </button>
+            ) : (
+              <span className={iconClass}>
+                {itemDone && "✓"}
+              </span>
+            )}
             <div className="onboarding-item-body">
               <div className="onboarding-item-title">
                 {item.title}
