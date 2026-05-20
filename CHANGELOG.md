@@ -4,6 +4,14 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Fullscreen terminals show tabs across live terminals.** Maximise a terminal and a tab bar appears with one tab per open terminal — click to switch without leaving fullscreen. The ⤢ button on the right drops back to the desktop.
+
+### Changed
+
+- **In-app terminals get a black chrome.** The Claude/OpenCode terminal panels now match the website's terminal mock — black titlebar, deep-black body, teal cursor — and pick up your system terminal font (MesloLGM Nerd Font, falling back to Menlo / SF Mono). The header buttons stay subtle at rest and light up in macOS traffic-light colours on hover — red Stop, amber Minimise, green Expand.
+
 ## [0.9.4] - 2026-05-19
 
 ### Added
