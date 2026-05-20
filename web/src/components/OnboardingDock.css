@@ -25,20 +25,10 @@
   background: rgba(124, 107, 255, 0.3);
 }
 
-/* Required step done, optionals still pending — gold pill with a
-   half-filled circle. Reads as "halfway through" without claiming
-   completion, and the amber → gold → green progression across the three
-   states tells the setup story at a glance. */
-.onboarding-dock--mid {
-  background: rgba(251, 191, 36, 0.14);
-  border-color: rgba(251, 191, 36, 0.4);
-  color: #fcd34d;
-}
-
-.onboarding-dock--mid:hover {
-  background: rgba(251, 191, 36, 0.22);
-}
-
+/* Required step done, optionals still pending — pill body stays purple
+   to match "+ New session" so it doesn't out-shout the active space
+   pill. The gold ◐ glyph is the only state cue, signalling "halfway
+   through" without claiming completion. */
 .onboarding-dock-mid-glyph {
   color: #fcd34d;
   font-size: 12px;

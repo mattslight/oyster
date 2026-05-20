@@ -264,7 +264,7 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
       <button
         type="button"
         ref={dockRef}
-        className={`onboarding-dock${done ? " onboarding-dock--ready" : !done && requiredDone ? " onboarding-dock--mid" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
+        className={`onboarding-dock${done ? " onboarding-dock--ready" : ""}${popoverOpen ? " onboarding-dock--active" : ""}`}
         onClick={togglePopover}
         aria-expanded={popoverOpen}
         aria-label={
@@ -277,8 +277,10 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
       >
         {/* Three pill states. Pre-required: amber pulsing dot + "Set up
             Oyster", attention-grabbing. Post-required-with-optionals-pending:
-            gold half-circle + "Continue setup" — semantic "halfway through".
-            All-done: green check, glyph only — silent confirmation. */}
+            purple pill (matches "+ New session") with a gold ◐ half-circle
+            glyph — the glyph is the only state cue; the pill stays quiet so
+            it doesn't out-shout the active space pill. All-done: green
+            check, glyph only — silent confirmation. */}
         {!requiredDone && <span className="onboarding-dock-progress" />}
         {requiredDone && !done && <span className="onboarding-dock-mid-glyph" aria-hidden="true">◐</span>}
         {done && <span className="onboarding-dock-check">✓</span>}
