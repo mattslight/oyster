@@ -14,26 +14,10 @@ import type {
   SessionEvent,
   SessionArtifactJoined,
 } from "../../../shared/types";
-import { ApiError, getJson, patchJson } from "./http";
+import { ApiError, getJson } from "./http";
 
 export async function fetchSessions(): Promise<Session[]> {
   return getJson<Session[]>("/api/sessions");
-}
-
-/** Reassign a session to a different project (space_id derived) or clear
- *  the project binding. `source_id`/`space_id`/`assignment_mode` are
- *  legacy fields kept alive during the sources→projects migration; new
- *  callers should use `project_id`. */
-export async function patchSession(
-  id: string,
-  body: {
-    project_id?: string | null;
-    source_id?: string | null;
-    space_id?: string;
-    assignment_mode?: "auto" | "manual";
-  },
-): Promise<Session> {
-  return patchJson<Session>(`/api/sessions/${encodeURIComponent(id)}`, body);
 }
 
 export async function fetchSession(id: string, signal?: AbortSignal): Promise<Session> {

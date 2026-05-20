@@ -34,6 +34,7 @@ import { useTerminalPresence } from "../../hooks/useTerminalPresence";
 import type { WindowState } from "../../stores/windows";
 import { RunningTerminalsPill } from "../Topbar/RunningTerminalsPill";
 import { NewSessionPill } from "../Topbar/NewSessionPill";
+import { OnboardingDock } from "../OnboardingDock";
 import "./Home.css";
 
 interface Props {
@@ -80,6 +81,10 @@ interface Props {
    *  SessionInspector so the primary action can read "Connect" when a
    *  live PTY exists. */
   onConnectSession?: (sessionId: string) => void;
+  /** Real, user-created space count — drives the OnboardingDock's
+   *  Spaces-step auto-tick. App owns the FORCE_ONBOARDING dev override
+   *  and the meta-space filtering, then passes the number through. */
+  userSpaceCount?: number;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -157,7 +162,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, onOpenNewSession, onConnectSession, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, onOpenNewSession, onConnectSession, sessions, sessionsLoading: loading, sessionsError: error, userSpaceCount }: Props) {
   const presence = useTerminalPresence(sessions, terminalWindows ?? []);
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();
@@ -840,6 +845,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               )}
               {onOpenNewSession && <NewSessionPill onClick={onOpenNewSession} />}
             </div>
+            <OnboardingDock userSpaceCount={userSpaceCount} />
             </LayoutGroup>
           </nav>
 
@@ -1105,7 +1111,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           {loading && sessions.length === 0 ? (
             <div className="home-empty">Loading sessions…</div>
           ) : visibleSessions.length === 0 ? (
-            <div className="home-empty">No sessions match this filter.</div>
+            <div className="home-empty">No sessions match this filter yet.</div>
           ) : (
             <>
               {sessionsView === "icons" ? (
@@ -1125,6 +1131,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
               ) : (
                 <div className="home-table-wrap">
                   <div className="home-table">
+                    <div className="home-row home-row--header" role="row">
+                      <span aria-hidden="true" />
+                      <span role="columnheader">Project</span>
+                      <span role="columnheader">Title</span>
+                      <span role="columnheader">Agent</span>
+                      <span role="columnheader">Last active</span>
+                    </div>
                     {visibleSessions.slice(0, sessionsLimit).map((session) => (
                       <SessionRow
                         key={session.id}

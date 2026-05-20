@@ -21,7 +21,8 @@ interface SessionTileProps {
 
 export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, livePresence, onOpen }: SessionTileProps) {
   const spaceLabel = spaceLabelFor(session.spaceId, spaces);
-  const title = session.title ?? "(no title yet)";
+  const hasTitle = !!session.title;
+  const title = session.title ?? "Untitled";
   const remoteChip = originDeviceChipFor(session, myDeviceId);
   const activeChip = activeWriterChipFor(session, myDeviceId);
   return (
@@ -63,7 +64,9 @@ export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, livePr
           />
         )}
       </div>
-      <div className="home-tile-label" title={title}>{title}</div>
+      <div className="home-tile-label" title={title}>
+        {hasTitle ? title : <span className="session-untitled">{title}</span>}
+      </div>
       <div className="home-tile-meta">{metaForSession(session)}</div>
     </div>
   );

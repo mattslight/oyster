@@ -147,18 +147,21 @@ export function ProjectTile({
         {menuOpen && !mergePickerOpen && (
           <div className="home-project-tile-menu" role="menu">
             {onLaunchClaude && (
-              <button
-                type="button"
-                className="home-project-tile-menu-item"
-                disabled={project.hasLivePath === false}
-                title={project.hasLivePath === false ? "This project has no folder on this machine." : `Run claude in ${project.recentPath ?? project.name}`}
-                onClick={() => {
-                  onLaunchClaude(project.id);
-                  setMenuOpen(false);
-                }}
-              >
-                Launch Claude here
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="home-project-tile-menu-item"
+                  disabled={project.hasLivePath === false}
+                  title={project.hasLivePath === false ? "This project has no folder on this machine." : `Run claude in ${project.recentPath ?? project.name}`}
+                  onClick={() => {
+                    onLaunchClaude(project.id);
+                    setMenuOpen(false);
+                  }}
+                >
+                  New session
+                </button>
+                <div className="home-project-tile-menu-divider" />
+              </>
             )}
             <button
               type="button"

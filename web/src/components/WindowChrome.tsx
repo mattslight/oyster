@@ -209,6 +209,7 @@ export function WindowChrome({
                 data-color={closeButtonColor}
                 onClick={onClose}
                 title={closeButtonTooltip}
+                aria-label={closeButtonTooltip}
               >
                 {closeButtonGlyph}
               </button>
@@ -217,6 +218,7 @@ export function WindowChrome({
                   className="window-btn window-expand-btn"
                   onClick={onToggleFullscreen}
                   title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                  aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 >
                   {fullscreen ? (
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -261,7 +263,7 @@ export function WindowChrome({
                   )}
                 </button>
               )}
-              <button className="window-btn close" onClick={onClose} title={closeButtonTooltip}>
+              <button className="window-btn close" onClick={onClose} title={closeButtonTooltip} aria-label={closeButtonTooltip}>
                 {closeButtonGlyph}
               </button>
             </>

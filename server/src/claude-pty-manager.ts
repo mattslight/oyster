@@ -339,7 +339,7 @@ export class ClaudePtyManager {
       this.sessionStore.clearTerminal(exitedSessionId);
       // If the session never produced content (no events AND no JSONL
       // file), the stub row inserted at spawn time is a ghost — drop it
-      // entirely rather than leaving an un-resumable "(no title yet)"
+      // entirely rather than leaving an un-resumable "Untitled"
       // entry in the list. Otherwise, mark disconnected so the UI flips
       // immediately (see commit 63c64e5).
       const deleted = deleteIfGhostOnExit(this.sessionStore, this.db, exitedSessionId, entry.cwd);

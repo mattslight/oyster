@@ -58,7 +58,8 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
         <div className="rtp-popover">
           <div className="rtp-popover-arrow" />
           {rows.map(({ info, session }) => {
-            const title = session?.title ?? "(no title yet)";
+            const hasTitle = !!session?.title;
+            const title = session?.title ?? "Untitled";
             const space = session?.spaceId ?? "—";
             const isAttached = info.state === "attached";
             return (
@@ -69,14 +70,15 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
               >
                 <span className="rtp-dot" />
                 <div className="rtp-body">
-                  <span className="rtp-title">{title}</span>
+                  <span className={`rtp-title${hasTitle ? "" : " session-untitled"}`}>{title}</span>
                   <span className="rtp-meta">
-                    <span className="rtp-space">{space}</span> · claude-code · {isAttached ? "open" : "minimised"}
+                    <span className="rtp-space">{space}</span> · claude-code
                   </span>
                 </div>
                 <button
                   className="rtp-stop"
                   title="Stop terminal"
+                  aria-label="Stop terminal"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (localStorage.getItem("oyster-skip-stop-confirm") === "1") {

@@ -94,7 +94,9 @@ export function ArtefactInspector({ artifact, onSwitchTo, onClose, onOpen }: Pro
           >
             <div className="link-thumb">{row.session.agent[0].toUpperCase()}</div>
             <div className="link-body">
-              <div className="link-title">{row.session.title ?? "(no title)"}</div>
+              <div className="link-title">
+                {row.session.title ?? <span className="session-untitled">Untitled</span>}
+              </div>
               <div className="link-meta">
                 <span className={`role-chip ${row.role}`}>{row.role}</span>
                 <span>{row.session.agent}</span>
