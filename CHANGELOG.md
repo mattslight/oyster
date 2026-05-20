@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-05-20
+
 ### Added
 
 - **New session, from anywhere.** A `+ New session` pill in the topbar (or `⌘/`) opens a searchable palette covering every project across every space. Inside a single-project space, it just starts — no extra clicks.
