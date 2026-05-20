@@ -1165,6 +1165,9 @@ const advertEl = document.getElementById('game-advert');
 // Hoisted above showAdvert / hideAdvert so the closure refs are safely
 // in scope no matter when the advert is invoked.
 let advertCleanup = null;
+// Tracks the post-fade hide timer so a quick close→reopen (< fade
+// duration) can cancel the old timeout before it hides the new advert.
+let advertHideTimer = 0;
 function showAdvert(g) {
   if (!advertEl) return;
   advertEl.querySelector('#ad-title').textContent   = g.name;
@@ -1188,6 +1191,7 @@ function showAdvert(g) {
   // the keydown/pointerdown cleanup and leaving stale handlers
   // attached that would fire on the next keypress.
   if (advertCleanup) advertCleanup();
+  if (advertHideTimer) { clearTimeout(advertHideTimer); advertHideTimer = 0; }
   advertEl.classList.remove('is-fading');
   void advertEl.offsetWidth;
   advertEl.classList.add('is-visible');
@@ -1208,8 +1212,10 @@ function showAdvert(g) {
 function hideAdvert() {
   if (!advertEl) return;
   if (advertCleanup) advertCleanup();
+  if (advertHideTimer) clearTimeout(advertHideTimer);
   advertEl.classList.add('is-fading');
-  setTimeout(() => {
+  advertHideTimer = setTimeout(() => {
+    advertHideTimer = 0;
     advertEl.classList.remove('is-visible', 'is-fading');
     advertEl.setAttribute('aria-hidden', 'true');
   }, 350);
@@ -1411,7 +1417,9 @@ Arcade.Audio.init({
     'sfx-game-start': 'sfx-game-start.mp3',
     'sfx-game-intro': 'sfx-oyster.wav',
   },
-  mutedKey: 'oyster-arcade-select-muted',
+  // Arcade-wide SFX mute (shared with every game on the cabinet); the
+  // pause overlay (shared/pause.js) reads/writes the same key.
+  mutedKey: 'oyster-arcade-sfx-muted',
 });
 
 // Prime the AudioContext on the first user gesture (autoplay policy).
