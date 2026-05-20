@@ -14,7 +14,12 @@ export default {
     const url = new URL(req.url);
 
     if (url.pathname.startsWith('/assets/')) {
-      return fetch('https://oyster.to' + url.pathname + url.search);
+      // Wrap the original Request so the proxy preserves method,
+      // headers, and any body — bare `fetch(string)` always issues a
+      // GET and drops Range / If-Modified-Since / HEAD semantics that
+      // we want to pass through to oyster.to for partial-content and
+      // caching to behave correctly.
+      return fetch(new Request('https://oyster.to' + url.pathname + url.search, req));
     }
 
     return env.ASSETS.fetch(req);

@@ -3,8 +3,11 @@
 Cloudflare Worker that serves the contents of `docs/arcade/` at
 `arcade.oyster.to/*` via Workers Static Assets.
 
-The worker entry point is a one-liner that forwards every request to the
-`ASSETS` binding. The assets directory is checked into git — no build step.
+The worker entry point forwards most requests to the `ASSETS` binding,
+with one carve-out: `/assets/*` (shared fonts + `crt.png`, owned by the
+main oyster.to site at `docs/assets/`) is proxied through to
+`https://oyster.to/assets/*` so we don't duplicate those files. The
+assets directory is checked into git — no build step.
 
 ## Deploy
 

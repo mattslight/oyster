@@ -9,7 +9,7 @@
 //                                    body: { game: string, initials: string (1–3 chars),
 //                                            score: int > 0, token: string }
 //
-// `game` is an arcade-wide key (`rocket-ship`, `platformer`, …). Default for
+// `game` is an arcade-wide key (`rocket-ship`, `space-jumper`, …). Default for
 // back-compat with pre-multi-game callers is `rocket-ship`. Each game has its
 // own score cap and its own top-N / retain budget — they don't compete.
 //
@@ -37,10 +37,12 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 const INITIALS_RE = /^[A-Z0-9.\-]{1,3}$/;
 // Per-game configuration. Add an entry here to enable a new game.
-const GAMES: Record<string, { maxScore: number }> = {
-  "rocket-ship": { maxScore: 999 },
-  "platformer":  { maxScore: 9999 },
-};
+// Null prototype so the `resolveGame` allowlist check can't be fooled
+// by inherited `Object.prototype` keys ("toString", "constructor", …).
+const GAMES: Record<string, { maxScore: number }> = Object.assign(Object.create(null), {
+  "rocket-ship":  { maxScore: 999 },
+  "space-jumper": { maxScore: 9999 },
+});
 const DEFAULT_GAME = "rocket-ship";
 const TOP_N = 10;
 const RETAIN_N = 100;
@@ -52,7 +54,10 @@ const RATE_LIMIT_MS = 60 * 1000;     // 1 submission per minute per IP
 function resolveGame(input: unknown): string | null {
   if (input == null || input === "") return DEFAULT_GAME;
   if (typeof input !== "string") return null;
-  return input in GAMES ? input : null;
+  // Own-property check — `in` would also match inherited keys on a
+  // plain object (GAMES uses a null prototype above, but this stays
+  // defensive in case anyone migrates it back to a plain literal).
+  return Object.hasOwn(GAMES, input) ? input : null;
 }
 
 function isAllowedOrigin(origin: string | null): boolean {

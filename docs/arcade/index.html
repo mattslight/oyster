@@ -1154,6 +1154,9 @@ function resetSplash() {
 // the × button, ESC, or any tap/keypress while visible.
 // ============================================
 const advertEl = document.getElementById('game-advert');
+// Hoisted above showAdvert / hideAdvert so the closure refs are safely
+// in scope no matter when the advert is invoked.
+let advertCleanup = null;
 function showAdvert(g) {
   if (!advertEl) return;
   advertEl.querySelector('#ad-title').textContent   = g.name;
@@ -1171,26 +1174,32 @@ function showAdvert(g) {
   advertEl.style.setProperty('--ad-bg2',    p.bg2    || '#050a25');
   advertEl.style.setProperty('--ad-accent', p.accent || '#ffd84a');
   advertEl.style.setProperty('--ad-neon',   p.neon   || '#ff3aa1');
+  // Track listeners so hideAdvert() always tears them down — whether
+  // dismissed via × button, ESC, tap outside, or a re-opened advert.
+  // Previously the × routed through hideAdvert() directly, bypassing
+  // the keydown/pointerdown cleanup and leaving stale handlers
+  // attached that would fire on the next keypress.
+  if (advertCleanup) advertCleanup();
   advertEl.classList.remove('is-fading');
   void advertEl.offsetWidth;
   advertEl.classList.add('is-visible');
   advertEl.setAttribute('aria-hidden', 'false');
-  // One-shot dismiss listeners — any input or the close button returns.
-  function dismiss() { hideAdvert(); cleanup(); }
-  function cleanup() {
-    window.removeEventListener('keydown', dismiss);
-    advertEl.removeEventListener('pointerdown', onTap);
-  }
+  function onKey()   { hideAdvert(); }
   function onTap(e) {
-    // Close button has its own handler; let other clicks dismiss too.
-    if (e.target.closest('#ad-close')) return;
-    dismiss();
+    if (e.target.closest('#ad-close')) return;   // × has its own click handler
+    hideAdvert();
   }
-  window.addEventListener('keydown', dismiss, { once: true });
+  window.addEventListener('keydown', onKey, { once: true });
   advertEl.addEventListener('pointerdown', onTap);
+  advertCleanup = () => {
+    window.removeEventListener('keydown', onKey);
+    advertEl.removeEventListener('pointerdown', onTap);
+    advertCleanup = null;
+  };
 }
 function hideAdvert() {
   if (!advertEl) return;
+  if (advertCleanup) advertCleanup();
   advertEl.classList.add('is-fading');
   setTimeout(() => {
     advertEl.classList.remove('is-visible', 'is-fading');
