@@ -129,6 +129,9 @@ export function NewSessionPicker({
         return;
       }
       if (e.key === "ArrowDown") {
+        // Folder form (path input, space <select>) owns native arrow nav
+        // when open — don't preventDefault or move the project highlight.
+        if (folderOpen) return;
         e.preventDefault();
         setHighlightIdx((i) => {
           for (let j = i + 1; j < rows.length; j++) if (!rows[j].disabled) return j;
@@ -137,6 +140,7 @@ export function NewSessionPicker({
         return;
       }
       if (e.key === "ArrowUp") {
+        if (folderOpen) return;
         e.preventDefault();
         setHighlightIdx((i) => {
           for (let j = i - 1; j >= 0; j--) if (!rows[j].disabled) return j;

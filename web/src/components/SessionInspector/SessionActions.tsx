@@ -77,11 +77,19 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
   // claude on the same session id). Both buttons use the chip-style
   // uppercase variant so the Inspector CTA matches the row's CONNECT /
   // RESUME chips visually.
-  const isLive = session.terminalId != null && !!onConnect;
+  //
+  // Important: gate Resume on the ABSENCE of a live PTY, not on
+  // `!isLive`. Otherwise an Inspector mounted without onConnect (which
+  // makes isLive false even when session.terminalId is set) would fall
+  // back to showing Resume, and clicking Resume on a live session forks
+  // the conversation by spawning a second claude on the same id.
+  const hasLivePty = session.terminalId != null;
+  const showConnect = hasLivePty && !!onConnect;
+  const showResume = !hasLivePty && canResumeInOyster;
 
   return (
     <div className="inspector-actions">
-      {isLive && (
+      {showConnect && (
         <button
           type="button"
           className="btn primary inspector-cta"
@@ -91,7 +99,7 @@ export function SessionActions({ session, onLaunchClaude, onConnect }: {
           Connect
         </button>
       )}
-      {!isLive && canResumeInOyster && (
+      {showResume && (
         <button
           type="button"
           className="btn primary inspector-cta"

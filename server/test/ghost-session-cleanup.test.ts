@@ -10,7 +10,7 @@ import type Database from "better-sqlite3";
 import { initDb } from "../src/db.js";
 import { SqliteSessionStore } from "../src/session-store.js";
 import { deleteIfGhostOnExit, cleanupGhostSessionsAtBoot } from "../src/ghost-session-cleanup.js";
-import { encodeCwd, projectsRoot } from "../src/session-sync-service.js";
+import { encodeCwd } from "../src/session-sync-service.js";
 
 const A_SESSION = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const B_SESSION = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -36,7 +36,6 @@ function insertSession(db: Database.Database, id: string, cwd: string | null = n
 
 /** Write a fake JSONL at the path claude-code would use for (cwd, sessionId). */
 function writeFakeJsonl(cwd: string, sessionId: string) {
-  const dir = join(projectsRoot(), encodeCwd(cwd), "");
   // projectsRoot may be under $HOME — we can't write there. Override the
   // env var so the path lands in our temp tree instead.
   // (The env var is read fresh every call, so this is safe per test.)
