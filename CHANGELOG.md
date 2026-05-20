@@ -7,15 +7,21 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 ### Added
 
 - **New session, from anywhere.** A `+ New session` pill in the topbar (or `⌘/`) opens a searchable palette covering every project across every space. Inside a single-project space, it just starts — no extra clicks.
-- **Fullscreen terminals show tabs across live terminals.** Maximise a terminal and a tab bar appears with one tab per open terminal — click to switch without leaving fullscreen. The ⤢ button on the right drops back to the desktop.
+- **Fullscreen terminals show tabs across live terminals.** Maximise a terminal and a tab bar appears with one tab per open terminal — click to switch without leaving fullscreen.
+- **Click an optional setup-checklist circle to tick it.** Inside the setup popover, the circles next to *Publish your first artefact* / *Connect another agent* / *Import memories* are now interactive — mark a step done without going through the *Show me how* sub-guide. Click again to untick.
+- **Oyster Arcade: Space Jumper joins the cabinet, with 9 more coming-soon games.** Have a play at [arcade.oyster.to](https://arcade.oyster.to).
 
 ### Changed
 
-- **In-app terminals get a black chrome.** The Claude/OpenCode terminal panels now match the website's terminal mock — black titlebar, deep-black body, teal cursor — and pick up your system terminal font (MesloLGM Nerd Font, falling back to Menlo / SF Mono). The header buttons stay subtle at rest and light up in macOS traffic-light colours on hover — red Stop, amber Minimise, green Expand.
-- **Sessions list reads "last active".** The right-hand column on the Sessions list now says *last active 2m / 16h / 44d* instead of *disconnected 2m* or a stale date — matching the wording under the Session Inspector header. Older rows stay in days-elapsed instead of jumping to a calendar date.
+- **Sessions list reads as a proper table.** Column headers (*Project · Title · Agent · Last active*) replace the per-row prefix; rows just show the relative time (`2m`, `5h`, `44d`) and let the status dot carry the state. Older sessions stay in days-elapsed instead of jumping to a calendar date.
+- **In-app terminals get a black chrome.** Claude/OpenCode terminal panels match the website's terminal mock — black titlebar, deep-black body, teal cursor, and macOS traffic-light hover colours on the header buttons.
 - **Project tile menu uses "New session".** The first item in a project tile's ⋯ menu is now *New session* (was *Launch Claude here*), matching the topbar pill. A divider separates it from *Rename* / *Merge into* / *Delete*.
-- **Setup chip moves next to "+ New session".** The Oyster setup affordance now sits inline in the home breadcrumb as its own chip — separate from the *1 running · + New session* cluster, since setup isn't part of the session-flow group. The mid-progress state ("required step done, optionals pending") gets a gold *◐* half-circle glyph in place of the green check — the chip body stays purple so it doesn't out-shout the active space pill, and the glyph alone signals halfway-through. When everything's done, the chrome falls away entirely and only a 🦪 oyster remains — your "found the pearl" moment.
-- **Click an optional checklist circle to tick it.** Inside the setup popover, the empty circles next to *Publish your first artefact* / *Connect another agent* / *Import memories* are now interactive — click to mark done without going through the *Show me how* sub-guide. Click again to untick.
+- **Setup chip lives next to "+ New session".** The Oyster setup affordance moved out of the floating top-right corner into the home breadcrumb as its own chip. Mid-progress shows a gold ◐ half-circle; once everything's done the chip collapses to just a 🦪 oyster — your "found the pearl" moment.
+- **Untitled sessions read as a soft italic *Untitled*** instead of "(no title yet)" — across the sessions list, tile view, Session Inspector, and running-terminals popover.
+
+### Removed
+
+- **Per-row ⋯ menu on sessions list.** The unused *Move to project / Send to space vault* menu came off — same operations are reachable from the Session Inspector and MCP.
 
 ## [0.9.4] - 2026-05-19
 
