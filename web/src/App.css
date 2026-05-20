@@ -1948,6 +1948,11 @@ body {
   line-height: 1;
   color: #6e7280;
   padding: 0 0 0 2px;
+  /* now a <button>: zero out user-agent chrome so the chip-x reads as
+     an inline glyph, not a control. */
+  background: transparent;
+  border: none;
+  font: inherit;
 }
 .spotlight-token-chip .x:hover { color: #d4d6db; }
 

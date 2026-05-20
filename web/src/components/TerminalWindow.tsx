@@ -229,6 +229,7 @@ export function TerminalWindow({
             className="window-btn window-btn--stop"
             onClick={requestStop}
             title="Stop terminal"
+            aria-label="Stop terminal"
           >■</button>
         ) : undefined}
       >

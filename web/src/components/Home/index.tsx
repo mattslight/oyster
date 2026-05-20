@@ -1111,7 +1111,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
           {loading && sessions.length === 0 ? (
             <div className="home-empty">Loading sessions…</div>
           ) : visibleSessions.length === 0 ? (
-            <div className="home-empty">No sessions match this filter.</div>
+            <div className="home-empty">No sessions match this filter yet.</div>
           ) : (
             <>
               {sessionsView === "icons" ? (

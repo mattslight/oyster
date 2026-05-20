@@ -6,6 +6,7 @@ import { searchTranscripts } from "../data/sessions-api";
 import type { TranscriptHit } from "../data/sessions-api";
 import { searchMemories } from "../data/memories-api";
 import type { Memory } from "../data/memories-api";
+import { formatRelative } from "./Home/utils";
 
 interface Props {
   artifacts: Artifact[];
@@ -344,21 +345,21 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
           {filter.type && (
             <span className="spotlight-token-chip spotlight-token-chip--type">
               @{filter.type}
-              <span className="x" onClick={() => setFilter(f => ({
+              <button type="button" className="x" aria-label={`Remove ${filter.type} filter`} onClick={() => setFilter(f => ({
                 ...f,
                 type: null,
                 order: f.order.filter(o => o !== 'type'),
-              }))}>×</span>
+              }))}>×</button>
             </span>
           )}
           {filter.spaceId && (
             <span className="spotlight-token-chip spotlight-token-chip--space">
               #{filter.spaceId}
-              <span className="x" onClick={() => setFilter(f => ({
+              <button type="button" className="x" aria-label={`Remove ${filter.spaceId} space filter`} onClick={() => setFilter(f => ({
                 ...f,
                 spaceId: null,
                 order: f.order.filter(o => o !== 'space'),
-              }))}>×</span>
+              }))}>×</button>
             </span>
           )}
           <input
@@ -370,7 +371,7 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
             onKeyDown={handleKeyDown}
           />
           {query && (
-            <button className="spotlight-clear" onClick={() => setQuery("")}>✕</button>
+            <button type="button" className="spotlight-clear" aria-label="Clear search" onClick={() => setQuery("")}>✕</button>
           )}
         </div>
 
@@ -438,7 +439,7 @@ export function SpotlightSearch({ artifacts, spaces, onOpen, onClose }: Props) {
                   className={`spotlight-result spotlight-result--session${isSelected ? " spotlight-result--selected" : ""}`}
                   onMouseEnter={() => setSelected(flatIndex)}
                   onClick={() => activate({ kind: "transcript", hit: h })}
-                  title={h.last_event_at ? new Date(h.last_event_at).toLocaleString() : undefined}
+                  title={h.last_event_at ? (formatRelative(h.last_event_at) ?? undefined) : undefined}
                 >
                   <svg className="spotlight-result-session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>

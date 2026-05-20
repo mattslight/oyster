@@ -8,6 +8,7 @@ import { publishArtifact, unpublishArtifact, unpublishCloudShare, updateCloudSha
 import { useCopyLink } from "../hooks/useCopyLink";
 import { ConfirmModal } from "./ConfirmModal";
 import { subscribeUiEvents } from "../data/ui-events";
+import { formatRelative } from "./Home/utils";
 import "./PublishModal.css";
 
 interface Props {
@@ -365,7 +366,7 @@ export function PublishModal({ artifact, onClose }: Props) {
                 </div>
                 <div className="publish-modal-meta">
                   Live · published {publication.publishedAt
-                    ? new Date(publication.publishedAt).toLocaleString()
+                    ? (formatRelative(publication.publishedAt) ?? "just now")
                     : "just now"}
                 </div>
 

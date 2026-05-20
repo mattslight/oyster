@@ -78,6 +78,7 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
                 <button
                   className="rtp-stop"
                   title="Stop terminal"
+                  aria-label="Stop terminal"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (localStorage.getItem("oyster-skip-stop-confirm") === "1") {
