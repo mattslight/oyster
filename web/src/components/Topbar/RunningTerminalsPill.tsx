@@ -71,7 +71,7 @@ export function RunningTerminalsPill({ presence, sessions, onFocus, onRestore, o
                 <div className="rtp-body">
                   <span className="rtp-title">{title}</span>
                   <span className="rtp-meta">
-                    <span className="rtp-space">{space}</span> · claude-code · {isAttached ? "open" : "minimised"}
+                    <span className="rtp-space">{space}</span> · claude-code
                   </span>
                 </div>
                 <button

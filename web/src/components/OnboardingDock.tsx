@@ -260,7 +260,7 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
   const requiredDone = state.spacesComplete;
 
   return (
-    <>
+    <div className="onboarding-dock-wrap">
       <button
         type="button"
         ref={dockRef}
@@ -330,7 +330,7 @@ export function OnboardingDock({ userSpaceCount = 0 }: OnboardingDockProps = {})
           ) : null}
         </div>
       )}
-    </>
+    </div>
   );
 }
 

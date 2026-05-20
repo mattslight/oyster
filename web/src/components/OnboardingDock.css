@@ -75,12 +75,20 @@
   white-space: nowrap;
 }
 
+/* Wrapper — positioning context so the popover anchors to the chip
+   instead of the viewport (the chip floats around as the breadcrumb
+   wraps / max-width clamps, so fixed-position lost alignment). */
+.onboarding-dock-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
 /* Popover */
 
 .onboarding-popover {
-  position: fixed;
-  top: 46px;
-  right: 16px;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
   width: 340px;
   z-index: 899;
   background: rgba(20, 21, 40, 0.98);
@@ -103,7 +111,10 @@
 .onboarding-popover-arrow {
   position: absolute;
   top: -6px;
-  right: 18px;
+  /* Popover right edge aligns with the chip's right edge (right: 0 on
+     popover). 8px from that edge puts the arrow over the chip in both
+     states — the small done chip and the wider mid-state chip. */
+  right: 8px;
   width: 12px;
   height: 12px;
   background: rgba(20, 21, 40, 0.98);
