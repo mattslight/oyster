@@ -85,6 +85,14 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
         <span title={formatTs(session.startedAt)}>
           {formatRelative(session.startedAt) ?? formatTs(session.startedAt)}
         </span>
+        {session.lastEventAt && session.lastEventAt !== session.startedAt && (
+          <>
+            {" · last active "}
+            <span title={formatTs(session.lastEventAt)}>
+              {formatRelative(session.lastEventAt) ?? formatTs(session.lastEventAt)}
+            </span>
+          </>
+        )}
         {session.model ? ` · ${session.model}` : ""}
       </div>
       <SessionActions session={session} onLaunchClaude={onLaunchClaude} onConnect={onConnect} />
