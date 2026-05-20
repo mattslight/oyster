@@ -363,7 +363,8 @@ Arcade.Audio.init({
     'sfx-win':       'sfx-win.mp3',
     'sfx-jump':      'sfx-jump.mp3',
   },
-  mutedKey: 'oyster-arcade-sfx-muted',  // global across all arcade games
+  volumeKey: 'oyster-arcade-sfx-volume',  // global across all arcade games
+  mutedKey:  'oyster-arcade-sfx-muted',   // legacy fallback
 });
 function playCoin()    { Arcade.Audio.play('sfx-powerup',  0.5); }
 function playHurt()    { Arcade.Audio.play('sfx-lose',     0.5); }
@@ -692,9 +693,9 @@ splash.addEventListener('pointerdown', e => {
 // ============================================
 // LEVELS — world-stage progression (Mario-style: 1-1, 1-2, 1-3 boss, then
 // 2-1 moon, 2-2, 2-3 boss). Each entry is self-describing so the renderer,
-// physics, and audio all key off it.
+// physics, and audio key off it.
 //
-// Required fields:
+// Required at runtime (currently consulted by the engine):
 //   id, world, stage   — display + progression
 //   type               — 'platformer' (reach goal) or 'boss' (defeat boss)
 //   width, height      — tile grid
@@ -703,8 +704,11 @@ splash.addEventListener('pointerdown', e => {
 //   coins, enemies     — { col, row, … }[]
 //   goal               — { col, row } (platformer only; bosses use boss.x)
 //   jetpacks           — { col, row }[] (0 or more pickups in the stage)
-//   bgm                — background music src (relative to this HTML)
+//   bgm                — background music src (loaded into <audio id="bgm">)
 //   gravityScale       — multiplier on GRAVITY (1 = earth, 0.55 = moon)
+//
+// Declared for forward compatibility (read by upcoming work, not consulted
+// by the engine yet — see milestone 2-1 moon level, 1-3 / 2-3 bosses):
 //   hasTorch           — true → darkness overlay + radial light on player
 //   boss               — { type, hp, … } for type:'boss', else null
 const LEVELS = [
@@ -761,6 +765,14 @@ function loadLevel(idx) {
   currentLevelIndex = Math.max(0, Math.min(idx, LEVELS.length - 1));
   level = LEVELS[currentLevelIndex];
   if (typeof recomputeScale === 'function') recomputeScale();
+  // Swap the BGM track to whatever the level declares. Guarded so a first
+  // load before the <audio> element is parsed (script-init order) just no-ops
+  // — the inline src in HTML serves the same file for 1-1 in that window.
+  const bgmEl = document.getElementById('bgm');
+  if (bgmEl && level.bgm && bgmEl.dataset.src !== level.bgm) {
+    bgmEl.dataset.src = level.bgm;
+    bgmEl.src = level.bgm;
+  }
 }
 
 function tileAt(col, row) {
@@ -1127,8 +1139,9 @@ function update() {
   }
   if (player.thrusting && !wasThrusting) playThrust();
 
-  // Gravity
-  player.vy += GRAVITY;
+  // Gravity — level can scale it (moon = ~0.55) for different feel.
+  const gScale = (typeof level.gravityScale === 'number') ? level.gravityScale : 1;
+  player.vy += GRAVITY * gScale;
   if (player.vy > 16) player.vy = 16;
 
   // Integrate with tile collision (X then Y)

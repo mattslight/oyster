@@ -1473,9 +1473,31 @@ loop();
   bgm.volume = 0.45;
 })();
 
+// One-time migration of the legacy single-key mute (`oyster-rocket-muted`)
+// into the arcade-wide music + sfx mute keys, before Arcade.Audio inits.
+// Without this, an existing player who'd muted Rocket Ship pre-port would
+// see the game come back at full volume after the upgrade.
+(function migrateLegacyRocketMute() {
+  try {
+    const LEGACY = 'oyster-rocket-muted';
+    if (localStorage.getItem(LEGACY) !== '1') return;
+    const MUSIC = 'oyster-arcade-music-volume';
+    const SFX   = 'oyster-arcade-sfx-volume';
+    const MUSIC_LEGACY = 'oyster-arcade-music-muted';
+    const SFX_LEGACY   = 'oyster-arcade-sfx-muted';
+    if (localStorage.getItem(MUSIC) == null && localStorage.getItem(MUSIC_LEGACY) == null) {
+      localStorage.setItem(MUSIC, '0');
+    }
+    if (localStorage.getItem(SFX) == null && localStorage.getItem(SFX_LEGACY) == null) {
+      localStorage.setItem(SFX, '0');
+    }
+    localStorage.removeItem(LEGACY);
+  } catch (_) {}
+})();
+
 // SFX setup. Audio engine lives in arcade/shared/audio.js; per-game wrappers
-// here just keep call sites readable. mutedKey is the arcade-wide one so
-// SFX mute state syncs with the cabinet games.
+// here just keep call sites readable. volumeKey is the arcade-wide slider so
+// SFX volume syncs with the cabinet games; mutedKey kept for legacy fallback.
 Arcade.Audio.init({
   sfx: {
     'sfx-powerup':   'arcade/shared/sfx-powerup.mp3',
@@ -1484,7 +1506,8 @@ Arcade.Audio.init({
     'sfx-thruster':  'arcade/shared/sfx-thruster.mp3',
     'sfx-glitch':    'arcade/shared/sfx-glitch.mp3',
   },
-  mutedKey: 'oyster-arcade-sfx-muted',
+  volumeKey: 'oyster-arcade-sfx-volume',
+  mutedKey:  'oyster-arcade-sfx-muted',
 });
 function ensureAudioCtx() { return Arcade.Audio.ensureCtx(); }
 function playCoin()  { Arcade.Audio.play('sfx-powerup',   0.55); }
@@ -1566,6 +1589,21 @@ function showCelebration(onAdvance) {
 // truth, localStorage mirrors for fast paints.
 // ============================================
 const LB_SIZE = 10;
+// One-time migration: the legacy mirror lived at `oyster-rocket-leaderboard`,
+// the shared client expects `oyster-arcade-leaderboard-rocket-ship`. Copy
+// the old list across so an offline player doesn't see an empty board until
+// the next successful cloud refresh.
+(function migrateLegacyRocketLeaderboard() {
+  try {
+    const LEGACY = 'oyster-rocket-leaderboard';
+    const NEW    = 'oyster-arcade-leaderboard-rocket-ship';
+    if (localStorage.getItem(NEW) != null) return;
+    const raw = localStorage.getItem(LEGACY);
+    if (raw == null) return;
+    localStorage.setItem(NEW, raw);
+    localStorage.removeItem(LEGACY);
+  } catch (_) {}
+})();
 Arcade.Leaderboard.init({ game: 'rocket-ship', max: LB_SIZE });
 // Pull fresh scores from the cloud on load — repaints if the local mirror
 // changed. Synchronous reads (readLeaderboard / getHighScore) keep working

@@ -11,10 +11,11 @@
 // for the short window between page load and first decode completing.
 // They MUST share their `id` with the keys passed to init({ sfx }).
 //
-// Usage (use the arcade-wide mute key so MUSIC / SFX state is shared
-// across every cabinet game — see shared/pause.js):
+// Usage (volumeKey is preferred — gives players a slider in the pause
+// overlay; mutedKey is the legacy on/off variant, still accepted for
+// back-compat with older cabinet games):
 //   Arcade.Audio.init({ sfx: { 'sfx-coin': 'sfx-coin.mp3', ... },
-//                       mutedKey: 'oyster-arcade-sfx-muted' });
+//                       volumeKey: 'oyster-arcade-sfx-volume' });
 //   // ...on first user gesture (e.g. splash dismiss):
 //   Arcade.Audio.ensureCtx();
 //   // ...in-game:
@@ -27,20 +28,35 @@
 
 (function () {
   let sfxFiles = {};
-  let mutedKey = null;
+  let volumeKey = null;
+  let mutedKey = null;          // legacy
   let audioCtx = null;
   let masterGain = null;
   let buffers = {};
-  let muted = false;
+  let masterVolume = 1;          // 0..1 — multiplied into each play()'s per-clip volume
+
+  function readInitialVolume() {
+    // Prefer the volume key (number 0..1). Fall back to the legacy mute key.
+    if (volumeKey) {
+      try {
+        const raw = localStorage.getItem(volumeKey);
+        if (raw != null) {
+          const n = parseFloat(raw);
+          if (Number.isFinite(n)) return Math.max(0, Math.min(1, n));
+        }
+      } catch (_) {}
+    }
+    if (mutedKey) {
+      try { if (localStorage.getItem(mutedKey) === '1') return 0; } catch (_) {}
+    }
+    return 1;
+  }
 
   function init(opts) {
     sfxFiles = (opts && opts.sfx) || {};
-    mutedKey = (opts && opts.mutedKey) || null;
-    let initialMuted = false;
-    if (mutedKey) {
-      try { initialMuted = localStorage.getItem(mutedKey) === '1'; } catch (_) {}
-    }
-    setMuted(initialMuted);
+    volumeKey = (opts && opts.volumeKey) || null;
+    mutedKey  = (opts && opts.mutedKey)  || null;
+    setVolume(readInitialVolume(), { persist: false });
   }
 
   function ensureCtx() {
@@ -50,7 +66,7 @@
         if (!Ctx) return null;
         audioCtx = new Ctx();
         masterGain = audioCtx.createGain();
-        masterGain.gain.value = muted ? 0 : 1;
+        masterGain.gain.value = masterVolume;
         masterGain.connect(audioCtx.destination);
         Object.entries(sfxFiles).forEach(async ([id, src]) => {
           try {
@@ -65,18 +81,25 @@
     return audioCtx;
   }
 
-  function setMuted(m) {
-    muted = !!m;
-    if (masterGain) masterGain.gain.value = muted ? 0 : 1;
-    // Mirror onto every <audio> element (used for the fallback path AND any
-    // background-music track the page declares).
-    document.querySelectorAll('audio').forEach(a => { a.muted = muted; });
-    if (mutedKey) {
-      try { localStorage.setItem(mutedKey, muted ? '1' : '0'); } catch (_) {}
+  function setVolume(v, opts) {
+    masterVolume = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
+    if (masterGain) masterGain.gain.value = masterVolume;
+    // Mirror onto every <audio> element so the fallback path matches the
+    // Web Audio master. Note: this also touches BGM tracks — pause.js
+    // re-applies the music volume right after if both keys are managed.
+    document.querySelectorAll('audio').forEach(a => { a.volume = masterVolume; });
+    if (volumeKey && (!opts || opts.persist !== false)) {
+      try { localStorage.setItem(volumeKey, String(masterVolume)); } catch (_) {}
     }
   }
 
-  function isMuted() { return muted; }
+  function getVolume() { return masterVolume; }
+
+  // Legacy boolean API — keeps older callers working. Mute = volume 0;
+  // unmute restores to 1 (the legacy default). For nuanced control, use
+  // setVolume directly.
+  function setMuted(m) { setVolume(m ? 0 : 1); }
+  function isMuted() { return masterVolume === 0; }
 
   function play(id, volume) {
     if (volume == null) volume = 0.6;
@@ -87,7 +110,7 @@
       // finishes decoding, which is usually well before any in-game shot.
       const el = document.getElementById(id);
       if (!el) return;
-      el.volume = muted ? 0 : volume;
+      el.volume = masterVolume * volume;
       try { el.currentTime = 0; el.play().catch(() => {}); } catch (_) {}
       return;
     }
@@ -100,5 +123,5 @@
   }
 
   window.Arcade = window.Arcade || {};
-  window.Arcade.Audio = { init, ensureCtx, setMuted, isMuted, play };
+  window.Arcade.Audio = { init, ensureCtx, setVolume, getVolume, setMuted, isMuted, play };
 })();
