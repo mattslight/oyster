@@ -36,18 +36,14 @@
 }
 
 /* All done — chrome falls away, leaving just the 🦪 oyster floating
-   in the breadcrumb. Hover restores a subtle bg so the affordance
-   stays discoverable. */
+   in the breadcrumb. Negative margin tightens the gap to the running /
+   new-session cluster so the emoji doesn't read as orphaned. */
 .onboarding-dock--ready {
   background: transparent;
   border-color: transparent;
-  padding: 4px 6px;
+  padding: 4px 4px;
   gap: 0;
-}
-
-.onboarding-dock--ready:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.12);
+  margin-left: -4px;
 }
 
 .onboarding-dock--ready .onboarding-dock-check {
