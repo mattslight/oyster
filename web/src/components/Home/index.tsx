@@ -76,6 +76,8 @@ interface Props {
   /** Open the new-session palette. When omitted, the pill is hidden
    *  (e.g. in test contexts that don't wire it up). */
   onOpenNewSession?: () => void;
+  /** Open the Spotlight search modal. When omitted, the pill is hidden. */
+  onOpenSpotlight?: () => void;
 }
 
 const ARTEFACT_SOURCE_ORDER: ArtefactSource[] = ["all", "manual", "ai_generated", "discovered", "published", "pinned"];
@@ -153,7 +155,7 @@ const FILTER_LABELS: Record<StateFilter, string> = {
   all: "all",
 };
 
-export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, onOpenNewSession, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
+export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange, onPromoteFolderToSpace, onSpaceDelete, onSpaceUpdate, onSubViewActiveChange, onLaunchClaude, onLaunchClaudeFromSession, onOpenRemoteInOyster, terminalWindows, onTerminalFocus, onTerminalRestore, onTerminalStop, onOpenNewSession, onOpenSpotlight, sessions, sessionsLoading: loading, sessionsError: error }: Props) {
   const presence = useTerminalPresence(sessions, terminalWindows ?? []);
   const signedIn = useAuthSignedIn();
   const myDevice = useMyDeviceId();
@@ -834,7 +836,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                   onStop={onTerminalStop}
                 />
               )}
-              {onOpenNewSession && <NewSessionPill onClick={onOpenNewSession} />}
+              {onOpenNewSession && (
+                <div className="topbar-pill-stack">
+                  <NewSessionPill onClick={onOpenNewSession} />
+                  <span className="topbar-pill-hint" aria-hidden="true">⌘/</span>
+                </div>
+              )}
             </div>
             </LayoutGroup>
           </nav>
@@ -1096,6 +1103,17 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                 </svg>
               </button>
             </div>
+            {onOpenSpotlight && (
+              <button
+                type="button"
+                className="home-section-search-hint"
+                onClick={onOpenSpotlight}
+                title="Open Spotlight search (⌘K)"
+              >
+                <span>Search</span>
+                <span className="topbar-pill-hint" aria-hidden="true">⌘K</span>
+              </button>
+            )}
           </div>
 
           {loading && sessions.length === 0 ? (
