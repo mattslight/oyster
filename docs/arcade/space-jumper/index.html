@@ -931,26 +931,34 @@ function recomputeScale() {
 }
 recomputeScale();
 
-// Movement tuning (in screen px / frame at 60fps).
-// Peak jump = JUMP_VEL^2 / (2 * GRAVITY) ≈ 163 px ≈ 2.7 tiles at typical
-// scale, so the player can comfortably clear the step-up platforms in 1-1
-// from a running start without needing the jetpack.
-const MOVE_ACCEL = 0.75;
-const MOVE_MAX = 5.0;
+// Movement tuning — stored as FRACTIONS OF A TILE per frame at 60 fps so
+// the physics stay viewport-independent (TILE_PX varies with screen height).
+// The design intent was set against TILE_PX ≈ 60, where the raw numbers were
+// MOVE_ACCEL=0.75 px/f², MOVE_MAX=5 px/f, GRAVITY=0.6 px/f², JUMP_VEL=-14 px/f.
+// Invariant: peak jump = JUMP_VEL² / (2·GRAVITY) = 2.72 TILES at any viewport.
+// If that drifts, level layouts break — see assert below.
+const MOVE_ACCEL_FRAC      =  0.0125;   // tiles / frame²
+const MOVE_MAX_FRAC        =  0.0833;   // tiles / frame
+const GRAVITY_FRAC         =  0.0100;   // tiles / frame²
+const JUMP_VEL_FRAC        = -0.2333;   // tiles / frame
+const MAX_VY_FRAC          =  0.2667;   // tiles / frame (terminal velocity)
+const JETPACK_THRUST_FRAC  = -0.0175;   // tiles / frame²
+const JETPACK_MAX_VY_FRAC  = -0.1167;   // tiles / frame
+// Dimensionless — no scaling
 const FRICTION = 0.82;
-const GRAVITY = 0.6;
-const JUMP_VEL = -14;
-const JUMP_CUT = 0.4;
-const COYOTE_MS = 100;
+const JUMP_CUT = 0.40;
+// Time-based — no scaling
+const COYOTE_MS      = 100;
 const JUMP_BUFFER_MS = 130;
+const JETPACK_FUEL_MAX = 60;            // frame count for ~1.0 s of burn
 
-// Jetpack — once picked up (one per level), holding JUMP in mid-air burns
-// fuel for upward thrust. Fuel refills on landing. Numbers tuned for 60fps:
-// FUEL_MAX = ~1.0s of burn; THRUST is stronger than gravity so net rise is
-// gentle (~0.45 px/f²); MAX_VY caps how fast a thrust burst can fling you.
-const JETPACK_FUEL_MAX     = 60;
-const JETPACK_THRUST_ACCEL = -1.05;
-const JETPACK_MAX_VY       = -7;
+// Invariant check (run once at boot): peak jump must stay at 2.72 tiles.
+{
+  const peakTiles = (JUMP_VEL_FRAC * JUMP_VEL_FRAC) / (2 * GRAVITY_FRAC);
+  if (Math.abs(peakTiles - 2.72) > 0.05) {
+    console.warn('[space-jumper] peak jump drifted from design:', peakTiles.toFixed(3), 'tiles');
+  }
+}
 
 const player = {
   x: 0, y: 0,            // world pixels, top-left
@@ -1216,12 +1224,25 @@ function update() {
   // the Mario-style lives screen is showing.
   if (stepDeathSequence(now)) return;
 
+  // Derive viewport-aware physics from the tile-fraction design intent.
+  // TILE_PX changes on resize; recomputing every frame is free and keeps
+  // the physics identical at any screen size. See the _FRAC constants and
+  // the invariant comment up top.
+  const MOVE_ACCEL          = MOVE_ACCEL_FRAC       * TILE_PX;
+  const MOVE_MAX            = MOVE_MAX_FRAC         * TILE_PX;
+  const GRAVITY             = GRAVITY_FRAC          * TILE_PX;
+  const JUMP_VEL            = JUMP_VEL_FRAC         * TILE_PX;
+  const MAX_VY              = MAX_VY_FRAC           * TILE_PX;
+  const JETPACK_THRUST_ACCEL = JETPACK_THRUST_FRAC  * TILE_PX;
+  const JETPACK_MAX_VY      = JETPACK_MAX_VY_FRAC   * TILE_PX;
+  const STOP_THRESHOLD      = 0.0008                * TILE_PX;  // snap-to-zero floor
+
   // Horizontal input
   const left = keys['ArrowLeft'] || keys['a'] || keys['A'];
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
   if (left && !right) { player.vx -= MOVE_ACCEL; player.facing = -1; }
   else if (right && !left) { player.vx += MOVE_ACCEL; player.facing = 1; }
-  else { player.vx *= FRICTION; if (Math.abs(player.vx) < 0.05) player.vx = 0; }
+  else { player.vx *= FRICTION; if (Math.abs(player.vx) < STOP_THRESHOLD) player.vx = 0; }
   player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
 
   // Jump input — edges for press / release
@@ -1266,7 +1287,7 @@ function update() {
   // Gravity — level can scale it (moon = ~0.55) for different feel.
   const gScale = (typeof level.gravityScale === 'number') ? level.gravityScale : 1;
   player.vy += GRAVITY * gScale;
-  if (player.vy > 16) player.vy = 16;
+  if (player.vy > MAX_VY) player.vy = MAX_VY;
 
   // Integrate with tile collision (X then Y)
   resolveX(player.vx);
