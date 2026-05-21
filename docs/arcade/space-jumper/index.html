@@ -802,28 +802,37 @@ const LEVELS = [
       // Zone A — flat intro: dense decoration sells "starting meadow"
       { col:   3, row: 11, type: 'tallgrass' },
       { col:   5, row: 11, type: 'bush'      },
+      { col:   8, row: 11, type: 'rabbit'    }, // hops on the starting meadow
       { col:  10, row: 11, type: 'flower'    },
+      { col:  11, row: 11, type: 'butterfly' }, // flutters around the flower
       { col:  13, row: 11, type: 'tallgrass' },
       { col:  22, row: 11, type: 'mushroom'  },
       { col:  26, row: 11, type: 'rock'      },
-      // Zone B — near the pit
+      // Zone B — near the pit. A frog at the pit edge sells "wetland."
       { col:  29, row: 11, type: 'tallgrass' },
+      { col:  31, row: 11, type: 'frog'      }, // right before the pit edge
       { col:  44, row: 11, type: 'flower'    },
+      { col:  45, row: 11, type: 'butterfly' },
       { col:  48, row: 11, type: 'tallgrass' },
       // Zone C — between cliff platforms
       { col:  53, row: 11, type: 'rock'      },
       { col:  74, row: 11, type: 'flower'    },
       { col:  77, row: 11, type: 'tallgrass' },
+      { col:  79, row: 11, type: 'rabbit'    },
       // Zone D — between pits + jetpack platform
       { col:  99, row: 11, type: 'tallgrass' },
       { col: 102, row: 11, type: 'rock'      },
+      { col: 103, row: 11, type: 'frog'      },
       // Zone E — between climb platforms
       { col: 113, row: 11, type: 'flower'    },
+      { col: 114, row: 11, type: 'butterfly' },
       { col: 120, row: 11, type: 'tallgrass' },
       { col: 126, row: 11, type: 'tallgrass' },
       // Zone F — goal area
       { col: 138, row: 11, type: 'flower'    },
+      { col: 139, row: 11, type: 'butterfly' }, // welcoming party
       { col: 142, row:  4, type: 'bush'      }, // sits on the row-5 goal platform
+      { col: 144, row:  4, type: 'rabbit'    }, // hopping near the flag
       { col: 147, row: 11, type: 'mushroom'  },
     ],
     bgm: 'bgm.mp3?v=2',
@@ -1422,6 +1431,9 @@ function drawProp(p, worldX, worldY, t) {
     case 'rock':      return drawRock(x, y, PXL, t);
     case 'tallgrass': return drawTallgrass(x, y, PXL, t);
     case 'flower':    return drawFlower(x, y, PXL, t);
+    case 'rabbit':    return drawRabbit(x, y, PXL, t);
+    case 'butterfly': return drawButterfly(x, y, PXL, t);
+    case 'frog':      return drawFrog(x, y, PXL, t);
   }
 }
 
@@ -1528,6 +1540,100 @@ function drawTallgrass(x, y, PXL, t) {
   // Lit tip on the tallest blade
   ctx.fillStyle = '#86efac';
   ctx.fillRect(x + 5 * PXL + Math.round(sway),       baseY - 6 * PXL, PXL, PXL);
+}
+
+function drawRabbit(x, y, PXL, t) {
+  // 8-wide × 7-tall pixel rabbit. Sits idle on the ground; every ~3 s it
+  // hops with a short arc. `phase` is offset by x so different rabbits hop
+  // out-of-sync. Soft brown body + white cotton tail + dark eye.
+  const baseY = y + TILE_PX;
+  const phase = (((t || 0) + x * 7) % 3000);
+  const hopT  = phase < 360 ? phase / 360 : 0;
+  const hop   = hopT > 0 ? Math.sin(hopT * Math.PI) : 0;
+  const dy    = Math.round(-hop * PXL * 2.5);
+  // Body
+  ctx.fillStyle = '#a16207';
+  ctx.fillRect(x + 1 * PXL, baseY - 3 * PXL + dy, 6 * PXL, 3 * PXL);
+  // Head — sits forward
+  ctx.fillRect(x + 4 * PXL, baseY - 5 * PXL + dy, 3 * PXL, 2 * PXL);
+  // Ears — long, slightly back
+  ctx.fillStyle = '#854d0e';
+  ctx.fillRect(x + 4 * PXL, baseY - 7 * PXL + dy, PXL, 2 * PXL);
+  ctx.fillRect(x + 6 * PXL, baseY - 7 * PXL + dy, PXL, 2 * PXL);
+  // Eye
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(x + 6 * PXL, baseY - 5 * PXL + dy, PXL, PXL);
+  // Cotton tail
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(x, baseY - 3 * PXL + dy, PXL, PXL);
+  // Feet — only drawn when grounded so hops look airborne
+  if (hop === 0) {
+    ctx.fillStyle = '#854d0e';
+    ctx.fillRect(x + 1 * PXL, baseY - PXL, PXL, PXL);
+    ctx.fillRect(x + 5 * PXL, baseY - PXL, PXL, PXL);
+  }
+}
+
+function drawButterfly(x, y, PXL, t) {
+  // 6-wide × 5-tall flapping butterfly. Drifts in a tight circle around its
+  // anchor so it visually orbits any prop placed nearby. Wings alternate
+  // up/down every ~80 ms; pink wings with pale highlights pop against grass.
+  const baseY = y + TILE_PX;
+  const dx = Math.round(Math.cos((t || 0) * 0.0015 + x * 0.01) * PXL * 2.5);
+  const dy = Math.round(Math.sin((t || 0) * 0.0018 + x * 0.01) * PXL * 1.5);
+  const flap = Math.floor((t || 0) / 90) % 2;
+  // Body
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(x + 2 * PXL + dx, baseY - 6 * PXL + dy, PXL, 3 * PXL);
+  // Wings
+  ctx.fillStyle = '#ff3aa1';
+  if (flap === 0) {
+    ctx.fillRect(x + dx,             baseY - 7 * PXL + dy, 2 * PXL, 3 * PXL);
+    ctx.fillRect(x + 3 * PXL + dx,   baseY - 7 * PXL + dy, 2 * PXL, 3 * PXL);
+  } else {
+    ctx.fillRect(x + dx,             baseY - 5 * PXL + dy, 2 * PXL, 3 * PXL);
+    ctx.fillRect(x + 3 * PXL + dx,   baseY - 5 * PXL + dy, 2 * PXL, 3 * PXL);
+  }
+  // Wing highlights
+  ctx.fillStyle = '#fbcfe8';
+  if (flap === 0) {
+    ctx.fillRect(x + PXL + dx,        baseY - 6 * PXL + dy, PXL, PXL);
+    ctx.fillRect(x + 4 * PXL + dx,    baseY - 6 * PXL + dy, PXL, PXL);
+  } else {
+    ctx.fillRect(x + PXL + dx,        baseY - 4 * PXL + dy, PXL, PXL);
+    ctx.fillRect(x + 4 * PXL + dx,    baseY - 4 * PXL + dy, PXL, PXL);
+  }
+}
+
+function drawFrog(x, y, PXL, t) {
+  // 7-wide × 5-tall green frog. Sits still; eyes blink every ~4.5 s with
+  // a 150 ms closed window. Per-prop x offset on the blink so frogs don't
+  // all blink in sync.
+  const baseY = y + TILE_PX;
+  const blink = ((((t || 0) + x * 13) | 0) % 4500) < 150;
+  // Body
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + PXL, baseY - 3 * PXL, 5 * PXL, 3 * PXL);
+  // Lighter back
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(x + 2 * PXL, baseY - 4 * PXL, 3 * PXL, PXL);
+  // Eyes — bulge up from the head
+  if (blink) {
+    ctx.fillStyle = '#15803d';
+    ctx.fillRect(x + PXL,     baseY - 4 * PXL, 2 * PXL, PXL);
+    ctx.fillRect(x + 4 * PXL, baseY - 4 * PXL, 2 * PXL, PXL);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + PXL,     baseY - 5 * PXL, 2 * PXL, PXL);
+    ctx.fillRect(x + 4 * PXL, baseY - 5 * PXL, 2 * PXL, PXL);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(x + 2 * PXL, baseY - 5 * PXL, PXL, PXL);
+    ctx.fillRect(x + 5 * PXL, baseY - 5 * PXL, PXL, PXL);
+  }
+  // Front feet
+  ctx.fillStyle = '#15803d';
+  ctx.fillRect(x,             baseY - PXL, 2 * PXL, PXL);
+  ctx.fillRect(x + 5 * PXL,   baseY - PXL, 2 * PXL, PXL);
 }
 
 function drawFlower(x, y, PXL, t) {
@@ -2057,6 +2163,114 @@ function drawUfo(t) {
   ctx.fillRect(ux + 23, uy + 1, 2, 2);
 }
 
+// Background fauna — pixel-art creatures behind the pines. All silhouettes
+// (single dark colour) so they read as "distance" against the dusk sky.
+// Stable per-world-index positions; subtle animation sells "alive."
+
+// Deer — chunky pixel deer standing in the treeline. Stationary, with a
+// slow nibble-bob; legs alternate based on `t`. Parallax 0.65 so they sit
+// between the mountains (0.6) and the pines (0.85). Drawn at fixed world
+// X-positions seeded by `BG_DEER_COLS` so each level can pick spots.
+const BG_DEER_COLS = [44, 88, 124];
+function drawDeer(t, baseY, parallax) {
+  const camOff = cam.x * parallax;
+  for (let i = 0; i < BG_DEER_COLS.length; i++) {
+    const wx = BG_DEER_COLS[i] * 32 - camOff;       // tile-pitch-independent
+    if (wx < -32 || wx > W + 32) continue;
+    const bob = Math.round(Math.sin(t * 0.0011 + i * 1.7) * 1);
+    const step = Math.floor(t / 600 + i) % 2;
+    drawDeerSprite(Math.round(wx), Math.round(baseY) + bob, step);
+  }
+}
+function drawDeerSprite(x, y, step) {
+  // 14 wide × 14 tall silhouette. Single colour, deep plum so it reads
+  // dark against any sky-band tone. y is the BASE — sprite extends upward.
+  ctx.fillStyle = '#1a0e2c';
+  // Body — broad oval, 10 wide × 4 tall
+  ctx.fillRect(x + 2,  y - 6,  10, 4);
+  // Neck — angled up-right
+  ctx.fillRect(x + 9,  y - 9,  2,  3);
+  // Head
+  ctx.fillRect(x + 10, y - 11, 3,  3);
+  // Snout
+  ctx.fillRect(x + 13, y - 10, 1,  1);
+  // Antlers — two prongs
+  ctx.fillRect(x + 10, y - 13, 1,  2);
+  ctx.fillRect(x + 12, y - 13, 1,  2);
+  ctx.fillRect(x + 11, y - 14, 1,  1);
+  // Legs — front + back, with a step phase
+  if (step === 0) {
+    ctx.fillRect(x + 3,  y - 2,  1, 2);
+    ctx.fillRect(x + 4,  y - 2,  1, 2);   // front pair forward
+    ctx.fillRect(x + 9,  y - 1,  1, 1);
+    ctx.fillRect(x + 10, y - 2,  1, 2);   // back pair lifted
+  } else {
+    ctx.fillRect(x + 3,  y - 1,  1, 1);
+    ctx.fillRect(x + 4,  y - 2,  1, 2);
+    ctx.fillRect(x + 9,  y - 2,  1, 2);
+    ctx.fillRect(x + 10, y - 2,  1, 2);
+  }
+  // Tail
+  ctx.fillRect(x + 1,  y - 6,  1, 1);
+}
+
+// Owl — flies across the upper sky every ~25s in a sine arc, flapping.
+// Sits in a different cycle from the UFO so they don't overlap.
+function drawOwl(t) {
+  const CYCLE = 27000;
+  const VISIBLE = 9000;
+  const phase = (t + 4200) % CYCLE;          // offset to desync from UFO
+  if (phase >= VISIBLE) return;
+  const p   = phase / VISIBLE;
+  const ox  = Math.round(-30 + p * (W + 60));
+  const oy  = Math.round(70 - Math.sin(p * Math.PI) * 24);
+  const flap = Math.floor(t / 220) % 2;
+  // Body (dark)
+  ctx.fillStyle = '#1a0e2c';
+  ctx.fillRect(ox,     oy,     10, 5);
+  ctx.fillRect(ox + 2, oy - 2, 6,  2);
+  // Wings — alternate up/down
+  if (flap === 0) {
+    ctx.fillRect(ox - 4, oy,     4, 2);
+    ctx.fillRect(ox + 10, oy,    4, 2);
+  } else {
+    ctx.fillRect(ox - 3, oy + 3, 3, 1);
+    ctx.fillRect(ox + 10, oy + 3, 3, 1);
+  }
+  // Glowing yellow eyes
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(ox + 3, oy - 1, 1, 1);
+  ctx.fillRect(ox + 6, oy - 1, 1, 1);
+}
+
+// Bird flock — V-formation of 5 birds drifting across the upper sky. Each
+// bird is a 3-px chevron with a flap phase. Longer cycle than the owl.
+function drawBirdFlock(t) {
+  const CYCLE = 52000;
+  const VISIBLE = 20000;
+  const phase = (t + 18000) % CYCLE;         // offset to desync
+  if (phase >= VISIBLE) return;
+  const p = phase / VISIBLE;
+  const fx = Math.round(-50 + p * (W + 100));
+  const fy = Math.round(120 + Math.sin(p * 3) * 6);
+  const positions = [[0,0],[-9,3],[9,3],[-18,6],[18,6]];
+  ctx.fillStyle = '#0c0820';
+  const flap = Math.floor(t / 260) % 2;
+  for (let i = 0; i < positions.length; i++) {
+    const bx = fx + positions[i][0];
+    const by = fy + positions[i][1];
+    if (flap === 0) {
+      ctx.fillRect(bx - 2, by,     2, 1);
+      ctx.fillRect(bx + 1, by,     2, 1);
+      ctx.fillRect(bx,     by + 1, 1, 1);
+    } else {
+      ctx.fillRect(bx - 2, by + 1, 2, 1);
+      ctx.fillRect(bx + 1, by + 1, 2, 1);
+      ctx.fillRect(bx,     by,     1, 1);
+    }
+  }
+}
+
 // Fireflies — small drifting blinking points in the foreground band so the
 // playfield feels alive. Stable per-index world positions; sine drift adds
 // the gentle wandering; phase-offset blink keeps them from pulsing in sync.
@@ -2179,6 +2393,15 @@ function draw() {
   // ---- Mountain silhouette — sawtooth ridge in front of the city. ----
   ctx.fillStyle = '#251238';
   drawMountainRange(Math.round(H * 0.55), 0.6);
+
+  // ---- Owl + bird flock — drift through the upper sky on their own
+  // cycles. Owl arcs near the moon; flock holds a V-formation.
+  drawOwl(t);
+  drawBirdFlock(t);
+
+  // ---- Background fauna in the treeline — deer at parallax 0.65 so they
+  // feel mid-distant. Drawn BEFORE pines so the pines occlude them slightly.
+  drawDeer(t, Math.round(H * 0.78), 0.65);
 
   // ---- Foreground pines — fast parallax, sit between the mountains
   // and the playfield. Drawn behind the tiles so platforms occlude
