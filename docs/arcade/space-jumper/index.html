@@ -742,7 +742,7 @@ const LEVELS = [
       '......................................................................................................................................................',
       '.........................................................................................................................####.........................',
       '......................................................................................................................................................',
-      '..........................................................................................#####...................####................................',
+      '........................................................................................#######...................####................................',
       '......................................#####.......................SSSSS...............................................................................',
       '..........................................................#####...................####......................####......................................',
       '################################...###################################################..#########..###################################################',
@@ -1403,16 +1403,35 @@ function drawMushroom(x, y, PXL) {
 }
 
 function drawBush(x, y, PXL) {
-  // 12-wide × 6-tall. Three pixel clumps stacked.
+  // 14-wide × 8-tall. Asymmetric tiered shrub — three round-ish clumps with
+  // a darker base shadow, midtone body, and lit crowns. A few "leaf" pixel
+  // notches break the blocky silhouette so it reads as foliage, not a pill.
   const baseY = y + TILE_PX;
-  ctx.fillStyle = '#15803d';            // shaded body
-  ctx.fillRect(x,             baseY - 3 * PXL, 12 * PXL, 3 * PXL);
-  ctx.fillStyle = '#22c55e';            // lit top
-  ctx.fillRect(x + 1 * PXL,   baseY - 5 * PXL, 4 * PXL, 2 * PXL);
-  ctx.fillRect(x + 5 * PXL,   baseY - 6 * PXL, 4 * PXL, 3 * PXL);
-  ctx.fillRect(x + 9 * PXL,   baseY - 5 * PXL, 3 * PXL, 2 * PXL);
-  ctx.fillStyle = '#4ade80';            // 1-px highlight on the tallest clump
-  ctx.fillRect(x + 5 * PXL,   baseY - 6 * PXL, 4 * PXL, PXL);
+  // Shadow band — settles the shrub on the ground.
+  ctx.fillStyle = '#0c4a26';
+  ctx.fillRect(x + 1 * PXL,   baseY - 1 * PXL, 12 * PXL, PXL);
+  // Mid body — wide bottom tier, 4 px tall.
+  ctx.fillStyle = '#166534';
+  ctx.fillRect(x,             baseY - 4 * PXL, 14 * PXL, 3 * PXL);
+  // Side highlights on body (slightly lighter).
+  ctx.fillStyle = '#15803d';
+  ctx.fillRect(x,             baseY - 4 * PXL,  1 * PXL, 2 * PXL);
+  ctx.fillRect(x + 13 * PXL,  baseY - 4 * PXL,  1 * PXL, 2 * PXL);
+  // Upper tier clumps — three lobes, different heights for asymmetry.
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + 1 * PXL,   baseY - 6 * PXL,  4 * PXL, 2 * PXL);   // left lobe
+  ctx.fillRect(x + 5 * PXL,   baseY - 8 * PXL,  4 * PXL, 4 * PXL);   // taller centre
+  ctx.fillRect(x + 9 * PXL,   baseY - 5 * PXL,  4 * PXL, 1 * PXL);   // shorter right
+  ctx.fillRect(x + 9 * PXL,   baseY - 7 * PXL,  3 * PXL, 2 * PXL);   // right lobe top
+  // Leaf-tip highlights — a few bright pixels suggesting sunlight catching.
+  ctx.fillStyle = '#4ade80';
+  ctx.fillRect(x + 2 * PXL,   baseY - 6 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 6 * PXL,   baseY - 8 * PXL,  2 * PXL, 1 * PXL);
+  ctx.fillRect(x + 10 * PXL,  baseY - 7 * PXL,  1 * PXL, 1 * PXL);
+  // Tiny darker notches between lobes — break up the silhouette.
+  ctx.fillStyle = '#0c4a26';
+  ctx.fillRect(x + 4 * PXL,   baseY - 5 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 8 * PXL,   baseY - 5 * PXL,  1 * PXL, 1 * PXL);
 }
 
 function drawSignpost(x, y, PXL) {
