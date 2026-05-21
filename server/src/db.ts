@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import { performance } from "node:perf_hooks";
 import { resolveArtifactPathViaProjects, findProjectAtAncestor } from "./resolve-artifact-path.js";
 
 export const SCHEMA = `
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS spaces (
 `;
 
 export function initDb(userlandDir: string): Database.Database {
+  const initT0 = performance.now();
   const dbPath = join(userlandDir, "oyster.db");
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
@@ -780,67 +782,17 @@ export function initDb(userlandDir: string): Database.Database {
     }
   }
 
-  // v2 backfill (#536): the original predicate above missed SYSTEM-role
-  // rows carrying slash-command machinery as the `local_command` subtype
-  // (rendered as `local_command: <command-name>…`). Gated on its own
-  // app_state key so it runs exactly once per userland, not on every boot.
-  {
-    const flag = db.prepare(
-      `INSERT OR IGNORE INTO app_state (key, value, applied_at)
-       VALUES ('protocol_artifact_backfill_v2_done', '1', ?)`,
-    ).run(Date.now());
-    if (flag.changes > 0) {
-      db.exec(`
-        UPDATE session_events
-           SET is_protocol_artifact = 1
-         WHERE is_protocol_artifact = 0
-           AND role = 'system'
-           AND ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE 'local_command:%';
-      `);
-    }
-  }
+  // v2 backfill (#536) lives in runDeferredMigrations() — it scans
+  // session_events and fires FTS-delete triggers per matched row, which
+  // takes tens of seconds on a multi-million-row table. Boot can't wait
+  // for that; the cleanup runs after the listening socket is up.
 
-  // Backfill the FTS index if it's stale relative to the content table.
-  //
-  // The naive "rebuild only when ftsCount === 0" check is wrong: a hot-
-  // reload during dev can leave the FTS table partially populated by the
-  // INSERT triggers (count(*) reports 164k rows because docsize entries
-  // exist) while the inverted index is still empty or sparse. The result
-  // is searches that match a handful of recent rows but miss everything
-  // historical.
-  //
-  // Instead, sample a guaranteed-frequent token. SQLite's default
-  // unicode61 tokenizer has no stop-word list, so a single-char token
-  // like 'a' is indexed everywhere it appears. If hit volume is well
-  // below event volume, the index is broken and needs a full rebuild.
-  // 'rebuild' is idempotent — clears + re-populates from content — so
-  // it's safe to run.
-  {
-    const indexableCount = (db.prepare(
-      "SELECT COUNT(*) as n FROM session_events WHERE is_protocol_artifact = 0"
-    ).get() as { n: number }).n;
-    if (indexableCount > 0) {
-      const sampleHits = (db.prepare(
-        "SELECT count(*) as n FROM session_events_fts WHERE session_events_fts MATCH 'a'"
-      ).get() as { n: number }).n;
-      // Threshold is generous — even pathological transcripts will have
-      // 'a' in well over 50% of events. < 25% indicates a broken index.
-      if (sampleHits * 4 < indexableCount) {
-        // rebuild reads from the content table directly, bypassing our
-        // gated triggers — so it re-indexes protocol artefacts too.
-        // Sweep them back out in a single INSERT...SELECT so the cost
-        // scales with row count, not round-trips, and any unexpected
-        // FTS5 error surfaces instead of being swallowed per-row.
-        db.exec(`
-          INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild');
-          INSERT INTO session_events_fts(session_events_fts, rowid, text)
-            SELECT 'delete', id, text
-              FROM session_events
-             WHERE is_protocol_artifact = 1;
-        `);
-      }
-    }
-  }
+  // FTS health is no longer audited here. The previous heuristic (full
+  // COUNT scan + 'a'-token frequency sample) took 17 s+ on a 1.3M-row
+  // session_events table AND false-positived on transcripts dominated by
+  // short tool markers ("[Bash]", "[Edit]"). It made boot hostage to the
+  // size of the search index. Repair now happens out-of-band — see
+  // repairFtsIfUnhealthy() below, invoked after the server is listening.
 
   // One-time seed: populate spaces from artifact space_ids only if the table is empty.
   // Using INSERT OR IGNORE on an existing table would resurrect deleted spaces on restart.
@@ -864,5 +816,92 @@ export function initDb(userlandDir: string): Database.Database {
      WHERE terminal_id IS NOT NULL OR terminal_attached_clients > 0`,
   ).run();
 
+  console.log(`[db] migrations applied in ${Math.round(performance.now() - initT0)}ms`);
   return db;
+}
+
+/**
+ * One-shot migrations that touch large tables and so can't run during
+ * boot. Each is gated by an `app_state` flag so it runs exactly once
+ * per userland. Search results may be slightly off (e.g. transcript rows
+ * that should be hidden still appearing) for the duration of the first
+ * post-upgrade boot.
+ */
+export function runDeferredMigrations(db: Database.Database): void {
+  // v2 protocol-artefact backfill (#536). The original v1 backfill only
+  // caught role='user' rows wrapped in <local-command-…>; v2 also catches
+  // role='system' rows with the `local_command:` prefix. Each matched
+  // row's UPDATE fires session_events_au_del, removing it from the FTS
+  // inverted index — that's where the time goes on large tables.
+  const flag = db.prepare(
+    `INSERT OR IGNORE INTO app_state (key, value, applied_at)
+     VALUES ('protocol_artifact_backfill_v2_done', '1', ?)`,
+  ).run(Date.now());
+  if (flag.changes === 0) return;
+
+  console.log("[db] running deferred backfill: protocol_artifact_backfill_v2");
+  const t0 = performance.now();
+  const result = db.prepare(`
+    UPDATE session_events
+       SET is_protocol_artifact = 1
+     WHERE is_protocol_artifact = 0
+       AND role = 'system'
+       AND ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE 'local_command:%'
+  `).run();
+  console.log(`[db] protocol_artifact_backfill_v2 complete: marked ${result.changes} rows in ${Math.round(performance.now() - t0)}ms`);
+}
+
+/**
+ * Out-of-band FTS health check + repair. Invoked after the HTTP server is
+ * listening so a multi-GB transcript index can never block boot. Strategy:
+ * sample the 50 most-recent indexable session_events rows and look each one
+ * up by rowid in session_events_fts. If most are missing, the index is
+ * genuinely broken (typical cause: dev hot-reload that left INSERT triggers
+ * half-applied) and we rebuild. Otherwise we leave it alone.
+ *
+ * Replaces an earlier heuristic that counted FTS hits for the token 'a'
+ * and compared against the total indexable row count. Both queries were
+ * full-table scans on session_events (no covering index), and the 'a'
+ * threshold false-positived on transcripts dominated by short tool markers
+ * like "[Bash]" / "[Edit]" — triggering a synchronous multi-second rebuild
+ * on every boot of a healthy index.
+ */
+export function repairFtsIfUnhealthy(db: Database.Database): void {
+  const t0 = performance.now();
+  const recent = db.prepare(
+    `SELECT id FROM session_events
+      WHERE is_protocol_artifact = 0
+      ORDER BY id DESC
+      LIMIT 50`,
+  ).all() as Array<{ id: number }>;
+  if (recent.length === 0) return;
+
+  const lookup = db.prepare("SELECT 1 AS x FROM session_events_fts WHERE rowid = ?");
+  let missing = 0;
+  for (const row of recent) {
+    if (!lookup.get(row.id)) missing++;
+  }
+
+  // Rebuild only when most of the recent tail is missing — that's the
+  // hot-reload-corruption signature the original check was guarding against.
+  // A handful of misses can happen transiently and don't justify rebuilding
+  // a multi-GB index.
+  if (missing * 2 <= recent.length) {
+    console.log(`[fts] healthy: ${recent.length - missing}/${recent.length} recent rows indexed (${Math.round(performance.now() - t0)}ms)`);
+    return;
+  }
+
+  console.warn(`[fts] ${missing}/${recent.length} recent rows missing from search index — rebuilding (search may be degraded until this completes)`);
+  const rebuildT0 = performance.now();
+  // 'rebuild' re-indexes from the content table; protocol-artefact rows
+  // bypass the gated triggers during rebuild, so we sweep them back out
+  // explicitly afterwards.
+  db.exec(`
+    INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild');
+    INSERT INTO session_events_fts(session_events_fts, rowid, text)
+      SELECT 'delete', id, text
+        FROM session_events
+       WHERE is_protocol_artifact = 1;
+  `);
+  console.log(`[fts] rebuild complete in ${Math.round(performance.now() - rebuildT0)}ms`);
 }
