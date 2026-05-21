@@ -698,6 +698,7 @@ splash.addEventListener('pointerdown', e => {
 // Required at runtime (currently consulted by the engine):
 //   id, world, stage   — display + progression
 //   type               — 'platformer' (reach goal) or 'boss' (defeat boss)
+//   biome              — 'earth' | 'moon' (selects tile palette + props)
 //   width, height      — tile grid
 //   spawn              — { col, row } player start
 //   tiles              — array of row strings; '.' empty, '#' solid
@@ -715,6 +716,7 @@ const LEVELS = [
   // 1-1 — the existing tutorial step-ladder. 7 platforms ascending right.
   {
     id: '1-1', world: 1, stage: 1, type: 'platformer',
+    biome: 'earth',
     width: 60, height: 14,
     spawn: { col: 2, row: 12 },
     tiles: [
