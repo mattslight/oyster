@@ -269,7 +269,17 @@ export function initDb(userlandDir: string): Database.Database {
       -- Without this, sessions that finished before the watcher started
       -- (or before a restart) seeded the tracker at EOF and silently lost
       -- their transcript.
-      last_offset   INTEGER NOT NULL DEFAULT 0
+      last_offset   INTEGER NOT NULL DEFAULT 0,
+      -- Status-evidence facts. The watcher and PTY manager write these as
+      -- they observe the session; the API layer derives a display state
+      -- (incl. 'dormant') from them at read time. The stored state enum
+      -- intentionally stays at the original 4 values -- 'dormant' is purely
+      -- a display concept, never persisted here.
+      exit_code                  INTEGER,
+      exit_signal                TEXT,
+      explicit_exit_seen         INTEGER NOT NULL DEFAULT 0,
+      clean_process_exit         INTEGER NOT NULL DEFAULT 0,
+      last_assistant_stop_reason TEXT
     );
     CREATE INDEX IF NOT EXISTS sessions_space_id ON sessions(space_id);
     CREATE INDEX IF NOT EXISTS sessions_state_last_event
@@ -308,6 +318,16 @@ export function initDb(userlandDir: string): Database.Database {
   try {
     db.exec("ALTER TABLE sessions ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0");
   } catch { /* already exists */ }
+
+  // Status-evidence facts written by the watcher and PTY manager. Display
+  // state (incl. 'dormant') is derived from these at the API layer; the
+  // stored `state` enum stays at its original 4 values. Each ALTER is
+  // wrapped in try/catch so it's idempotent on existing installs.
+  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_code INTEGER"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_signal TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN explicit_exit_seen INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN clean_process_exit INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN last_assistant_stop_reason TEXT"); } catch { /* already exists */ }
 
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
   // SQLite can't ALTER a CHECK constraint, so we rebuild via temp table.
