@@ -97,19 +97,20 @@ describe("deriveReason", () => {
     );
   });
 
-  it("managed + null stop_reason (pre-first-assistant) → 'working'", () => {
-    expect(deriveReason({ ...base, terminalId: "t1", lastAssistantStopReason: null })).toBe("working");
+  // Cases that don't add info beyond colour + age return "" so the
+  // Reason column renders dark (suppressed).
+
+  it("managed + null stop_reason (pre-first-assistant) → '' (purple dot + age says enough)", () => {
+    expect(deriveReason({ ...base, terminalId: "t1", lastAssistantStopReason: null })).toBe("");
   });
 
-  it("managed + unknown stop_reason → 'working'", () => {
-    expect(deriveReason({ ...base, terminalId: "t1", lastAssistantStopReason: "future_value" })).toBe(
-      "working",
-    );
+  it("managed + unknown stop_reason → '' (suppressed)", () => {
+    expect(deriveReason({ ...base, terminalId: "t1", lastAssistantStopReason: "future_value" })).toBe("");
   });
 
-  // 6. Unmanaged — time + probe drives the copy.
-  it("unmanaged + age < 60s → 'active'", () => {
-    expect(deriveReason({ ...base, ageMs: 30_000 })).toBe("active");
+  // 6. Unmanaged — only surface probe-derived copy that adds info beyond age.
+  it("unmanaged + age < 60s → '' (green dot + age says enough)", () => {
+    expect(deriveReason({ ...base, ageMs: 30_000 })).toBe("");
   });
 
   it("unmanaged + 60s–30min + probe alive → 'idle, process detected'", () => {
@@ -124,24 +125,16 @@ describe("deriveReason", () => {
     );
   });
 
-  it("unmanaged + 60s–30min + probe unknown → 'idle'", () => {
-    expect(deriveReason({ ...base, ageMs: 5 * MIN, probeSignal: "unknown" })).toBe("idle");
+  it("unmanaged + 60s–30min + probe unknown → '' (no probe info to add)", () => {
+    expect(deriveReason({ ...base, ageMs: 5 * MIN, probeSignal: "unknown" })).toBe("");
   });
 
-  it("unmanaged + 30min–8h → 'quiet <age>'", () => {
-    expect(deriveReason({ ...base, ageMs: 2 * HOUR })).toBe("quiet 2h");
+  it("unmanaged + 30min–8h → '' (red dot + LAST ACTIVE says enough)", () => {
+    expect(deriveReason({ ...base, ageMs: 2 * HOUR })).toBe("");
   });
 
-  it("unmanaged + 8h+ → 'quiet <age>'", () => {
-    expect(deriveReason({ ...base, ageMs: 12 * HOUR })).toBe("quiet 12h");
-  });
-
-  it("unmanaged + multi-day → 'quiet 3d'", () => {
-    expect(deriveReason({ ...base, ageMs: 3 * 24 * HOUR })).toBe("quiet 3d");
-  });
-
-  it("unmanaged + 30min exactly → 'quiet 30m' (boundary)", () => {
-    expect(deriveReason({ ...base, ageMs: 30 * MIN })).toBe("quiet 30m");
+  it("unmanaged + 8h+ → '' (grey dormant dot + LAST ACTIVE says enough)", () => {
+    expect(deriveReason({ ...base, ageMs: 12 * HOUR })).toBe("");
   });
 
   // Sanity: deriveState + deriveReason agree on the user_stop kill from the

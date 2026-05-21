@@ -115,6 +115,9 @@ export function deriveReason(input: DeriveStateInput): string {
   if (input.cleanProcessExit) return "exited cleanly";
 
   // 5. Managed (PTY still linked) — describe the assistant's last stop_reason.
+  // Bare "working" / "active" adds nothing beyond the purple dot + last-active
+  // age, so suppress them (empty string → column renders dark). Only return
+  // copy that actually explains something the colour and age don't.
   if (input.terminalId) {
     switch (input.lastAssistantStopReason) {
       case "end_turn": return "awaiting input";
@@ -123,27 +126,17 @@ export function deriveReason(input: DeriveStateInput): string {
       case "max_tokens": return "max tokens — needs continuation";
       case "refusal": return "refused — needs input";
       case "stop_sequence": return "stopped at sequence — needs input";
-      case null: return "working";
-      default: return "working";
+      default: return "";
     }
   }
 
-  // 6. Unmanaged — time + probe drives the copy.
-  if (input.ageMs < ACTIVE_WINDOW_MS) return "active";
-  if (input.ageMs < WAITING_WINDOW_MS) {
+  // 6. Unmanaged — only surface a reason when it adds info beyond colour + age.
+  // `active` and bare `quiet Xh` echo the dot colour and the LAST ACTIVE
+  // column; suppress them. Keep probe-derived copy because the probe tells
+  // the user something the age doesn't (is the process actually there?).
+  if (input.ageMs < WAITING_WINDOW_MS && input.ageMs >= ACTIVE_WINDOW_MS) {
     if (input.probeSignal === "alive") return "idle, process detected";
     if (input.probeSignal === "absent") return "process not found";
-    return "idle";
   }
-  return `quiet ${humanizeAge(input.ageMs)}`;
-}
-
-/** Short forms: 30m, 2h, 3d. Minutes/hours/days, no smart rounding. */
-function humanizeAge(ageMs: number): string {
-  const minutes = Math.floor(ageMs / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
+  return "";
 }
