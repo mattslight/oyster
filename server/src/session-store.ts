@@ -99,7 +99,13 @@ export interface SessionSearchHit {
   last_event_at: string | null;
   /** Highlighted excerpt of the best-ranked match. */
   snippet: string;
-  /** Number of distinct matching events in this session. */
+  /** Matching events in this session — counted within the
+   *  candidate pool that drives the surfaced results. Exact when the
+   *  session has at most as many matches as the pool size; truncated
+   *  (a lower bound) on hyper-broad prefix queries against very large
+   *  histories where a single session's matches exceed the pool. The
+   *  Spotlight "+N more" affordance treats this as a hint, not a
+   *  precise total. */
   match_count: number;
 }
 
