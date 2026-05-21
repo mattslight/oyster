@@ -319,16 +319,6 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0");
   } catch { /* already exists */ }
 
-  // Status-evidence facts written by the watcher and PTY manager. Display
-  // state (incl. 'dormant') is derived from these at the API layer; the
-  // stored `state` enum stays at its original 4 values. Each ALTER is
-  // wrapped in try/catch so it's idempotent on existing installs.
-  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_code INTEGER"); } catch { /* already exists */ }
-  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_signal TEXT"); } catch { /* already exists */ }
-  try { db.exec("ALTER TABLE sessions ADD COLUMN explicit_exit_seen INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
-  try { db.exec("ALTER TABLE sessions ADD COLUMN clean_process_exit INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
-  try { db.exec("ALTER TABLE sessions ADD COLUMN last_assistant_stop_reason TEXT"); } catch { /* already exists */ }
-
   // ── Sessions state-rename migration (running/awaiting → active/waiting) ──
   // SQLite can't ALTER a CHECK constraint, so we rebuild via temp table.
   //
@@ -446,6 +436,19 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN assignment_mode TEXT NOT NULL DEFAULT 'auto' CHECK (assignment_mode IN ('auto','manual'))");
   } catch { /* already exists */ }
   db.exec("CREATE INDEX IF NOT EXISTS sessions_auto_cwd ON sessions(cwd) WHERE assignment_mode = 'auto'");
+
+  // Status-evidence facts written by the watcher and PTY manager. Display
+  // state (incl. 'dormant') is derived from these at the API layer; the
+  // stored `state` enum stays at its original 4 values -- 'dormant' is
+  // purely a display concept, never persisted here. Each ALTER is wrapped
+  // in try/catch so it's idempotent on existing installs. Positioned
+  // *after* the state-rename rebuild so the rebuild (which recreates the
+  // sessions table from scratch on legacy installs) can't drop them.
+  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_code INTEGER"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_signal TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN explicit_exit_seen INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN clean_process_exit INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN last_assistant_stop_reason TEXT"); } catch { /* already exists */ }
 
   // ─────────────────────────────────────────────────────────────────────────
   // projects + project_paths — the simplified identity model that supersedes
