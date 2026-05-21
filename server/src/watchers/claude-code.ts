@@ -455,6 +455,12 @@ export class ClaudeCodeWatcher {
       const ev = safeParse(line);
       if (!ev) continue;
 
+      // Evidence capture (Task 4 of session-status-palette). Same rules as
+      // consumeOnce: detect `/exit` as a raw user message (the explicit
+      // invocation, not its `<command-name>/exit</command-name>` wrapper),
+      // and persist every assistant `stop_reason` we see.
+      captureEvidence(ev, sessionId, this.deps.sessionStore);
+
       const rendered = renderEvent(ev);
       if (rendered) {
         const text = rendered.text.slice(0, TEXT_PREVIEW_MAX);
@@ -787,6 +793,15 @@ export class ClaudeCodeWatcher {
         sessionEnsured = true;
       }
 
+      // Evidence capture (Task 4 of session-status-palette). Runs after
+      // sessionEnsured so the FK is satisfied. Detect the explicit `/exit`
+      // user command and persist every assistant `stop_reason`. Both feed
+      // deriveState — `end_turn` is the "awaiting user" signal, anything
+      // else means the agent is mid-turn or got cut off.
+      if (tracker.sessionId) {
+        captureEvidence(ev, tracker.sessionId, this.deps.sessionStore);
+      }
+
       const rendered = renderEvent(ev);
       if (rendered && tracker.sessionId) {
         const text = rendered.text.slice(0, TEXT_PREVIEW_MAX);
@@ -913,6 +928,35 @@ export class ClaudeCodeWatcher {
 }
 
 // ── Pure helpers (exported for tests) ─────────────────────────────────────
+
+// Capture the two pieces of evidence Task 5's deriveState reads from the
+// JSONL stream:
+//   1. an explicit `/exit` user message → flips explicit_exit_seen
+//   2. an assistant event's `stop_reason` → updates last_assistant_stop_reason
+//
+// `/exit` is matched on the raw user content (`message.content === "/exit"`),
+// NOT on the `<command-name>/exit</command-name>` wrapper that follows. The
+// wrapper is the prompt shape claude-code uses to render the slash command;
+// only the invocation itself is evidence that the user chose to exit.
+function captureEvidence(
+  ev: Record<string, any>,
+  sessionId: string,
+  store: SessionStore,
+): void {
+  if (ev.type === "user") {
+    const content = ev?.message?.content;
+    if (typeof content === "string" && content.trim() === "/exit") {
+      store.markExplicitExitSeen(sessionId);
+    }
+    return;
+  }
+  if (ev.type === "assistant") {
+    const stopReason = ev?.message?.stop_reason;
+    if (typeof stopReason === "string") {
+      store.setLastAssistantStopReason(sessionId, stopReason);
+    }
+  }
+}
 
 export function deriveState(ageMs: number, signal: ProbeSignal): SessionState {
   if (ageMs < ACTIVE_WINDOW_MS) return "active";
