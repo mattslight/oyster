@@ -327,6 +327,18 @@ window.addEventListener('keydown', e => {
   debugHitboxes = !debugHitboxes;
 });
 
+// Debug cheat — press J to grant the jetpack with full fuel (for testing
+// when a jetpack pickup is unreachable). Ignored while a text input is
+// focused so initials entry isn't blocked.
+window.addEventListener('keydown', e => {
+  if (e.key !== 'j' && e.key !== 'J') return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (typeof player === 'undefined') return;     // not initialised yet
+  player.hasJetpack = true;
+  player.fuel = (typeof JETPACK_FUEL_MAX !== 'undefined') ? JETPACK_FUEL_MAX : 60;
+});
+
 // Forward-declared so the touch closures can route to initials entry when
 // it's active. Defined fully further down (after the leaderboard module).
 let initialsActive = false;
@@ -780,9 +792,32 @@ const LEVELS = [
     ],
     props: [
       // prop.row names the empty tile ABOVE the surface — see Task 5 convention.
-      { col:  5, row: 11, type: 'bush'     }, // sits on row-12 floor
-      { col: 22, row: 11, type: 'mushroom' }, // sits on row-12 floor
-      { col: 142, row: 4, type: 'bush'     }, // sits on the row-5 goal platform
+      // Zone A — flat intro: dense decoration sells "starting meadow"
+      { col:   3, row: 11, type: 'tallgrass' },
+      { col:   5, row: 11, type: 'bush'      },
+      { col:  10, row: 11, type: 'flower'    },
+      { col:  13, row: 11, type: 'tallgrass' },
+      { col:  22, row: 11, type: 'mushroom'  },
+      { col:  26, row: 11, type: 'rock'      },
+      // Zone B — near the pit
+      { col:  29, row: 11, type: 'tallgrass' },
+      { col:  44, row: 11, type: 'flower'    },
+      { col:  48, row: 11, type: 'tallgrass' },
+      // Zone C — between cliff platforms
+      { col:  53, row: 11, type: 'rock'      },
+      { col:  74, row: 11, type: 'flower'    },
+      { col:  77, row: 11, type: 'tallgrass' },
+      // Zone D — between pits + jetpack platform
+      { col:  99, row: 11, type: 'tallgrass' },
+      { col: 102, row: 11, type: 'rock'      },
+      // Zone E — between climb platforms
+      { col: 113, row: 11, type: 'flower'    },
+      { col: 120, row: 11, type: 'tallgrass' },
+      { col: 126, row: 11, type: 'tallgrass' },
+      // Zone F — goal area
+      { col: 138, row: 11, type: 'flower'    },
+      { col: 142, row:  4, type: 'bush'      }, // sits on the row-5 goal platform
+      { col: 147, row: 11, type: 'mushroom'  },
     ],
     bgm: 'bgm.mp3?v=2',
     gravityScale: 1,
@@ -1357,25 +1392,29 @@ const TILE_PALETTE = {
 };
 
 // Decorative props — non-collidable. Drawn between tiles and entities so they
-// sit "in front of" the world but behind enemies/player. Sprite dispatch by type.
-function drawProps() {
+// sit "in front of" the world but behind enemies/player. Sprite dispatch by
+// type; `t` (frame time, ms) flows through so sprites can animate cheaply.
+function drawProps(t) {
   if (!level.props || level.props.length === 0) return;
   for (let i = 0; i < level.props.length; i++) {
     const p = level.props[i];
-    drawProp(p, p.col * TILE_PX, p.row * TILE_PX);
+    drawProp(p, p.col * TILE_PX, p.row * TILE_PX, t);
   }
 }
 
-function drawProp(p, worldX, worldY) {
+function drawProp(p, worldX, worldY, t) {
   const x = Math.round(worldX - cam.x);
   const y = Math.round(worldY);
   if (x + TILE_PX < 0 || x > W) return;
   // Pixel size scales with the tile so props stay proportional on resize.
   const PXL = Math.max(2, Math.round(TILE_PX / 14));
   switch (p.type) {
-    case 'mushroom': return drawMushroom(x, y, PXL);
-    case 'bush':     return drawBush(x, y, PXL);
-    case 'signpost': return drawSignpost(x, y, PXL);
+    case 'mushroom':  return drawMushroom(x, y, PXL, t);
+    case 'bush':      return drawBush(x, y, PXL, t);
+    case 'signpost':  return drawSignpost(x, y, PXL, t);
+    case 'rock':      return drawRock(x, y, PXL, t);
+    case 'tallgrass': return drawTallgrass(x, y, PXL, t);
+    case 'flower':    return drawFlower(x, y, PXL, t);
   }
 }
 
@@ -1383,30 +1422,33 @@ function drawProp(p, worldX, worldY) {
 // from baseY = y + TILE_PX (bottom of the prop sits at top of the tile below
 // it, i.e. on the surface). So `{ row: 11 }` sits on the row-12 floor.
 
-function drawMushroom(x, y, PXL) {
-  // 8-wide × 9-tall pixel grid (in PXL units).
+function drawMushroom(x, y, PXL, t) {
+  // 8-wide × 9-tall pixel grid (in PXL units). Slow vertical bob.
   const baseY = y + TILE_PX;
+  const bob   = Math.round(Math.sin((t || 0) * 0.0017 + x * 0.013) * PXL * 0.4);
   // Stem (white) — 2 wide × 3 tall, centered.
   ctx.fillStyle = '#f5f5f5';
   ctx.fillRect(x + 3 * PXL, baseY - 3 * PXL, 2 * PXL, 3 * PXL);
-  // Cap (red) — 8 wide × 5 tall, sits on the stem.
+  // Cap (red) — 8 wide × 5 tall, sits on the stem, bobs gently.
   ctx.fillStyle = '#ef4444';
-  ctx.fillRect(x,             baseY - 8 * PXL, 8 * PXL, 5 * PXL);
+  ctx.fillRect(x,             baseY - 8 * PXL + bob, 8 * PXL, 5 * PXL);
   // Cap top-edge (lighter red) — 1px highlight row.
   ctx.fillStyle = '#fca5a5';
-  ctx.fillRect(x,             baseY - 8 * PXL, 8 * PXL, PXL);
+  ctx.fillRect(x,             baseY - 8 * PXL + bob, 8 * PXL, PXL);
   // Three white spots on the cap.
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(x + 1 * PXL, baseY - 7 * PXL, PXL, PXL);
-  ctx.fillRect(x + 4 * PXL, baseY - 7 * PXL, PXL, PXL);
-  ctx.fillRect(x + 6 * PXL, baseY - 6 * PXL, PXL, PXL);
+  ctx.fillRect(x + 1 * PXL, baseY - 7 * PXL + bob, PXL, PXL);
+  ctx.fillRect(x + 4 * PXL, baseY - 7 * PXL + bob, PXL, PXL);
+  ctx.fillRect(x + 6 * PXL, baseY - 6 * PXL + bob, PXL, PXL);
 }
 
-function drawBush(x, y, PXL) {
+function drawBush(x, y, PXL, t) {
   // 14-wide × 8-tall. Asymmetric tiered shrub — three round-ish clumps with
   // a darker base shadow, midtone body, and lit crowns. A few "leaf" pixel
   // notches break the blocky silhouette so it reads as foliage, not a pill.
+  // Top tier sways horizontally on a slow sine — sells "living foliage".
   const baseY = y + TILE_PX;
+  const sway  = Math.round(Math.sin((t || 0) * 0.0011 + x * 0.009) * PXL * 0.5);
   // Shadow band — settles the shrub on the ground.
   ctx.fillStyle = '#0c4a26';
   ctx.fillRect(x + 1 * PXL,   baseY - 1 * PXL, 12 * PXL, PXL);
@@ -1418,34 +1460,89 @@ function drawBush(x, y, PXL) {
   ctx.fillRect(x,             baseY - 4 * PXL,  1 * PXL, 2 * PXL);
   ctx.fillRect(x + 13 * PXL,  baseY - 4 * PXL,  1 * PXL, 2 * PXL);
   // Upper tier clumps — three lobes, different heights for asymmetry.
+  // Sway only the top tier so the base looks rooted.
   ctx.fillStyle = '#16a34a';
-  ctx.fillRect(x + 1 * PXL,   baseY - 6 * PXL,  4 * PXL, 2 * PXL);   // left lobe
-  ctx.fillRect(x + 5 * PXL,   baseY - 8 * PXL,  4 * PXL, 4 * PXL);   // taller centre
-  ctx.fillRect(x + 9 * PXL,   baseY - 5 * PXL,  4 * PXL, 1 * PXL);   // shorter right
-  ctx.fillRect(x + 9 * PXL,   baseY - 7 * PXL,  3 * PXL, 2 * PXL);   // right lobe top
+  ctx.fillRect(x + 1 * PXL + sway, baseY - 6 * PXL,  4 * PXL, 2 * PXL);   // left lobe
+  ctx.fillRect(x + 5 * PXL + sway, baseY - 8 * PXL,  4 * PXL, 4 * PXL);   // taller centre
+  ctx.fillRect(x + 9 * PXL + sway, baseY - 5 * PXL,  4 * PXL, 1 * PXL);   // shorter right
+  ctx.fillRect(x + 9 * PXL + sway, baseY - 7 * PXL,  3 * PXL, 2 * PXL);   // right lobe top
   // Leaf-tip highlights — a few bright pixels suggesting sunlight catching.
   ctx.fillStyle = '#4ade80';
-  ctx.fillRect(x + 2 * PXL,   baseY - 6 * PXL,  1 * PXL, 1 * PXL);
-  ctx.fillRect(x + 6 * PXL,   baseY - 8 * PXL,  2 * PXL, 1 * PXL);
-  ctx.fillRect(x + 10 * PXL,  baseY - 7 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 2 * PXL + sway,  baseY - 6 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 6 * PXL + sway,  baseY - 8 * PXL,  2 * PXL, 1 * PXL);
+  ctx.fillRect(x + 10 * PXL + sway, baseY - 7 * PXL,  1 * PXL, 1 * PXL);
   // Tiny darker notches between lobes — break up the silhouette.
   ctx.fillStyle = '#0c4a26';
-  ctx.fillRect(x + 4 * PXL,   baseY - 5 * PXL,  1 * PXL, 1 * PXL);
-  ctx.fillRect(x + 8 * PXL,   baseY - 5 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 4 * PXL + sway,  baseY - 5 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 8 * PXL + sway,  baseY - 5 * PXL,  1 * PXL, 1 * PXL);
 }
 
-function drawSignpost(x, y, PXL) {
-  // 6-wide × 8-tall — brown post + yellow plaque pointing right.
+function drawSignpost(x, y, PXL, _t) {
+  // 6-wide × 8-tall — brown post + yellow plaque. Static (signs don't move).
   const baseY = y + TILE_PX;
-  // Post.
   ctx.fillStyle = '#5a3a1a';
   ctx.fillRect(x + 2 * PXL,   baseY - 8 * PXL, 2 * PXL, 8 * PXL);
-  // Plaque.
   ctx.fillStyle = '#ffd84a';
   ctx.fillRect(x + 1 * PXL,   baseY - 7 * PXL, 5 * PXL, 3 * PXL);
-  // Plaque shadow row.
   ctx.fillStyle = '#c79b00';
   ctx.fillRect(x + 1 * PXL,   baseY - 5 * PXL, 5 * PXL, PXL);
+}
+
+function drawRock(x, y, PXL, _t) {
+  // 8-wide × 4-tall low grey rock. Darker shadow band underneath sells weight.
+  const baseY = y + TILE_PX;
+  ctx.fillStyle = '#1f1f1f';
+  ctx.fillRect(x + 1 * PXL, baseY - 1 * PXL, 6 * PXL, PXL);
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(x,           baseY - 3 * PXL, 8 * PXL, 2 * PXL);
+  ctx.fillStyle = '#64748b';
+  ctx.fillRect(x + 1 * PXL, baseY - 4 * PXL, 6 * PXL, 1 * PXL);
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillRect(x + 3 * PXL, baseY - 4 * PXL, 2 * PXL, 1 * PXL);
+  // Single dark crack pixel
+  ctx.fillStyle = '#1f1f1f';
+  ctx.fillRect(x + 5 * PXL, baseY - 3 * PXL, 1 * PXL, 1 * PXL);
+}
+
+function drawTallgrass(x, y, PXL, t) {
+  // 6-wide × 6-tall. Three blades fanning, with sway. Tallest blade sways
+  // most; the short anchor blade barely moves so the silhouette stays rooted.
+  const baseY = y + TILE_PX;
+  const sway  = Math.sin((t || 0) * 0.0019 + x * 0.011) * PXL;
+  // Anchor (shortest, darker)
+  ctx.fillStyle = '#166534';
+  ctx.fillRect(x + 1 * PXL,                          baseY - 3 * PXL, PXL, 3 * PXL);
+  // Middle
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + 3 * PXL + Math.round(sway * 0.4), baseY - 5 * PXL, PXL, 5 * PXL);
+  // Tallest (sways most)
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(x + 5 * PXL + Math.round(sway),       baseY - 6 * PXL, PXL, 6 * PXL);
+  // Lit tip on the tallest blade
+  ctx.fillStyle = '#86efac';
+  ctx.fillRect(x + 5 * PXL + Math.round(sway),       baseY - 6 * PXL, PXL, PXL);
+}
+
+function drawFlower(x, y, PXL, t) {
+  // 5-wide × 6-tall daisy on a stem. Bloom bobs gently. Petals = white,
+  // centre = warm yellow so it pops against the dark grass.
+  const baseY = y + TILE_PX;
+  const bob   = Math.round(Math.sin((t || 0) * 0.0023 + x * 0.017) * PXL * 0.4);
+  // Stem + leaves
+  ctx.fillStyle = '#15803d';
+  ctx.fillRect(x + 2 * PXL, baseY - 3 * PXL, PXL, 3 * PXL);
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + 1 * PXL, baseY - 2 * PXL, PXL, PXL);
+  ctx.fillRect(x + 3 * PXL, baseY - 2 * PXL, PXL, PXL);
+  // Bloom: 4 white petals around a yellow centre
+  const by = baseY - 5 * PXL + bob;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x + 1 * PXL, by,       PXL, PXL);          // left petal
+  ctx.fillRect(x + 3 * PXL, by,       PXL, PXL);          // right petal
+  ctx.fillRect(x + 2 * PXL, by - PXL, PXL, PXL);          // top petal
+  ctx.fillRect(x + 2 * PXL, by + PXL, PXL, PXL);          // bottom petal
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(x + 2 * PXL, by,       PXL, PXL);          // yellow centre
 }
 
 function drawTile(col, row) {
@@ -1456,17 +1553,48 @@ function drawTile(col, row) {
   const ch      = tileAt(col, row);
   const palette = TILE_PALETTE[level.biome] || TILE_PALETTE.earth;
   const style   = palette[ch] || palette['#'];
+  const topOpen = !isSolid(col, row - 1);
 
   // Body
   ctx.fillStyle = style.body;
   ctx.fillRect(x, y, TILE_PX, TILE_PX);
 
+  // Per-tile speckle — 2-3 small pixels at hash-stable positions, in the
+  // inner-shadow colour. Breaks up the flat body so long stretches don't
+  // read as a uniform block.
+  const tHash  = tileHash(col * 977 + row * 53);
+  const specks = 2 + Math.floor(tHash * 2);
+  ctx.fillStyle = style.innerShadow;
+  for (let s = 0; s < specks; s++) {
+    const px = x + 2 + Math.floor(((tHash * (7 + s * 3.1)) % 1) * (TILE_PX - 6));
+    const py = y + 4 + Math.floor(((tHash * (11 + s * 1.7)) % 1) * (TILE_PX - 10));
+    ctx.fillRect(px, py, 2, 2);
+  }
+  // Earth-soil specific: one small grey pebble per tile, ~50% chance.
+  if (palette === TILE_PALETTE.earth && ch === '#' && tHash > 0.5) {
+    ctx.fillStyle = '#6b6b6b';
+    const px = x + 4 + Math.floor(((tHash * 13) % 1) * (TILE_PX - 10));
+    const py = y + Math.floor(TILE_PX * 0.55) + Math.floor(((tHash * 17) % 1) * 6);
+    ctx.fillRect(px, py, 2, 1);
+  }
+
   // Top edge + highlight pixel row — only when the tile above is open sky.
-  if (!isSolid(col, row - 1)) {
+  if (topOpen) {
     ctx.fillStyle = style.topEdge;
     ctx.fillRect(x, y, TILE_PX, Math.max(4, Math.floor(TILE_PX * 0.18)));
     ctx.fillStyle = style.highlight;
     ctx.fillRect(x, y, TILE_PX, 1);
+    // Grass tufts — 1–2 short blades poking up from the grass on earth soil.
+    if (palette === TILE_PALETTE.earth && ch === '#') {
+      const gHash = tileHash(col * 31 + row * 17 + 1234);
+      if (gHash > 0.35) {
+        const tx = x + 2 + Math.floor(gHash * (TILE_PX - 6));
+        ctx.fillStyle = '#4ade80';
+        ctx.fillRect(tx, y - 2, 1, 2);                      // tall blade
+        if (gHash > 0.65) ctx.fillRect(tx + 3, y - 1, 1, 1); // smaller neighbour
+        if (gHash > 0.85) ctx.fillRect(tx - 3, y - 1, 1, 1); // third on dense tiles
+      }
+    }
   }
 
   // Inner shadow — bottom-right edges for chunky pixel readability.
@@ -1922,6 +2050,35 @@ function drawUfo(t) {
   ctx.fillRect(ux + 23, uy + 1, 2, 2);
 }
 
+// Fireflies — small drifting blinking points in the foreground band so the
+// playfield feels alive. Stable per-index world positions; sine drift adds
+// the gentle wandering; phase-offset blink keeps them from pulsing in sync.
+// Parallaxed at 0.7 so they move with the world but not the player exactly.
+function drawFireflies(t) {
+  const N        = 18;
+  const worldW   = level.width * TILE_PX;
+  const bandTop  = Math.round(H * 0.52);
+  const bandH    = Math.max(40, Math.round(H * 0.28));
+  for (let i = 0; i < N; i++) {
+    const baseX = (i * 197) % worldW;
+    const baseY = bandTop + ((i * 71) % bandH);
+    const dx    = Math.sin(t * 0.0007 + i * 1.7) * 22;
+    const dy    = Math.cos(t * 0.0009 + i * 1.3) * 12;
+    const sx    = baseX + dx - cam.x * 0.7;
+    if (sx < -6 || sx > W + 6) continue;
+    const phase = (Math.sin(t * 0.0033 + i * 2.31) + 1) * 0.5;
+    const a     = 0.18 + phase * 0.7;
+    const fx    = Math.round(sx);
+    const fy    = Math.round(baseY + dy);
+    if (phase > 0.85) {
+      ctx.fillStyle = 'rgba(255, 234, 120, 0.18)';
+      ctx.fillRect(fx - 1, fy - 1, 4, 4);
+    }
+    ctx.fillStyle = 'rgba(255, 234, 120, ' + a.toFixed(2) + ')';
+    ctx.fillRect(fx, fy, 2, 2);
+  }
+}
+
 function draw() {
   const t = performance.now();
 
@@ -1934,10 +2091,17 @@ function draw() {
   ctx.fillStyle = '#2a1840';
   ctx.fillRect(0, Math.round(H * 0.80), W, H - Math.round(H * 0.80));
 
-  // ---- Moon — cached offscreen canvas, blitted via drawImage. ----
+  // ---- Moon — cached offscreen canvas, blitted via drawImage. A few
+  // concentric translucent squares behind it form a cheap soft halo. ----
   const moonImg = getMoonCanvas();
   const moonCx  = level.width * TILE_PX - 110 - cam.x * 0.05;
   const moonCy  = Math.round(H * 0.16);
+  const moonR   = moonImg.width / 2;
+  for (let r = 6; r >= 1; r--) {
+    const sz = moonR + r * 7;
+    ctx.fillStyle = 'rgba(255, 246, 200, ' + (0.025 * r).toFixed(3) + ')';
+    ctx.fillRect(Math.round(moonCx - sz), Math.round(moonCy - sz), sz * 2, sz * 2);
+  }
   ctx.drawImage(moonImg, Math.round(moonCx - moonImg.width / 2), Math.round(moonCy - moonImg.height / 2));
 
   // ---- Distant star field — small static dots far away. ----
@@ -2024,7 +2188,10 @@ function draw() {
   }
 
   // Decorative props — between tiles and entities.
-  drawProps();
+  drawProps(t);
+
+  // Fireflies — small drifting blinking points in the foreground band.
+  drawFireflies(t);
 
   // Coins (skip collected)
   for (let i = 0; i < level.coins.length; i++) {
