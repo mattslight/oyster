@@ -5,6 +5,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { ClaudePtyManager, TerminalCapError, PtyUnavailableError } from "../src/claude-pty-manager.js";
 import { tmpdir, homedir } from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { initDb } from "../src/db.js";
+import { SqliteSessionStore } from "../src/session-store.js";
 
 const stubDb = {
   prepare: () => ({ get: () => undefined, run: () => {} }),
@@ -174,5 +178,47 @@ describe("ClaudePtyManager", () => {
       cwd: tmpdir(),
       env: {},
     })).toThrow(PtyUnavailableError);
+  });
+});
+
+function makeExitEnv() {
+  const dir = mkdtempSync(join(tmpdir(), "oyster-pty-exit-"));
+  const db = initDb(dir);
+  const store = new SqliteSessionStore(db);
+  const mgr = new ClaudePtyManager({ sessionStore: store, db, broadcastUiEvent: () => {} });
+  const sessionId = "s1";
+  store.insertSession({ id: sessionId, space_id: null, agent: "claude-code", state: "active" });
+  // Give the session a real event so deleteIfGhostOnExit doesn't drop the row.
+  store.insertEvent({ session_id: sessionId, role: "user", text: "hello" });
+  mgr._seedEntryForTest({ terminalId: "t1", linkedSessionId: null });
+  mgr.linkTerminalForTest("t1", sessionId);
+  const entry = mgr.getEntry("t1")!;
+  return {
+    db, store, mgr, sessionId, entry,
+    dispose: () => { mgr.disposeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); },
+  };
+}
+
+describe("ClaudePtyManager _handleExit records exit facts", () => {
+  let env: ReturnType<typeof makeExitEnv>;
+  beforeEach(() => { env = makeExitEnv(); });
+  afterEach(() => { env.dispose(); });
+
+  it("records exit code/signal and marks clean_process_exit on exit=0", () => {
+    (env.mgr as unknown as { _handleExit: (e: unknown, x: { exitCode: number; signal: string | null }) => void })
+      ._handleExit(env.entry, { exitCode: 0, signal: null });
+    const row = env.store.getById(env.sessionId)!;
+    expect(row.exit_code).toBe(0);
+    expect(row.exit_signal).toBeNull();
+    expect(row.clean_process_exit).toBe(1);
+  });
+
+  it("records non-zero exit without setting clean_process_exit", () => {
+    (env.mgr as unknown as { _handleExit: (e: unknown, x: { exitCode: number; signal: string | null }) => void })
+      ._handleExit(env.entry, { exitCode: 137, signal: "SIGKILL" });
+    const row = env.store.getById(env.sessionId)!;
+    expect(row.exit_code).toBe(137);
+    expect(row.exit_signal).toBe("SIGKILL");
+    expect(row.clean_process_exit).toBe(0);
   });
 });

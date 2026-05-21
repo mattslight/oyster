@@ -190,7 +190,9 @@ export class ClaudePtyManager {
       }
     });
 
-    proc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
+    proc.onExit(({ exitCode, signal }: { exitCode: number; signal?: string | number | null }) => {
+      this._handleExit(entry, { exitCode, signal: signal != null ? String(signal) : null });
+    });
 
     return { terminalId, startedAt };
   }
@@ -325,9 +327,9 @@ export class ClaudePtyManager {
     }
   }
 
-  private _handleExit(entry: ClaudePtyEntry, exitCode: number): void {
+  private _handleExit(entry: ClaudePtyEntry, exit: { exitCode: number; signal: string | null }): void {
     entry.exitedAt = Date.now();
-    const closeNote = `\r\n\x1b[90m[session ended (exit ${exitCode})]\x1b[0m\r\n`;
+    const closeNote = `\r\n\x1b[90m[session ended (exit ${exit.exitCode})]\x1b[0m\r\n`;
     entry.scrollback += closeNote;
     for (const ws of entry.clients) {
       if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
@@ -340,13 +342,20 @@ export class ClaudePtyManager {
       // If the session never produced content (no events AND no JSONL
       // file), the stub row inserted at spawn time is a ghost — drop it
       // entirely rather than leaving an un-resumable "Untitled"
-      // entry in the list. Otherwise, mark disconnected so the UI flips
-      // immediately (see commit 63c64e5).
+      // entry in the list. Otherwise, record the exit facts and write a
+      // transient state so SSE clients don't flicker through "active"
+      // before the next heartbeat sweep re-derives from the new facts.
       const deleted = deleteIfGhostOnExit(this.sessionStore, this.db, exitedSessionId, entry.cwd);
       if (!deleted) {
+        const cleanProcessExit = exit.exitCode === 0 && !exit.signal;
+        this.sessionStore.recordExit(exitedSessionId, {
+          exitCode: exit.exitCode,
+          exitSignal: exit.signal ?? null,
+          cleanProcessExit,
+        });
         this.sessionStore.updateSessionState(
           exitedSessionId,
-          "disconnected",
+          cleanProcessExit ? "done" : "disconnected",
           new Date().toISOString(),
         );
       }
@@ -372,14 +381,14 @@ export class ClaudePtyManager {
   /** Test-only: inject a fake entry with a stub proc whose onExit fires
    *  immediately on kill(). Production code never calls this. */
   _seedEntryForTest(input: { terminalId: string; linkedSessionId: string | null }): void {
-    let exitCb: (e: { exitCode: number }) => void = () => {};
+    let exitCb: (e: { exitCode: number; signal?: string | number | null }) => void = () => {};
     const fakeProc: any = {
       pid: -1,
       onData: () => {},
       onExit: (cb: typeof exitCb) => { exitCb = cb; },
       write: () => {},
       resize: () => {},
-      kill: () => { exitCb({ exitCode: 0 }); },
+      kill: () => { exitCb({ exitCode: 0, signal: null }); },
     };
     const entry: ClaudePtyEntry = {
       terminalId: input.terminalId,
@@ -396,7 +405,9 @@ export class ClaudePtyManager {
       evictTimer: null,
     };
     // Wire the onExit listener the same way spawn() does.
-    fakeProc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
+    fakeProc.onExit(({ exitCode, signal }: { exitCode: number; signal?: string | number | null }) => {
+      this._handleExit(entry, { exitCode, signal: signal != null ? String(signal) : null });
+    });
     this.terminals.set(input.terminalId, entry);
   }
 }
