@@ -2214,60 +2214,62 @@ function drawDeerSprite(x, y, step) {
   ctx.fillRect(x + 1,  y - 6,  1, 1);
 }
 
-// Skystrider — a tall pixel mech silhouette pacing in the treeline. Single
-// creature at a fixed world column, parallaxed at 0.55 so it sits behind
-// the deer but in front of the mountains. Long-stride leg cycle (~1.6 s)
-// with a glowing amber eye for menace. Marked as a candidate for a future
-// boss fight in a later milestone.
+// Skystrider — a tall pixel mech silhouette pacing in the treeline. THREE
+// creatures spread across the level at fixed world columns, parallaxed at
+// 0.55 so they sit behind the deer but in front of the mountains. Long
+// stride (~1.6 s) with a glowing amber eye and ankle lights. Stride phase
+// staggered per-strider so they don't march in unison. Marked as a
+// candidate for a future boss fight in a later milestone.
+const SKYSTRIDER_COLS = [30, 78, 124];
 function drawSkystrider(t, baseY, parallax) {
-  const worldX  = 78 * 32;                          // fixed mid-level position
-  const camOff  = cam.x * parallax;
-  const wx      = Math.round(worldX - camOff);
-  if (wx < -60 || wx > W + 60) return;
-  // Long stride: 1600 ms per full cycle, 4 phases (legs alternate).
-  const stride = Math.floor(t / 400) % 4;
-  // Body bob — slight vertical wobble in step with the stride.
-  const bob    = (stride === 1 || stride === 3) ? -1 : 0;
-  const y      = Math.round(baseY) + bob;
-  // Eye glow pulse — sine-modulated alpha on a warm amber pixel.
-  const glow   = 0.55 + 0.45 * Math.sin(t * 0.0033);
-  drawSkystriderSprite(wx, y, stride, glow);
+  const camOff = cam.x * parallax;
+  for (let i = 0; i < SKYSTRIDER_COLS.length; i++) {
+    const wx = Math.round(SKYSTRIDER_COLS[i] * 32 - camOff);
+    if (wx < -100 || wx > W + 100) continue;
+    const stride = Math.floor((t + i * 800) / 400) % 4;
+    const bob    = (stride === 1 || stride === 3) ? -2 : 0;
+    const y      = Math.round(baseY) + bob;
+    const glow   = 0.6 + 0.4 * Math.sin(t * 0.0033 + i * 0.9);
+    drawSkystriderSprite(wx, y, stride, glow);
+  }
 }
 function drawSkystriderSprite(x, y, stride, glow) {
-  // 28 wide × 44 tall. Single deep-plum silhouette; one warm "eye" lit. The
-  // figure: 4 long legs, broad chest, dipping neck, flat-disc head.
-  ctx.fillStyle = '#1a0e2c';
-  // Legs — four pairs in a stride pattern. Each leg = 2 wide × 14 tall.
-  // strides 0/2 plant left+rear-right; strides 1/3 plant right+rear-left.
-  const upFront = stride === 1 || stride === 2;     // raises front-left in 1/2
-  const upBack  = stride === 0 || stride === 3;     // raises rear-right in 0/3
-  // Front-left leg
-  ctx.fillRect(x + 4,  y - 14 + (upFront ? 3 : 0), 2, 14 - (upFront ? 3 : 0));
-  // Front-right leg
-  ctx.fillRect(x + 9,  y - 14 + (upFront ? 0 : 2), 2, 14 - (upFront ? 0 : 2));
-  // Rear-left leg
-  ctx.fillRect(x + 17, y - 14 + (upBack  ? 0 : 2), 2, 14 - (upBack  ? 0 : 2));
-  // Rear-right leg
-  ctx.fillRect(x + 22, y - 14 + (upBack  ? 3 : 0), 2, 14 - (upBack  ? 3 : 0));
-  // Chest / body — broad slab, slight haunches at the rear.
-  ctx.fillRect(x + 2,  y - 22, 24, 9);
-  ctx.fillRect(x + 4,  y - 24, 20, 2);
-  ctx.fillRect(x + 18, y - 26, 8,  2);              // haunch hump
+  // 56 wide × 70 tall — 2× the previous scale so the silhouette has real
+  // presence against the sky band. Single near-black for contrast; warm
+  // glowing eye + ankle lights for menace.
+  ctx.fillStyle = '#0a0612';
+  const upFront = stride === 1 || stride === 2;
+  const upBack  = stride === 0 || stride === 3;
+  // Legs — 4 wide × 28 tall each. Lift legs by up to 6 px on the lift phase.
+  ctx.fillRect(x + 8,  y - 28 + (upFront ? 6 : 0), 4, 28 - (upFront ? 6 : 0));
+  ctx.fillRect(x + 18, y - 28 + (upFront ? 0 : 4), 4, 28 - (upFront ? 0 : 4));
+  ctx.fillRect(x + 34, y - 28 + (upBack  ? 0 : 4), 4, 28 - (upBack  ? 0 : 4));
+  ctx.fillRect(x + 44, y - 28 + (upBack  ? 6 : 0), 4, 28 - (upBack  ? 6 : 0));
+  // Chest / body — broad slab + a rear haunch hump
+  ctx.fillRect(x + 4,  y - 44, 48, 18);
+  ctx.fillRect(x + 8,  y - 48, 40, 4);
+  ctx.fillRect(x + 36, y - 52, 16, 4);
   // Neck — dips forward + up
-  ctx.fillRect(x + 4,  y - 27, 3, 5);
-  ctx.fillRect(x + 6,  y - 30, 2, 3);
-  // Head — flat disc with a small dome
-  ctx.fillRect(x + 1,  y - 33, 10, 3);
-  ctx.fillRect(x + 3,  y - 35, 6,  2);
-  // Eye glow — single warm pixel that pulses; pulled out as its own colour.
-  ctx.fillStyle = 'rgba(255, 168, 60, ' + (0.55 + 0.4 * glow).toFixed(2) + ')';
-  ctx.fillRect(x + 2,  y - 32, 2, 1);
-  // Tiny ankle / hoof lights — same warm tone but dimmer, only on planted legs.
-  ctx.fillStyle = 'rgba(255, 168, 60, 0.45)';
-  if (!upFront) ctx.fillRect(x + 4,  y - 1, 2, 1);
-  if (upFront)  ctx.fillRect(x + 9,  y - 1, 2, 1);
-  if (upBack)   ctx.fillRect(x + 17, y - 1, 2, 1);
-  if (!upBack)  ctx.fillRect(x + 22, y - 1, 2, 1);
+  ctx.fillRect(x + 8,  y - 54, 6,  10);
+  ctx.fillRect(x + 12, y - 60, 4,  6);
+  // Head — flat disc + small dome
+  ctx.fillRect(x + 2,  y - 66, 20, 6);
+  ctx.fillRect(x + 6,  y - 70, 12, 4);
+  // Outer eye glow — soft amber halo around the lit pixel
+  ctx.fillStyle = 'rgba(255, 200, 120, ' + (0.25 + 0.35 * glow).toFixed(2) + ')';
+  ctx.fillRect(x + 1,  y - 65, 8, 4);
+  // Inner eye — bright amber pixel that pulses
+  ctx.fillStyle = 'rgba(255, 168, 60, ' + (0.75 + 0.25 * glow).toFixed(2) + ')';
+  ctx.fillRect(x + 3,  y - 64, 4, 2);
+  // Ankle lights — bright on planted legs, dim on lifted ones
+  ctx.fillStyle = 'rgba(255, 168, 60, 0.65)';
+  if (!upFront) ctx.fillRect(x + 8,  y - 2, 4, 2);
+  if (upFront)  ctx.fillRect(x + 18, y - 2, 4, 2);
+  if (upBack)   ctx.fillRect(x + 34, y - 2, 4, 2);
+  if (!upBack)  ctx.fillRect(x + 44, y - 2, 4, 2);
+  // Chest accent — a single dim red pixel-pair signals "heart" / power core
+  ctx.fillStyle = 'rgba(255, 80, 80, 0.55)';
+  ctx.fillRect(x + 26, y - 36, 4, 2);
 }
 
 // Foreground grass — tall blades drawn AFTER the player so the player walks
@@ -2282,26 +2284,34 @@ function drawForegroundGrass(t) {
       if (tileAt(col, row) !== '#') continue;
       if (isSolid(col, row - 1)) continue;
       const h = tileHash(col * 41 + row * 23 + 4097);
-      if (h < 0.55) continue;                         // sparse — only ~45% of grass-edge tiles
+      if (h < 0.30) continue;                         // ~70% of grass-edge tiles get a cluster
       const x       = Math.round(col * TILE_PX - cam.x);
       const yBase   = Math.round(row * TILE_PX);
-      const sway    = Math.round(Math.sin(t * 0.0011 + col * 0.13) * 1);
-      // Cluster of 4-6 blades, mixed heights, slight horizontal spread.
-      const cx      = x + Math.floor(h * (TILE_PX - 10)) + 4;
-      const blades  = 4 + Math.floor(h * 3);
+      const sway    = Math.round(Math.sin(t * 0.0011 + col * 0.13) * 2);
+      // Cluster of 5-8 blades, mixed heights, taller spread so the player
+      // clearly walks behind them.
+      const cx      = x + Math.floor(h * (TILE_PX - 14)) + 6;
+      const blades  = 5 + Math.floor(h * 4);
+      // Darker base tone behind the cluster — gives the grass volume.
+      ctx.fillStyle = '#14532d';
+      ctx.fillRect(cx + sway - 2, yBase - 4, blades + 4, 4);
       ctx.fillStyle = '#16a34a';
       for (let b = 0; b < blades; b++) {
-        const bh    = 5 + Math.floor(((h * (7 + b * 1.3)) % 1) * 8);
+        const bh    = 7 + Math.floor(((h * (7 + b * 1.3)) % 1) * 11);
         const bx    = cx + b - Math.floor(blades / 2);
         ctx.fillRect(bx + sway, yBase - bh, 1, bh);
       }
       // Bright lit tip on the centre blade
       ctx.fillStyle = '#4ade80';
-      ctx.fillRect(cx + sway, yBase - (6 + Math.floor(h * 7)), 1, 1);
+      ctx.fillRect(cx + sway, yBase - (9 + Math.floor(h * 9)), 1, 2);
+      // Two lit tips on dense clusters
+      if (h > 0.6) {
+        ctx.fillRect(cx + 3 + sway, yBase - (7 + Math.floor(h * 8)), 1, 1);
+      }
       // Occasional dew-drop / tip glint
       if (h > 0.85) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.fillRect(cx + 2 + sway, yBase - (5 + Math.floor(h * 6)), 1, 1);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fillRect(cx + 1 + sway, yBase - (8 + Math.floor(h * 8)), 1, 1);
       }
     }
   }
