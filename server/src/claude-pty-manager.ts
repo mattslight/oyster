@@ -17,6 +17,7 @@ import type Database from "better-sqlite3";
 import type { SessionStore } from "./session-store.js";
 import type { UiCommand, TerminalPresenceEventPayload } from "../../shared/types.js";
 import { deleteIfGhostOnExit } from "./ghost-session-cleanup.js";
+import { deriveState } from "./session-state.js";
 
 // node-pty's `onExit` reports `signal` as a number (POSIX signal int) per its
 // type declaration. We translate to the conventional `SIGxxx` name at the
@@ -391,11 +392,37 @@ export class ClaudePtyManager {
           exitSignal: exit.signal ?? null,
           cleanProcessExit,
         });
-        this.sessionStore.updateSessionState(
-          exitedSessionId,
-          cleanProcessExit ? "done" : "disconnected",
-          new Date().toISOString(),
-        );
+        // Compute the new state via the shared deriveState so this branch
+        // stays in sync with the heartbeat sweep. The previous ad-hoc
+        // `cleanProcessExit ? 'done' : 'disconnected'` logic missed
+        // `user_stop_requested_at`, so a UI red-square stop briefly wrote
+        // 'disconnected' (red dot) before the next heartbeat tick re-derived
+        // it to 'done' (grey dot). Pull the freshly-written facts off the
+        // row so we see user_stop_requested_at + the just-recorded exit
+        // columns, and let deriveState pick the final state in one shot.
+        const refreshed = this.sessionStore.getById(exitedSessionId);
+        if (refreshed) {
+          const finalState = deriveState({
+            // PTY just exited and clearTerminal already ran above, so the
+            // session is no longer managed by a live terminal.
+            terminalId: null,
+            // Freshly exited; exit-evidence branches dominate so age
+            // doesn't actually factor in here.
+            ageMs: 0,
+            probeSignal: "unknown",
+            exitCode: refreshed.exit_code ?? null,
+            exitSignal: refreshed.exit_signal ?? null,
+            explicitExitSeen: !!refreshed.explicit_exit_seen,
+            cleanProcessExit: !!refreshed.clean_process_exit,
+            userStopRequested: !!refreshed.user_stop_requested_at,
+            lastAssistantStopReason: refreshed.last_assistant_stop_reason ?? null,
+          });
+          this.sessionStore.updateSessionState(
+            exitedSessionId,
+            finalState,
+            new Date().toISOString(),
+          );
+        }
       }
       entry.linkedSessionId = null;
     }

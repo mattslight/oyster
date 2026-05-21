@@ -1,6 +1,10 @@
 import type { SessionState, DisplayState } from "../../shared/types.js";
+import { DORMANT_THRESHOLD_MS } from "./session-state.js";
 
-export const DORMANT_THRESHOLD_MS = 8 * 60 * 60 * 1000;
+// Re-export so callers that already import this module can keep their
+// import paths. The canonical source is session-state.js, alongside the
+// state and reason derivation rules.
+export { DORMANT_THRESHOLD_MS };
 
 /**
  * Maps the persisted state to the wire-format displayState. The only

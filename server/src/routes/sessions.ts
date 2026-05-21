@@ -18,6 +18,7 @@ import type { RouteCtx } from "../http-utils.js";
 import { SessionService, SessionNotFoundError, ProjectNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
 import type { DisplayState, SessionState, UiCommand } from "../../../shared/types.js";
 import { computeDisplayState } from "../session-display-state.js";
+import { deriveReason } from "../session-state.js";
 import {
   encodeCwd,
   LocalDivergedError,
@@ -129,6 +130,11 @@ export interface MergedSessionPayload {
    *  rows idle for 8h+ are surfaced as `'dormant'`. Computed server-side
    *  via `computeDisplayState`; never persisted. */
   displayState: DisplayState;
+  /** Short human-readable explanation of the row's current state (e.g.
+   *  "stopped by user", "awaiting input", "killed by SIGKILL"). Pure
+   *  derivation from the same evidence columns deriveState reads; not
+   *  persisted. */
+  displayReason: string;
   startedAt: string;
   endedAt: string | null;
   model: string | null;
@@ -157,6 +163,7 @@ export interface MergedSessionPayload {
 export function mapSessionRow(
   row: SessionRow,
 ): MergedSessionPayload {
+  const ageMs = Math.max(0, Date.now() - Date.parse(row.last_event_at));
   return {
     id: row.id,
     spaceId: row.space_id,
@@ -166,6 +173,20 @@ export function mapSessionRow(
     title: row.title,
     state: row.state,
     displayState: computeDisplayState(row.state, row.last_event_at),
+    displayReason: deriveReason({
+      terminalId: row.terminal_id ?? null,
+      ageMs,
+      // Wire mapper runs out-of-band of the live process probe. The
+      // tri-state defaults to 'unknown' so deriveReason picks the
+      // benefit-of-doubt copy ("idle") rather than overstating an absence.
+      probeSignal: "unknown",
+      exitCode: row.exit_code ?? null,
+      exitSignal: row.exit_signal ?? null,
+      explicitExitSeen: !!row.explicit_exit_seen,
+      cleanProcessExit: !!row.clean_process_exit,
+      userStopRequested: !!row.user_stop_requested_at,
+      lastAssistantStopReason: row.last_assistant_stop_reason ?? null,
+    }),
     startedAt: row.started_at,
     endedAt: row.ended_at,
     model: row.model,
@@ -268,6 +289,19 @@ export async function tryHandleSessionRoute(
           title: r.title,
           state: r.state,
           displayState: computeDisplayState(r.state, r.last_event_at),
+          // Remote rows don't carry exit/stop_reason facts — pass benign
+          // defaults so deriveReason produces a generic time/probe copy.
+          displayReason: deriveReason({
+            terminalId: null,
+            ageMs: Math.max(0, Date.now() - Date.parse(r.last_event_at)),
+            probeSignal: "unknown",
+            exitCode: null,
+            exitSignal: null,
+            explicitExitSeen: false,
+            cleanProcessExit: false,
+            userStopRequested: false,
+            lastAssistantStopReason: null,
+          }),
           startedAt: r.started_at,
           endedAt: r.ended_at,
           model: r.model,
@@ -391,6 +425,17 @@ export async function tryHandleSessionRoute(
             title: remoteRow.title,
             state: remoteRow.state,
             displayState: computeDisplayState(remoteRow.state, remoteRow.last_event_at),
+            displayReason: deriveReason({
+              terminalId: null,
+              ageMs: Math.max(0, Date.now() - Date.parse(remoteRow.last_event_at)),
+              probeSignal: "unknown",
+              exitCode: null,
+              exitSignal: null,
+              explicitExitSeen: false,
+              cleanProcessExit: false,
+              userStopRequested: false,
+              lastAssistantStopReason: null,
+            }),
             startedAt: remoteRow.started_at,
             endedAt: remoteRow.ended_at,
             model: remoteRow.model,

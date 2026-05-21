@@ -1157,6 +1157,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       <span role="columnheader">Project</span>
                       <span role="columnheader">Title</span>
                       <span role="columnheader">Agent</span>
+                      <span role="columnheader">Reason</span>
                       <span role="columnheader">Last active</span>
                     </div>
                     {visibleSessions.slice(0, sessionsLimit).map((session) => (

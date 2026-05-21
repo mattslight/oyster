@@ -284,6 +284,35 @@ describe("ClaudePtyManager _handleExit records exit facts", () => {
     expect(row.clean_process_exit).toBe(0);
   });
 
+  // Regression: a user_stop kill (UI red-square click) ends with
+  // exitCode 129 + signal SIGHUP. The pre-fix _handleExit branch wrote
+  // 'disconnected' transiently (because cleanProcessExit was false), and
+  // the heartbeat sweep ~15s later re-derived it to 'done'. The user saw
+  // red, then grey. After this fix _handleExit calls the shared
+  // deriveState, sees user_stop_requested_at + the just-recorded exit
+  // facts, and writes 'done' immediately — no transient red.
+  it("user_stop kill (SIGHUP + exitCode 129) writes state=done immediately", () => {
+    env.store.markUserStopRequested(env.sessionId);
+    (env.mgr as unknown as { _handleExit: (e: unknown, x: { exitCode: number; signal: string | null }) => void })
+      ._handleExit(env.entry, { exitCode: 129, signal: "SIGHUP" });
+    const row = env.store.getById(env.sessionId)!;
+    // Exit facts captured.
+    expect(row.exit_code).toBe(129);
+    expect(row.exit_signal).toBe("SIGHUP");
+    expect(row.clean_process_exit).toBe(0);
+    expect(row.user_stop_requested_at).not.toBeNull();
+    // State is 'done', NOT a transient 'disconnected' awaiting the heartbeat sweep.
+    expect(row.state).toBe("done");
+  });
+
+  it("external SIGKILL with no user_stop intent stays disconnected after _handleExit", () => {
+    (env.mgr as unknown as { _handleExit: (e: unknown, x: { exitCode: number; signal: string | null }) => void })
+      ._handleExit(env.entry, { exitCode: 137, signal: "SIGKILL" });
+    const row = env.store.getById(env.sessionId)!;
+    expect(row.user_stop_requested_at).toBeNull();
+    expect(row.state).toBe("disconnected");
+  });
+
   it("translates numeric signal from node-pty onExit to SIGxxx name", () => {
     // Drive the production onExit wrapper end-to-end: seed an entry whose
     // fake proc.kill() fires onExit with a numeric signal (matching node-pty's

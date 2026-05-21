@@ -13,6 +13,17 @@ import type {
 import { encodeCwd } from "../session-sync-service.js";
 import { isClaudeProtocolArtifact } from "../utils/claude-protocol-artifacts.js";
 import { activeClaudeCwdCounts } from "./claude-process-probe.js";
+import {
+  deriveState,
+  type DeriveStateInput,
+  type ProbeSignal,
+} from "../session-state.js";
+
+// Re-export so existing watcher consumers can keep their imports stable
+// during the relocation. New callers should import from session-state.js
+// directly.
+export { deriveState };
+export type { DeriveStateInput, ProbeSignal };
 
 // claude-code session log watcher (Sprint 2 of the 0.5.0 sessions arc).
 // See docs/plans/sessions-arc.md.
@@ -26,23 +37,11 @@ import { activeClaudeCwdCounts } from "./claude-process-probe.js";
 
 const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 
-// State derivation: see deriveState() below. Evidence-first — exit columns
-// and (for managed sessions) the last assistant stop_reason short-circuit
-// the time-based fallback. For unmanaged sessions with no exit evidence,
-// JSONL recency + process probe decide between active / waiting /
-// disconnected. The 4-state output never includes `dormant`; that's
-// derived at presentation time from `disconnected + ageMs > 8h` (Task 6).
-//
-// `signal` is tri-state to handle Windows / probe-unavailable gracefully:
-//   "alive"   — probe ran, found a claude process at this cwd
-//   "absent"  — probe ran, found no claude at this cwd (terminal closed)
-//   "unknown" — probe couldn't run at all (no pgrep). Treat as benefit-
-//               of-doubt: a recent session reads as waiting, not
-//               disconnected. Otherwise Windows would force every idle
-//               session to disconnected, worse than the pre-probe state.
-export type ProbeSignal = "alive" | "absent" | "unknown";
-const ACTIVE_WINDOW_MS = 60_000;
-const WAITING_WINDOW_MS = 30 * 60 * 1000;
+// State derivation lives in `../session-state.js` — that module is the
+// single owner of the deriveState / deriveReason rules and is shared by
+// the heartbeat sweep, the boot scan, the PTY exit handler, and the
+// wire-format mapper. See ProbeSignal / DeriveStateInput / deriveState
+// in that file for the full evidence-first semantics.
 
 // How often the heartbeat sweep runs. Each tick probes processes (~40ms on
 // macOS for a few claude PIDs) and recomputes state for every claude-code
@@ -973,64 +972,6 @@ function captureEvidence(
       store.setLastAssistantStopReason(sessionId, stopReason);
     }
   }
-}
-
-export interface DeriveStateInput {
-  terminalId: string | null;
-  ageMs: number;
-  probeSignal: ProbeSignal;
-  exitCode: number | null;
-  exitSignal: string | null;
-  explicitExitSeen: boolean;
-  cleanProcessExit: boolean;
-  /** The user clicked the red-square stop button. Recorded *before* the
-   *  signal is sent so the eventual signal-driven PTY exit isn't
-   *  classified as a crash. Paired with process-exit evidence in
-   *  deriveState so a row can't briefly read 'done' while the PTY is
-   *  still alive (i.e., the intent flag has been written but the
-   *  process hasn't yet exited). */
-  userStopRequested: boolean;
-  lastAssistantStopReason: string | null;
-}
-
-export function deriveState(input: DeriveStateInput): SessionState {
-  // User-initiated stop, once the process has actually exited: the signal
-  // (typically SIGHUP from node-pty's default kill()) IS the shutdown
-  // mechanism, not evidence of a crash. Requires process-exit evidence so
-  // a pre-exit race (flag written, PTY not yet down) doesn't yield 'done'
-  // while the underlying process is still running.
-  const hasProcessExitEvidence =
-    input.exitCode != null || input.exitSignal != null || input.cleanProcessExit;
-  if (input.userStopRequested && hasProcessExitEvidence) return "done";
-
-  // Precedence: bad exit evidence beats any "clean" claim that lacks user
-  // intent. A session that typed /exit and then got SIGKILLed
-  // mid-shutdown should read disconnected, not done.
-  if (input.exitSignal || (input.exitCode != null && input.exitCode !== 0)) {
-    return "disconnected";
-  }
-  if (input.explicitExitSeen || input.cleanProcessExit) return "done";
-  if (input.terminalId) {
-    // Only "computing" stop reasons keep us in active. `null` means we
-    // haven't seen any assistant event yet (user just opened the session
-    // or sent their first prompt — the agent IS computing). `tool_use`
-    // and `pause_turn` are genuine in-flight signals. Every other stop
-    // reason (end_turn, max_tokens, stop_sequence, refusal) means the
-    // model has stopped and the user is the next actor.
-    const computing =
-      input.lastAssistantStopReason === null ||
-      input.lastAssistantStopReason === "tool_use" ||
-      input.lastAssistantStopReason === "pause_turn";
-    return computing ? "active" : "waiting";
-  }
-  if (input.ageMs < ACTIVE_WINDOW_MS) return "active";
-  if (input.ageMs < WAITING_WINDOW_MS) {
-    return input.probeSignal === "absent" ? "disconnected" : "waiting";
-  }
-  // 8h+ idle is still 'disconnected' in the persisted enum. The presentation
-  // layer (sessions API) maps disconnected + age > 8h into 'dormant' for the
-  // wire-format displayState field. See Task 6.
-  return "disconnected";
 }
 
 // Pull a usable title out of a `type:"user"` event's content, or return null.

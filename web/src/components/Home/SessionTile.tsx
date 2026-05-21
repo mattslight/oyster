@@ -56,7 +56,7 @@ export function SessionTile({ session, spaces, showSpaceChip, myDeviceId, livePr
           </span>
         )}
         <span className="home-agent-mark">{AGENT_LETTERS[session.agent]}</span>
-        <span className={`home-status ${session.displayState}`} />
+        <span className={`home-status ${session.displayState}`} title={session.displayReason} />
         {livePresence && (
           <span
             className={`tile-presence-dot${livePresence.state === "attached" ? " tpd--attached" : " tpd--running"}`}

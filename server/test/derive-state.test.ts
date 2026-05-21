@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveState } from "../src/watchers/claude-code.js";
+import { deriveState } from "../src/session-state.js";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;

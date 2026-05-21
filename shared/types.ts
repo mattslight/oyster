@@ -107,6 +107,12 @@ export interface Session {
    *  except a `disconnected` row idle for 8h+ becomes `'dormant'` so the
    *  UI can dim its urgency. Never persisted. */
   displayState: DisplayState;
+  /** Short, lowercase, human-readable explanation of the row's current
+   *  state ("stopped by user", "awaiting input", "killed by SIGKILL",
+   *  etc). Computed server-side from the same evidence deriveState reads;
+   *  never persisted. Used by the sessions list (REASON column) and the
+   *  status-dot tooltip. */
+  displayReason: string;
   startedAt: string;
   endedAt: string | null;
   model: string | null;
