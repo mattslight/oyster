@@ -1454,16 +1454,20 @@ function drawProp(p, worldX, worldY, t) {
   if (x + TILE_PX < 0 || x > W) return;
   // Pixel size scales with the tile so props stay proportional on resize.
   const PXL = Math.max(2, Math.round(TILE_PX / 14));
+  // Stable per-prop animation seed (world-space). Seeding sprite animation
+  // from screen-space `x` would shift phase as the camera scrolls — props
+  // would look like they're animating BECAUSE of camera motion.
+  const seed = p.col;
   switch (p.type) {
-    case 'mushroom':  return drawMushroom(x, y, PXL, t);
-    case 'bush':      return drawBush(x, y, PXL, t);
-    case 'signpost':  return drawSignpost(x, y, PXL, t);
-    case 'rock':      return drawRock(x, y, PXL, t);
-    case 'tallgrass': return drawTallgrass(x, y, PXL, t);
-    case 'flower':    return drawFlower(x, y, PXL, t);
-    case 'rabbit':    return drawRabbit(x, y, PXL, t);
-    case 'butterfly': return drawButterfly(x, y, PXL, t);
-    case 'frog':      return drawFrog(x, y, PXL, t);
+    case 'mushroom':  return drawMushroom(x, y, PXL, t, seed);
+    case 'bush':      return drawBush(x, y, PXL, t, seed);
+    case 'signpost':  return drawSignpost(x, y, PXL, t, seed);
+    case 'rock':      return drawRock(x, y, PXL, t, seed);
+    case 'tallgrass': return drawTallgrass(x, y, PXL, t, seed);
+    case 'flower':    return drawFlower(x, y, PXL, t, seed);
+    case 'rabbit':    return drawRabbit(x, y, PXL, t, seed);
+    case 'butterfly': return drawButterfly(x, y, PXL, t, seed);
+    case 'frog':      return drawFrog(x, y, PXL, t, seed);
   }
 }
 
@@ -1471,10 +1475,11 @@ function drawProp(p, worldX, worldY, t) {
 // from baseY = y + TILE_PX (bottom of the prop sits at top of the tile below
 // it, i.e. on the surface). So `{ row: 11 }` sits on the row-12 floor.
 
-function drawMushroom(x, y, PXL, t) {
-  // 8-wide × 9-tall pixel grid (in PXL units). Slow vertical bob.
+function drawMushroom(x, y, PXL, t, seed) {
+  // 8-wide × 9-tall pixel grid (in PXL units). Slow vertical bob. Seed is
+  // world-space so the bob phase doesn't shift with camera scroll.
   const baseY = y + TILE_PX;
-  const bob   = Math.round(Math.sin((t || 0) * 0.0017 + x * 0.013) * PXL * 0.4);
+  const bob   = Math.round(Math.sin((t || 0) * 0.0017 + (seed || 0) * 1.31) * PXL * 0.4);
   // Stem (white) — 2 wide × 3 tall, centered.
   ctx.fillStyle = '#f5f5f5';
   ctx.fillRect(x + 3 * PXL, baseY - 3 * PXL, 2 * PXL, 3 * PXL);
@@ -1491,13 +1496,14 @@ function drawMushroom(x, y, PXL, t) {
   ctx.fillRect(x + 6 * PXL, baseY - 6 * PXL + bob, PXL, PXL);
 }
 
-function drawBush(x, y, PXL, t) {
+function drawBush(x, y, PXL, t, seed) {
   // 14-wide × 8-tall. Asymmetric tiered shrub — three round-ish clumps with
   // a darker base shadow, midtone body, and lit crowns. A few "leaf" pixel
   // notches break the blocky silhouette so it reads as foliage, not a pill.
   // Top tier sways horizontally on a slow sine — sells "living foliage".
+  // Seed is world-space so phase is camera-stable.
   const baseY = y + TILE_PX;
-  const sway  = Math.round(Math.sin((t || 0) * 0.0011 + x * 0.009) * PXL * 0.5);
+  const sway  = Math.round(Math.sin((t || 0) * 0.0011 + (seed || 0) * 0.91) * PXL * 0.5);
   // Shadow band — settles the shrub on the ground.
   ctx.fillStyle = '#0c4a26';
   ctx.fillRect(x + 1 * PXL,   baseY - 1 * PXL, 12 * PXL, PXL);
@@ -1526,7 +1532,7 @@ function drawBush(x, y, PXL, t) {
   ctx.fillRect(x + 8 * PXL + sway,  baseY - 5 * PXL,  1 * PXL, 1 * PXL);
 }
 
-function drawSignpost(x, y, PXL, _t) {
+function drawSignpost(x, y, PXL, _t, _seed) {
   // 6-wide × 8-tall — brown post + yellow plaque. Static (signs don't move).
   const baseY = y + TILE_PX;
   ctx.fillStyle = '#5a3a1a';
@@ -1537,7 +1543,7 @@ function drawSignpost(x, y, PXL, _t) {
   ctx.fillRect(x + 1 * PXL,   baseY - 5 * PXL, 5 * PXL, PXL);
 }
 
-function drawRock(x, y, PXL, _t) {
+function drawRock(x, y, PXL, _t, _seed) {
   // 8-wide × 4-tall low grey rock. Darker shadow band underneath sells weight.
   const baseY = y + TILE_PX;
   ctx.fillStyle = '#1f1f1f';
@@ -1553,11 +1559,12 @@ function drawRock(x, y, PXL, _t) {
   ctx.fillRect(x + 5 * PXL, baseY - 3 * PXL, 1 * PXL, 1 * PXL);
 }
 
-function drawTallgrass(x, y, PXL, t) {
+function drawTallgrass(x, y, PXL, t, seed) {
   // 6-wide × 6-tall. Three blades fanning, with sway. Tallest blade sways
   // most; the short anchor blade barely moves so the silhouette stays rooted.
+  // Seed is world-space (camera-stable phase).
   const baseY = y + TILE_PX;
-  const sway  = Math.sin((t || 0) * 0.0019 + x * 0.011) * PXL;
+  const sway  = Math.sin((t || 0) * 0.0019 + (seed || 0) * 1.13) * PXL;
   // Anchor (shortest, darker)
   ctx.fillStyle = '#166534';
   ctx.fillRect(x + 1 * PXL,                          baseY - 3 * PXL, PXL, 3 * PXL);
@@ -1572,12 +1579,13 @@ function drawTallgrass(x, y, PXL, t) {
   ctx.fillRect(x + 5 * PXL + Math.round(sway),       baseY - 6 * PXL, PXL, PXL);
 }
 
-function drawRabbit(x, y, PXL, t) {
+function drawRabbit(x, y, PXL, t, seed) {
   // 8-wide × 7-tall pixel rabbit. Sits idle on the ground; every ~3 s it
-  // hops with a short arc. `phase` is offset by x so different rabbits hop
-  // out-of-sync. Soft brown body + white cotton tail + dark eye.
+  // hops with a short arc. `phase` is offset by seed (world col) so
+  // different rabbits hop out-of-sync AND don't shift with camera scroll.
+  // Soft brown body + white cotton tail + dark eye.
   const baseY = y + TILE_PX;
-  const phase = (((t || 0) + x * 7) % 3000);
+  const phase = (((t || 0) + (seed || 0) * 419) % 3000);
   const hopT  = phase < 360 ? phase / 360 : 0;
   const hop   = hopT > 0 ? Math.sin(hopT * Math.PI) : 0;
   const dy    = Math.round(-hop * PXL * 2.5);
@@ -1604,13 +1612,14 @@ function drawRabbit(x, y, PXL, t) {
   }
 }
 
-function drawButterfly(x, y, PXL, t) {
+function drawButterfly(x, y, PXL, t, seed) {
   // 6-wide × 5-tall flapping butterfly. Drifts in a tight circle around its
   // anchor so it visually orbits any prop placed nearby. Wings alternate
   // up/down every ~80 ms; pink wings with pale highlights pop against grass.
+  // Seed is world-space so the drift phase doesn't shift with camera scroll.
   const baseY = y + TILE_PX;
-  const dx = Math.round(Math.cos((t || 0) * 0.0015 + x * 0.01) * PXL * 2.5);
-  const dy = Math.round(Math.sin((t || 0) * 0.0018 + x * 0.01) * PXL * 1.5);
+  const dx = Math.round(Math.cos((t || 0) * 0.0015 + (seed || 0) * 0.97) * PXL * 2.5);
+  const dy = Math.round(Math.sin((t || 0) * 0.0018 + (seed || 0) * 0.97) * PXL * 1.5);
   const flap = Math.floor((t || 0) / 90) % 2;
   // Body
   ctx.fillStyle = '#0a0a0a';
@@ -1635,12 +1644,12 @@ function drawButterfly(x, y, PXL, t) {
   }
 }
 
-function drawFrog(x, y, PXL, t) {
+function drawFrog(x, y, PXL, t, seed) {
   // 7-wide × 5-tall green frog. Sits still; eyes blink every ~4.5 s with
-  // a 150 ms closed window. Per-prop x offset on the blink so frogs don't
-  // all blink in sync.
+  // a 150 ms closed window. Per-prop seed offset on the blink so frogs
+  // don't all blink in sync (seeded from world col so phase is camera-stable).
   const baseY = y + TILE_PX;
-  const blink = ((((t || 0) + x * 13) | 0) % 4500) < 150;
+  const blink = ((((t || 0) + (seed || 0) * 1217) | 0) % 4500) < 150;
   // Body
   ctx.fillStyle = '#16a34a';
   ctx.fillRect(x + PXL, baseY - 3 * PXL, 5 * PXL, 3 * PXL);
@@ -1666,11 +1675,12 @@ function drawFrog(x, y, PXL, t) {
   ctx.fillRect(x + 5 * PXL,   baseY - PXL, 2 * PXL, PXL);
 }
 
-function drawFlower(x, y, PXL, t) {
+function drawFlower(x, y, PXL, t, seed) {
   // 5-wide × 6-tall daisy on a stem. Bloom bobs gently. Petals = white,
-  // centre = warm yellow so it pops against the dark grass.
+  // centre = warm yellow so it pops against the dark grass. Seed is
+  // world-space (camera-stable phase).
   const baseY = y + TILE_PX;
-  const bob   = Math.round(Math.sin((t || 0) * 0.0023 + x * 0.017) * PXL * 0.4);
+  const bob   = Math.round(Math.sin((t || 0) * 0.0023 + (seed || 0) * 1.71) * PXL * 0.4);
   // Stem + leaves
   ctx.fillStyle = '#15803d';
   ctx.fillRect(x + 2 * PXL, baseY - 3 * PXL, PXL, 3 * PXL);
@@ -2314,6 +2324,7 @@ function drawSkystriderSprite(x, y, stride, glow) {
 // darker→mid→light greens (Flashback-style organic vegetation). Hash-stable
 // per tile. Subtle wind sway. Only on earth-soil tiles with an open top.
 function drawForegroundGrass(t) {
+  if (level.biome !== 'earth') return;              // moon rock reuses '#' — no grass on moon
   const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
   const c1 = Math.min(level.width - 1, Math.ceil((cam.x + W) / TILE_PX));
   for (let row = 0; row < level.height; row++) {
@@ -2420,6 +2431,7 @@ function drawLeafClump(cx, yBase, h, U) {
 // pass under), draw a downward drape from the bottom edge. Hash-stable so
 // the same tile always grows the same drape.
 function drawPlatformDrapes() {
+  if (level.biome !== 'earth') return;              // moss/vines are earth-only
   const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
   const c1 = Math.min(level.width - 1, Math.ceil((cam.x + W) / TILE_PX));
   const U  = SPRITE_U;
