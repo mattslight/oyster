@@ -1295,7 +1295,63 @@ function drawProp(p, worldX, worldY) {
   const x = Math.round(worldX - cam.x);
   const y = Math.round(worldY);
   if (x + TILE_PX < 0 || x > W) return;
-  // Sprite implementations land in Task 5.
+  // Pixel size scales with the tile so props stay proportional on resize.
+  const PXL = Math.max(2, Math.round(TILE_PX / 14));
+  switch (p.type) {
+    case 'mushroom': return drawMushroom(x, y, PXL);
+    case 'bush':     return drawBush(x, y, PXL);
+    case 'signpost': return drawSignpost(x, y, PXL);
+  }
+}
+
+// Earth props — `prop.row` names the empty tile ABOVE the surface. We draw
+// from baseY = y + TILE_PX (bottom of the prop sits at top of the tile below
+// it, i.e. on the surface). So `{ row: 11 }` sits on the row-12 floor.
+
+function drawMushroom(x, y, PXL) {
+  // 8-wide × 9-tall pixel grid (in PXL units).
+  const baseY = y + TILE_PX;
+  // Stem (white) — 2 wide × 3 tall, centered.
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(x + 3 * PXL, baseY - 3 * PXL, 2 * PXL, 3 * PXL);
+  // Cap (red) — 8 wide × 5 tall, sits on the stem.
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(x,             baseY - 8 * PXL, 8 * PXL, 5 * PXL);
+  // Cap top-edge (lighter red) — 1px highlight row.
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillRect(x,             baseY - 8 * PXL, 8 * PXL, PXL);
+  // Three white spots on the cap.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x + 1 * PXL, baseY - 7 * PXL, PXL, PXL);
+  ctx.fillRect(x + 4 * PXL, baseY - 7 * PXL, PXL, PXL);
+  ctx.fillRect(x + 6 * PXL, baseY - 6 * PXL, PXL, PXL);
+}
+
+function drawBush(x, y, PXL) {
+  // 12-wide × 6-tall. Three pixel clumps stacked.
+  const baseY = y + TILE_PX;
+  ctx.fillStyle = '#15803d';            // shaded body
+  ctx.fillRect(x,             baseY - 3 * PXL, 12 * PXL, 3 * PXL);
+  ctx.fillStyle = '#22c55e';            // lit top
+  ctx.fillRect(x + 1 * PXL,   baseY - 5 * PXL, 4 * PXL, 2 * PXL);
+  ctx.fillRect(x + 5 * PXL,   baseY - 6 * PXL, 4 * PXL, 3 * PXL);
+  ctx.fillRect(x + 9 * PXL,   baseY - 5 * PXL, 3 * PXL, 2 * PXL);
+  ctx.fillStyle = '#4ade80';            // 1-px highlight on the tallest clump
+  ctx.fillRect(x + 5 * PXL,   baseY - 6 * PXL, 4 * PXL, PXL);
+}
+
+function drawSignpost(x, y, PXL) {
+  // 6-wide × 8-tall — brown post + yellow plaque pointing right.
+  const baseY = y + TILE_PX;
+  // Post.
+  ctx.fillStyle = '#5a3a1a';
+  ctx.fillRect(x + 2 * PXL,   baseY - 8 * PXL, 2 * PXL, 8 * PXL);
+  // Plaque.
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(x + 1 * PXL,   baseY - 7 * PXL, 5 * PXL, 3 * PXL);
+  // Plaque shadow row.
+  ctx.fillStyle = '#c79b00';
+  ctx.fillRect(x + 1 * PXL,   baseY - 5 * PXL, 5 * PXL, PXL);
 }
 
 function drawTile(col, row) {
