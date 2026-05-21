@@ -1,6 +1,6 @@
 import type { SessionState, DisplayState } from "../../shared/types.js";
 
-const DORMANT_THRESHOLD_MS = 8 * 60 * 60 * 1000;
+export const DORMANT_THRESHOLD_MS = 8 * 60 * 60 * 1000;
 
 /**
  * Maps the persisted state to the wire-format displayState. The only

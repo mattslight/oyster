@@ -124,7 +124,7 @@ export interface MergedSessionPayload {
   cwd: string | null;
   agent: string;
   title: string | null;
-  state: string;
+  state: SessionState;
   /** Derived wire-format state. Same as `state` except `disconnected`
    *  rows idle for 8h+ are surfaced as `'dormant'`. Computed server-side
    *  via `computeDisplayState`; never persisted. */
@@ -224,7 +224,7 @@ export async function tryHandleSessionRoute(
       type RemoteRow = {
         session_id: string; device_id: string | null; device_label: string | null;
         agent: string; title: string | null;
-        state: string; cwd: string | null; model: string | null; started_at: string;
+        state: SessionState; cwd: string | null; model: string | null; started_at: string;
         ended_at: string | null; last_event_at: string; has_bytes: number;
         total_bytes: number | null;
         active_device_id: string | null; jsonl_local_path: string | null;
@@ -267,7 +267,7 @@ export async function tryHandleSessionRoute(
           agent: r.agent,
           title: r.title,
           state: r.state,
-          displayState: computeDisplayState(r.state as SessionState, r.last_event_at),
+          displayState: computeDisplayState(r.state, r.last_event_at),
           startedAt: r.started_at,
           endedAt: r.ended_at,
           model: r.model,
@@ -366,7 +366,7 @@ export async function tryHandleSessionRoute(
       if (ownerId) {
         type RemoteRow = {
           device_id: string | null; device_label: string | null;
-          agent: string; title: string | null; state: string;
+          agent: string; title: string | null; state: SessionState;
           cwd: string | null; model: string | null; started_at: string;
           ended_at: string | null; last_event_at: string;
           has_bytes: number; active_device_id: string | null;
@@ -390,7 +390,7 @@ export async function tryHandleSessionRoute(
             agent: remoteRow.agent,
             title: remoteRow.title,
             state: remoteRow.state,
-            displayState: computeDisplayState(remoteRow.state as SessionState, remoteRow.last_event_at),
+            displayState: computeDisplayState(remoteRow.state, remoteRow.last_event_at),
             startedAt: remoteRow.started_at,
             endedAt: remoteRow.ended_at,
             model: remoteRow.model,

@@ -13,6 +13,7 @@ import type { SessionStore } from "../session-store.js";
 import type { ArtifactService } from "../artifact-service.js";
 import type { RouteCtx } from "../http-utils.js";
 import { safeDecode } from "../http-utils.js";
+import { mapSessionRow } from "./sessions.js";
 
 export interface ArtifactRouteDeps {
   artifactService: ArtifactService;
@@ -68,19 +69,7 @@ export async function tryHandleArtifactRoute(
           artifactId: t.artifact_id,
           role: t.role,
           whenAt: t.when_at,
-          session: {
-            id: s.id,
-            spaceId: s.space_id,
-            projectId: s.project_id,
-            cwd: s.cwd,
-            agent: s.agent,
-            title: s.title,
-            state: s.state,
-            startedAt: s.started_at,
-            endedAt: s.ended_at,
-            model: s.model,
-            lastEventAt: s.last_event_at,
-          },
+          session: mapSessionRow(s),
         }];
       }));
       return true;

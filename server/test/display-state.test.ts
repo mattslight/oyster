@@ -29,4 +29,12 @@ describe("computeDisplayState", () => {
   it("invalid lastEventAt falls back to the raw state", () => {
     expect(computeDisplayState("disconnected", "not-a-date", now)).toBe("disconnected");
   });
+
+  it("exactly at 8h boundary stays disconnected (strict >)", () => {
+    expect(computeDisplayState("disconnected", new Date(now - 8 * HOUR).toISOString(), now)).toBe("disconnected");
+  });
+
+  it("future lastEventAt (clock skew) stays disconnected", () => {
+    expect(computeDisplayState("disconnected", new Date(now + HOUR).toISOString(), now)).toBe("disconnected");
+  });
 });
