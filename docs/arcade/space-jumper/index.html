@@ -2214,6 +2214,99 @@ function drawDeerSprite(x, y, step) {
   ctx.fillRect(x + 1,  y - 6,  1, 1);
 }
 
+// Skystrider — a tall pixel mech silhouette pacing in the treeline. Single
+// creature at a fixed world column, parallaxed at 0.55 so it sits behind
+// the deer but in front of the mountains. Long-stride leg cycle (~1.6 s)
+// with a glowing amber eye for menace. Marked as a candidate for a future
+// boss fight in a later milestone.
+function drawSkystrider(t, baseY, parallax) {
+  const worldX  = 78 * 32;                          // fixed mid-level position
+  const camOff  = cam.x * parallax;
+  const wx      = Math.round(worldX - camOff);
+  if (wx < -60 || wx > W + 60) return;
+  // Long stride: 1600 ms per full cycle, 4 phases (legs alternate).
+  const stride = Math.floor(t / 400) % 4;
+  // Body bob — slight vertical wobble in step with the stride.
+  const bob    = (stride === 1 || stride === 3) ? -1 : 0;
+  const y      = Math.round(baseY) + bob;
+  // Eye glow pulse — sine-modulated alpha on a warm amber pixel.
+  const glow   = 0.55 + 0.45 * Math.sin(t * 0.0033);
+  drawSkystriderSprite(wx, y, stride, glow);
+}
+function drawSkystriderSprite(x, y, stride, glow) {
+  // 28 wide × 44 tall. Single deep-plum silhouette; one warm "eye" lit. The
+  // figure: 4 long legs, broad chest, dipping neck, flat-disc head.
+  ctx.fillStyle = '#1a0e2c';
+  // Legs — four pairs in a stride pattern. Each leg = 2 wide × 14 tall.
+  // strides 0/2 plant left+rear-right; strides 1/3 plant right+rear-left.
+  const upFront = stride === 1 || stride === 2;     // raises front-left in 1/2
+  const upBack  = stride === 0 || stride === 3;     // raises rear-right in 0/3
+  // Front-left leg
+  ctx.fillRect(x + 4,  y - 14 + (upFront ? 3 : 0), 2, 14 - (upFront ? 3 : 0));
+  // Front-right leg
+  ctx.fillRect(x + 9,  y - 14 + (upFront ? 0 : 2), 2, 14 - (upFront ? 0 : 2));
+  // Rear-left leg
+  ctx.fillRect(x + 17, y - 14 + (upBack  ? 0 : 2), 2, 14 - (upBack  ? 0 : 2));
+  // Rear-right leg
+  ctx.fillRect(x + 22, y - 14 + (upBack  ? 3 : 0), 2, 14 - (upBack  ? 3 : 0));
+  // Chest / body — broad slab, slight haunches at the rear.
+  ctx.fillRect(x + 2,  y - 22, 24, 9);
+  ctx.fillRect(x + 4,  y - 24, 20, 2);
+  ctx.fillRect(x + 18, y - 26, 8,  2);              // haunch hump
+  // Neck — dips forward + up
+  ctx.fillRect(x + 4,  y - 27, 3, 5);
+  ctx.fillRect(x + 6,  y - 30, 2, 3);
+  // Head — flat disc with a small dome
+  ctx.fillRect(x + 1,  y - 33, 10, 3);
+  ctx.fillRect(x + 3,  y - 35, 6,  2);
+  // Eye glow — single warm pixel that pulses; pulled out as its own colour.
+  ctx.fillStyle = 'rgba(255, 168, 60, ' + (0.55 + 0.4 * glow).toFixed(2) + ')';
+  ctx.fillRect(x + 2,  y - 32, 2, 1);
+  // Tiny ankle / hoof lights — same warm tone but dimmer, only on planted legs.
+  ctx.fillStyle = 'rgba(255, 168, 60, 0.45)';
+  if (!upFront) ctx.fillRect(x + 4,  y - 1, 2, 1);
+  if (upFront)  ctx.fillRect(x + 9,  y - 1, 2, 1);
+  if (upBack)   ctx.fillRect(x + 17, y - 1, 2, 1);
+  if (!upBack)  ctx.fillRect(x + 22, y - 1, 2, 1);
+}
+
+// Foreground grass — tall blades drawn AFTER the player so the player walks
+// BEHIND them. Hash-stable per tile, only on earth-soil tiles with open top.
+// Subtle wind sway based on `t`. Visual depth cue you only get when the
+// front edge of the world overlaps the player.
+function drawForegroundGrass(t) {
+  const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
+  const c1 = Math.min(level.width - 1, Math.ceil((cam.x + W) / TILE_PX));
+  for (let row = 0; row < level.height; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (tileAt(col, row) !== '#') continue;
+      if (isSolid(col, row - 1)) continue;
+      const h = tileHash(col * 41 + row * 23 + 4097);
+      if (h < 0.55) continue;                         // sparse — only ~45% of grass-edge tiles
+      const x       = Math.round(col * TILE_PX - cam.x);
+      const yBase   = Math.round(row * TILE_PX);
+      const sway    = Math.round(Math.sin(t * 0.0011 + col * 0.13) * 1);
+      // Cluster of 4-6 blades, mixed heights, slight horizontal spread.
+      const cx      = x + Math.floor(h * (TILE_PX - 10)) + 4;
+      const blades  = 4 + Math.floor(h * 3);
+      ctx.fillStyle = '#16a34a';
+      for (let b = 0; b < blades; b++) {
+        const bh    = 5 + Math.floor(((h * (7 + b * 1.3)) % 1) * 8);
+        const bx    = cx + b - Math.floor(blades / 2);
+        ctx.fillRect(bx + sway, yBase - bh, 1, bh);
+      }
+      // Bright lit tip on the centre blade
+      ctx.fillStyle = '#4ade80';
+      ctx.fillRect(cx + sway, yBase - (6 + Math.floor(h * 7)), 1, 1);
+      // Occasional dew-drop / tip glint
+      if (h > 0.85) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.fillRect(cx + 2 + sway, yBase - (5 + Math.floor(h * 6)), 1, 1);
+      }
+    }
+  }
+}
+
 // Owl — flies across the upper sky every ~25s in a sine arc, flapping.
 // Sits in a different cycle from the UFO so they don't overlap.
 function drawOwl(t) {
@@ -2403,6 +2496,12 @@ function draw() {
   // feel mid-distant. Drawn BEFORE pines so the pines occlude them slightly.
   drawDeer(t, Math.round(H * 0.78), 0.65);
 
+  // ---- Skystrider — single tall mech silhouette mid-distance. Parallax
+  // 0.55 sits it between the mountains (0.6) and the deer (0.65). Drawn
+  // before pines so the foliage partially occludes the legs as the camera
+  // tracks past. Could be promoted to a boss in a later milestone.
+  drawSkystrider(t, Math.round(H * 0.78), 0.55);
+
   // ---- Foreground pines — fast parallax, sit between the mountains
   // and the playfield. Drawn behind the tiles so platforms occlude
   // them naturally. ----
@@ -2556,6 +2655,10 @@ function draw() {
       ctx.fillRect(fX + Math.floor(fW / 2) - epx, fY + fH + epx, epx * 2, epx);
     }
   }
+
+  // Foreground grass — tall blades that the player walks BEHIND. Drawn
+  // after the player so it occludes the lower body and sells depth.
+  drawForegroundGrass(t);
 
   // HUD on top
   drawHUD();
