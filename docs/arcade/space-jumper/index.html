@@ -909,9 +909,11 @@ let TILE_PX = 32;
 // Sprite-scale unit. Background fauna (Skystrider, deer, owl, fireflies,
 // foreground grass, etc.) draw with hardcoded pixel coords; multiplying
 // every coord by SPRITE_U keeps them legible on big monitors. Integer steps
-// so pixel art stays crisp (no fractional fills). Design tile was 60 px.
-const DESIGN_TILE_PX = 60;
-let SPRITE_U = 1;
+// so pixel art stays crisp (no fractional fills). Floored at 2 so even
+// small viewports get a substantive sprite — at SPRITE_U=1 the foliage and
+// the Skystrider looked dwarfed against the tiles.
+const DESIGN_TILE_PX = 32;
+let SPRITE_U = 2;
 let PLAYER_W = 28;
 let PLAYER_H = 40;
 let ENEMY_W = 28;
@@ -930,7 +932,7 @@ const ENEMY_H_FRAC = 0.65;
 
 function recomputeScale() {
   TILE_PX = Math.max(16, Math.floor(H / level.height));
-  SPRITE_U = Math.max(1, Math.round(TILE_PX / DESIGN_TILE_PX));
+  SPRITE_U = Math.max(2, Math.round(TILE_PX / DESIGN_TILE_PX));
   PLAYER_W = Math.round(TILE_PX * PLAYER_W_FRAC);
   PLAYER_H = Math.round(TILE_PX * PLAYER_H_FRAC);
   ENEMY_W = Math.round(TILE_PX * ENEMY_W_FRAC);
