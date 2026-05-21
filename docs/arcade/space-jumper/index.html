@@ -1740,10 +1740,13 @@ function drawTile(col, row) {
     }
   }
 
-  // Inner shadow — bottom-right edges for chunky pixel readability.
+  // Inner shadow — only on edges that face OPEN sky, not on seams between
+  // adjacent solid tiles. Otherwise a wide floor reads as a black grid.
+  // Right edge: solid → solid is a seam; suppress shadow.
+  // Bottom edge: same. Top edge already drew its grass band above.
   ctx.fillStyle = style.innerShadow;
-  ctx.fillRect(x + TILE_PX - 2, y, 2, TILE_PX);
-  ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
+  if (!isSolid(col + 1, row)) ctx.fillRect(x + TILE_PX - 2, y, 2, TILE_PX);
+  if (!isSolid(col, row + 1)) ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
 }
 
 function drawEnemy(e, t) {
