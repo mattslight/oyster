@@ -548,42 +548,66 @@ export class SqliteSessionStore implements SessionStore {
     }
     const limit = opts.limit ?? 20;
 
-    // FTS5's snippet() auxiliary can't be used in a SELECT that also wraps
-    // window functions ("unable to use function snippet in the requested
-    // context") — it needs to live in a query that directly scans the FTS
-    // virtual table under MATCH. So we materialize the snippet + raw rank
-    // in an inner CTE and let the outer CTE handle ROW_NUMBER / COUNT over
-    // those plain columns.
+    // Two-stage query so snippet() runs only for the rows that survive
+    // the per-session winner pick + LIMIT, not for the full match set.
+    // The naive shape — snippet() inside the inner CTE — pays the cost of
+    // computing a contextual snippet (which requires reading the original
+    // `text` column from the external-content base table, i.e. a random
+    // rowid lookup) for every matched row, then throws all but `limit`
+    // away. On broad prefix matches against a multi-GB DB that means
+    // ~60k+ lookups per query and Spotlight feels broken.
+    //
+    // Instead the inner CTE carries only (id, session_id, rank), the
+    // window functions pick the top match per session, the outer query
+    // takes the LIMIT, and snippet() runs in a correlated subquery
+    // bound to that handful of winners — same FTS MATCH so snippet()
+    // sees the matched tokens for that rowid.
+    //
+    // The `sessions` table is only joined inside the inner CTE when
+    // we need it for the space_id filter; otherwise the join is done
+    // after LIMIT for the metadata columns.
     const innerWhere: string[] = ["session_events_fts MATCH ?"];
     const innerParams: unknown[] = [ftsQuery];
-    if (opts.spaceId) { innerWhere.push("s.space_id = ?"); innerParams.push(opts.spaceId); }
+    let innerJoinSessions = "";
+    if (opts.spaceId) {
+      innerJoinSessions = "JOIN sessions s ON s.id = e.session_id";
+      innerWhere.push("s.space_id = ?");
+      innerParams.push(opts.spaceId);
+    }
 
     const sql = `WITH matches AS (
-                   SELECT e.id, e.session_id, e.role,
-                          fts.rank AS m_rank,
-                          snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet
+                   SELECT e.id, e.session_id, fts.rank AS m_rank
                    FROM session_events e
                    JOIN session_events_fts fts ON e.id = fts.rowid
-                   JOIN sessions s             ON s.id = e.session_id
+                   ${innerJoinSessions}
                    WHERE ${innerWhere.join(" AND ")}
                  ),
                  ranked AS (
-                   SELECT id, session_id, role, m_rank, snippet,
+                   SELECT id, session_id, m_rank,
                           ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY m_rank) AS rn,
                           COUNT(*)     OVER (PARTITION BY session_id)                 AS match_count
                    FROM matches
+                 ),
+                 winners AS (
+                   SELECT id, session_id, m_rank, match_count
+                   FROM ranked
+                   WHERE rn = 1
+                   ORDER BY m_rank ASC
+                   LIMIT ?
                  )
-                 SELECT r.id AS event_id, r.session_id, r.role,
-                        r.snippet, r.match_count,
+                 SELECT w.id AS event_id, w.session_id, e.role,
+                        (SELECT snippet(session_events_fts, 0, '[', ']', '…', 12)
+                           FROM session_events_fts
+                           WHERE session_events_fts MATCH ? AND rowid = w.id) AS snippet,
+                        w.match_count,
                         s.title         AS session_title,
                         s.space_id      AS space_id,
                         s.last_event_at AS last_event_at
-                 FROM ranked r
-                 JOIN sessions s ON s.id = r.session_id
-                 WHERE r.rn = 1
-                 ORDER BY r.m_rank ASC
-                 LIMIT ?`;
-    innerParams.push(limit);
+                 FROM winners w
+                 JOIN sessions s        ON s.id = w.session_id
+                 JOIN session_events e  ON e.id = w.id
+                 ORDER BY w.m_rank ASC`;
+    innerParams.push(limit, ftsQuery);
     return this.db.prepare(sql).all(...innerParams) as SessionSearchHit[];
   }
 

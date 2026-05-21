@@ -7,6 +7,7 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 ### Fixed
 
 - **Boot is fast again on large transcript databases.** Search-index health checks and one-time data migrations no longer block startup — they run after the UI is ready. Users with multi-million-row transcript histories who were seeing 30+ second hangs should boot in well under a second.
+- **Cmd+K search no longer stalls on large session databases.** Spotlight's transcript search now stays responsive (~5× faster on multi-GB DBs with broad queries) by only fetching match snippets for results that actually appear on screen.
 
 ## [0.9.6] - 2026-05-21
 
