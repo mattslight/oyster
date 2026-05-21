@@ -1,24 +1,26 @@
 // Header — extracted from SessionInspector for navigability.
 import { useState } from "react";
-import type { Session, SessionState } from "../../data/sessions-api";
+import type { Session, DisplayState } from "../../data/sessions-api";
 import { useMyDeviceId } from "../../hooks/useMyDeviceId";
 import { SessionActions } from "./SessionActions";
 import { ResumeDialog, type OpenInOysterResult } from "./ResumeDialog";
 import { formatTs } from "./utils";
 import { formatRelative } from "../Home/utils";
 
-const PIP_CLASS: Record<SessionState, string> = {
+const PIP_CLASS: Record<DisplayState, string> = {
   active: "green",
   waiting: "amber",
   disconnected: "red",
   done: "dim",
+  dormant: "dim",
 };
 
-const STATE_LABEL: Record<SessionState, string> = {
+const STATE_LABEL: Record<DisplayState, string> = {
   active: "active",
   waiting: "waiting on you",
   disconnected: "disconnected",
   done: "done",
+  dormant: "dormant",
 };
 
 export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOyster }: {
@@ -52,8 +54,8 @@ export function Header({ session, onClose, onLaunchClaude, onConnect, onOpenInOy
         {session.spaceId && <span>·</span>}
         <span className="agent">{session.agent}</span>
         <span>·</span>
-        <span className={`pip ${PIP_CLASS[session.state]}`} />
-        <span>{STATE_LABEL[session.state]}</span>
+        <span className={`pip ${PIP_CLASS[session.displayState]}`} />
+        <span>{STATE_LABEL[session.displayState]}</span>
         <button type="button" className="close" onClick={onClose} aria-label="Close inspector">✕</button>
       </div>
       <div className="inspector-timestamps">
