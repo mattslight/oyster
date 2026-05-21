@@ -4,6 +4,10 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+
+- **Boot is fast again on large transcript databases.** Search-index health checks and one-time data migrations no longer block startup — they run after the UI is ready. Users with multi-million-row transcript histories who were seeing 30+ second hangs should boot in well under a second.
+
 ## [0.9.6] - 2026-05-21
 
 ### Fixed

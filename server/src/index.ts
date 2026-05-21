@@ -16,7 +16,7 @@ import {
 import Database from "better-sqlite3";
 import { acquireLock, AlreadyRunningError, releaseLock, setLockPort } from "./single-instance-lock.js";
 import { lookupProject } from "./lookup-project.js";
-import { initDb } from "./db.js";
+import { initDb, repairFtsIfUnhealthy, runDeferredMigrations } from "./db.js";
 import { SqliteArtifactStore } from "./artifact-store.js";
 import { SqliteSessionStore } from "./session-store.js";
 import { ClaudeCodeWatcher } from "./watchers/claude-code.js";
@@ -1114,6 +1114,19 @@ httpServer.listen(port, "127.0.0.1", () => {
   console.log(`  WebSocket: ws://127.0.0.1:${port}`);
   console.log(`  API:       http://127.0.0.1:${port}/api/artifacts`);
   try { writeFileSync(DEV_PORT_FILE, String(port)); } catch { /* best effort */ }
+
+  // Deferred DB work. Runs after the listening socket is up so any
+  // multi-second operation (one-shot upgrade backfills, FTS rebuilds) can
+  // never block boot. setImmediate yields to the event loop first — the UI
+  // can already connect by the time this fires. better-sqlite3 is
+  // synchronous; if any of these genuinely take time, they will block
+  // other DB reads for the duration, but only when actually needed.
+  setImmediate(() => {
+    try { runDeferredMigrations(db); }
+    catch (err) { console.warn("[db] deferred migrations failed (non-fatal):", err); }
+    try { repairFtsIfUnhealthy(db); }
+    catch (err) { console.warn("[fts] health check failed (non-fatal):", err); }
+  });
 
   // Spawn OpenCode AFTER server is listening so MCP connection succeeds
   spawnOpenCodeServe(OPENCODE_BIN, OPENCODE_PORT, USERLAND_DIR, cleanEnv);
