@@ -40,8 +40,10 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
     ? (livePresence.state === "attached" ? " sr--attached" : " sr--running")
     : "";
   const statusDotClass = livePresence
-    ? (livePresence.state === "attached" ? "rd--attached" : "rd--running")
-    : session.state;
+    ? (session.displayState === "waiting"
+        ? "rd--managed-waiting"
+        : (livePresence.state === "attached" ? "rd--attached" : "rd--running"))
+    : session.displayState;
 
   // Row click always opens the Session Inspector. The Connect chip (live
   // sessions) and Resume chip (non-live sessions) handle the terminal
@@ -74,7 +76,7 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
     >
-      <span className={`home-row-status ${statusDotClass}`} />
+      <span className={`home-row-status ${statusDotClass}`} title={session.displayReason || undefined} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
       <span className="home-row-title">
         <span className="home-row-title-inner" title={title}>
@@ -120,6 +122,7 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
         <span className="home-agent-pip" />
         {session.agent}
       </span>
+      <span className="home-row-reason" title={session.displayReason || undefined}>{session.displayReason}</span>
       <span className="home-row-time">{time}</span>
     </div>
   );

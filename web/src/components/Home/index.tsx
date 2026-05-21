@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import { ArrowUpRight, Folder, FolderPlus, Shield } from "lucide-react";
-import type { Session, SessionState } from "../../data/sessions-api";
+import type { Session, SessionState, DisplayState } from "../../data/sessions-api";
 import type { Artifact, Space } from "../../../../shared/types";
 import { useMemories } from "../../hooks/useMemories";
 import { useAuthSignedIn } from "../../hooks/useAuthSignedIn";
@@ -308,9 +308,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // when a folder is selected. Everything below this point (chips,
   // list) does narrow.
   const spaceCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
-    for (const s of scopedSessions) counts[s.state]++;
-    counts.done += counts.disconnected;
+    // `dormant` is a display-time projection of `done` (no first-class
+    // chip in v1) — fold it into `done` so the count chip totals
+    // "nothing to do" sessions regardless of how they got there.
+    const counts: Record<StateFilter, number> & { dormant: number } = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, dormant: 0, all: scopedSessions.length };
+    for (const s of scopedSessions) counts[s.displayState]++;
+    counts.done += counts.disconnected + counts.dormant;
     counts.disconnected = 0;
     counts.live = counts.active + counts.waiting;
     return counts;
@@ -329,9 +332,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [scopedSessions, selectedProjectId, selectedOrphanCwd, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
-    for (const s of folderScopedSessions) counts[s.state]++;
-    counts.done += counts.disconnected;
+    // Bucket by `displayState` (the wire's 5-state projection) so dormant
+    // rows count toward the same "done" chip as cleanly-exited and PTY-
+    // exited rows — they all read as grey on the surface.
+    const counts: Record<StateFilter, number> & { dormant: number } = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, dormant: 0, all: folderScopedSessions.length };
+    for (const s of folderScopedSessions) counts[s.displayState]++;
+    counts.done += counts.disconnected + counts.dormant;
     counts.disconnected = 0;
     counts.live = counts.active + counts.waiting;
     counts["live-terminals"] = folderScopedSessions.filter((s) => presence.byId[s.id] != null).length;
@@ -343,8 +349,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     if (stateFilter === "all") list = folderScopedSessions;
     else if (stateFilter === "live") list = folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
     else if (stateFilter === "live-terminals") list = folderScopedSessions.filter((s) => presence.byId[s.id] != null);
-    else if (stateFilter === "done") list = folderScopedSessions.filter((s) => s.state === "done" || s.state === "disconnected");
-    else list = folderScopedSessions.filter((s) => s.state === stateFilter);
+    // "done" chip folds in disconnected + dormant so the list matches the count.
+    else if (stateFilter === "done") list = folderScopedSessions.filter((s) => s.state === "done" || s.state === "disconnected" || s.displayState === "dormant");
+    else list = folderScopedSessions.filter((s) => s.displayState === stateFilter);
     // Pin live (open terminal) rows to the top; within each group preserve
     // descending last-activity order.
     return list.slice().sort((a, b) => {
@@ -356,24 +363,30 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [folderScopedSessions, stateFilter, presence.byId]);
 
   // Per-space session counts + a separate orphan tally (sessions with
-  // spaceId === null) + a grand total for the Home card.
+  // spaceId === null) + a grand total for the Home card. Buckets by
+  // `displayState` so dormant rows fold into `done` — matches the home
+  // chip semantics where `disconnected` means the 30min–8h band only.
   const { sessionCountsBySpace, orphanCounts, totalCounts } = useMemo(() => {
     const bySpace: Record<string, { total: number; running: number; active: number; waiting: number; disconnected: number; done: number }> = {};
     const orphans = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
     const total = { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
+    const bump = (c: { active: number; waiting: number; disconnected: number; done: number }, ds: DisplayState) => {
+      if (ds === "dormant") c.done++;
+      else c[ds]++;
+    };
     for (const s of sessions) {
       total.total++;
-      total[s.state]++;
+      bump(total, s.displayState);
       if (presence.byId[s.id]) total.running++;
       if (s.spaceId) {
         const c = bySpace[s.spaceId] ?? { total: 0, running: 0, active: 0, waiting: 0, disconnected: 0, done: 0 };
         c.total++;
-        c[s.state]++;
+        bump(c, s.displayState);
         if (presence.byId[s.id]) c.running++;
         bySpace[s.spaceId] = c;
       } else {
         orphans.total++;
-        orphans[s.state]++;
+        bump(orphans, s.displayState);
         if (presence.byId[s.id]) orphans.running++;
       }
     }
@@ -394,7 +407,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
       lastEventAt: number;
     }>();
     for (const s of sessions) {
-      if (!s.projectId || !s.spaceId || s.state === "done") continue;
+      // Skip done + dormant: both read as grey "no urgency" on the surface,
+      // so neither belongs in the Active-projects tile counts.
+      if (!s.projectId || !s.spaceId || s.displayState === "done" || s.displayState === "dormant") continue;
       let entry = map.get(s.projectId);
       if (!entry) {
         const cwdBasename = s.cwd ? s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? null : null;
@@ -407,9 +422,9 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
         };
         map.set(s.projectId, entry);
       }
-      if (s.state === "active") entry.counts.active++;
-      else if (s.state === "waiting") entry.counts.waiting++;
-      else if (s.state === "disconnected") entry.counts.disconnected++;
+      if (s.displayState === "active") entry.counts.active++;
+      else if (s.displayState === "waiting") entry.counts.waiting++;
+      else if (s.displayState === "disconnected") entry.counts.disconnected++;
       const t = parseTimestamp(s.lastEventAt);
       if (Number.isFinite(t) && t > entry.lastEventAt) entry.lastEventAt = t;
     }
@@ -424,12 +439,15 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
     for (const s of sessions) {
       if (!s.projectId) continue;
       const isRunning = presence.byId[s.id] != null;
-      if (s.state === "done" && !isRunning) continue;
+      // Drop both done and dormant unless a terminal is still attached —
+      // dormant (>8h) is a grey "no urgency" state and shouldn't surface
+      // as a project-tile signal.
+      if ((s.displayState === "done" || s.displayState === "dormant") && !isRunning) continue;
       const c = out[s.projectId] ?? { running: 0, active: 0, waiting: 0, disconnected: 0 };
       if (isRunning) c.running++;
-      if (s.state === "active") c.active++;
-      else if (s.state === "waiting") c.waiting++;
-      else if (s.state === "disconnected") c.disconnected++;
+      if (s.displayState === "active") c.active++;
+      else if (s.displayState === "waiting") c.waiting++;
+      else if (s.displayState === "disconnected") c.disconnected++;
       out[s.projectId] = c;
     }
     return out;
@@ -463,7 +481,10 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
         };
         map.set(key, entry);
       }
-      entry.counts[s.state]++;
+      // Bucket by displayState; fold dormant into `done` so a grey row
+      // doesn't bump the disconnected count.
+      if (s.displayState === "dormant") entry.counts.done++;
+      else entry.counts[s.displayState]++;
       const t = parseTimestamp(s.lastEventAt);
       if (Number.isFinite(t) && t > entry.lastEventAt) entry.lastEventAt = t;
     }
@@ -1136,6 +1157,7 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
                       <span role="columnheader">Project</span>
                       <span role="columnheader">Title</span>
                       <span role="columnheader">Agent</span>
+                      <span role="columnheader">Reason</span>
                       <span role="columnheader">Last active</span>
                     </div>
                     {visibleSessions.slice(0, sessionsLimit).map((session) => (

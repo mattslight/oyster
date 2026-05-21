@@ -1,6 +1,7 @@
 export type {
   Session,
   SessionState,
+  DisplayState,
   SessionAgent,
   SessionEvent,
   SessionEventRole,

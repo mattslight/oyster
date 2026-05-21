@@ -151,7 +151,7 @@ describe("ClaudePtyManager DB link", () => {
     expect(row.terminal_attached_clients).toBe(0);
   });
 
-  it("calling kill() marks the linked session disconnected", () => {
+  it("calling kill() marks the linked session done on a clean exit", () => {
     // Give s1 a real event so it is not a ghost and won't be deleted on exit.
     env.store.insertEvent({ session_id: "s1", role: "user", text: "hello" });
     env.mgr._seedEntryForTest({ terminalId: "t3", linkedSessionId: null });
@@ -162,8 +162,10 @@ describe("ClaudePtyManager DB link", () => {
 
     env.mgr.kill("t3");
 
-    // After kill: the session row state should be "disconnected".
-    expect(env.store.getById("s1")!.state).toBe("disconnected");
+    // The fake proc fires {exitCode: 0, signal: null} → clean process exit
+    // → transient state should be "done". The next heartbeat sweep will
+    // re-derive from the recorded facts.
+    expect(env.store.getById("s1")!.state).toBe("done");
   });
 
   it("calling kill() deletes a ghost session (no events, no JSONL)", () => {

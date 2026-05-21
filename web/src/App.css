@@ -2768,6 +2768,13 @@ body {
    green and waiting amber pips. */
 .home-row-status.rd--attached,
 .home-row-status.rd--running { background: #a78bfa; box-shadow: 0 0 8px rgba(167,139,250,0.85); }
+/* Managed + waiting: amber fill (waiting), purple ring (managed). The
+   ring is rendered with box-shadow inset-like offset so the dot keeps
+   its 8px footprint without growing into neighbouring grid cells. */
+.home-row-status.rd--managed-waiting {
+  background: var(--home-amber);
+  box-shadow: 0 0 0 2px #a78bfa, 0 0 8px rgba(167,139,250,0.55);
+}
 /* Row action chips (Connect on live rows; Resume on dormant rows).
    Hidden by default; the parent `.home-row:hover` / `:focus-within`
    reveals them so the row stays visually quiet at rest. */

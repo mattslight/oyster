@@ -547,6 +547,9 @@
 .home-status.done::before {
   background: rgba(255, 255, 255, 0.18);
 }
+.home-status.dormant::before {
+  background: rgba(255, 255, 255, 0.18); /* same as .done */
+}
 @keyframes home-breathe {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50%       { opacity: 1;    transform: scale(1.1); }
@@ -632,7 +635,7 @@
 
 .home-row {
   display: grid;
-  grid-template-columns: 18px 130px 1fr 130px 130px;
+  grid-template-columns: 18px 130px 1fr 130px 150px 130px;
   gap: 14px;
   align-items: center;
   padding: 12px 18px;
@@ -651,7 +654,8 @@
 .home-row-status.active { background: var(--home-green); box-shadow: 0 0 6px var(--home-green); animation: home-breathe 2.4s ease-in-out infinite; }
 .home-row-status.waiting { background: var(--home-amber); box-shadow: 0 0 6px var(--home-amber); }
 .home-row-status.disconnected { background: var(--home-red); box-shadow: 0 0 6px var(--home-red); }
-.home-row-status.done { background: rgba(255, 255, 255, 0.18); }
+.home-row-status.done,
+.home-row-status.dormant { background: rgba(255, 255, 255, 0.18); }
 
 .home-row-space {
   font-family: var(--font-mono);
@@ -697,6 +701,15 @@
 .home-row-agent.codex .home-agent-pip { background: #6ee7a8; }
 .home-row-agent.oc    .home-agent-pip { background: #b3a8ff; }
 
+.home-row-reason {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .home-row-time {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -705,7 +718,7 @@
   white-space: nowrap;
 }
 
-/* Sessions-table column header — same 5-col grid as .home-row so labels
+/* Sessions-table column header — same 6-col grid as .home-row so labels
    sit above the data cells, but with quieter type and no hover/cursor
    so it doesn't read as clickable. */
 .home-row--header {
@@ -796,7 +809,7 @@
     grid-template-areas:
       "s sp tm"
       "s tt tt"
-      "s ag ag";
+      "s ag rs";
     gap: 4px 12px;
     padding: 12px 14px;
   }
@@ -804,6 +817,7 @@
   .home-row-space  { grid-area: sp; }
   .home-row-title  { grid-area: tt; }
   .home-row-agent  { grid-area: ag; }
+  .home-row-reason { grid-area: rs; text-align: right; }
   .home-row-time   { grid-area: tm; text-align: right; }
 }
 

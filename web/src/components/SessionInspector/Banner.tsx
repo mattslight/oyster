@@ -3,7 +3,7 @@ import type { Session } from "../../data/sessions-api";
 import { formatRel } from "./utils";
 
 export function Banner({ session }: { session: Session }) {
-  if (session.state === "disconnected") {
+  if (session.displayState === "disconnected") {
     return (
       <div className="inspector-banner disconnected">
         <div>

@@ -9,6 +9,7 @@
 // can still replay the final frames before we drop scrollback.
 
 import { randomUUID } from "node:crypto";
+import { constants as osConstants } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -16,6 +17,26 @@ import type Database from "better-sqlite3";
 import type { SessionStore } from "./session-store.js";
 import type { UiCommand, TerminalPresenceEventPayload } from "../../shared/types.js";
 import { deleteIfGhostOnExit } from "./ghost-session-cleanup.js";
+import { deriveState } from "./session-state.js";
+
+// node-pty's `onExit` reports `signal` as a number (POSIX signal int) per its
+// type declaration. We translate to the conventional `SIGxxx` name at the
+// capture boundary so `exit_signal` is human-readable in the DB and any UI
+// tooltips downstream. Tests may pass names directly — passthrough is
+// intentional so test fixtures don't need to remember signal numbers.
+const SIGNAL_NUMBER_TO_NAME: ReadonlyMap<number, string> = (() => {
+  const m = new Map<number, string>();
+  for (const [name, num] of Object.entries(osConstants.signals)) {
+    if (typeof num === "number" && !m.has(num)) m.set(num, name);
+  }
+  return m;
+})();
+
+export function signalName(signal: number | string | null | undefined): string | null {
+  if (signal == null) return null;
+  if (typeof signal === "string") return signal;
+  return SIGNAL_NUMBER_TO_NAME.get(signal) ?? `signal-${signal}`;
+}
 
 export interface ClaudePtyManagerDeps {
   sessionStore: SessionStore;
@@ -190,7 +211,9 @@ export class ClaudePtyManager {
       }
     });
 
-    proc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
+    proc.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
+      this._handleExit(entry, { exitCode, signal: signalName(signal) });
+    });
 
     return { terminalId, startedAt };
   }
@@ -254,9 +277,23 @@ export class ClaudePtyManager {
     return true;
   }
 
-  kill(terminalId: string): boolean {
+  /**
+   * Kill the PTY child. `reason` distinguishes a user-driven stop (UI
+   * red-square click) from system-driven kills (e.g. disposeAll on
+   * server shutdown). When `'user_stop'`, the linked session's
+   * `user_stop_requested_at` is stamped *before* the signal is sent so
+   * the eventual signal-driven exit is classified as a clean
+   * shutdown, not a crash. The flag must precede the signal — once
+   * `proc.kill()` runs, the exit handler can race ahead and call
+   * `recordExit`, and by then `deriveState` must already see the
+   * intent.
+   */
+  kill(terminalId: string, opts: { reason?: "user_stop" | "system" } = {}): boolean {
     const entry = this.terminals.get(terminalId);
     if (!entry) return false;
+    if (opts.reason === "user_stop" && entry.linkedSessionId) {
+      this.sessionStore.markUserStopRequested(entry.linkedSessionId);
+    }
     try { entry.proc.kill(); } catch { /* best-effort */ }
     // proc.onExit fans out closeNote + schedules eviction. Drop the entry
     // immediately if the proc had already exited (defensive).
@@ -325,9 +362,9 @@ export class ClaudePtyManager {
     }
   }
 
-  private _handleExit(entry: ClaudePtyEntry, exitCode: number): void {
+  private _handleExit(entry: ClaudePtyEntry, exit: { exitCode: number; signal: string | null }): void {
     entry.exitedAt = Date.now();
-    const closeNote = `\r\n\x1b[90m[session ended (exit ${exitCode})]\x1b[0m\r\n`;
+    const closeNote = `\r\n\x1b[90m[session ended (exit ${exit.exitCode})]\x1b[0m\r\n`;
     entry.scrollback += closeNote;
     for (const ws of entry.clients) {
       if (ws.readyState === WebSocket.OPEN) ws.send(closeNote);
@@ -340,15 +377,51 @@ export class ClaudePtyManager {
       // If the session never produced content (no events AND no JSONL
       // file), the stub row inserted at spawn time is a ghost — drop it
       // entirely rather than leaving an un-resumable "Untitled"
-      // entry in the list. Otherwise, mark disconnected so the UI flips
-      // immediately (see commit 63c64e5).
+      // entry in the list. Otherwise, record the exit facts (exit_code,
+      // exit_signal, clean_process_exit) and compute the final state via
+      // the shared deriveState so this branch stays in lockstep with the
+      // heartbeat sweep. The state written here is the same the next
+      // heartbeat would compute — no transient wrong value, no SSE
+      // flicker.
       const deleted = deleteIfGhostOnExit(this.sessionStore, this.db, exitedSessionId, entry.cwd);
       if (!deleted) {
-        this.sessionStore.updateSessionState(
-          exitedSessionId,
-          "disconnected",
-          new Date().toISOString(),
-        );
+        const cleanProcessExit = exit.exitCode === 0 && !exit.signal;
+        this.sessionStore.recordExit(exitedSessionId, {
+          exitCode: exit.exitCode,
+          exitSignal: exit.signal ?? null,
+          cleanProcessExit,
+        });
+        // Compute the new state via the shared deriveState so this branch
+        // stays in sync with the heartbeat sweep. The previous ad-hoc
+        // `cleanProcessExit ? 'done' : 'disconnected'` logic missed
+        // `user_stop_requested_at`, so a UI red-square stop briefly wrote
+        // 'disconnected' (red dot) before the next heartbeat tick re-derived
+        // it to 'done' (grey dot). Pull the freshly-written facts off the
+        // row so we see user_stop_requested_at + the just-recorded exit
+        // columns, and let deriveState pick the final state in one shot.
+        const refreshed = this.sessionStore.getById(exitedSessionId);
+        if (refreshed) {
+          const finalState = deriveState({
+            // PTY just exited and clearTerminal already ran above, so the
+            // session is no longer managed by a live terminal.
+            terminalId: null,
+            // Freshly exited; exit-evidence branches dominate so age
+            // doesn't actually factor in here.
+            ageMs: 0,
+            probeSignal: "unknown",
+            exitCode: refreshed.exit_code ?? null,
+            exitSignal: refreshed.exit_signal ?? null,
+            explicitExitSeen: !!refreshed.explicit_exit_seen,
+            cleanProcessExit: !!refreshed.clean_process_exit,
+            userStopRequested: !!refreshed.user_stop_requested_at,
+            lastAssistantStopReason: refreshed.last_assistant_stop_reason ?? null,
+          });
+          this.sessionStore.updateSessionState(
+            exitedSessionId,
+            finalState,
+            new Date().toISOString(),
+          );
+        }
       }
       entry.linkedSessionId = null;
     }
@@ -371,15 +444,20 @@ export class ClaudePtyManager {
 
   /** Test-only: inject a fake entry with a stub proc whose onExit fires
    *  immediately on kill(). Production code never calls this. */
-  _seedEntryForTest(input: { terminalId: string; linkedSessionId: string | null }): void {
-    let exitCb: (e: { exitCode: number }) => void = () => {};
+  _seedEntryForTest(input: {
+    terminalId: string;
+    linkedSessionId: string | null;
+    killExit?: { exitCode: number; signal?: number };
+  }): void {
+    let exitCb: (e: { exitCode: number; signal?: number }) => void = () => {};
+    const killExit = input.killExit ?? { exitCode: 0 };
     const fakeProc: any = {
       pid: -1,
       onData: () => {},
       onExit: (cb: typeof exitCb) => { exitCb = cb; },
       write: () => {},
       resize: () => {},
-      kill: () => { exitCb({ exitCode: 0 }); },
+      kill: () => { exitCb(killExit); },
     };
     const entry: ClaudePtyEntry = {
       terminalId: input.terminalId,
@@ -396,7 +474,9 @@ export class ClaudePtyManager {
       evictTimer: null,
     };
     // Wire the onExit listener the same way spawn() does.
-    fakeProc.onExit(({ exitCode }: { exitCode: number }) => this._handleExit(entry, exitCode));
+    fakeProc.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
+      this._handleExit(entry, { exitCode, signal: signalName(signal) });
+    });
     this.terminals.set(input.terminalId, entry);
   }
 }

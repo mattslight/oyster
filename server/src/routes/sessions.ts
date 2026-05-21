@@ -16,7 +16,9 @@ import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
 import { SessionService, SessionNotFoundError, ProjectNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
-import type { UiCommand } from "../../../shared/types.js";
+import type { DisplayState, SessionState, UiCommand } from "../../../shared/types.js";
+import { computeDisplayState } from "../session-display-state.js";
+import { deriveReason } from "../session-state.js";
 import {
   encodeCwd,
   LocalDivergedError,
@@ -35,6 +37,16 @@ export interface SessionRouteDeps {
   currentUserId: () => string | null;
   sessionService: SessionService;
   broadcastUiEvent: (event: UiCommand) => void;
+}
+
+/** Compute the age-since-last-event in ms, guarding against an unparseable
+ *  `last_event_at` (Date.parse returns NaN → arithmetic propagates NaN →
+ *  every `ageMs < THRESHOLD` comparison in deriveReason is false, producing
+ *  silently-wrong output). When the timestamp can't be parsed we fall back
+ *  to 0 so the row reads as "just active" rather than misclassified. */
+function ageMsFromLastEvent(lastEventAt: string, now: number = Date.now()): number {
+  const ts = Date.parse(lastEventAt);
+  return Number.isFinite(ts) ? Math.max(0, now - ts) : 0;
 }
 
 // ── Resume helpers (#322 PR 2) ──────────────────────────────────────────
@@ -123,7 +135,16 @@ export interface MergedSessionPayload {
   cwd: string | null;
   agent: string;
   title: string | null;
-  state: string;
+  state: SessionState;
+  /** Derived wire-format state. Same as `state` except `disconnected`
+   *  rows idle for 8h+ are surfaced as `'dormant'`. Computed server-side
+   *  via `computeDisplayState`; never persisted. */
+  displayState: DisplayState;
+  /** Short human-readable explanation of the row's current state (e.g.
+   *  "stopped by user", "awaiting input", "killed by SIGKILL"). Pure
+   *  derivation from the same evidence columns deriveState reads; not
+   *  persisted. */
+  displayReason: string;
   startedAt: string;
   endedAt: string | null;
   model: string | null;
@@ -152,6 +173,7 @@ export interface MergedSessionPayload {
 export function mapSessionRow(
   row: SessionRow,
 ): MergedSessionPayload {
+  const ageMs = ageMsFromLastEvent(row.last_event_at);
   return {
     id: row.id,
     spaceId: row.space_id,
@@ -160,6 +182,23 @@ export function mapSessionRow(
     agent: row.agent,
     title: row.title,
     state: row.state,
+    displayState: computeDisplayState(row.state, row.last_event_at),
+    displayReason: deriveReason({
+      terminalId: row.terminal_id ?? null,
+      ageMs,
+      // Wire mapper runs out-of-band of the live process probe (which only
+      // the heartbeat sweep has access to). With probeSignal: "unknown",
+      // deriveReason suppresses the idle copy entirely — the persisted
+      // state already encodes whatever the heartbeat last saw, and the
+      // dot colour + LAST ACTIVE age carry the same information.
+      probeSignal: "unknown",
+      exitCode: row.exit_code ?? null,
+      exitSignal: row.exit_signal ?? null,
+      explicitExitSeen: !!row.explicit_exit_seen,
+      cleanProcessExit: !!row.clean_process_exit,
+      userStopRequested: !!row.user_stop_requested_at,
+      lastAssistantStopReason: row.last_assistant_stop_reason ?? null,
+    }),
     startedAt: row.started_at,
     endedAt: row.ended_at,
     model: row.model,
@@ -218,7 +257,7 @@ export async function tryHandleSessionRoute(
       type RemoteRow = {
         session_id: string; device_id: string | null; device_label: string | null;
         agent: string; title: string | null;
-        state: string; cwd: string | null; model: string | null; started_at: string;
+        state: SessionState; cwd: string | null; model: string | null; started_at: string;
         ended_at: string | null; last_event_at: string; has_bytes: number;
         total_bytes: number | null;
         active_device_id: string | null; jsonl_local_path: string | null;
@@ -261,6 +300,20 @@ export async function tryHandleSessionRoute(
           agent: r.agent,
           title: r.title,
           state: r.state,
+          displayState: computeDisplayState(r.state, r.last_event_at),
+          // Remote rows don't carry exit/stop_reason facts — pass benign
+          // defaults so deriveReason produces a generic time/probe copy.
+          displayReason: deriveReason({
+            terminalId: null,
+            ageMs: ageMsFromLastEvent(r.last_event_at),
+            probeSignal: "unknown",
+            exitCode: null,
+            exitSignal: null,
+            explicitExitSeen: false,
+            cleanProcessExit: false,
+            userStopRequested: false,
+            lastAssistantStopReason: null,
+          }),
           startedAt: r.started_at,
           endedAt: r.ended_at,
           model: r.model,
@@ -359,7 +412,7 @@ export async function tryHandleSessionRoute(
       if (ownerId) {
         type RemoteRow = {
           device_id: string | null; device_label: string | null;
-          agent: string; title: string | null; state: string;
+          agent: string; title: string | null; state: SessionState;
           cwd: string | null; model: string | null; started_at: string;
           ended_at: string | null; last_event_at: string;
           has_bytes: number; active_device_id: string | null;
@@ -383,6 +436,18 @@ export async function tryHandleSessionRoute(
             agent: remoteRow.agent,
             title: remoteRow.title,
             state: remoteRow.state,
+            displayState: computeDisplayState(remoteRow.state, remoteRow.last_event_at),
+            displayReason: deriveReason({
+              terminalId: null,
+              ageMs: ageMsFromLastEvent(remoteRow.last_event_at),
+              probeSignal: "unknown",
+              exitCode: null,
+              exitSignal: null,
+              explicitExitSeen: false,
+              cleanProcessExit: false,
+              userStopRequested: false,
+              lastAssistantStopReason: null,
+            }),
             startedAt: remoteRow.started_at,
             endedAt: remoteRow.ended_at,
             model: remoteRow.model,

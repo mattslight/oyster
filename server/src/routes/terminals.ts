@@ -312,7 +312,7 @@ export async function tryHandleTerminalRoute(
   if (deleteMatch && req.method === "DELETE") {
     if (rejectIfNonLocalOrigin()) return true;
     const id = deleteMatch[1]!;
-    deps.claudePtyManager.kill(id);
+    deps.claudePtyManager.kill(id, { reason: "user_stop" });
     res.writeHead(204);
     res.end();
     return true;

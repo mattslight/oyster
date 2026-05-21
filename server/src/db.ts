@@ -269,7 +269,25 @@ export function initDb(userlandDir: string): Database.Database {
       -- Without this, sessions that finished before the watcher started
       -- (or before a restart) seeded the tracker at EOF and silently lost
       -- their transcript.
-      last_offset   INTEGER NOT NULL DEFAULT 0
+      last_offset   INTEGER NOT NULL DEFAULT 0,
+      -- Status-evidence facts. The watcher and PTY manager write these as
+      -- they observe the session; the API layer derives a display state
+      -- (incl. 'dormant') from them at read time. The stored state enum
+      -- intentionally stays at the original 4 values -- 'dormant' is purely
+      -- a display concept, never persisted here.
+      exit_code                  INTEGER,
+      exit_signal                TEXT,
+      explicit_exit_seen         INTEGER NOT NULL DEFAULT 0,
+      clean_process_exit         INTEGER NOT NULL DEFAULT 0,
+      last_assistant_stop_reason TEXT,
+      -- SQLite datetime ('YYYY-MM-DD HH:MM:SS', UTC) set when the user
+      -- clicks the UI stop button, *before* the kill signal goes to
+      -- the PTY. Distinguishes "user intentionally stopped this
+      -- session" from "process died unexpectedly with a signal" —
+      -- both leave the same exit_signal evidence behind, but only
+      -- the former should resolve to 'done'. Stored as a timestamp
+      -- for audit-trail value vs. an opaque boolean.
+      user_stop_requested_at     TEXT
     );
     CREATE INDEX IF NOT EXISTS sessions_space_id ON sessions(space_id);
     CREATE INDEX IF NOT EXISTS sessions_state_last_event
@@ -426,6 +444,20 @@ export function initDb(userlandDir: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN assignment_mode TEXT NOT NULL DEFAULT 'auto' CHECK (assignment_mode IN ('auto','manual'))");
   } catch { /* already exists */ }
   db.exec("CREATE INDEX IF NOT EXISTS sessions_auto_cwd ON sessions(cwd) WHERE assignment_mode = 'auto'");
+
+  // Status-evidence facts written by the watcher and PTY manager. Display
+  // state (incl. 'dormant') is derived from these at the API layer; the
+  // stored `state` enum stays at its original 4 values -- 'dormant' is
+  // purely a display concept, never persisted here. Each ALTER is wrapped
+  // in try/catch so it's idempotent on existing installs. Positioned
+  // *after* the state-rename rebuild so the rebuild (which recreates the
+  // sessions table from scratch on legacy installs) can't drop them.
+  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_code INTEGER"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN exit_signal TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN explicit_exit_seen INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN clean_process_exit INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN last_assistant_stop_reason TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN user_stop_requested_at TEXT"); } catch { /* already exists */ }
 
   // ─────────────────────────────────────────────────────────────────────────
   // projects + project_paths — the simplified identity model that supersedes
