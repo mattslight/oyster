@@ -16,7 +16,8 @@ import type { ArtifactService } from "../artifact-service.js";
 import type { MemoryProvider } from "../memory-store.js";
 import type { RouteCtx } from "../http-utils.js";
 import { SessionService, SessionNotFoundError, ProjectNotFoundError, InvalidMoveSessionInputError } from "../session-service.js";
-import type { UiCommand } from "../../../shared/types.js";
+import type { DisplayState, SessionState, UiCommand } from "../../../shared/types.js";
+import { computeDisplayState } from "../session-display-state.js";
 import {
   encodeCwd,
   LocalDivergedError,
@@ -124,6 +125,10 @@ export interface MergedSessionPayload {
   agent: string;
   title: string | null;
   state: string;
+  /** Derived wire-format state. Same as `state` except `disconnected`
+   *  rows idle for 8h+ are surfaced as `'dormant'`. Computed server-side
+   *  via `computeDisplayState`; never persisted. */
+  displayState: DisplayState;
   startedAt: string;
   endedAt: string | null;
   model: string | null;
@@ -160,6 +165,7 @@ export function mapSessionRow(
     agent: row.agent,
     title: row.title,
     state: row.state,
+    displayState: computeDisplayState(row.state, row.last_event_at),
     startedAt: row.started_at,
     endedAt: row.ended_at,
     model: row.model,
@@ -261,6 +267,7 @@ export async function tryHandleSessionRoute(
           agent: r.agent,
           title: r.title,
           state: r.state,
+          displayState: computeDisplayState(r.state as SessionState, r.last_event_at),
           startedAt: r.started_at,
           endedAt: r.ended_at,
           model: r.model,
@@ -383,6 +390,7 @@ export async function tryHandleSessionRoute(
             agent: remoteRow.agent,
             title: remoteRow.title,
             state: remoteRow.state,
+            displayState: computeDisplayState(remoteRow.state as SessionState, remoteRow.last_event_at),
             startedAt: remoteRow.started_at,
             endedAt: remoteRow.ended_at,
             model: remoteRow.model,

@@ -80,6 +80,11 @@ export interface ScanResult {
 }
 
 export type SessionState = "active" | "waiting" | "disconnected" | "done";
+/** Wire-format state used by the UI. Same as `SessionState` plus the
+ *  derived `'dormant'` value emitted when a `disconnected` row has been
+ *  idle for 8h+. Never persisted — computed server-side from `state +
+ *  last_event_at` in `computeDisplayState`. */
+export type DisplayState = SessionState | "dormant";
 export type SessionAgent = "claude-code" | "opencode" | "codex";
 
 /** Agent session captured by the watchers (#251). Read-only on the wire — UI mutations come later. */
@@ -98,6 +103,10 @@ export interface Session {
   agent: SessionAgent;
   title: string | null;
   state: SessionState;
+  /** Derived from `state + lastEventAt` server-side. Identical to `state`
+   *  except a `disconnected` row idle for 8h+ becomes `'dormant'` so the
+   *  UI can dim its urgency. Never persisted. */
+  displayState: DisplayState;
   startedAt: string;
   endedAt: string | null;
   model: string | null;
