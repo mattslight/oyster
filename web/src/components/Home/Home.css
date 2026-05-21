@@ -718,7 +718,7 @@
   white-space: nowrap;
 }
 
-/* Sessions-table column header — same 5-col grid as .home-row so labels
+/* Sessions-table column header — same 6-col grid as .home-row so labels
    sit above the data cells, but with quieter type and no hover/cursor
    so it doesn't read as clickable. */
 .home-row--header {

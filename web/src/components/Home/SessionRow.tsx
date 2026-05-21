@@ -76,7 +76,7 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
     >
-      <span className={`home-row-status ${statusDotClass}`} title={session.displayReason} />
+      <span className={`home-row-status ${statusDotClass}`} title={session.displayReason || undefined} />
       <span className="home-row-space" title={session.cwd ?? undefined}>{projectLabel}</span>
       <span className="home-row-title">
         <span className="home-row-title-inner" title={title}>
@@ -122,7 +122,7 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
         <span className="home-agent-pip" />
         {session.agent}
       </span>
-      <span className="home-row-reason" title={session.displayReason}>{session.displayReason}</span>
+      <span className="home-row-reason" title={session.displayReason || undefined}>{session.displayReason}</span>
       <span className="home-row-time">{time}</span>
     </div>
   );

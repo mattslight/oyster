@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initDb } from "../src/db.js";
@@ -23,8 +23,22 @@ import { initDb } from "../src/db.js";
 // *values* round-trip. The rebuild only ever fires on installs old
 // enough that those columns didn't exist at seed time anyway.
 describe("sessions migration — rebuild path", () => {
+  let dir: string;
+  let db: Database.Database | null = null;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-test-"));
+  });
+
+  afterEach(() => {
+    if (db) {
+      db.close();
+      db = null;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("rebuild remaps state, preserves the row, and ends with new + existing ALTER columns present", () => {
-    const dir = mkdtempSync(join(tmpdir(), "oyster-test-"));
     const dbPath = join(dir, "oyster.db");
 
     // Seed a sessions table in the pre-rename shape: state CHECK uses
@@ -55,7 +69,7 @@ describe("sessions migration — rebuild path", () => {
 
     // Run real init. needsMigrate should fire because the seeded CHECK
     // contains 'running'.
-    const db = initDb(dir);
+    db = initDb(dir);
     const row = db
       .prepare("SELECT * FROM sessions WHERE id = 's1'")
       .get() as Record<string, unknown>;

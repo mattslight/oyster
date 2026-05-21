@@ -39,6 +39,16 @@ export interface SessionRouteDeps {
   broadcastUiEvent: (event: UiCommand) => void;
 }
 
+/** Compute the age-since-last-event in ms, guarding against an unparseable
+ *  `last_event_at` (Date.parse returns NaN → arithmetic propagates NaN →
+ *  every `ageMs < THRESHOLD` comparison in deriveReason is false, producing
+ *  silently-wrong output). When the timestamp can't be parsed we fall back
+ *  to 0 so the row reads as "just active" rather than misclassified. */
+function ageMsFromLastEvent(lastEventAt: string, now: number = Date.now()): number {
+  const ts = Date.parse(lastEventAt);
+  return Number.isFinite(ts) ? Math.max(0, now - ts) : 0;
+}
+
 // ── Resume helpers (#322 PR 2) ──────────────────────────────────────────
 
 interface ValidationOutcome {
@@ -163,7 +173,7 @@ export interface MergedSessionPayload {
 export function mapSessionRow(
   row: SessionRow,
 ): MergedSessionPayload {
-  const ageMs = Math.max(0, Date.now() - Date.parse(row.last_event_at));
+  const ageMs = ageMsFromLastEvent(row.last_event_at);
   return {
     id: row.id,
     spaceId: row.space_id,
@@ -293,7 +303,7 @@ export async function tryHandleSessionRoute(
           // defaults so deriveReason produces a generic time/probe copy.
           displayReason: deriveReason({
             terminalId: null,
-            ageMs: Math.max(0, Date.now() - Date.parse(r.last_event_at)),
+            ageMs: ageMsFromLastEvent(r.last_event_at),
             probeSignal: "unknown",
             exitCode: null,
             exitSignal: null,
@@ -427,7 +437,7 @@ export async function tryHandleSessionRoute(
             displayState: computeDisplayState(remoteRow.state, remoteRow.last_event_at),
             displayReason: deriveReason({
               terminalId: null,
-              ageMs: Math.max(0, Date.now() - Date.parse(remoteRow.last_event_at)),
+              ageMs: ageMsFromLastEvent(remoteRow.last_event_at),
               probeSignal: "unknown",
               exitCode: null,
               exitSignal: null,

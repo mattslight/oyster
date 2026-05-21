@@ -1,13 +1,25 @@
-import { describe, it, expect } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type Database from "better-sqlite3";
 import { initDb } from "../src/db.js";
 
 describe("sessions table — status-evidence columns", () => {
+  let dir: string;
+  let db: Database.Database;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "oyster-test-"));
+    db = initDb(dir);
+  });
+
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("has exit_code, exit_signal, explicit_exit_seen, clean_process_exit, last_assistant_stop_reason", () => {
-    const dir = mkdtempSync(join(tmpdir(), "oyster-test-"));
-    const db = initDb(dir);
     const cols = db.prepare("PRAGMA table_info(sessions)").all() as Array<{
       name: string; notnull: number; dflt_value: unknown;
     }>;
@@ -24,8 +36,6 @@ describe("sessions table — status-evidence columns", () => {
   });
 
   it("still rejects 'dormant' as a stored state value (dormant is display-only)", () => {
-    const dir = mkdtempSync(join(tmpdir(), "oyster-test-"));
-    const db = initDb(dir);
     expect(() =>
       db.prepare(`
         INSERT INTO sessions (id, agent, title, state)

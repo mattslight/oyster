@@ -59,10 +59,11 @@ export interface SessionRow {
   /** Last `stop_reason` reported by the assistant (e.g. "end_turn",
    *  "tool_use"). NULL until at least one assistant turn has stopped. */
   last_assistant_stop_reason: string | null;
-  /** ISO timestamp the user clicked the UI stop button (red square).
-   *  Set BEFORE the kill signal goes to the PTY so the eventual
-   *  signal-driven exit isn't misclassified as a crash. NULL when the
-   *  user never explicitly stopped the session. */
+  /** SQLite datetime ('YYYY-MM-DD HH:MM:SS', UTC) set when the user
+   *  clicked the UI stop button (red square). Set BEFORE the kill
+   *  signal goes to the PTY so the eventual signal-driven exit isn't
+   *  misclassified as a crash. NULL when the user never explicitly
+   *  stopped the session. */
   user_stop_requested_at: string | null;
 }
 

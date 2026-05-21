@@ -455,8 +455,10 @@ export class ClaudeCodeWatcher {
       if (!ev) continue;
 
       // Evidence capture (Task 4 of session-status-palette). Same rules as
-      // consumeOnce: detect `/exit` as a raw user message (the explicit
-      // invocation, not its `<command-name>/exit</command-name>` wrapper),
+      // consumeOnce: detect `/exit` via the `<command-name>/exit</command-name>`
+      // wrapper that claude-code templates into the user content BEFORE
+      // writing to JSONL (verified empirically against ~/.claude/projects/:
+      // 0 raw `/exit` user events vs 73 wrapped ones in the local corpus),
       // and persist every assistant `stop_reason` we see.
       captureEvidence(ev, sessionId, this.deps.sessionStore);
 
