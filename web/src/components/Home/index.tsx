@@ -308,9 +308,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   // when a folder is selected. Everything below this point (chips,
   // list) does narrow.
   const spaceCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: scopedSessions.length };
-    for (const s of scopedSessions) counts[s.state]++;
-    counts.done += counts.disconnected;
+    // `dormant` is a display-time projection of `done` (no first-class
+    // chip in v1) — fold it into `done` so the count chip totals
+    // "nothing to do" sessions regardless of how they got there.
+    const counts: Record<StateFilter, number> & { dormant: number } = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, dormant: 0, all: scopedSessions.length };
+    for (const s of scopedSessions) counts[s.displayState]++;
+    counts.done += counts.disconnected + counts.dormant;
     counts.disconnected = 0;
     counts.live = counts.active + counts.waiting;
     return counts;
@@ -329,9 +332,12 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   }, [scopedSessions, selectedProjectId, selectedOrphanCwd, showElsewhere, isHomeView]);
 
   const stateCounts = useMemo(() => {
-    const counts: Record<StateFilter, number> = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, all: folderScopedSessions.length };
-    for (const s of folderScopedSessions) counts[s.state]++;
-    counts.done += counts.disconnected;
+    // Bucket by `displayState` (the wire's 5-state projection) so dormant
+    // rows count toward the same "done" chip as cleanly-exited and PTY-
+    // exited rows — they all read as grey on the surface.
+    const counts: Record<StateFilter, number> & { dormant: number } = { live: 0, "live-terminals": 0, active: 0, waiting: 0, disconnected: 0, done: 0, dormant: 0, all: folderScopedSessions.length };
+    for (const s of folderScopedSessions) counts[s.displayState]++;
+    counts.done += counts.disconnected + counts.dormant;
     counts.disconnected = 0;
     counts.live = counts.active + counts.waiting;
     counts["live-terminals"] = folderScopedSessions.filter((s) => presence.byId[s.id] != null).length;
@@ -341,10 +347,13 @@ export function Home({ activeSpace, spaces, desktopProps, isHero, onSpaceChange,
   const visibleSessions = useMemo(() => {
     let list: typeof folderScopedSessions;
     if (stateFilter === "all") list = folderScopedSessions;
-    else if (stateFilter === "live") list = folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state));
+    // "live" excludes dormant (a dormant row is non-live by definition,
+    // even though its DB state is still active/waiting).
+    else if (stateFilter === "live") list = folderScopedSessions.filter((s) => LIVE_STATES.includes(s.state) && s.displayState !== "dormant");
     else if (stateFilter === "live-terminals") list = folderScopedSessions.filter((s) => presence.byId[s.id] != null);
-    else if (stateFilter === "done") list = folderScopedSessions.filter((s) => s.state === "done" || s.state === "disconnected");
-    else list = folderScopedSessions.filter((s) => s.state === stateFilter);
+    // "done" chip folds in disconnected + dormant so the list matches the count.
+    else if (stateFilter === "done") list = folderScopedSessions.filter((s) => s.state === "done" || s.state === "disconnected" || s.displayState === "dormant");
+    else list = folderScopedSessions.filter((s) => s.displayState === stateFilter);
     // Pin live (open terminal) rows to the top; within each group preserve
     // descending last-activity order.
     return list.slice().sort((a, b) => {

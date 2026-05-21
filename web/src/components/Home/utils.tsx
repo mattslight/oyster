@@ -1,7 +1,7 @@
 // Helpers shared across Home/* sub-components. Extracted from
 // Home/index.tsx — pure functions only, no React state.
-import type { Session, SessionState, SessionAgent } from "../../data/sessions-api";
-import type { Space } from "../../../../shared/types";
+import type { Session, SessionAgent } from "../../data/sessions-api";
+import type { DisplayState, Space } from "../../../../shared/types";
 import { parseTimestamp } from "../../utils/parseTimestamp";
 
 export const AGENT_LETTERS: Record<SessionAgent, string> = {
@@ -51,12 +51,14 @@ export function renderPipCounts(counts: { running?: number; active?: number; wai
   );
 }
 
-export function stateColor(state: SessionState): "green" | "amber" | "red" | "dim" {
+export function stateColor(state: DisplayState): "green" | "amber" | "red" | "dim" {
   switch (state) {
     case "active": return "green";
     case "waiting": return "amber";
     case "disconnected": return "red";
-    case "done": return "dim";
+    case "done":
+    case "dormant":
+      return "dim";
   }
 }
 

@@ -40,8 +40,10 @@ export function SessionRow({ session, spaces, myDeviceId, livePresence, onOpen, 
     ? (livePresence.state === "attached" ? " sr--attached" : " sr--running")
     : "";
   const statusDotClass = livePresence
-    ? (livePresence.state === "attached" ? "rd--attached" : "rd--running")
-    : session.state;
+    ? (session.displayState === "waiting"
+        ? "rd--managed-waiting"
+        : (livePresence.state === "attached" ? "rd--attached" : "rd--running"))
+    : session.displayState;
 
   // Row click always opens the Session Inspector. The Connect chip (live
   // sessions) and Resume chip (non-live sessions) handle the terminal
