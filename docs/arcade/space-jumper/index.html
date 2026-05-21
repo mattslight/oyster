@@ -1270,23 +1270,39 @@ function update() {
 // ============================================
 // RENDER
 // ============================================
+// Per-biome tile palettes. Keys map char → { body, topEdge, highlight, innerShadow }.
+// `topEdge` only paints when no tile is above (open sky). `highlight` is a 1-px
+// row directly below the top edge for that pixel-y readability.
+const TILE_PALETTE = {
+  earth: {
+    '#': { body: '#3b2f1a', topEdge: '#22c55e', highlight: '#4ade80', innerShadow: 'rgba(0,0,0,0.25)' },
+    'S': { body: '#4a4a4a', topEdge: '#6b6b6b', highlight: '#9ca3af', innerShadow: 'rgba(0,0,0,0.25)' },
+  },
+};
+
 function drawTile(col, row) {
   const x = Math.round(col * TILE_PX - cam.x);
   const y = Math.round(row * TILE_PX);
-  // Skip tiles fully outside the viewport (tile is at most TILE_PX px wide).
   if (x + TILE_PX < 0 || x > W) return;
-  // Solid ground tile — brown body, lighter top edge, cyan highlight pixel row.
-  ctx.fillStyle = '#3b2f1a';
+
+  const ch      = tileAt(col, row);
+  const palette = TILE_PALETTE[level.biome] || TILE_PALETTE.earth;
+  const style   = palette[ch] || palette['#'];
+
+  // Body
+  ctx.fillStyle = style.body;
   ctx.fillRect(x, y, TILE_PX, TILE_PX);
-  const topOpen = !isSolid(col, row - 1);
-  if (topOpen) {
-    ctx.fillStyle = '#5a4a2a';
+
+  // Top edge + highlight pixel row — only when the tile above is open sky.
+  if (!isSolid(col, row - 1)) {
+    ctx.fillStyle = style.topEdge;
     ctx.fillRect(x, y, TILE_PX, Math.max(4, Math.floor(TILE_PX * 0.18)));
-    ctx.fillStyle = '#2dd4ff';
+    ctx.fillStyle = style.highlight;
     ctx.fillRect(x, y, TILE_PX, 1);
   }
-  // Inner outline for that pixel-y chunky look
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+
+  // Inner shadow — bottom-right edges for chunky pixel readability.
+  ctx.fillStyle = style.innerShadow;
   ctx.fillRect(x + TILE_PX - 2, y, 2, TILE_PX);
   ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
 }
