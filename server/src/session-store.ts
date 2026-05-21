@@ -546,26 +546,40 @@ export class SqliteSessionStore implements SessionStore {
     } else {
       ftsQuery = `"${trimmed.replace(/"/g, '""')}"`;
     }
-    const limit = opts.limit ?? 20;
+    const limit = opts.limit ?? 50;
 
-    // Two-stage query so snippet() runs only for the rows that survive
-    // the per-session winner pick + LIMIT, not for the full match set.
-    // The naive shape — snippet() inside the inner CTE — pays the cost of
-    // computing a contextual snippet (which requires reading the original
-    // `text` column from the external-content base table, i.e. a random
-    // rowid lookup) for every matched row, then throws all but `limit`
-    // away. On broad prefix matches against a multi-GB DB that means
-    // ~60k+ lookups per query and Spotlight feels broken.
+    // Three structural choices, all driven by perf against multi-GB DBs
+    // where broad prefix queries match hundreds of thousands of events:
     //
-    // Instead the inner CTE carries only (id, session_id, rank), the
-    // window functions pick the top match per session, the outer query
-    // takes the LIMIT, and snippet() runs in a correlated subquery
-    // bound to that handful of winners — same FTS MATCH so snippet()
-    // sees the matched tokens for that rowid.
+    // 1. Inner CTE caps the FTS scan at the top CANDIDATE_POOL events by
+    //    BM25 rank. FTS5's planner pushes ORDER BY rank LIMIT down into
+    //    the index scan, so the candidate-pool size — not the total
+    //    match count — bounds the work. A pool large enough to almost
+    //    always contain each session's best-ranked event for the top 50
+    //    surfaced sessions; sessions whose best match ranks beyond the
+    //    pool fall off (acceptable in the Cmd+K context).
     //
-    // The `sessions` table is only joined inside the inner CTE when
-    // we need it for the space_id filter; otherwise the join is done
-    // after LIMIT for the metadata columns.
+    // 2. Window functions pick one row per session (the best-ranked
+    //    representative) and compute match_count over the pool. The
+    //    count is "matches within the candidate pool", which drives
+    //    the "+N more" UI affordance — exact when the session has at
+    //    most CANDIDATE_POOL matches, conservative otherwise.
+    //
+    // 3. snippet() runs in a correlated subquery bound to the final
+    //    survivors only — not the full pool — because computing it on
+    //    every candidate would require reading the `text` column from
+    //    the external-content base table for every row.
+    //
+    // Result ordering is by session recency (s.last_event_at DESC) not
+    // FTS rank — when scanning a long list the user looks for "the
+    // recent session I was working in", not "the session with the most
+    // term-frequency-weighted hits". Within a session, the surfaced
+    // event_id (and its snippet) is still the best-ranked match.
+    //
+    // The `sessions` table is only joined inside the inner CTE when we
+    // need it for the space_id filter; otherwise the join is done after
+    // LIMIT for the metadata columns.
+    const CANDIDATE_POOL = 500;
     const innerWhere: string[] = ["session_events_fts MATCH ?"];
     const innerParams: unknown[] = [ftsQuery];
     let innerJoinSessions = "";
@@ -581,6 +595,8 @@ export class SqliteSessionStore implements SessionStore {
                    JOIN session_events_fts fts ON e.id = fts.rowid
                    ${innerJoinSessions}
                    WHERE ${innerWhere.join(" AND ")}
+                   ORDER BY fts.rank
+                   LIMIT ${CANDIDATE_POOL}
                  ),
                  ranked AS (
                    SELECT id, session_id, m_rank,
@@ -592,8 +608,6 @@ export class SqliteSessionStore implements SessionStore {
                    SELECT id, session_id, m_rank, match_count
                    FROM ranked
                    WHERE rn = 1
-                   ORDER BY m_rank ASC
-                   LIMIT ?
                  )
                  SELECT w.id AS event_id, w.session_id, e.role,
                         (SELECT snippet(session_events_fts, 0, '[', ']', '…', 12)
@@ -606,8 +620,9 @@ export class SqliteSessionStore implements SessionStore {
                  FROM winners w
                  JOIN sessions s        ON s.id = w.session_id
                  JOIN session_events e  ON e.id = w.id
-                 ORDER BY w.m_rank ASC`;
-    innerParams.push(limit, ftsQuery);
+                 ORDER BY s.last_event_at DESC
+                 LIMIT ?`;
+    innerParams.push(ftsQuery, limit);
     return this.db.prepare(sql).all(...innerParams) as SessionSearchHit[];
   }
 

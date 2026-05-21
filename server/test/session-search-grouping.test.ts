@@ -92,22 +92,17 @@ describe("SqliteSessionStore.searchSessions", () => {
     for (const h of hits) expect(h.match_count).toBe(1);
   });
 
-  it("orders sessions by best FTS rank (stronger match first)", () => {
+  it("orders sessions by recency (most recently active first)", () => {
     seedSpace(env.db, "ws");
-    seedSession(env.db, { id: "strong", title: "S", space_id: "ws" });
-    seedSession(env.db, { id: "weak", title: "W", space_id: "ws" });
-    // BM25 favours higher term frequency relative to doc length. A short
-    // event that's just the query token outranks a long event where the
-    // token appears once amongst many.
-    env.store.insertEvent({ session_id: "strong", role: "user", text: "deposit" });
-    env.store.insertEvent({
-      session_id: "weak",
-      role: "user",
-      text: "lorem ipsum dolor sit amet consectetur adipiscing elit deposit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
-    });
+    seedSession(env.db, { id: "old",    title: "O", space_id: "ws", last_event_at: "2026-05-01T10:00:00Z" });
+    seedSession(env.db, { id: "newer",  title: "N", space_id: "ws", last_event_at: "2026-05-10T10:00:00Z" });
+    seedSession(env.db, { id: "newest", title: "X", space_id: "ws", last_event_at: "2026-05-20T10:00:00Z" });
+    env.store.insertEvent({ session_id: "newer",  role: "user", text: "deposit one" });
+    env.store.insertEvent({ session_id: "newest", role: "user", text: "deposit two" });
+    env.store.insertEvent({ session_id: "old",    role: "user", text: "deposit three" });
 
     const hits = env.store.searchSessions("deposit");
-    expect(hits.map(h => h.session_id)).toEqual(["strong", "weak"]);
+    expect(hits.map(h => h.session_id)).toEqual(["newest", "newer", "old"]);
   });
 
   it("scopes by space_id when given", () => {

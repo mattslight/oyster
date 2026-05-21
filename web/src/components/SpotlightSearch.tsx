@@ -16,9 +16,20 @@ interface Props {
 }
 
 const ARTEFACTS_LIMIT = 8;
-const TRANSCRIPTS_LIMIT = 8;
+// Capped at 50: a longer list isn't useful — nobody scrolls past 50
+// transcript hits, and broad prefix queries on multi-GB DBs are
+// fundamentally floor-bound by FTS5 ranking cost. Sessions surface
+// ordered by recency (server-side), so the most-likely target sits
+// near the top.
+const TRANSCRIPTS_LIMIT = 50;
 const MEMORIES_LIMIT = 8;
-const DEBOUNCE_MS = 180;
+// 350ms not 180: better-sqlite3 is synchronous, so a slow query
+// blocks the Node event loop until it completes. Short debounces
+// cause incremental keystrokes to queue up SQL behind each other,
+// and the final query (the one the user actually waits on) lands
+// at the back of a multi-second cascade. 350ms covers fast typing
+// without making the search feel laggy.
+const DEBOUNCE_MS = 350;
 
 type FilterType = "session" | "artefact" | "memory" | null;
 type SpotlightFilter = { type: FilterType; spaceId: string | null };
