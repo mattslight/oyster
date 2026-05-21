@@ -26,17 +26,12 @@ import { activeClaudeCwdCounts } from "./claude-process-probe.js";
 
 const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 
-// State derivation: JSONL recency is the source of truth, process probe
-// only gates whether a recent-but-not-fresh session reads as `waiting`
-// vs `disconnected`. We can't externally identify *which* claude process
-// is driving *which* session — there's no PID in the JSONL and the file
-// isn't held open between turns. Anything more ambitious than "is there
-// some claude at this cwd?" devolves into heuristics with edge cases.
-//
-//   ageMs < ACTIVE_WINDOW_MS                                → active
-//   ageMs < WAITING_WINDOW_MS    + signal != "absent"       → waiting
-//   ageMs < DONE_THRESHOLD_MS                               → disconnected
-//   otherwise                                               → done
+// State derivation: see deriveState() below. Evidence-first — exit columns
+// and (for managed sessions) the last assistant stop_reason short-circuit
+// the time-based fallback. For unmanaged sessions with no exit evidence,
+// JSONL recency + process probe decide between active / waiting /
+// disconnected. The 4-state output never includes `dormant`; that's
+// derived at presentation time from `disconnected + ageMs > 8h` (Task 6).
 //
 // `signal` is tri-state to handle Windows / probe-unavailable gracefully:
 //   "alive"   — probe ran, found a claude process at this cwd
@@ -45,17 +40,9 @@ const DEFAULT_PROJECTS_ROOT = join(homedir(), ".claude", "projects");
 //               of-doubt: a recent session reads as waiting, not
 //               disconnected. Otherwise Windows would force every idle
 //               session to disconnected, worse than the pre-probe state.
-//
-// The 30-min waiting window is the honest cap: a JSONL untouched for
-// 30 min reads as disconnected regardless of probe. That means an old
-// transcript at a cwd where the user is currently working doesn't get
-// falsely elevated to waiting. False negative: a claude tab idle for
-// >30min on POSIX reads as disconnected even if the process is live —
-// flips back to active the moment the user types.
 export type ProbeSignal = "alive" | "absent" | "unknown";
 const ACTIVE_WINDOW_MS = 60_000;
 const WAITING_WINDOW_MS = 30 * 60 * 1000;
-const DONE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 // How often the heartbeat sweep runs. Each tick probes processes (~40ms on
 // macOS for a few claude PIDs) and recomputes state for every claude-code
@@ -361,7 +348,19 @@ export class ClaudeCodeWatcher {
     const signal: ProbeSignal = !probe.available
       ? "unknown"
       : meta.cwd && (probe.counts.get(meta.cwd) ?? 0) > 0 ? "alive" : "absent";
-    const state = deriveState(ageMs, signal);
+    // Boot scan runs before any session row exists, so the exit / terminal /
+    // stop_reason facts aren't available yet. Fall through to the time-based
+    // branch; the next heartbeat sweep will refine using the persisted facts.
+    const state = deriveState({
+      terminalId: null,
+      ageMs,
+      probeSignal: signal,
+      exitCode: null,
+      exitSignal: null,
+      explicitExitSeen: false,
+      cleanProcessExit: false,
+      lastAssistantStopReason: null,
+    });
 
     // Always pass ISO-8601 timestamps. If the JSONL didn't have a usable
     // event timestamp in the first 32KB, fall back to the file's birth time
@@ -908,7 +907,16 @@ export class ClaudeCodeWatcher {
       const signal: ProbeSignal = !probe.available
         ? "unknown"
         : cwd && (probe.counts.get(cwd) ?? 0) > 0 ? "alive" : "absent";
-      const next = deriveState(ageMs, signal);
+      const next = deriveState({
+        terminalId: session.terminal_id ?? null,
+        ageMs,
+        probeSignal: signal,
+        exitCode: session.exit_code ?? null,
+        exitSignal: session.exit_signal ?? null,
+        explicitExitSeen: !!session.explicit_exit_seen,
+        cleanProcessExit: !!session.clean_process_exit,
+        lastAssistantStopReason: session.last_assistant_stop_reason ?? null,
+      });
 
       if (next !== session.state) {
         this.deps.sessionStore.updateSessionState(session.id, next, session.last_event_at);
@@ -965,12 +973,35 @@ function captureEvidence(
   }
 }
 
-export function deriveState(ageMs: number, signal: ProbeSignal): SessionState {
-  if (ageMs < ACTIVE_WINDOW_MS) return "active";
-  if (ageMs > DONE_THRESHOLD_MS) return "done";
-  if (ageMs < WAITING_WINDOW_MS) {
-    return signal === "absent" ? "disconnected" : "waiting";
+export interface DeriveStateInput {
+  terminalId: string | null;
+  ageMs: number;
+  probeSignal: ProbeSignal;
+  exitCode: number | null;
+  exitSignal: string | null;
+  explicitExitSeen: boolean;
+  cleanProcessExit: boolean;
+  lastAssistantStopReason: string | null;
+}
+
+export function deriveState(input: DeriveStateInput): SessionState {
+  // Precedence: bad exit evidence beats any "clean" claim. A session that
+  // typed /exit and then got SIGKILLed mid-shutdown should read disconnected,
+  // not done.
+  if (input.exitSignal || (input.exitCode != null && input.exitCode !== 0)) {
+    return "disconnected";
   }
+  if (input.explicitExitSeen || input.cleanProcessExit) return "done";
+  if (input.terminalId) {
+    return input.lastAssistantStopReason === "end_turn" ? "waiting" : "active";
+  }
+  if (input.ageMs < ACTIVE_WINDOW_MS) return "active";
+  if (input.ageMs < WAITING_WINDOW_MS) {
+    return input.probeSignal === "absent" ? "disconnected" : "waiting";
+  }
+  // 8h+ idle is still 'disconnected' in the persisted enum. The presentation
+  // layer (sessions API) maps disconnected + age > 8h into 'dormant' for the
+  // wire-format displayState field. See Task 6.
   return "disconnected";
 }
 
