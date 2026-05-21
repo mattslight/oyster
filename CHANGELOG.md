@@ -4,9 +4,14 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- **Cmd+K transcript hits are now ordered by recency, and the list goes up to 50.** When scanning Spotlight for "that session I had last week about X", the most-recent matching session sits at the top regardless of FTS rank; within each session the surfaced snippet is still the best match.
+
 ### Fixed
 
 - **Boot is fast again on large transcript databases.** Search-index health checks and one-time data migrations no longer block startup — they run after the UI is ready. Users with multi-million-row transcript histories who were seeing 30+ second hangs should boot in well under a second.
+- **Cmd+K search no longer stalls on large session databases.** Spotlight stays responsive on multi-GB session histories — narrow queries return in tens of milliseconds, and the worst-case 2-char prefixes against hundreds of thousands of matches drop from 15+ seconds to a few. The search input also waits a beat longer before firing so a single fast-typed word doesn't cascade through multiple intermediate queries.
 
 ## [0.9.6] - 2026-05-21
 

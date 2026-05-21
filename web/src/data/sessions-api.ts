@@ -105,7 +105,10 @@ export interface TranscriptHit {
   last_event_at: string | null;
   role: string;
   snippet: string;
-  /** Total matches in this session (≥1). Surfaces "+N more" affordance. */
+  /** Matches in this session (≥1) counted within the server's
+   *  candidate pool. Exact for narrow queries; a lower bound on
+   *  hyper-broad prefix queries. Drives the "+N more" affordance,
+   *  which treats it as a hint. */
   match_count: number;
 }
 

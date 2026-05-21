@@ -99,7 +99,13 @@ export interface SessionSearchHit {
   last_event_at: string | null;
   /** Highlighted excerpt of the best-ranked match. */
   snippet: string;
-  /** Number of distinct matching events in this session. */
+  /** Matching events in this session — counted within the
+   *  candidate pool that drives the surfaced results. Exact when the
+   *  session has at most as many matches as the pool size; truncated
+   *  (a lower bound) on hyper-broad prefix queries against very large
+   *  histories where a single session's matches exceed the pool. The
+   *  Spotlight "+N more" affordance treats this as a hint, not a
+   *  precise total. */
   match_count: number;
 }
 
@@ -546,44 +552,83 @@ export class SqliteSessionStore implements SessionStore {
     } else {
       ftsQuery = `"${trimmed.replace(/"/g, '""')}"`;
     }
-    const limit = opts.limit ?? 20;
+    const limit = opts.limit ?? 50;
 
-    // FTS5's snippet() auxiliary can't be used in a SELECT that also wraps
-    // window functions ("unable to use function snippet in the requested
-    // context") — it needs to live in a query that directly scans the FTS
-    // virtual table under MATCH. So we materialize the snippet + raw rank
-    // in an inner CTE and let the outer CTE handle ROW_NUMBER / COUNT over
-    // those plain columns.
+    // Three structural choices, all driven by perf against multi-GB DBs
+    // where broad prefix queries match hundreds of thousands of events:
+    //
+    // 1. Inner CTE caps the FTS scan at the top CANDIDATE_POOL events by
+    //    BM25 rank. FTS5's planner pushes ORDER BY rank LIMIT down into
+    //    the index scan, so the candidate-pool size — not the total
+    //    match count — bounds the work. A pool large enough to almost
+    //    always contain each session's best-ranked event for the top 50
+    //    surfaced sessions; sessions whose best match ranks beyond the
+    //    pool fall off (acceptable in the Cmd+K context).
+    //
+    // 2. Window functions pick one row per session (the best-ranked
+    //    representative) and compute match_count over the pool. The
+    //    count is "matches within the candidate pool", which drives
+    //    the "+N more" UI affordance — exact when the session has at
+    //    most CANDIDATE_POOL matches, conservative otherwise.
+    //
+    // 3. snippet() runs in a correlated subquery bound to the final
+    //    survivors only — not the full pool — because computing it on
+    //    every candidate would require reading the `text` column from
+    //    the external-content base table for every row.
+    //
+    // Result ordering is by session recency (s.last_event_at DESC) not
+    // FTS rank — when scanning a long list the user looks for "the
+    // recent session I was working in", not "the session with the most
+    // term-frequency-weighted hits". Within a session, the surfaced
+    // event_id (and its snippet) is still the best-ranked match.
+    //
+    // The `sessions` table is only joined inside the inner CTE when we
+    // need it for the space_id filter; otherwise the join is done after
+    // LIMIT for the metadata columns.
+    const CANDIDATE_POOL = 500;
     const innerWhere: string[] = ["session_events_fts MATCH ?"];
     const innerParams: unknown[] = [ftsQuery];
-    if (opts.spaceId) { innerWhere.push("s.space_id = ?"); innerParams.push(opts.spaceId); }
+    let innerJoinSessions = "";
+    if (opts.spaceId) {
+      innerJoinSessions = "JOIN sessions s ON s.id = e.session_id";
+      innerWhere.push("s.space_id = ?");
+      innerParams.push(opts.spaceId);
+    }
 
     const sql = `WITH matches AS (
-                   SELECT e.id, e.session_id, e.role,
-                          fts.rank AS m_rank,
-                          snippet(session_events_fts, 0, '[', ']', '…', 12) AS snippet
+                   SELECT e.id, e.session_id, fts.rank AS m_rank
                    FROM session_events e
                    JOIN session_events_fts fts ON e.id = fts.rowid
-                   JOIN sessions s             ON s.id = e.session_id
+                   ${innerJoinSessions}
                    WHERE ${innerWhere.join(" AND ")}
+                   ORDER BY fts.rank
+                   LIMIT ${CANDIDATE_POOL}
                  ),
                  ranked AS (
-                   SELECT id, session_id, role, m_rank, snippet,
+                   SELECT id, session_id, m_rank,
                           ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY m_rank) AS rn,
                           COUNT(*)     OVER (PARTITION BY session_id)                 AS match_count
                    FROM matches
+                 ),
+                 winners AS (
+                   SELECT id, session_id, m_rank, match_count
+                   FROM ranked
+                   WHERE rn = 1
                  )
-                 SELECT r.id AS event_id, r.session_id, r.role,
-                        r.snippet, r.match_count,
+                 SELECT w.id AS event_id, w.session_id, e.role,
+                        (SELECT snippet(session_events_fts, 0, '[', ']', '…', 12)
+                           FROM session_events_fts
+                           WHERE session_events_fts MATCH ? AND rowid = w.id) AS snippet,
+                        w.match_count,
                         s.title         AS session_title,
                         s.space_id      AS space_id,
                         s.last_event_at AS last_event_at
-                 FROM ranked r
-                 JOIN sessions s ON s.id = r.session_id
-                 WHERE r.rn = 1
-                 ORDER BY r.m_rank ASC
+                 FROM winners w
+                 JOIN sessions s        ON s.id = w.session_id
+                 JOIN session_events e  ON e.id = w.id
+                 ORDER BY s.last_event_at DESC
                  LIMIT ?`;
-    innerParams.push(limit);
+    innerParams.push(ftsQuery, limit);
     return this.db.prepare(sql).all(...innerParams) as SessionSearchHit[];
   }
 

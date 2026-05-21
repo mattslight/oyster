@@ -304,9 +304,14 @@
 
   <main class="entries">
 <h2 id="v-unreleased"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.9.6...HEAD" rel="noopener noreferrer"><span class="release-version">Unreleased</span></a></h2>
+<h3>Changed</h3>
+<ul>
+<li><strong>Cmd+K transcript hits are now ordered by recency, and the list goes up to 50.</strong> When scanning Spotlight for &quot;that session I had last week about X&quot;, the most-recent matching session sits at the top regardless of FTS rank; within each session the surfaced snippet is still the best match.</li>
+</ul>
 <h3>Fixed</h3>
 <ul>
 <li><strong>Boot is fast again on large transcript databases.</strong> Search-index health checks and one-time data migrations no longer block startup — they run after the UI is ready. Users with multi-million-row transcript histories who were seeing 30+ second hangs should boot in well under a second.</li>
+<li><strong>Cmd+K search no longer stalls on large session databases.</strong> Spotlight stays responsive on multi-GB session histories — narrow queries return in tens of milliseconds, and the worst-case 2-char prefixes against hundreds of thousands of matches drop from 15+ seconds to a few. The search input also waits a beat longer before firing so a single fast-typed word doesn&#39;t cascade through multiple intermediate queries.</li>
 </ul>
 <h2 id="v-0-9-6"><a class="release-version-link" href="https://github.com/oyster-to/oyster/compare/v0.9.5...v0.9.6" rel="noopener noreferrer"><span class="release-version">0.9.6</span></a><span class="release-date"> — 2026-05-21</span></h2>
 <h3>Fixed</h3>
