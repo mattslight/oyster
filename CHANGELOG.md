@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-05-21
+
 ### Changed
 
 - **Clearer session status dots.** Oyster-owned sessions stay purple when active; the dot picks up an amber centre when the agent is awaiting your input. Externally observed sessions show green when active and amber when idle. Red means the session appears disconnected or ended badly; grey "dormant" means it has been quiet long enough that the urgency has decayed. A session is only marked truly "done" when a clean `/exit` (or a clean PTY shutdown) is observed.
