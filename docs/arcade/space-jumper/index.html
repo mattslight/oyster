@@ -570,7 +570,7 @@ function showEndOverlay({ win }) {
   const scoreVal = document.getElementById('go-score-val');
   const hiEl = document.getElementById('go-hiscore');
   if (!ov) return;
-  titleEl.textContent = win ? 'LEVEL COMPLETE' : 'GAME OVER';
+  titleEl.textContent = gameComplete ? 'GAME COMPLETE' : (win ? 'LEVEL COMPLETE' : 'GAME OVER');
   titleEl.classList.toggle('is-win', !!win);
   titleEl.classList.toggle('is-loss', !win);
   scoreVal.textContent = score;
@@ -768,14 +768,42 @@ function loadLevel(idx) {
   currentLevelIndex = Math.max(0, Math.min(idx, LEVELS.length - 1));
   level = LEVELS[currentLevelIndex];
   if (typeof recomputeScale === 'function') recomputeScale();
-  // Swap the BGM track to whatever the level declares. Guarded so a first
-  // load before the <audio> element is parsed (script-init order) just no-ops
-  // — the inline src in HTML serves the same file for 1-1 in that window.
+  // Swap the BGM track ONLY when it differs from what's currently loaded.
+  // Same-track levels (e.g. 1-1 → 1-2 if they share BGM) must NOT restart
+  // audio. The dataset.src guard makes this idempotent across loadLevel()
+  // and advanceLevel() calls. Also no-ops on first load before <audio> exists.
   const bgmEl = document.getElementById('bgm');
   if (bgmEl && level.bgm && bgmEl.dataset.src !== level.bgm) {
     bgmEl.dataset.src = level.bgm;
     bgmEl.src = level.bgm;
   }
+}
+
+// Advance to the next level. Resets per-level state via the existing helpers
+// but preserves score / lives / hi-score state. Returns true if a new level
+// was loaded, false if we just completed the final level (caller should fire
+// GAME COMPLETE).
+function advanceLevel() {
+  if (currentLevelIndex >= LEVELS.length - 1) return false;
+
+  const prevBgm = level.bgm;
+  loadLevel(currentLevelIndex + 1);   // also handles bgm.dataset.src swap
+
+  // Per-level state resets — same helpers resetRun() uses.
+  coinsCollected.clear();
+  jetpacksTaken.clear();
+  initEnemies();
+  resetPlayer();
+  player.invulnAt = -Infinity;
+  levelComplete = false; levelCompleteAt = 0;
+  hideEndOverlay();
+
+  // If loadLevel switched the track, kick playback.
+  if (level.bgm !== prevBgm) {
+    const bgmEl = document.getElementById('bgm');
+    if (bgmEl) bgmEl.play().catch(() => {});
+  }
+  return true;
 }
 
 // Tile classes — visual variants resolve to the same physical class.
@@ -873,6 +901,8 @@ const coinsCollected = new Set();
 const jetpacksTaken = new Set();
 let levelComplete = false;
 let levelCompleteAt = 0;
+let gameComplete = false;
+let gameCompleteAt = 0;
 let gameOver = false;
 let gameOverAt = 0;
 const enemies = [];
@@ -903,6 +933,12 @@ function resetRun() {
   coinsCollected.clear();
   jetpacksTaken.clear();
   levelComplete = false; levelCompleteAt = 0;
+  gameComplete = false; gameCompleteAt = 0;
+  // After a GAME COMPLETE restart, drop back to level 1.
+  if (currentLevelIndex !== 0) {
+    currentLevelIndex = 0;
+    loadLevel(0);
+  }
   gameOver = false; gameOverAt = 0;
   dying = false; livesScreen = false;
   hideEndOverlay();
@@ -1251,11 +1287,21 @@ function update() {
     const gw = TILE_PX * 0.8;
     const gh = TILE_PX * 2;
     if (aabbOverlap(player.x, player.y, PLAYER_W, PLAYER_H, gx, gy, gw, gh)) {
-      levelComplete = true;
-      levelCompleteAt = now;
-      pauseBgm();
-      playWin();
-      showEndOverlay({ win: true });
+      const isLast = currentLevelIndex >= LEVELS.length - 1;
+      if (isLast) {
+        gameComplete   = true;
+        gameCompleteAt = now;
+        levelComplete  = true;          // shares the grace + restart flow
+        levelCompleteAt = now;
+        pauseBgm();
+        playWin();
+        showEndOverlay({ win: true });
+      } else {
+        score += 100;                    // small clear bonus, preserves momentum
+        playWin();
+        advanceLevel();
+        // No overlay between levels — straight into the next stage.
+      }
     }
   }
 
