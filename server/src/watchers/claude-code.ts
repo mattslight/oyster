@@ -993,7 +993,17 @@ export function deriveState(input: DeriveStateInput): SessionState {
   }
   if (input.explicitExitSeen || input.cleanProcessExit) return "done";
   if (input.terminalId) {
-    return input.lastAssistantStopReason === "end_turn" ? "waiting" : "active";
+    // Only "computing" stop reasons keep us in active. `null` means we
+    // haven't seen any assistant event yet (user just opened the session
+    // or sent their first prompt — the agent IS computing). `tool_use`
+    // and `pause_turn` are genuine in-flight signals. Every other stop
+    // reason (end_turn, max_tokens, stop_sequence, refusal) means the
+    // model has stopped and the user is the next actor.
+    const computing =
+      input.lastAssistantStopReason === null ||
+      input.lastAssistantStopReason === "tool_use" ||
+      input.lastAssistantStopReason === "pause_turn";
+    return computing ? "active" : "waiting";
   }
   if (input.ageMs < ACTIVE_WINDOW_MS) return "active";
   if (input.ageMs < WAITING_WINDOW_MS) {

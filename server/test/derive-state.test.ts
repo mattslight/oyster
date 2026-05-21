@@ -28,6 +28,22 @@ describe("deriveState — evidence-first", () => {
     expect(deriveState({ ...base, terminalId: "t1", ageMs: 90_000, lastAssistantStopReason: "tool_use" })).toBe("active");
   });
 
+  it("managed + last stop_reason max_tokens → waiting (truncated, user must continue)", () => {
+    expect(deriveState({ ...base, terminalId: "t1", ageMs: 5_000, lastAssistantStopReason: "max_tokens" })).toBe("waiting");
+  });
+
+  it("managed + last stop_reason stop_sequence → waiting", () => {
+    expect(deriveState({ ...base, terminalId: "t1", ageMs: 5_000, lastAssistantStopReason: "stop_sequence" })).toBe("waiting");
+  });
+
+  it("managed + last stop_reason refusal → waiting", () => {
+    expect(deriveState({ ...base, terminalId: "t1", ageMs: 5_000, lastAssistantStopReason: "refusal" })).toBe("waiting");
+  });
+
+  it("managed + last stop_reason pause_turn → active (interleaved thinking still in flight)", () => {
+    expect(deriveState({ ...base, terminalId: "t1", ageMs: 5_000, lastAssistantStopReason: "pause_turn" })).toBe("active");
+  });
+
   it("explicit /exit observed → done regardless of age", () => {
     expect(deriveState({ ...base, explicitExitSeen: true, ageMs: 10 * HOUR })).toBe("done");
   });
@@ -52,6 +68,13 @@ describe("deriveState — evidence-first", () => {
 
   it("PTY exit with signal → disconnected", () => {
     expect(deriveState({ ...base, exitSignal: "SIGKILL", ageMs: 1 * MIN })).toBe("disconnected");
+  });
+
+  it("exit_code = 0 alone (cleanProcessExit flag missing) falls through to time/probe", () => {
+    // Defensive guard against future refactors in claude-pty-manager
+    // that might decouple exit_code === 0 from clean_process_exit.
+    expect(deriveState({ ...base, exitCode: 0, ageMs: 5 * MIN, probeSignal: "absent" })).toBe("disconnected");
+    expect(deriveState({ ...base, exitCode: 0, ageMs: 30_000 })).toBe("active");
   });
 
   it("unmanaged, <60s → active", () => {
