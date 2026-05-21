@@ -25,9 +25,10 @@ export type ProbeSignal = "alive" | "absent" | "unknown";
 
 export const ACTIVE_WINDOW_MS = 60_000;
 export const WAITING_WINDOW_MS = 30 * 60 * 1000;
-// 8h+ idle "disconnected" rows are presented as `dormant` on the wire
-// (computeDisplayState). Kept here so deriveReason can pick the right
-// copy for the long-idle case.
+// 8h+ idle "disconnected" rows are presented as `dormant` on the wire.
+// Consumed by `computeDisplayState` in `session-display-state.ts` —
+// kept here alongside the other time windows so all the thresholds the
+// state machine cares about live in one place.
 export const DORMANT_THRESHOLD_MS = 8 * 60 * 60 * 1000;
 
 export interface DeriveStateInput {

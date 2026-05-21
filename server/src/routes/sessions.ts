@@ -186,9 +186,11 @@ export function mapSessionRow(
     displayReason: deriveReason({
       terminalId: row.terminal_id ?? null,
       ageMs,
-      // Wire mapper runs out-of-band of the live process probe. The
-      // tri-state defaults to 'unknown' so deriveReason picks the
-      // benefit-of-doubt copy ("idle") rather than overstating an absence.
+      // Wire mapper runs out-of-band of the live process probe (which only
+      // the heartbeat sweep has access to). With probeSignal: "unknown",
+      // deriveReason suppresses the idle copy entirely — the persisted
+      // state already encodes whatever the heartbeat last saw, and the
+      // dot colour + LAST ACTIVE age carry the same information.
       probeSignal: "unknown",
       exitCode: row.exit_code ?? null,
       exitSignal: row.exit_signal ?? null,

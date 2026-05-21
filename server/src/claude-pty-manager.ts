@@ -377,13 +377,12 @@ export class ClaudePtyManager {
       // If the session never produced content (no events AND no JSONL
       // file), the stub row inserted at spawn time is a ghost — drop it
       // entirely rather than leaving an un-resumable "Untitled"
-      // entry in the list. Otherwise, record the exit facts and write a
-      // transient state so SSE clients see the result of this exit
-      // immediately. The next heartbeat sweep will re-derive from facts —
-      // Task 5 will teach deriveState to read exit_code/exit_signal/
-      // clean_process_exit so this value sticks. Until then, an in-flight
-      // session may briefly re-derive to "active" if it exited within the
-      // active-window.
+      // entry in the list. Otherwise, record the exit facts (exit_code,
+      // exit_signal, clean_process_exit) and compute the final state via
+      // the shared deriveState so this branch stays in lockstep with the
+      // heartbeat sweep. The state written here is the same the next
+      // heartbeat would compute — no transient wrong value, no SSE
+      // flicker.
       const deleted = deleteIfGhostOnExit(this.sessionStore, this.db, exitedSessionId, entry.cwd);
       if (!deleted) {
         const cleanProcessExit = exit.exitCode === 0 && !exit.signal;
