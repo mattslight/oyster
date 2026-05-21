@@ -547,6 +547,9 @@
 .home-status.done::before {
   background: rgba(255, 255, 255, 0.18);
 }
+.home-status.dormant::before {
+  background: rgba(255, 255, 255, 0.18); /* same as .done */
+}
 @keyframes home-breathe {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50%       { opacity: 1;    transform: scale(1.1); }
