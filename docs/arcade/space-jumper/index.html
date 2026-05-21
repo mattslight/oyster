@@ -754,6 +754,7 @@ const LEVELS = [
     jetpacks: [
       { col: 21, row: 11 },
     ],
+    props: [],
     bgm: 'bgm.mp3?v=2',
     gravityScale: 1,
     hasTorch: false,
@@ -1279,6 +1280,23 @@ const TILE_PALETTE = {
     'S': { body: '#4a4a4a', topEdge: '#6b6b6b', highlight: '#9ca3af', innerShadow: 'rgba(0,0,0,0.25)' },
   },
 };
+
+// Decorative props — non-collidable. Drawn between tiles and entities so they
+// sit "in front of" the world but behind enemies/player. Sprite dispatch by type.
+function drawProps() {
+  if (!level.props || level.props.length === 0) return;
+  for (let i = 0; i < level.props.length; i++) {
+    const p = level.props[i];
+    drawProp(p, p.col * TILE_PX, p.row * TILE_PX);
+  }
+}
+
+function drawProp(p, worldX, worldY) {
+  const x = Math.round(worldX - cam.x);
+  const y = Math.round(worldY);
+  if (x + TILE_PX < 0 || x > W) return;
+  // Sprite implementations land in Task 5.
+}
 
 function drawTile(col, row) {
   const x = Math.round(col * TILE_PX - cam.x);
@@ -1854,6 +1872,9 @@ function draw() {
       if (isSolid(col, row)) drawTile(col, row);
     }
   }
+
+  // Decorative props — between tiles and entities.
+  drawProps();
 
   // Coins (skip collected)
   for (let i = 0; i < level.coins.length; i++) {
