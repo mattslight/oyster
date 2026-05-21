@@ -934,10 +934,11 @@ export class ClaudeCodeWatcher {
 //   1. an explicit `/exit` user message → flips explicit_exit_seen
 //   2. an assistant event's `stop_reason` → updates last_assistant_stop_reason
 //
-// `/exit` is matched on the raw user content (`message.content === "/exit"`),
-// NOT on the `<command-name>/exit</command-name>` wrapper that follows. The
-// wrapper is the prompt shape claude-code uses to render the slash command;
-// only the invocation itself is evidence that the user chose to exit.
+// `/exit` is matched on the `<command-name>/exit</command-name>` wrapper that
+// claude-code templates into the user `content` string BEFORE persisting to
+// JSONL. The wrapper IS the invocation event, not a follow-up render artefact.
+// (Verified empirically against ~/.claude/projects/*/*.jsonl: 0 raw `/exit`
+// user events vs 73 wrapped ones in the local corpus.)
 function captureEvidence(
   ev: Record<string, any>,
   sessionId: string,
@@ -945,8 +946,14 @@ function captureEvidence(
 ): void {
   if (ev.type === "user") {
     const content = ev?.message?.content;
-    if (typeof content === "string" && content.trim() === "/exit") {
-      store.markExplicitExitSeen(sessionId);
+    if (typeof content === "string") {
+      // Claude Code templates slash commands into a wrapper *before* writing to
+      // JSONL — the wrapper IS the invocation, not a follow-up render artefact.
+      // (Verified empirically against ~/.claude/projects/*/*.jsonl: 0 raw /exit
+      // events vs 73 wrapped ones in the local corpus.)
+      if (content.trimStart().startsWith("<command-name>/exit</command-name>")) {
+        store.markExplicitExitSeen(sessionId);
+      }
     }
     return;
   }
