@@ -45,6 +45,20 @@ export interface SessionRow {
   terminal_id: string | null;
   /** Count of currently-attached WS clients on the linked terminal. 0 + non-null terminal_id = Minimised. */
   terminal_attached_clients: number;
+  /** Process exit code captured by the PTY manager. NULL until the
+   *  child exits. */
+  exit_code: number | null;
+  /** Process exit signal captured by the PTY manager (e.g. "SIGKILL"). */
+  exit_signal: string | null;
+  /** 1 once the watcher has seen an explicit `/exit` slash-command in the
+   *  transcript. SQLite-style 0/1 boolean. */
+  explicit_exit_seen: number;
+  /** 1 when the PTY manager observed a clean process exit (code 0, no
+   *  signal). SQLite-style 0/1 boolean. */
+  clean_process_exit: number;
+  /** Last `stop_reason` reported by the assistant (e.g. "end_turn",
+   *  "tool_use"). NULL until at least one assistant turn has stopped. */
+  last_assistant_stop_reason: string | null;
 }
 
 export interface SessionEventRow {
@@ -164,6 +178,17 @@ export interface SessionStore {
   upsertSession(row: InsertSession): void;
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void;
   updateSession(id: string, fields: Partial<Omit<SessionRow, "id" | "started_at">>): void;
+  /** Record the PTY child's exit. Called by the ClaudePtyManager once
+   *  when the process exits — `cleanProcessExit` separates a normal exit
+   *  (code 0, no signal) from a crash / kill so the watcher can fold it
+   *  into the displayState derivation without re-reading exit_code. */
+  recordExit(id: string, info: { exitCode: number | null; exitSignal: string | null; cleanProcessExit: boolean }): void;
+  /** Update the assistant's most recent stop_reason. Called by the
+   *  watcher whenever it ingests a new assistant turn that has stopped. */
+  setLastAssistantStopReason(id: string, reason: string | null): void;
+  /** Flip explicit_exit_seen to 1. Idempotent — called by the watcher
+   *  when it spots a `/exit` slash-command artefact. */
+  markExplicitExitSeen(id: string): void;
   // session_events — bulk-friendly
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
@@ -220,6 +245,9 @@ export class SqliteSessionStore implements SessionStore {
     getLastOffset: Database.Statement;
     setLastOffset: Database.Statement;
     deleteSession: Database.Statement;
+    recordExit: Database.Statement;
+    setLastAssistantStopReason: Database.Statement;
+    markExplicitExitSeen: Database.Statement;
   };
 
   private insertEventsTxn: (rows: InsertSessionEvent[]) => void;
@@ -346,6 +374,19 @@ export class SqliteSessionStore implements SessionStore {
         "UPDATE sessions SET last_offset = ? WHERE id = ?"
       ),
       deleteSession: db.prepare("DELETE FROM sessions WHERE id = ?"),
+      recordExit: db.prepare(`
+        UPDATE sessions
+        SET exit_code = @exit_code,
+            exit_signal = @exit_signal,
+            clean_process_exit = @clean_process_exit
+        WHERE id = @id
+      `),
+      setLastAssistantStopReason: db.prepare(
+        "UPDATE sessions SET last_assistant_stop_reason = ? WHERE id = ?"
+      ),
+      markExplicitExitSeen: db.prepare(
+        "UPDATE sessions SET explicit_exit_seen = 1 WHERE id = ?"
+      ),
     };
 
     // Bulk insert helper. Wrap N inserts in a single transaction so a JSONL
@@ -400,6 +441,26 @@ export class SqliteSessionStore implements SessionStore {
 
   updateSessionState(id: string, state: SessionState, lastEventAt: string): void {
     this.stmts.updateSessionState.run(state, lastEventAt, id);
+  }
+
+  recordExit(
+    id: string,
+    info: { exitCode: number | null; exitSignal: string | null; cleanProcessExit: boolean },
+  ): void {
+    this.stmts.recordExit.run({
+      id,
+      exit_code: info.exitCode,
+      exit_signal: info.exitSignal,
+      clean_process_exit: info.cleanProcessExit ? 1 : 0,
+    });
+  }
+
+  setLastAssistantStopReason(id: string, reason: string | null): void {
+    this.stmts.setLastAssistantStopReason.run(reason, id);
+  }
+
+  markExplicitExitSeen(id: string): void {
+    this.stmts.markExplicitExitSeen.run(id);
   }
 
   private static readonly UPDATABLE_SESSION_COLUMNS = new Set([
