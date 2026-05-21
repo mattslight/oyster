@@ -4,6 +4,8 @@ All notable changes to Oyster are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-05-21
+
 ### Changed
 
 - **Cmd+K transcript hits are now ordered by recency, and the list goes up to 50.** When scanning Spotlight for "that session I had last week about X", the most-recent matching session sits at the top regardless of FTS rank; within each session the surfaced snippet is still the best match.
