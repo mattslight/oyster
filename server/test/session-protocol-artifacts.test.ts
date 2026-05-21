@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
-import { initDb } from "../src/db.js";
+import { initDb, runDeferredMigrations } from "../src/db.js";
 import { SqliteSessionStore } from "../src/session-store.js";
 
 function seedSpace(db: Database.Database, id: string) {
@@ -30,6 +30,7 @@ function seedSession(db: Database.Database, id: string, spaceId: string) {
 function makeEnv() {
   const dir = mkdtempSync(join(tmpdir(), "oyster-protocol-artifacts-"));
   const db = initDb(dir);
+  runDeferredMigrations(db);
   const store = new SqliteSessionStore(db);
   seedSpace(db, "ws");
   seedSession(db, "s1", "ws");
@@ -190,6 +191,7 @@ describe("protocol-artifact classification", () => {
     // Second boot on the same userland dir runs the v2 backfill.
     env.db.close();
     const db2 = initDb(env.dir);
+    runDeferredMigrations(db2);
     const store2 = new SqliteSessionStore(db2);
 
     // Artefact row is now classified and out of FTS.

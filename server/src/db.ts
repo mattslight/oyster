@@ -833,22 +833,30 @@ export function runDeferredMigrations(db: Database.Database): void {
   // role='system' rows with the `local_command:` prefix. Each matched
   // row's UPDATE fires session_events_au_del, removing it from the FTS
   // inverted index — that's where the time goes on large tables.
-  const flag = db.prepare(
-    `INSERT OR IGNORE INTO app_state (key, value, applied_at)
-     VALUES ('protocol_artifact_backfill_v2_done', '1', ?)`,
-  ).run(Date.now());
-  if (flag.changes === 0) return;
+  const existing = db.prepare(
+    "SELECT 1 FROM app_state WHERE key = 'protocol_artifact_backfill_v2_done'",
+  ).get();
+  if (existing) return;
 
   console.log("[db] running deferred backfill: protocol_artifact_backfill_v2");
   const t0 = performance.now();
-  const result = db.prepare(`
-    UPDATE session_events
-       SET is_protocol_artifact = 1
-     WHERE is_protocol_artifact = 0
-       AND role = 'system'
-       AND ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE 'local_command:%'
-  `).run();
-  console.log(`[db] protocol_artifact_backfill_v2 complete: marked ${result.changes} rows in ${Math.round(performance.now() - t0)}ms`);
+  // UPDATE + flag-write commit together — otherwise an interrupt between
+  // them leaves the DB half-migrated and the gate set, so we never retry.
+  const applied = db.transaction(() => {
+    const result = db.prepare(`
+      UPDATE session_events
+         SET is_protocol_artifact = 1
+       WHERE is_protocol_artifact = 0
+         AND role = 'system'
+         AND ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE 'local_command:%'
+    `).run();
+    db.prepare(
+      `INSERT OR IGNORE INTO app_state (key, value, applied_at)
+       VALUES ('protocol_artifact_backfill_v2_done', '1', ?)`,
+    ).run(Date.now());
+    return result;
+  })();
+  console.log(`[db] protocol_artifact_backfill_v2 complete: marked ${applied.changes} rows in ${Math.round(performance.now() - t0)}ms`);
 }
 
 /**
@@ -895,13 +903,18 @@ export function repairFtsIfUnhealthy(db: Database.Database): void {
   const rebuildT0 = performance.now();
   // 'rebuild' re-indexes from the content table; protocol-artefact rows
   // bypass the gated triggers during rebuild, so we sweep them back out
-  // explicitly afterwards.
-  db.exec(`
-    INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild');
-    INSERT INTO session_events_fts(session_events_fts, rowid, text)
-      SELECT 'delete', id, text
-        FROM session_events
-       WHERE is_protocol_artifact = 1;
-  `);
+  // explicitly afterwards. Rebuild + sweep commit together — otherwise an
+  // interrupt between them leaves artefact rows in the index that the
+  // gated triggers won't clean up later, and the next boot's health check
+  // may pass and never re-clean.
+  db.transaction(() => {
+    db.exec(`
+      INSERT INTO session_events_fts(session_events_fts) VALUES('rebuild');
+      INSERT INTO session_events_fts(session_events_fts, rowid, text)
+        SELECT 'delete', id, text
+          FROM session_events
+         WHERE is_protocol_artifact = 1;
+    `);
+  })();
   console.log(`[fts] rebuild complete in ${Math.round(performance.now() - rebuildT0)}ms`);
 }
