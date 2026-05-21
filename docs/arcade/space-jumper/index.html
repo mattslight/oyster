@@ -327,16 +327,23 @@ window.addEventListener('keydown', e => {
   debugHitboxes = !debugHitboxes;
 });
 
-// Debug cheat — press J to grant the jetpack with full fuel (for testing
-// when a jetpack pickup is unreachable). Ignored while a text input is
-// focused so initials entry isn't blocked.
+// Debug cheat — press J to TOGGLE the jetpack (granting with full fuel, or
+// removing it if Rogers already has one). Useful for testing both the
+// jetpack and no-jetpack routes through a level. Ignored while a text input
+// is focused so initials entry isn't blocked.
 window.addEventListener('keydown', e => {
   if (e.key !== 'j' && e.key !== 'J') return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   if (typeof player === 'undefined') return;     // not initialised yet
-  player.hasJetpack = true;
-  player.fuel = (typeof JETPACK_FUEL_MAX !== 'undefined') ? JETPACK_FUEL_MAX : 60;
+  if (player.hasJetpack) {
+    player.hasJetpack = false;
+    player.fuel = 0;
+    player.thrusting = false;
+  } else {
+    player.hasJetpack = true;
+    player.fuel = (typeof JETPACK_FUEL_MAX !== 'undefined') ? JETPACK_FUEL_MAX : 60;
+  }
 });
 
 // Forward-declared so the touch closures can route to initials entry when
