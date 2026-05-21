@@ -30,7 +30,10 @@ Today Space Jumper is one level (`1-1`, a 60-tile step-ladder) and one tile look
 
 ### Level progression
 
-Currently `levelComplete` shows an overlay; pressing start restarts the same level. Change: on overlay-confirm, advance `currentLevelIndex`, call `loadLevel`, reset coins / jetpacks / enemies / player position, and swap BGM if `level.bgm` differs. After the last level → "GAME COMPLETE" overlay (reuse the win overlay, swap title text). Manual restart from `1-1` from there.
+Currently `levelComplete` shows an overlay; pressing start restarts the same level. Change: on overlay-confirm, advance `currentLevelIndex`, call `loadLevel`, reset per-level state (player position, coins, jetpacks, enemies), and swap BGM only if `level.bgm` actually changed — same track across two levels must not restart. After the last level → "GAME COMPLETE" overlay (reuse the win overlay, swap title text). Manual restart from `1-1` from there.
+
+**What persists across levels:** score, lives, hi-score state, jetpack pickup status resets (jetpack is per-level).
+**What resets per level:** player position (to `level.spawn`), coin-collected set, jetpack-taken set, enemy positions + alive flags, invuln timer, camera, BGM (when the track changes).
 
 ### Biome-aware tile renderer
 
@@ -63,18 +66,18 @@ New `type: 'flyer'` on `level.enemies`. Hovers at its declared `(col, row)` with
 When `level.type === 'boss'`:
 - Skip goal-flag collision.
 - Render `level.boss` (a placeholder pink alien at ~2× walker scale, idle bob).
-- Track `boss = { x, y, hp, alive }`; when `hp <= 0` set `levelComplete = true`.
+- Boss entity `{ x, y, alive }` exists in the engine. A `hp` field is part of the data model but **no damage code lands until PR 3**, when the mechanic is picked. PR 3 defines how HP is reduced and wires `hp <= 0 → levelComplete = true`.
 - Walls at cols `0` and `level.width - 1` lock the arena.
 
 That is the entire scaffold. The actual mechanic (stomp-N, dodge-and-stomp, switch-the-room) is decided in Phase 3, before `1-4` ships. Do not build projectile / shockwave / boss-AI architecture until the mechanic is picked.
 
 ### Torch / dark overlay
 
-When `level.hasTorch` is true:
-- Build a cached offscreen canvas at canvas size: solid `rgba(0,0,0,0.85)` with a soft radial cutout (~5-tile radius, hard-falloff edge).
-- Rebuild only on canvas resize. Never per-frame.
-- Per-frame: blit the cached canvas, translated so the cutout centres on the player.
-- Coins / enemies / platforms outside the cutout become silhouettes through the overlay — not invisible.
+When `level.hasTorch` is true, per frame:
+- Draw a dark overlay (`rgba(0,0,0,0.85)`) over the viewport.
+- Composite a radial light at the player's screen position (~5-tile radius, soft falloff) so the area around the player reads clearly.
+- Cache only the radial-light gradient. Rebuild it only when canvas size or radius changes — not per-frame, and never as a "full-screen-cutout canvas translated by player position."
+- Coins / enemies / platforms outside the lit radius become silhouettes through the overlay — not invisible.
 
 ### Decorative props
 
@@ -198,7 +201,7 @@ Every pit clearable without the jetpack. No spikes, no flyers, no duck-through.
 
 - Identity: torch / darkness. `hasTorch: true`.
 - 4 flyers (the moon's signature threat at this stage), 1 walker, 2 spike pits.
-- Final cliff is tall; jetpack effectively mandatory.
+- Final cliff is tall; the jetpack route is strongly encouraged but a non-jetpack path through tighter platforming must exist. Mandatory power-up dependency is a footgun if the player misses the pickup in low-vis conditions.
 
 ### `2-4` Moon Boss Arena — Moon, ~50 w
 
@@ -212,10 +215,10 @@ Vertical-slice-driven: PR 1 ships a polished `1-1` on the new tile system before
 
 | PR | Scope | What ships |
 |----|-------|-----------|
-| **1** | Level progression + biome tile renderer (`#`, `S`, `C`) + Earth props + redesigned `1-1` | Tile-art win + new 1-1 visible. With only one level so far, reaching the goal fires the new "GAME COMPLETE" overlay — same code path that fires after `2-4` once the rest lands. |
+| **1** | Level progression + biome plumbing + Earth tile renderer (`#`, `S`) + Earth props + redesigned `1-1` | Tile-art win + new 1-1 visible. With only one level so far, reaching the goal fires the new "GAME COMPLETE" overlay — same code path that fires after `2-4` once the rest lands. |
 | **2** | Spike tile (`^`) + flyer enemy + `1-2` + `1-3` | Earth content complete except boss. |
-| **3** | Boss scaffold + `1-4` + pick boss mechanic | World 1 done. |
-| **4** | Moon gravity + torch overlay + moon biome + `2-1`–`2-4` | Game complete. |
+| **3** | Boss scaffold + boss mechanic (pick + implement) + `1-4` | World 1 done. |
+| **4** | Moon gravity + moon tile renderer (`C` + moon palette) + moon props + torch overlay + `2-1`–`2-4` | Game complete. |
 
 Each PR is a separate branch off `main`, worktree at `~/Dev/oyster.worktrees/<branch>` per repo convention. No CHANGELOG entries (arcade work is out of scope for the consumer changelog per project convention).
 
