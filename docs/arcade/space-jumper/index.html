@@ -2205,7 +2205,7 @@ const BG_DEER_COLS = [44, 88, 124];
 function drawDeer(t, baseY, parallax) {
   const camOff = cam.x * parallax;
   for (let i = 0; i < BG_DEER_COLS.length; i++) {
-    const wx = BG_DEER_COLS[i] * 32 - camOff;       // tile-pitch-independent
+    const wx = BG_DEER_COLS[i] * TILE_PX - camOff;   // tile-grid aligned
     if (wx < -32 || wx > W + 32) continue;
     const bob = Math.round(Math.sin(t * 0.0011 + i * 1.7) * 1);
     const step = Math.floor(t / 600 + i) % 2;
@@ -2255,7 +2255,7 @@ const SKYSTRIDER_COLS = [30, 78, 124];
 function drawSkystrider(t, baseY, parallax) {
   const camOff = cam.x * parallax;
   for (let i = 0; i < SKYSTRIDER_COLS.length; i++) {
-    const wx = Math.round(SKYSTRIDER_COLS[i] * 32 - camOff);
+    const wx = Math.round(SKYSTRIDER_COLS[i] * TILE_PX - camOff);
     if (wx < -100 || wx > W + 100) continue;
     const stride = Math.floor((t + i * 800) / 400) % 4;
     const bob    = (stride === 1 || stride === 3) ? -2 * SPRITE_U : 0;
@@ -2331,34 +2331,82 @@ function drawForegroundGrass(t) {
   }
 }
 
-// One organic leaf rosette — three stacked rounded clumps (dark base, mid
-// body, lit crown) with optional petal dots. NOT vertical blades. Anchored
-// so the bottom of the clump sits at (cx, yBase). Reads as moss / fern /
-// grass cluster, not a comb. Heights vary on hash so density looks natural.
+// One organic foliage clump — wide low silhouette made from 4-6 overlapping
+// "leaf bumps" at different heights and tones, with a darker shadow base
+// and bright tip highlights. NOT a tall comb. Hash picks one of three
+// silhouette styles (squat dome / asymmetric lean / split twin lobes) so
+// no two adjacent clumps look identical. Anchored so the BOTTOM sits at
+// (cx, yBase).
 function drawLeafClump(cx, yBase, h, U) {
-  // Base — dark, broad, low. Sells weight on the ground.
-  ctx.fillStyle = '#0c4a26';
-  const bw = (5 + Math.floor(h * 4)) * U;
-  ctx.fillRect(cx - Math.floor(bw / 2), yBase - 2 * U, bw, 2 * U);
-  // Mid body — narrower, brighter green; raised 2 px above the base.
-  ctx.fillStyle = '#15803d';
-  const mw  = bw - 2 * U;
-  const mxh = (2 + Math.floor(h * 3)) * U;
-  ctx.fillRect(cx - Math.floor(mw / 2), yBase - 2 * U - mxh, mw, mxh);
-  // Crown — short rounded dome on top with lit pixels.
-  ctx.fillStyle = '#16a34a';
-  const tw = Math.max(2 * U, mw - 3 * U);
-  const th = (2 + Math.floor(h * 2)) * U;
-  ctx.fillRect(cx - Math.floor(tw / 2), yBase - 2 * U - mxh - th, tw, th);
-  // Lit tips — 1–3 bright pixels suggesting sunlight catching leaves.
-  ctx.fillStyle = '#4ade80';
-  ctx.fillRect(cx - U,         yBase - 2 * U - mxh - th, U, U);
-  if (h > 0.5) ctx.fillRect(cx + U,    yBase - 2 * U - mxh - th + U, U, U);
-  if (h > 0.75) ctx.fillRect(cx - 2*U, yBase - 2 * U - mxh - th + U, U, U);
-  // Occasional darker notch separating the body lobes — breaks up the dome.
-  if (h > 0.4) {
-    ctx.fillStyle = '#0c4a26';
-    ctx.fillRect(cx, yBase - 2 * U - Math.floor(mxh / 2), U, U);
+  // Three palette tones (dark → mid → light) + a near-black shadow.
+  const SHADOW = '#052e16';
+  const DARK   = '#14532d';
+  const MID    = '#15803d';
+  const LIGHT  = '#16a34a';
+  const TIP    = '#4ade80';
+
+  // Style bucket — wider variety than just one shape.
+  const style = Math.floor(h * 3);   // 0, 1, 2
+
+  // Common: a wide low shadow base under the whole clump.
+  ctx.fillStyle = SHADOW;
+  const baseW = (10 + Math.floor(h * 6)) * U;          // 10–15 design-px wide
+  ctx.fillRect(cx - Math.floor(baseW / 2), yBase - U, baseW, U);
+
+  // Each style is a set of leaf bumps in (dx, dy, w, h, tone) units.
+  // dy is in design-px ABOVE yBase. All bumps overlap horizontally so the
+  // silhouette reads as a single rounded mat, not stacked rectangles.
+  let bumps;
+  if (style === 0) {
+    // Squat dome — wide centre, flanked by lower bumps.
+    bumps = [
+      [-6, 0,  4, 2, DARK],
+      [-3, 1,  5, 3, MID ],
+      [ 0, 2,  4, 4, LIGHT],
+      [ 3, 1,  5, 3, MID ],
+      [ 6, 0,  3, 2, DARK],
+    ];
+  } else if (style === 1) {
+    // Asymmetric — leans right, taller right shoulder.
+    bumps = [
+      [-5, 0,  4, 2, DARK],
+      [-2, 1,  4, 3, MID ],
+      [ 2, 2,  4, 3, MID ],
+      [ 4, 3,  4, 4, LIGHT],
+      [ 7, 1,  3, 2, MID ],
+    ];
+  } else {
+    // Split twin lobes — two distinct domes with a low gap between.
+    bumps = [
+      [-7, 0,  4, 2, DARK],
+      [-5, 1,  4, 3, MID ],
+      [-3, 2,  3, 3, LIGHT],
+      [ 0, 0,  2, 1, DARK],   // low connector
+      [ 1, 1,  3, 2, MID ],
+      [ 3, 2,  4, 3, LIGHT],
+      [ 6, 1,  3, 2, MID ],
+    ];
+  }
+  for (let i = 0; i < bumps.length; i++) {
+    const [dx, dy, w, hh, c] = bumps[i];
+    ctx.fillStyle = c;
+    ctx.fillRect(cx + dx * U, yBase - U - dy * U - hh * U, w * U, hh * U);
+  }
+
+  // Lit tip highlights — 2–3 bright pixels scattered on top.
+  ctx.fillStyle = TIP;
+  if (style === 0) {
+    ctx.fillRect(cx + 0 * U, yBase - 7 * U, U, U);
+    if (h > 0.5)  ctx.fillRect(cx - 3 * U, yBase - 5 * U, U, U);
+    if (h > 0.7)  ctx.fillRect(cx + 3 * U, yBase - 5 * U, U, U);
+  } else if (style === 1) {
+    ctx.fillRect(cx + 5 * U, yBase - 8 * U, U, U);
+    if (h > 0.5)  ctx.fillRect(cx + 2 * U, yBase - 6 * U, U, U);
+    if (h > 0.7)  ctx.fillRect(cx + 7 * U, yBase - 4 * U, U, U);
+  } else {
+    ctx.fillRect(cx - 4 * U, yBase - 6 * U, U, U);
+    ctx.fillRect(cx + 4 * U, yBase - 6 * U, U, U);
+    if (h > 0.7)  ctx.fillRect(cx - 2 * U, yBase - 5 * U, U, U);
   }
 }
 
