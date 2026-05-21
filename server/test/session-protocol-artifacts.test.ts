@@ -148,8 +148,9 @@ describe("protocol-artifact classification", () => {
   });
 
   it("assistant slash-command echoes are NOT classified as artefacts", () => {
-    // The watcher gates classification on role === 'user', so an
-    // assistant echo like `/rename …` stays visible and searchable.
+    // After #536 the watcher classifies every role through the same prefix
+    // check. Assistant echoes like `/rename …` start with `/`, never match
+    // any wrapper prefix, and stay visible + searchable.
     env.store.insertEvent({ session_id: "s1", role: "assistant", text: "/rename foo" });
     expect(env.store.getEventsBySession("s1").map((e) => e.text)).toEqual(["/rename foo"]);
     expect(env.store.searchEvents("rename")).toHaveLength(1);
@@ -164,6 +165,77 @@ describe("protocol-artifact classification", () => {
       text: "here's an example: <command-name> — what does that tag mean?",
     });
     expect(env.store.getEventsBySession("s1")).toHaveLength(1);
+  });
+
+  it("v2 backfill marks role='system' local_command rows on first boot (#536)", () => {
+    // Simulate a userland that booted before the v2 backfill: a SYSTEM-role
+    // row carrying claude-code slash-command machinery as the `local_command`
+    // subtype has been ingested with the artifact flag still at 0.
+    //
+    // To exercise the migration we need to drop the v2 done flag so a second
+    // boot re-runs it. (makeEnv has already set both v1 and v2 flags.)
+    env.db.prepare("DELETE FROM app_state WHERE key = 'protocol_artifact_backfill_v2_done'").run();
+    env.db.prepare(
+      `INSERT INTO session_events (session_id, role, text, is_protocol_artifact)
+       VALUES ('s1', 'system', ?, 0)`,
+    ).run("local_command: <command-name>/rename needle-token</command-name>");
+    env.db.prepare(
+      `INSERT INTO session_events (session_id, role, text, is_protocol_artifact)
+       VALUES ('s1', 'user', ?, 0)`,
+    ).run("genuine question needle-token");
+
+    // Pre-backfill sanity: both rows are in FTS.
+    expect(env.store.searchEvents("needle")).toHaveLength(2);
+
+    // Second boot on the same userland dir runs the v2 backfill.
+    env.db.close();
+    const db2 = initDb(env.dir);
+    const store2 = new SqliteSessionStore(db2);
+
+    // Artefact row is now classified and out of FTS.
+    expect(store2.searchEvents("needle")).toHaveLength(1);
+    expect(store2.searchEvents("needle")[0].snippet).toContain("genuine");
+
+    // Transcript reads also exclude the SYSTEM row.
+    expect(store2.getEventsBySession("s1").map((e) => e.text))
+      .toEqual(["genuine question needle-token"]);
+
+    // Raw row is still on disk for audit.
+    const onDisk = db2
+      .prepare(
+        `SELECT role, text, is_protocol_artifact FROM session_events
+         WHERE session_id = 's1' AND text LIKE 'local_command:%'`,
+      )
+      .all() as Array<{ role: string; is_protocol_artifact: number }>;
+    expect(onDisk).toHaveLength(1);
+    expect(onDisk[0].role).toBe("system");
+    expect(onDisk[0].is_protocol_artifact).toBe(1);
+
+    db2.close();
+  });
+
+  it("v2 backfill is gated so it doesn't rescan on every boot (#536)", () => {
+    const flag = env.db
+      .prepare("SELECT value FROM app_state WHERE key = 'protocol_artifact_backfill_v2_done'")
+      .get() as { value: string } | undefined;
+    expect(flag?.value).toBe("1");
+
+    // Pre-migration-style unmarked row inserted after the v2 gate is set.
+    env.db.prepare(
+      `INSERT INTO session_events (session_id, role, text, is_protocol_artifact)
+       VALUES ('s1', 'system', ?, 0)`,
+    ).run("local_command: <command-name>/rename</command-name>");
+
+    // Second boot must NOT re-run the backfill UPDATE.
+    env.db.close();
+    const db2 = initDb(env.dir);
+    const row = db2
+      .prepare(
+        "SELECT is_protocol_artifact FROM session_events WHERE role = 'system' AND text LIKE 'local_command:%' LIMIT 1",
+      )
+      .get() as { is_protocol_artifact: number } | undefined;
+    db2.close();
+    expect(row?.is_protocol_artifact).toBe(0);
   });
 
   it("backfill is gated so it doesn't rescan session_events on every boot", () => {

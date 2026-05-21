@@ -780,6 +780,26 @@ export function initDb(userlandDir: string): Database.Database {
     }
   }
 
+  // v2 backfill (#536): the original predicate above missed SYSTEM-role
+  // rows carrying slash-command machinery as the `local_command` subtype
+  // (rendered as `local_command: <command-name>…`). Gated on its own
+  // app_state key so it runs exactly once per userland, not on every boot.
+  {
+    const flag = db.prepare(
+      `INSERT OR IGNORE INTO app_state (key, value, applied_at)
+       VALUES ('protocol_artifact_backfill_v2_done', '1', ?)`,
+    ).run(Date.now());
+    if (flag.changes > 0) {
+      db.exec(`
+        UPDATE session_events
+           SET is_protocol_artifact = 1
+         WHERE is_protocol_artifact = 0
+           AND role = 'system'
+           AND ltrim(text, ' ' || char(9) || char(10) || char(13)) LIKE 'local_command:%';
+      `);
+    }
+  }
+
   // Backfill the FTS index if it's stale relative to the content table.
   //
   // The naive "rebuild only when ftsCount === 0" check is wrong: a hot-
