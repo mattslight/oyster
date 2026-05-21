@@ -777,6 +777,11 @@ function loadLevel(idx) {
   }
 }
 
+// Tile classes — visual variants resolve to the same physical class.
+// Renderer reads the char itself; physics only reads class membership.
+const SOLID_TILES  = new Set(['#', 'S']);
+const HAZARD_TILES = new Set();   // ^ added in PR 2
+
 function tileAt(col, row) {
   if (col < 0 || row < 0 || col >= level.width || row >= level.height) {
     // Treat horizontal out-of-bounds as solid wall; below as void (death).
@@ -784,7 +789,7 @@ function tileAt(col, row) {
   }
   return level.tiles[row][col];
 }
-function isSolid(col, row) { return tileAt(col, row) === '#'; }
+function isSolid(col, row) { return SOLID_TILES.has(tileAt(col, row)); }
 
 // ============================================
 // SCALING — derive a tile size in screen pixels from the canvas height so
