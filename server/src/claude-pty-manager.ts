@@ -9,6 +9,7 @@
 // can still replay the final frames before we drop scrollback.
 
 import { randomUUID } from "node:crypto";
+import { constants as osConstants } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -16,6 +17,25 @@ import type Database from "better-sqlite3";
 import type { SessionStore } from "./session-store.js";
 import type { UiCommand, TerminalPresenceEventPayload } from "../../shared/types.js";
 import { deleteIfGhostOnExit } from "./ghost-session-cleanup.js";
+
+// node-pty's `onExit` reports `signal` as a number (POSIX signal int) per its
+// type declaration. We translate to the conventional `SIGxxx` name at the
+// capture boundary so `exit_signal` is human-readable in the DB and any UI
+// tooltips downstream. Tests may pass names directly — passthrough is
+// intentional so test fixtures don't need to remember signal numbers.
+const SIGNAL_NUMBER_TO_NAME: ReadonlyMap<number, string> = (() => {
+  const m = new Map<number, string>();
+  for (const [name, num] of Object.entries(osConstants.signals)) {
+    if (typeof num === "number" && !m.has(num)) m.set(num, name);
+  }
+  return m;
+})();
+
+export function signalName(signal: number | string | null | undefined): string | null {
+  if (signal == null) return null;
+  if (typeof signal === "string") return signal;
+  return SIGNAL_NUMBER_TO_NAME.get(signal) ?? `signal-${signal}`;
+}
 
 export interface ClaudePtyManagerDeps {
   sessionStore: SessionStore;
@@ -190,8 +210,8 @@ export class ClaudePtyManager {
       }
     });
 
-    proc.onExit(({ exitCode, signal }: { exitCode: number; signal?: string | number | null }) => {
-      this._handleExit(entry, { exitCode, signal: signal != null ? String(signal) : null });
+    proc.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
+      this._handleExit(entry, { exitCode, signal: signalName(signal) });
     });
 
     return { terminalId, startedAt };
@@ -343,8 +363,12 @@ export class ClaudePtyManager {
       // file), the stub row inserted at spawn time is a ghost — drop it
       // entirely rather than leaving an un-resumable "Untitled"
       // entry in the list. Otherwise, record the exit facts and write a
-      // transient state so SSE clients don't flicker through "active"
-      // before the next heartbeat sweep re-derives from the new facts.
+      // transient state so SSE clients see the result of this exit
+      // immediately. The next heartbeat sweep will re-derive from facts —
+      // Task 5 will teach deriveState to read exit_code/exit_signal/
+      // clean_process_exit so this value sticks. Until then, an in-flight
+      // session may briefly re-derive to "active" if it exited within the
+      // active-window.
       const deleted = deleteIfGhostOnExit(this.sessionStore, this.db, exitedSessionId, entry.cwd);
       if (!deleted) {
         const cleanProcessExit = exit.exitCode === 0 && !exit.signal;
@@ -380,15 +404,20 @@ export class ClaudePtyManager {
 
   /** Test-only: inject a fake entry with a stub proc whose onExit fires
    *  immediately on kill(). Production code never calls this. */
-  _seedEntryForTest(input: { terminalId: string; linkedSessionId: string | null }): void {
-    let exitCb: (e: { exitCode: number; signal?: string | number | null }) => void = () => {};
+  _seedEntryForTest(input: {
+    terminalId: string;
+    linkedSessionId: string | null;
+    killExit?: { exitCode: number; signal?: number };
+  }): void {
+    let exitCb: (e: { exitCode: number; signal?: number }) => void = () => {};
+    const killExit = input.killExit ?? { exitCode: 0 };
     const fakeProc: any = {
       pid: -1,
       onData: () => {},
       onExit: (cb: typeof exitCb) => { exitCb = cb; },
       write: () => {},
       resize: () => {},
-      kill: () => { exitCb({ exitCode: 0, signal: null }); },
+      kill: () => { exitCb(killExit); },
     };
     const entry: ClaudePtyEntry = {
       terminalId: input.terminalId,
@@ -405,8 +434,8 @@ export class ClaudePtyManager {
       evictTimer: null,
     };
     // Wire the onExit listener the same way spawn() does.
-    fakeProc.onExit(({ exitCode, signal }: { exitCode: number; signal?: string | number | null }) => {
-      this._handleExit(entry, { exitCode, signal: signal != null ? String(signal) : null });
+    fakeProc.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
+      this._handleExit(entry, { exitCode, signal: signalName(signal) });
     });
     this.terminals.set(input.terminalId, entry);
   }

@@ -221,4 +221,31 @@ describe("ClaudePtyManager _handleExit records exit facts", () => {
     expect(row.exit_signal).toBe("SIGKILL");
     expect(row.clean_process_exit).toBe(0);
   });
+
+  it("translates numeric signal from node-pty onExit to SIGxxx name", () => {
+    // Drive the production onExit wrapper end-to-end: seed an entry whose
+    // fake proc.kill() fires onExit with a numeric signal (matching node-pty's
+    // actual type), then assert the DB recorded the human-readable name.
+    const dir = mkdtempSync(join(tmpdir(), "oyster-pty-exit-num-"));
+    const db = initDb(dir);
+    const store = new SqliteSessionStore(db);
+    const mgr = new ClaudePtyManager({ sessionStore: store, db, broadcastUiEvent: () => {} });
+    const sessionId = "s2";
+    store.insertSession({ id: sessionId, space_id: null, agent: "claude-code", state: "active" });
+    store.insertEvent({ session_id: sessionId, role: "user", text: "hello" });
+    mgr._seedEntryForTest({
+      terminalId: "t2",
+      linkedSessionId: null,
+      killExit: { exitCode: 137, signal: 9 },
+    });
+    mgr.linkTerminalForTest("t2", sessionId);
+    mgr.kill("t2");
+    const row = store.getById(sessionId)!;
+    expect(row.exit_code).toBe(137);
+    expect(row.exit_signal).toBe("SIGKILL");
+    expect(row.clean_process_exit).toBe(0);
+    mgr.disposeAll();
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
