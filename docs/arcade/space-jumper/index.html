@@ -327,6 +327,25 @@ window.addEventListener('keydown', e => {
   debugHitboxes = !debugHitboxes;
 });
 
+// Debug cheat — press J to TOGGLE the jetpack (granting with full fuel, or
+// removing it if Rogers already has one). Useful for testing both the
+// jetpack and no-jetpack routes through a level. Ignored while a text input
+// is focused so initials entry isn't blocked.
+window.addEventListener('keydown', e => {
+  if (e.key !== 'j' && e.key !== 'J') return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (typeof player === 'undefined') return;     // not initialised yet
+  if (player.hasJetpack) {
+    player.hasJetpack = false;
+    player.fuel = 0;
+    player.thrusting = false;
+  } else {
+    player.hasJetpack = true;
+    player.fuel = (typeof JETPACK_FUEL_MAX !== 'undefined') ? JETPACK_FUEL_MAX : 60;
+  }
+});
+
 // Forward-declared so the touch closures can route to initials entry when
 // it's active. Defined fully further down (after the leaderboard module).
 let initialsActive = false;
@@ -570,7 +589,7 @@ function showEndOverlay({ win }) {
   const scoreVal = document.getElementById('go-score-val');
   const hiEl = document.getElementById('go-hiscore');
   if (!ov) return;
-  titleEl.textContent = win ? 'LEVEL COMPLETE' : 'GAME OVER';
+  titleEl.textContent = gameComplete ? 'GAME COMPLETE' : (win ? 'LEVEL COMPLETE' : 'GAME OVER');
   titleEl.classList.toggle('is-win', !!win);
   titleEl.classList.toggle('is-loss', !win);
   scoreVal.textContent = score;
@@ -698,6 +717,7 @@ splash.addEventListener('pointerdown', e => {
 // Required at runtime (currently consulted by the engine):
 //   id, world, stage   — display + progression
 //   type               — 'platformer' (reach goal) or 'boss' (defeat boss)
+//   biome              — 'earth' | 'moon' (selects tile palette + props)
 //   width, height      — tile grid
 //   spawn              — { col, row } player start
 //   tiles              — array of row strings; '.' empty, '#' solid
@@ -712,45 +732,108 @@ splash.addEventListener('pointerdown', e => {
 //   hasTorch           — true → darkness overlay + radial light on player
 //   boss               — { type, hp, … } for type:'boss', else null
 const LEVELS = [
-  // 1-1 — the existing tutorial step-ladder. 7 platforms ascending right.
+  // 1-1 — "Hill Top". 150-wide Earth intro stage. Identity: basic jumps only.
+  // No spikes (introduced 1-2), no flyers (introduced 1-3). Jetpack is a bonus
+  // shortcut that grants access to 3 row-4 coins; every pit is also clearable
+  // from a running jump.
   {
     id: '1-1', world: 1, stage: 1, type: 'platformer',
-    width: 60, height: 14,
+    biome: 'earth',
+    width: 150, height: 14,
     spawn: { col: 2, row: 12 },
+    // Tile-row layouts (each row is exactly 150 chars):
+    //  row 0–4   : sky (all dots)
+    //  row 5     : Zone E top platform cols 128–131; Zone F goal platform cols 138–148
+    //  row 6     : empty
+    //  row 7     : Zone E platform cols 121–124
+    //  row 8     : empty (jetpack pickup at col 92 is an entity, not a tile)
+    //  row 9     : Zone D high platform cols 90–94; Zone E platform cols 114–117
+    //  row 10    : Zone B low platform cols 38–42 (####); Zone C stone platform cols 66–70 (SSSSS)
+    //  row 11    : Zone C platform cols 58–62; Zone D stepping-stone cols 82–85; Zone E platform cols 108–111
+    //  row 12–13 : floor — solid except Zone B pit cols 32–34 and Zone D pits cols 86–87 + cols 97–98
     tiles: [
-      '............................................................',
-      '............................................................',
-      '............................................................',
-      '............................................................',
-      '............................................................',
-      '..........................................###...............',
-      '....................................###.....................',
-      '..............................###...........................',
-      '........................###.................................',
-      '..................###.......................................',
-      '............###.............................................',
-      '......###...................................................',
-      '############################################################',
-      '############################################################',
+      '......................................................................................................................................................',
+      '......................................................................................................................................................',
+      '......................................................................................................................................................',
+      '......................................................................................................................................................',
+      '......................................................................................................................................................',
+      '................................................................................................................................####.......###########',
+      '......................................................................................................................................................',
+      '.........................................................................................................................####.........................',
+      '......................................................................................................................................................',
+      '........................................................................................#######...................####................................',
+      '......................................#####.......................SSSSS...............................................................................',
+      '..........................................................#####...................####......................####......................................',
+      '################################...###################################################..#########..###################################################',
+      '################################...###################################################..#########..###################################################',
     ],
     coins: [
-      { col:  7, row: 10 },
-      { col: 13, row:  9 },
-      { col: 19, row:  8 },
-      { col: 25, row:  7 },
-      { col: 31, row:  6 },
-      { col: 37, row:  5 },
+      // Zone A — floor walk
+      { col:  8, row: 11 },
+      { col: 14, row: 11 },
+      { col: 20, row: 11 },
+      // Zone B — above low platform
+      { col: 40, row:  9 },
+      // Zone C — step-up coin trail
+      { col: 60, row:  9 },
+      { col: 64, row:  9 },
+      { col: 68, row:  9 },
+      // Zone D — bonus row (only reachable with jetpack thrust)
+      { col: 89, row:  4 },
+      { col: 92, row:  4 },
+      { col: 95, row:  4 },
+      // Zone E — above each climb platform
+      { col: 109, row: 10 },
+      { col: 115, row:  8 },
+      { col: 122, row:  6 },
+      { col: 129, row:  4 },
     ],
-    goal: { col: 43, row: 5 },
+    goal: { col: 145, row: 5 },
     enemies: [
-      { col: 13, row: 10, type: 'walker' },
-      { col: 25, row:  8, type: 'walker' },
+      { col: 18, row: 12, type: 'walker' },   // Zone A floor
+      { col: 68, row: 10, type: 'walker' },   // Zone C upper stone platform
+      { col: 130, row: 5, type: 'walker' },   // Zone E top platform
     ],
-    // Floating on the lane between platforms — players can grab it with a
-    // ground-launched jump while running through 1-1. Once they have it the
-    // remaining diagonal jumps are trivially skippable with thrust.
     jetpacks: [
-      { col: 21, row: 11 },
+      { col: 92, row: 8 },                    // Zone D — visible from below
+    ],
+    props: [
+      // prop.row names the empty tile ABOVE the surface — see Task 5 convention.
+      // Zone A — flat intro: dense decoration sells "starting meadow"
+      { col:   3, row: 11, type: 'tallgrass' },
+      { col:   5, row: 11, type: 'bush'      },
+      { col:   8, row: 11, type: 'rabbit'    }, // hops on the starting meadow
+      { col:  10, row: 11, type: 'flower'    },
+      { col:  11, row: 11, type: 'butterfly' }, // flutters around the flower
+      { col:  13, row: 11, type: 'tallgrass' },
+      { col:  22, row: 11, type: 'mushroom'  },
+      { col:  26, row: 11, type: 'rock'      },
+      // Zone B — near the pit. A frog at the pit edge sells "wetland."
+      { col:  29, row: 11, type: 'tallgrass' },
+      { col:  31, row: 11, type: 'frog'      }, // right before the pit edge
+      { col:  44, row: 11, type: 'flower'    },
+      { col:  45, row: 11, type: 'butterfly' },
+      { col:  48, row: 11, type: 'tallgrass' },
+      // Zone C — between cliff platforms
+      { col:  53, row: 11, type: 'rock'      },
+      { col:  74, row: 11, type: 'flower'    },
+      { col:  77, row: 11, type: 'tallgrass' },
+      { col:  79, row: 11, type: 'rabbit'    },
+      // Zone D — between pits + jetpack platform
+      { col:  99, row: 11, type: 'tallgrass' },
+      { col: 102, row: 11, type: 'rock'      },
+      { col: 103, row: 11, type: 'frog'      },
+      // Zone E — between climb platforms
+      { col: 113, row: 11, type: 'flower'    },
+      { col: 114, row: 11, type: 'butterfly' },
+      { col: 120, row: 11, type: 'tallgrass' },
+      { col: 126, row: 11, type: 'tallgrass' },
+      // Zone F — goal area
+      { col: 138, row: 11, type: 'flower'    },
+      { col: 139, row: 11, type: 'butterfly' }, // welcoming party
+      { col: 142, row:  4, type: 'bush'      }, // sits on the row-5 goal platform
+      { col: 144, row:  4, type: 'rabbit'    }, // hopping near the flag
+      { col: 147, row: 11, type: 'mushroom'  },
     ],
     bgm: 'bgm.mp3?v=2',
     gravityScale: 1,
@@ -765,15 +848,48 @@ function loadLevel(idx) {
   currentLevelIndex = Math.max(0, Math.min(idx, LEVELS.length - 1));
   level = LEVELS[currentLevelIndex];
   if (typeof recomputeScale === 'function') recomputeScale();
-  // Swap the BGM track to whatever the level declares. Guarded so a first
-  // load before the <audio> element is parsed (script-init order) just no-ops
-  // — the inline src in HTML serves the same file for 1-1 in that window.
+  // Swap the BGM track ONLY when it differs from what's currently loaded.
+  // Same-track levels (e.g. 1-1 → 1-2 if they share BGM) must NOT restart
+  // audio. The dataset.src guard makes this idempotent across loadLevel()
+  // and advanceLevel() calls. Also no-ops on first load before <audio> exists.
   const bgmEl = document.getElementById('bgm');
   if (bgmEl && level.bgm && bgmEl.dataset.src !== level.bgm) {
     bgmEl.dataset.src = level.bgm;
     bgmEl.src = level.bgm;
   }
 }
+
+// Advance to the next level. Resets per-level state via the existing helpers
+// but preserves score / lives / hi-score state. Returns true if a new level
+// was loaded, false if we just completed the final level (caller should fire
+// GAME COMPLETE).
+function advanceLevel() {
+  if (currentLevelIndex >= LEVELS.length - 1) return false;
+
+  const prevBgm = level.bgm;
+  loadLevel(currentLevelIndex + 1);   // also handles bgm.dataset.src swap
+
+  // Per-level state resets — same helpers resetRun() uses.
+  coinsCollected.clear();
+  jetpacksTaken.clear();
+  initEnemies();
+  resetPlayer();
+  player.invulnAt = -Infinity;
+  levelComplete = false; levelCompleteAt = 0;
+  hideEndOverlay();
+
+  // If loadLevel switched the track, kick playback.
+  if (level.bgm !== prevBgm) {
+    const bgmEl = document.getElementById('bgm');
+    if (bgmEl) bgmEl.play().catch(() => {});
+  }
+  return true;
+}
+
+// Tile classes — visual variants resolve to the same physical class.
+// Renderer reads the char itself; physics only reads class membership.
+const SOLID_TILES  = new Set(['#', 'S']);
+const HAZARD_TILES = new Set();   // ^ added in PR 2
 
 function tileAt(col, row) {
   if (col < 0 || row < 0 || col >= level.width || row >= level.height) {
@@ -782,7 +898,7 @@ function tileAt(col, row) {
   }
   return level.tiles[row][col];
 }
-function isSolid(col, row) { return tileAt(col, row) === '#'; }
+function isSolid(col, row) { return SOLID_TILES.has(tileAt(col, row)); }
 
 // ============================================
 // SCALING — derive a tile size in screen pixels from the canvas height so
@@ -790,6 +906,14 @@ function isSolid(col, row) { return tileAt(col, row) === '#'; }
 // the tile size. Recomputed on resize.
 // ============================================
 let TILE_PX = 32;
+// Sprite-scale unit. Background fauna (Skystrider, deer, owl, fireflies,
+// foreground grass, etc.) draw with hardcoded pixel coords; multiplying
+// every coord by SPRITE_U keeps them legible on big monitors. Integer steps
+// so pixel art stays crisp (no fractional fills). Floored at 2 so even
+// small viewports get a substantive sprite — at SPRITE_U=1 the foliage and
+// the Skystrider looked dwarfed against the tiles.
+const DESIGN_TILE_PX = 32;
+let SPRITE_U = 2;
 let PLAYER_W = 28;
 let PLAYER_H = 40;
 let ENEMY_W = 28;
@@ -808,6 +932,7 @@ const ENEMY_H_FRAC = 0.65;
 
 function recomputeScale() {
   TILE_PX = Math.max(16, Math.floor(H / level.height));
+  SPRITE_U = Math.max(2, Math.round(TILE_PX / DESIGN_TILE_PX));
   PLAYER_W = Math.round(TILE_PX * PLAYER_W_FRAC);
   PLAYER_H = Math.round(TILE_PX * PLAYER_H_FRAC);
   ENEMY_W = Math.round(TILE_PX * ENEMY_W_FRAC);
@@ -815,26 +940,34 @@ function recomputeScale() {
 }
 recomputeScale();
 
-// Movement tuning (in screen px / frame at 60fps).
-// Peak jump = JUMP_VEL^2 / (2 * GRAVITY) ≈ 163 px ≈ 2.7 tiles at typical
-// scale, so the player can comfortably clear the step-up platforms in 1-1
-// from a running start without needing the jetpack.
-const MOVE_ACCEL = 0.75;
-const MOVE_MAX = 5.0;
+// Movement tuning — stored as FRACTIONS OF A TILE per frame at 60 fps so
+// the physics stay viewport-independent (TILE_PX varies with screen height).
+// The design intent was set against TILE_PX ≈ 60, where the raw numbers were
+// MOVE_ACCEL=0.75 px/f², MOVE_MAX=5 px/f, GRAVITY=0.6 px/f², JUMP_VEL=-14 px/f.
+// Invariant: peak jump = JUMP_VEL² / (2·GRAVITY) = 2.72 TILES at any viewport.
+// If that drifts, level layouts break — see assert below.
+const MOVE_ACCEL_FRAC      =  0.0125;   // tiles / frame²
+const MOVE_MAX_FRAC        =  0.0833;   // tiles / frame
+const GRAVITY_FRAC         =  0.0100;   // tiles / frame²
+const JUMP_VEL_FRAC        = -0.2333;   // tiles / frame
+const MAX_VY_FRAC          =  0.2667;   // tiles / frame (terminal velocity)
+const JETPACK_THRUST_FRAC  = -0.0175;   // tiles / frame²
+const JETPACK_MAX_VY_FRAC  = -0.1167;   // tiles / frame
+// Dimensionless — no scaling
 const FRICTION = 0.82;
-const GRAVITY = 0.6;
-const JUMP_VEL = -14;
-const JUMP_CUT = 0.4;
-const COYOTE_MS = 100;
+const JUMP_CUT = 0.40;
+// Time-based — no scaling
+const COYOTE_MS      = 100;
 const JUMP_BUFFER_MS = 130;
+const JETPACK_FUEL_MAX = 60;            // frame count for ~1.0 s of burn
 
-// Jetpack — once picked up (one per level), holding JUMP in mid-air burns
-// fuel for upward thrust. Fuel refills on landing. Numbers tuned for 60fps:
-// FUEL_MAX = ~1.0s of burn; THRUST is stronger than gravity so net rise is
-// gentle (~0.45 px/f²); MAX_VY caps how fast a thrust burst can fling you.
-const JETPACK_FUEL_MAX     = 60;
-const JETPACK_THRUST_ACCEL = -1.05;
-const JETPACK_MAX_VY       = -7;
+// Invariant check (run once at boot): peak jump must stay at 2.72 tiles.
+{
+  const peakTiles = (JUMP_VEL_FRAC * JUMP_VEL_FRAC) / (2 * GRAVITY_FRAC);
+  if (Math.abs(peakTiles - 2.72) > 0.05) {
+    console.warn('[space-jumper] peak jump drifted from design:', peakTiles.toFixed(3), 'tiles');
+  }
+}
 
 const player = {
   x: 0, y: 0,            // world pixels, top-left
@@ -865,6 +998,8 @@ const coinsCollected = new Set();
 const jetpacksTaken = new Set();
 let levelComplete = false;
 let levelCompleteAt = 0;
+let gameComplete = false;
+let gameCompleteAt = 0;
 let gameOver = false;
 let gameOverAt = 0;
 const enemies = [];
@@ -895,6 +1030,12 @@ function resetRun() {
   coinsCollected.clear();
   jetpacksTaken.clear();
   levelComplete = false; levelCompleteAt = 0;
+  gameComplete = false; gameCompleteAt = 0;
+  // After a GAME COMPLETE restart, drop back to level 1.
+  if (currentLevelIndex !== 0) {
+    currentLevelIndex = 0;
+    loadLevel(0);
+  }
   gameOver = false; gameOverAt = 0;
   dying = false; livesScreen = false;
   hideEndOverlay();
@@ -1092,12 +1233,25 @@ function update() {
   // the Mario-style lives screen is showing.
   if (stepDeathSequence(now)) return;
 
+  // Derive viewport-aware physics from the tile-fraction design intent.
+  // TILE_PX changes on resize; recomputing every frame is free and keeps
+  // the physics identical at any screen size. See the _FRAC constants and
+  // the invariant comment up top.
+  const MOVE_ACCEL          = MOVE_ACCEL_FRAC       * TILE_PX;
+  const MOVE_MAX            = MOVE_MAX_FRAC         * TILE_PX;
+  const GRAVITY             = GRAVITY_FRAC          * TILE_PX;
+  const JUMP_VEL            = JUMP_VEL_FRAC         * TILE_PX;
+  const MAX_VY              = MAX_VY_FRAC           * TILE_PX;
+  const JETPACK_THRUST_ACCEL = JETPACK_THRUST_FRAC  * TILE_PX;
+  const JETPACK_MAX_VY      = JETPACK_MAX_VY_FRAC   * TILE_PX;
+  const STOP_THRESHOLD      = 0.0008                * TILE_PX;  // snap-to-zero floor
+
   // Horizontal input
   const left = keys['ArrowLeft'] || keys['a'] || keys['A'];
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
   if (left && !right) { player.vx -= MOVE_ACCEL; player.facing = -1; }
   else if (right && !left) { player.vx += MOVE_ACCEL; player.facing = 1; }
-  else { player.vx *= FRICTION; if (Math.abs(player.vx) < 0.05) player.vx = 0; }
+  else { player.vx *= FRICTION; if (Math.abs(player.vx) < STOP_THRESHOLD) player.vx = 0; }
   player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
 
   // Jump input — edges for press / release
@@ -1142,7 +1296,7 @@ function update() {
   // Gravity — level can scale it (moon = ~0.55) for different feel.
   const gScale = (typeof level.gravityScale === 'number') ? level.gravityScale : 1;
   player.vy += GRAVITY * gScale;
-  if (player.vy > 16) player.vy = 16;
+  if (player.vy > MAX_VY) player.vy = MAX_VY;
 
   // Integrate with tile collision (X then Y)
   resolveX(player.vx);
@@ -1243,11 +1397,21 @@ function update() {
     const gw = TILE_PX * 0.8;
     const gh = TILE_PX * 2;
     if (aabbOverlap(player.x, player.y, PLAYER_W, PLAYER_H, gx, gy, gw, gh)) {
-      levelComplete = true;
-      levelCompleteAt = now;
-      pauseBgm();
-      playWin();
-      showEndOverlay({ win: true });
+      const isLast = currentLevelIndex >= LEVELS.length - 1;
+      if (isLast) {
+        gameComplete   = true;
+        gameCompleteAt = now;
+        levelComplete  = true;          // shares the grace + restart flow
+        levelCompleteAt = now;
+        pauseBgm();
+        playWin();
+        showEndOverlay({ win: true });
+      } else {
+        score += 100;                    // small clear bonus, preserves momentum
+        playWin();
+        advanceLevel();
+        // No overlay between levels — straight into the next stage.
+      }
     }
   }
 
@@ -1263,25 +1427,336 @@ function update() {
 // ============================================
 // RENDER
 // ============================================
+// Per-biome tile palettes. Keys map char → { body, topEdge, highlight, innerShadow }.
+// `topEdge` only paints when no tile is above (open sky). `highlight` is a 1-px
+// row directly below the top edge for that pixel-y readability.
+const TILE_PALETTE = {
+  earth: {
+    '#': { body: '#3b2f1a', topEdge: '#22c55e', highlight: '#4ade80', innerShadow: 'rgba(0,0,0,0.25)' },
+    'S': { body: '#4a4a4a', topEdge: '#6b6b6b', highlight: '#9ca3af', innerShadow: 'rgba(0,0,0,0.25)' },
+  },
+};
+
+// Decorative props — non-collidable. Drawn between tiles and entities so they
+// sit "in front of" the world but behind enemies/player. Sprite dispatch by
+// type; `t` (frame time, ms) flows through so sprites can animate cheaply.
+function drawProps(t) {
+  if (!level.props || level.props.length === 0) return;
+  for (let i = 0; i < level.props.length; i++) {
+    const p = level.props[i];
+    drawProp(p, p.col * TILE_PX, p.row * TILE_PX, t);
+  }
+}
+
+function drawProp(p, worldX, worldY, t) {
+  const x = Math.round(worldX - cam.x);
+  const y = Math.round(worldY);
+  if (x + TILE_PX < 0 || x > W) return;
+  // Pixel size scales with the tile so props stay proportional on resize.
+  const PXL = Math.max(2, Math.round(TILE_PX / 14));
+  // Stable per-prop animation seed (world-space). Seeding sprite animation
+  // from screen-space `x` would shift phase as the camera scrolls — props
+  // would look like they're animating BECAUSE of camera motion.
+  const seed = p.col;
+  switch (p.type) {
+    case 'mushroom':  return drawMushroom(x, y, PXL, t, seed);
+    case 'bush':      return drawBush(x, y, PXL, t, seed);
+    case 'signpost':  return drawSignpost(x, y, PXL, t, seed);
+    case 'rock':      return drawRock(x, y, PXL, t, seed);
+    case 'tallgrass': return drawTallgrass(x, y, PXL, t, seed);
+    case 'flower':    return drawFlower(x, y, PXL, t, seed);
+    case 'rabbit':    return drawRabbit(x, y, PXL, t, seed);
+    case 'butterfly': return drawButterfly(x, y, PXL, t, seed);
+    case 'frog':      return drawFrog(x, y, PXL, t, seed);
+  }
+}
+
+// Earth props — `prop.row` names the empty tile ABOVE the surface. We draw
+// from baseY = y + TILE_PX (bottom of the prop sits at top of the tile below
+// it, i.e. on the surface). So `{ row: 11 }` sits on the row-12 floor.
+
+function drawMushroom(x, y, PXL, t, seed) {
+  // 8-wide × 9-tall pixel grid (in PXL units). Slow vertical bob. Seed is
+  // world-space so the bob phase doesn't shift with camera scroll.
+  const baseY = y + TILE_PX;
+  const bob   = Math.round(Math.sin((t || 0) * 0.0017 + (seed || 0) * 1.31) * PXL * 0.4);
+  // Stem (white) — 2 wide × 3 tall, centered.
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(x + 3 * PXL, baseY - 3 * PXL, 2 * PXL, 3 * PXL);
+  // Cap (red) — 8 wide × 5 tall, sits on the stem, bobs gently.
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(x,             baseY - 8 * PXL + bob, 8 * PXL, 5 * PXL);
+  // Cap top-edge (lighter red) — 1px highlight row.
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillRect(x,             baseY - 8 * PXL + bob, 8 * PXL, PXL);
+  // Three white spots on the cap.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x + 1 * PXL, baseY - 7 * PXL + bob, PXL, PXL);
+  ctx.fillRect(x + 4 * PXL, baseY - 7 * PXL + bob, PXL, PXL);
+  ctx.fillRect(x + 6 * PXL, baseY - 6 * PXL + bob, PXL, PXL);
+}
+
+function drawBush(x, y, PXL, t, seed) {
+  // 14-wide × 8-tall. Asymmetric tiered shrub — three round-ish clumps with
+  // a darker base shadow, midtone body, and lit crowns. A few "leaf" pixel
+  // notches break the blocky silhouette so it reads as foliage, not a pill.
+  // Top tier sways horizontally on a slow sine — sells "living foliage".
+  // Seed is world-space so phase is camera-stable.
+  const baseY = y + TILE_PX;
+  const sway  = Math.round(Math.sin((t || 0) * 0.0011 + (seed || 0) * 0.91) * PXL * 0.5);
+  // Shadow band — settles the shrub on the ground.
+  ctx.fillStyle = '#0c4a26';
+  ctx.fillRect(x + 1 * PXL,   baseY - 1 * PXL, 12 * PXL, PXL);
+  // Mid body — wide bottom tier, 4 px tall.
+  ctx.fillStyle = '#166534';
+  ctx.fillRect(x,             baseY - 4 * PXL, 14 * PXL, 3 * PXL);
+  // Side highlights on body (slightly lighter).
+  ctx.fillStyle = '#15803d';
+  ctx.fillRect(x,             baseY - 4 * PXL,  1 * PXL, 2 * PXL);
+  ctx.fillRect(x + 13 * PXL,  baseY - 4 * PXL,  1 * PXL, 2 * PXL);
+  // Upper tier clumps — three lobes, different heights for asymmetry.
+  // Sway only the top tier so the base looks rooted.
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + 1 * PXL + sway, baseY - 6 * PXL,  4 * PXL, 2 * PXL);   // left lobe
+  ctx.fillRect(x + 5 * PXL + sway, baseY - 8 * PXL,  4 * PXL, 4 * PXL);   // taller centre
+  ctx.fillRect(x + 9 * PXL + sway, baseY - 5 * PXL,  4 * PXL, 1 * PXL);   // shorter right
+  ctx.fillRect(x + 9 * PXL + sway, baseY - 7 * PXL,  3 * PXL, 2 * PXL);   // right lobe top
+  // Leaf-tip highlights — a few bright pixels suggesting sunlight catching.
+  ctx.fillStyle = '#4ade80';
+  ctx.fillRect(x + 2 * PXL + sway,  baseY - 6 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 6 * PXL + sway,  baseY - 8 * PXL,  2 * PXL, 1 * PXL);
+  ctx.fillRect(x + 10 * PXL + sway, baseY - 7 * PXL,  1 * PXL, 1 * PXL);
+  // Tiny darker notches between lobes — break up the silhouette.
+  ctx.fillStyle = '#0c4a26';
+  ctx.fillRect(x + 4 * PXL + sway,  baseY - 5 * PXL,  1 * PXL, 1 * PXL);
+  ctx.fillRect(x + 8 * PXL + sway,  baseY - 5 * PXL,  1 * PXL, 1 * PXL);
+}
+
+function drawSignpost(x, y, PXL, _t, _seed) {
+  // 6-wide × 8-tall — brown post + yellow plaque. Static (signs don't move).
+  const baseY = y + TILE_PX;
+  ctx.fillStyle = '#5a3a1a';
+  ctx.fillRect(x + 2 * PXL,   baseY - 8 * PXL, 2 * PXL, 8 * PXL);
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(x + 1 * PXL,   baseY - 7 * PXL, 5 * PXL, 3 * PXL);
+  ctx.fillStyle = '#c79b00';
+  ctx.fillRect(x + 1 * PXL,   baseY - 5 * PXL, 5 * PXL, PXL);
+}
+
+function drawRock(x, y, PXL, _t, _seed) {
+  // 8-wide × 4-tall low grey rock. Darker shadow band underneath sells weight.
+  const baseY = y + TILE_PX;
+  ctx.fillStyle = '#1f1f1f';
+  ctx.fillRect(x + 1 * PXL, baseY - 1 * PXL, 6 * PXL, PXL);
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(x,           baseY - 3 * PXL, 8 * PXL, 2 * PXL);
+  ctx.fillStyle = '#64748b';
+  ctx.fillRect(x + 1 * PXL, baseY - 4 * PXL, 6 * PXL, 1 * PXL);
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillRect(x + 3 * PXL, baseY - 4 * PXL, 2 * PXL, 1 * PXL);
+  // Single dark crack pixel
+  ctx.fillStyle = '#1f1f1f';
+  ctx.fillRect(x + 5 * PXL, baseY - 3 * PXL, 1 * PXL, 1 * PXL);
+}
+
+function drawTallgrass(x, y, PXL, t, seed) {
+  // 6-wide × 6-tall. Three blades fanning, with sway. Tallest blade sways
+  // most; the short anchor blade barely moves so the silhouette stays rooted.
+  // Seed is world-space (camera-stable phase).
+  const baseY = y + TILE_PX;
+  const sway  = Math.sin((t || 0) * 0.0019 + (seed || 0) * 1.13) * PXL;
+  // Anchor (shortest, darker)
+  ctx.fillStyle = '#166534';
+  ctx.fillRect(x + 1 * PXL,                          baseY - 3 * PXL, PXL, 3 * PXL);
+  // Middle
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + 3 * PXL + Math.round(sway * 0.4), baseY - 5 * PXL, PXL, 5 * PXL);
+  // Tallest (sways most)
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(x + 5 * PXL + Math.round(sway),       baseY - 6 * PXL, PXL, 6 * PXL);
+  // Lit tip on the tallest blade
+  ctx.fillStyle = '#86efac';
+  ctx.fillRect(x + 5 * PXL + Math.round(sway),       baseY - 6 * PXL, PXL, PXL);
+}
+
+function drawRabbit(x, y, PXL, t, seed) {
+  // 8-wide × 7-tall pixel rabbit. Sits idle on the ground; every ~3 s it
+  // hops with a short arc. `phase` is offset by seed (world col) so
+  // different rabbits hop out-of-sync AND don't shift with camera scroll.
+  // Soft brown body + white cotton tail + dark eye.
+  const baseY = y + TILE_PX;
+  const phase = (((t || 0) + (seed || 0) * 419) % 3000);
+  const hopT  = phase < 360 ? phase / 360 : 0;
+  const hop   = hopT > 0 ? Math.sin(hopT * Math.PI) : 0;
+  const dy    = Math.round(-hop * PXL * 2.5);
+  // Body
+  ctx.fillStyle = '#a16207';
+  ctx.fillRect(x + 1 * PXL, baseY - 3 * PXL + dy, 6 * PXL, 3 * PXL);
+  // Head — sits forward
+  ctx.fillRect(x + 4 * PXL, baseY - 5 * PXL + dy, 3 * PXL, 2 * PXL);
+  // Ears — long, slightly back
+  ctx.fillStyle = '#854d0e';
+  ctx.fillRect(x + 4 * PXL, baseY - 7 * PXL + dy, PXL, 2 * PXL);
+  ctx.fillRect(x + 6 * PXL, baseY - 7 * PXL + dy, PXL, 2 * PXL);
+  // Eye
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(x + 6 * PXL, baseY - 5 * PXL + dy, PXL, PXL);
+  // Cotton tail
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(x, baseY - 3 * PXL + dy, PXL, PXL);
+  // Feet — only drawn when grounded so hops look airborne
+  if (hop === 0) {
+    ctx.fillStyle = '#854d0e';
+    ctx.fillRect(x + 1 * PXL, baseY - PXL, PXL, PXL);
+    ctx.fillRect(x + 5 * PXL, baseY - PXL, PXL, PXL);
+  }
+}
+
+function drawButterfly(x, y, PXL, t, seed) {
+  // 6-wide × 5-tall flapping butterfly. Drifts in a tight circle around its
+  // anchor so it visually orbits any prop placed nearby. Wings alternate
+  // up/down every ~80 ms; pink wings with pale highlights pop against grass.
+  // Seed is world-space so the drift phase doesn't shift with camera scroll.
+  const baseY = y + TILE_PX;
+  const dx = Math.round(Math.cos((t || 0) * 0.0015 + (seed || 0) * 0.97) * PXL * 2.5);
+  const dy = Math.round(Math.sin((t || 0) * 0.0018 + (seed || 0) * 0.97) * PXL * 1.5);
+  const flap = Math.floor((t || 0) / 90) % 2;
+  // Body
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(x + 2 * PXL + dx, baseY - 6 * PXL + dy, PXL, 3 * PXL);
+  // Wings
+  ctx.fillStyle = '#ff3aa1';
+  if (flap === 0) {
+    ctx.fillRect(x + dx,             baseY - 7 * PXL + dy, 2 * PXL, 3 * PXL);
+    ctx.fillRect(x + 3 * PXL + dx,   baseY - 7 * PXL + dy, 2 * PXL, 3 * PXL);
+  } else {
+    ctx.fillRect(x + dx,             baseY - 5 * PXL + dy, 2 * PXL, 3 * PXL);
+    ctx.fillRect(x + 3 * PXL + dx,   baseY - 5 * PXL + dy, 2 * PXL, 3 * PXL);
+  }
+  // Wing highlights
+  ctx.fillStyle = '#fbcfe8';
+  if (flap === 0) {
+    ctx.fillRect(x + PXL + dx,        baseY - 6 * PXL + dy, PXL, PXL);
+    ctx.fillRect(x + 4 * PXL + dx,    baseY - 6 * PXL + dy, PXL, PXL);
+  } else {
+    ctx.fillRect(x + PXL + dx,        baseY - 4 * PXL + dy, PXL, PXL);
+    ctx.fillRect(x + 4 * PXL + dx,    baseY - 4 * PXL + dy, PXL, PXL);
+  }
+}
+
+function drawFrog(x, y, PXL, t, seed) {
+  // 7-wide × 5-tall green frog. Sits still; eyes blink every ~4.5 s with
+  // a 150 ms closed window. Per-prop seed offset on the blink so frogs
+  // don't all blink in sync (seeded from world col so phase is camera-stable).
+  const baseY = y + TILE_PX;
+  const blink = ((((t || 0) + (seed || 0) * 1217) | 0) % 4500) < 150;
+  // Body
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + PXL, baseY - 3 * PXL, 5 * PXL, 3 * PXL);
+  // Lighter back
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(x + 2 * PXL, baseY - 4 * PXL, 3 * PXL, PXL);
+  // Eyes — bulge up from the head
+  if (blink) {
+    ctx.fillStyle = '#15803d';
+    ctx.fillRect(x + PXL,     baseY - 4 * PXL, 2 * PXL, PXL);
+    ctx.fillRect(x + 4 * PXL, baseY - 4 * PXL, 2 * PXL, PXL);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + PXL,     baseY - 5 * PXL, 2 * PXL, PXL);
+    ctx.fillRect(x + 4 * PXL, baseY - 5 * PXL, 2 * PXL, PXL);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(x + 2 * PXL, baseY - 5 * PXL, PXL, PXL);
+    ctx.fillRect(x + 5 * PXL, baseY - 5 * PXL, PXL, PXL);
+  }
+  // Front feet
+  ctx.fillStyle = '#15803d';
+  ctx.fillRect(x,             baseY - PXL, 2 * PXL, PXL);
+  ctx.fillRect(x + 5 * PXL,   baseY - PXL, 2 * PXL, PXL);
+}
+
+function drawFlower(x, y, PXL, t, seed) {
+  // 5-wide × 6-tall daisy on a stem. Bloom bobs gently. Petals = white,
+  // centre = warm yellow so it pops against the dark grass. Seed is
+  // world-space (camera-stable phase).
+  const baseY = y + TILE_PX;
+  const bob   = Math.round(Math.sin((t || 0) * 0.0023 + (seed || 0) * 1.71) * PXL * 0.4);
+  // Stem + leaves
+  ctx.fillStyle = '#15803d';
+  ctx.fillRect(x + 2 * PXL, baseY - 3 * PXL, PXL, 3 * PXL);
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(x + 1 * PXL, baseY - 2 * PXL, PXL, PXL);
+  ctx.fillRect(x + 3 * PXL, baseY - 2 * PXL, PXL, PXL);
+  // Bloom: 4 white petals around a yellow centre
+  const by = baseY - 5 * PXL + bob;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x + 1 * PXL, by,       PXL, PXL);          // left petal
+  ctx.fillRect(x + 3 * PXL, by,       PXL, PXL);          // right petal
+  ctx.fillRect(x + 2 * PXL, by - PXL, PXL, PXL);          // top petal
+  ctx.fillRect(x + 2 * PXL, by + PXL, PXL, PXL);          // bottom petal
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(x + 2 * PXL, by,       PXL, PXL);          // yellow centre
+}
+
 function drawTile(col, row) {
   const x = Math.round(col * TILE_PX - cam.x);
   const y = Math.round(row * TILE_PX);
-  // Skip tiles fully outside the viewport (tile is at most TILE_PX px wide).
   if (x + TILE_PX < 0 || x > W) return;
-  // Solid ground tile — brown body, lighter top edge, cyan highlight pixel row.
-  ctx.fillStyle = '#3b2f1a';
-  ctx.fillRect(x, y, TILE_PX, TILE_PX);
+
+  const ch      = tileAt(col, row);
+  const palette = TILE_PALETTE[level.biome] || TILE_PALETTE.earth;
+  const style   = palette[ch] || palette['#'];
   const topOpen = !isSolid(col, row - 1);
-  if (topOpen) {
-    ctx.fillStyle = '#5a4a2a';
-    ctx.fillRect(x, y, TILE_PX, Math.max(4, Math.floor(TILE_PX * 0.18)));
-    ctx.fillStyle = '#2dd4ff';
-    ctx.fillRect(x, y, TILE_PX, 1);
+
+  // Body
+  ctx.fillStyle = style.body;
+  ctx.fillRect(x, y, TILE_PX, TILE_PX);
+
+  // Per-tile speckle — 2-3 small pixels at hash-stable positions, in the
+  // inner-shadow colour. Breaks up the flat body so long stretches don't
+  // read as a uniform block.
+  const tHash  = tileHash(col * 977 + row * 53);
+  const specks = 2 + Math.floor(tHash * 2);
+  ctx.fillStyle = style.innerShadow;
+  for (let s = 0; s < specks; s++) {
+    const px = x + 2 + Math.floor(((tHash * (7 + s * 3.1)) % 1) * (TILE_PX - 6));
+    const py = y + 4 + Math.floor(((tHash * (11 + s * 1.7)) % 1) * (TILE_PX - 10));
+    ctx.fillRect(px, py, 2, 2);
   }
-  // Inner outline for that pixel-y chunky look
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.fillRect(x + TILE_PX - 2, y, 2, TILE_PX);
-  ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
+  // Earth-soil specific: one small grey pebble per tile, ~50% chance.
+  if (palette === TILE_PALETTE.earth && ch === '#' && tHash > 0.5) {
+    ctx.fillStyle = '#6b6b6b';
+    const px = x + 4 + Math.floor(((tHash * 13) % 1) * (TILE_PX - 10));
+    const py = y + Math.floor(TILE_PX * 0.55) + Math.floor(((tHash * 17) % 1) * 6);
+    ctx.fillRect(px, py, 2, 1);
+  }
+
+  // Top edge + highlight pixel row — only when the tile above is open sky.
+  if (topOpen) {
+    ctx.fillStyle = style.topEdge;
+    ctx.fillRect(x, y, TILE_PX, Math.max(4, Math.floor(TILE_PX * 0.18)));
+    ctx.fillStyle = style.highlight;
+    ctx.fillRect(x, y, TILE_PX, 1);
+    // Grass tufts — 1–2 short blades poking up from the grass on earth soil.
+    if (palette === TILE_PALETTE.earth && ch === '#') {
+      const gHash = tileHash(col * 31 + row * 17 + 1234);
+      if (gHash > 0.35) {
+        const tx = x + 2 + Math.floor(gHash * (TILE_PX - 6));
+        ctx.fillStyle = '#4ade80';
+        ctx.fillRect(tx, y - 2, 1, 2);                      // tall blade
+        if (gHash > 0.65) ctx.fillRect(tx + 3, y - 1, 1, 1); // smaller neighbour
+        if (gHash > 0.85) ctx.fillRect(tx - 3, y - 1, 1, 1); // third on dense tiles
+      }
+    }
+  }
+
+  // Inner shadow — only on edges that face OPEN sky, not on seams between
+  // adjacent solid tiles. Otherwise a wide floor reads as a black grid.
+  // Right edge: solid → solid is a seam; suppress shadow.
+  // Bottom edge: same. Top edge already drew its grass band above.
+  ctx.fillStyle = style.innerShadow;
+  if (!isSolid(col + 1, row)) ctx.fillRect(x + TILE_PX - 2, y, 2, TILE_PX);
+  if (!isSolid(col, row + 1)) ctx.fillRect(x, y + TILE_PX - 2, TILE_PX, 2);
 }
 
 function drawEnemy(e, t) {
@@ -1649,22 +2124,23 @@ function drawCloud(cx, cy, w, hash) {
 // Stable per-tile. Sparser than before (one tree per ~180px) and with
 // real height variation so the row reads as a treeline, not a fence.
 function drawTrees(baseY, parallax) {
-  const STEP = 180;
+  const U = SPRITE_U;
+  const STEP = 180 * U;
   const camOff = cam.x * parallax;
   const firstI = Math.floor(camOff / STEP) - 1;
   const lastI  = Math.ceil((camOff + W) / STEP) + 1;
   for (let i = firstI; i <= lastI; i++) {
     const hash = tileHash(i + 53);
     const x = Math.round(i * STEP - camOff);
-    const treeH = 36 + Math.floor(hash * 28);   // 36–63 px tall
-    const treeW = 22 + Math.floor((hash * 5) % 3) * 4;
+    const treeH = (36 + Math.floor(hash * 28)) * U;     // scaled 36–63
+    const treeW = (22 + Math.floor((hash * 5) % 3) * 4) * U;
     drawPine(x, baseY, treeW, treeH);
     // Occasional shorter neighbour for grouping
     if (hash > 0.55) {
       const h2 = tileHash(i + 991);
-      const nW = treeW - 6;
+      const nW = treeW - 6 * U;
       const nH = Math.round(treeH * (0.55 + h2 * 0.25));
-      drawPine(x + treeW + 8, baseY, nW, nH);
+      drawPine(x + treeW + 8 * U, baseY, nW, nH);
     }
   }
 }
@@ -1696,9 +2172,9 @@ function drawPine(cx, baseY, w, h) {
   // Subtle moonlight highlight along the top of each tier (single
   // bright pixel offset to the right — "facing the moon")
   ctx.fillStyle = 'rgba(168, 85, 247, 0.30)';
-  ctx.fillRect(cx + Math.round(w * 0.55),            foliageBase - tierH,         Math.round(w * 0.35), 1);
-  ctx.fillRect(cx + Math.round(w * 0.50),            foliageBase - tierH * 2,     Math.round(w * 0.28), 1);
-  ctx.fillRect(cx + Math.round(w * 0.46),            foliageBase - tierH * 3,     Math.round(w * 0.20), 1);
+  ctx.fillRect(cx + Math.round(w * 0.55),            foliageBase - tierH,         Math.round(w * 0.35), SPRITE_U);
+  ctx.fillRect(cx + Math.round(w * 0.50),            foliageBase - tierH * 2,     Math.round(w * 0.28), SPRITE_U);
+  ctx.fillRect(cx + Math.round(w * 0.46),            foliageBase - tierH * 3,     Math.round(w * 0.20), SPRITE_U);
 }
 
 // UFO — small pixel saucer that crosses the upper sky every ~14s, with
@@ -1711,24 +2187,380 @@ function drawUfo(t) {
   const p   = phase / VISIBLE;
   const ux  = -50 + p * (W + 100);
   const uy  = 50 + Math.sin(p * Math.PI * 2) * 18;
+  const U   = SPRITE_U;
   // Dome
   ctx.fillStyle = '#ff6bd2';
-  ctx.fillRect(ux + 8,  uy - 5, 12, 4);
-  ctx.fillRect(ux + 10, uy - 8, 8,  3);
+  ctx.fillRect(ux + 8*U,  uy - 5*U, 12*U, 4*U);
+  ctx.fillRect(ux + 10*U, uy - 8*U, 8*U,  3*U);
   ctx.fillStyle = '#ffb1e6';
-  ctx.fillRect(ux + 12, uy - 7, 2,  1);   // dome highlight
+  ctx.fillRect(ux + 12*U, uy - 7*U, 2*U,  1*U);   // dome highlight
   // Disc
   ctx.fillStyle = '#2dd4ff';
-  ctx.fillRect(ux,      uy,     28, 4);
-  ctx.fillRect(ux + 2,  uy + 4, 24, 1);
+  ctx.fillRect(ux,        uy,       28*U, 4*U);
+  ctx.fillRect(ux + 2*U,  uy + 4*U, 24*U, 1*U);
   ctx.fillStyle = '#1aa0c4';
-  ctx.fillRect(ux + 3,  uy + 4, 22, 1);
+  ctx.fillRect(ux + 3*U,  uy + 4*U, 22*U, 1*U);
   // Blinking running lights
   const blink = Math.floor(t / 220) % 2 === 0;
   ctx.fillStyle = blink ? '#ffd84a' : '#5a4500';
-  ctx.fillRect(ux + 3,  uy + 1, 2, 2);
+  ctx.fillRect(ux + 3*U,  uy + 1*U, 2*U, 2*U);
   ctx.fillStyle = blink ? '#5a4500' : '#ffd84a';
-  ctx.fillRect(ux + 23, uy + 1, 2, 2);
+  ctx.fillRect(ux + 23*U, uy + 1*U, 2*U, 2*U);
+}
+
+// Background fauna — pixel-art creatures behind the pines. All silhouettes
+// (single dark colour) so they read as "distance" against the dusk sky.
+// Stable per-world-index positions; subtle animation sells "alive."
+
+// Deer — chunky pixel deer standing in the treeline. Stationary, with a
+// slow nibble-bob; legs alternate based on `t`. Parallax 0.65 so they sit
+// between the mountains (0.6) and the pines (0.85). Drawn at fixed world
+// X-positions seeded by `BG_DEER_COLS` so each level can pick spots.
+const BG_DEER_COLS = [44, 88, 124];
+function drawDeer(t, baseY, parallax) {
+  const camOff = cam.x * parallax;
+  for (let i = 0; i < BG_DEER_COLS.length; i++) {
+    const wx = BG_DEER_COLS[i] * TILE_PX - camOff;   // tile-grid aligned
+    if (wx < -32 || wx > W + 32) continue;
+    const bob = Math.round(Math.sin(t * 0.0011 + i * 1.7) * 1);
+    const step = Math.floor(t / 600 + i) % 2;
+    drawDeerSprite(Math.round(wx), Math.round(baseY) + bob, step);
+  }
+}
+function drawDeerSprite(x, y, step) {
+  // Design grid: 14 wide × 14 tall silhouette. Multiplied by SPRITE_U so the
+  // deer scale with the viewport (otherwise tiny on big monitors).
+  const U = SPRITE_U;
+  ctx.fillStyle = '#1a0e2c';
+  // Body — broad oval, 10 wide × 4 tall
+  ctx.fillRect(x + 2*U,  y - 6*U,  10*U, 4*U);
+  // Neck — angled up-right
+  ctx.fillRect(x + 9*U,  y - 9*U,  2*U,  3*U);
+  // Head
+  ctx.fillRect(x + 10*U, y - 11*U, 3*U,  3*U);
+  // Snout
+  ctx.fillRect(x + 13*U, y - 10*U, 1*U,  1*U);
+  // Antlers — two prongs
+  ctx.fillRect(x + 10*U, y - 13*U, 1*U,  2*U);
+  ctx.fillRect(x + 12*U, y - 13*U, 1*U,  2*U);
+  ctx.fillRect(x + 11*U, y - 14*U, 1*U,  1*U);
+  // Legs — front + back, with a step phase
+  if (step === 0) {
+    ctx.fillRect(x + 3*U,  y - 2*U,  1*U, 2*U);
+    ctx.fillRect(x + 4*U,  y - 2*U,  1*U, 2*U);
+    ctx.fillRect(x + 9*U,  y - 1*U,  1*U, 1*U);
+    ctx.fillRect(x + 10*U, y - 2*U,  1*U, 2*U);
+  } else {
+    ctx.fillRect(x + 3*U,  y - 1*U,  1*U, 1*U);
+    ctx.fillRect(x + 4*U,  y - 2*U,  1*U, 2*U);
+    ctx.fillRect(x + 9*U,  y - 2*U,  1*U, 2*U);
+    ctx.fillRect(x + 10*U, y - 2*U,  1*U, 2*U);
+  }
+  // Tail
+  ctx.fillRect(x + 1*U,  y - 6*U,  1*U, 1*U);
+}
+
+// Skystrider — a tall pixel mech silhouette pacing in the treeline. THREE
+// creatures spread across the level at fixed world columns, parallaxed at
+// 0.55 so they sit behind the deer but in front of the mountains. Long
+// stride (~1.6 s) with a glowing amber eye and ankle lights. Stride phase
+// staggered per-strider so they don't march in unison. Marked as a
+// candidate for a future boss fight in a later milestone.
+const SKYSTRIDER_COLS = [30, 78, 124];
+function drawSkystrider(t, baseY, parallax) {
+  const camOff = cam.x * parallax;
+  for (let i = 0; i < SKYSTRIDER_COLS.length; i++) {
+    const wx = Math.round(SKYSTRIDER_COLS[i] * TILE_PX - camOff);
+    if (wx < -100 || wx > W + 100) continue;
+    const stride = Math.floor((t + i * 800) / 400) % 4;
+    const bob    = (stride === 1 || stride === 3) ? -2 * SPRITE_U : 0;
+    const y      = Math.round(baseY) + bob;
+    const glow   = 0.6 + 0.4 * Math.sin(t * 0.0033 + i * 0.9);
+    drawSkystriderSprite(wx, y, stride, glow);
+  }
+}
+function drawSkystriderSprite(x, y, stride, glow) {
+  // Design grid: 56 wide × 70 tall. Every coord multiplied by SPRITE_U so
+  // the silhouette scales with the viewport — at TILE_PX≈60 the sprite is
+  // 56×70 px; at TILE_PX≈120 it's 112×140 px. Near-black for sky contrast.
+  const U = SPRITE_U;
+  ctx.fillStyle = '#0a0612';
+  const upFront = stride === 1 || stride === 2;
+  const upBack  = stride === 0 || stride === 3;
+  // Legs — 4 wide × 28 tall each. Lift legs by up to 6 design-px on lift phase.
+  ctx.fillRect(x + 8*U,  y - 28*U + (upFront ? 6*U : 0), 4*U, 28*U - (upFront ? 6*U : 0));
+  ctx.fillRect(x + 18*U, y - 28*U + (upFront ? 0   : 4*U), 4*U, 28*U - (upFront ? 0   : 4*U));
+  ctx.fillRect(x + 34*U, y - 28*U + (upBack  ? 0   : 4*U), 4*U, 28*U - (upBack  ? 0   : 4*U));
+  ctx.fillRect(x + 44*U, y - 28*U + (upBack  ? 6*U : 0), 4*U, 28*U - (upBack  ? 6*U : 0));
+  // Chest / body — broad slab + a rear haunch hump
+  ctx.fillRect(x + 4*U,  y - 44*U, 48*U, 18*U);
+  ctx.fillRect(x + 8*U,  y - 48*U, 40*U, 4*U);
+  ctx.fillRect(x + 36*U, y - 52*U, 16*U, 4*U);
+  // Neck — dips forward + up
+  ctx.fillRect(x + 8*U,  y - 54*U, 6*U,  10*U);
+  ctx.fillRect(x + 12*U, y - 60*U, 4*U,  6*U);
+  // Head — flat disc + small dome
+  ctx.fillRect(x + 2*U,  y - 66*U, 20*U, 6*U);
+  ctx.fillRect(x + 6*U,  y - 70*U, 12*U, 4*U);
+  // Outer eye glow — soft amber halo around the lit pixel
+  ctx.fillStyle = 'rgba(255, 200, 120, ' + (0.25 + 0.35 * glow).toFixed(2) + ')';
+  ctx.fillRect(x + 1*U,  y - 65*U, 8*U, 4*U);
+  // Inner eye — bright amber pixel that pulses
+  ctx.fillStyle = 'rgba(255, 168, 60, ' + (0.75 + 0.25 * glow).toFixed(2) + ')';
+  ctx.fillRect(x + 3*U,  y - 64*U, 4*U, 2*U);
+  // Ankle lights — bright on planted legs, dim on lifted ones
+  ctx.fillStyle = 'rgba(255, 168, 60, 0.65)';
+  if (!upFront) ctx.fillRect(x + 8*U,  y - 2*U, 4*U, 2*U);
+  if (upFront)  ctx.fillRect(x + 18*U, y - 2*U, 4*U, 2*U);
+  if (upBack)   ctx.fillRect(x + 34*U, y - 2*U, 4*U, 2*U);
+  if (!upBack)  ctx.fillRect(x + 44*U, y - 2*U, 4*U, 2*U);
+  // Chest accent — a single dim red pixel-pair signals "heart" / power core
+  ctx.fillStyle = 'rgba(255, 80, 80, 0.55)';
+  ctx.fillRect(x + 26*U, y - 36*U, 4*U, 2*U);
+}
+
+// Foreground foliage — leaf rosettes drawn AFTER the player so the player
+// walks BEHIND them. NOT spiky blades — three stacked rounded clumps in
+// darker→mid→light greens (Flashback-style organic vegetation). Hash-stable
+// per tile. Subtle wind sway. Only on earth-soil tiles with an open top.
+function drawForegroundGrass(t) {
+  if (level.biome !== 'earth') return;              // moon rock reuses '#' — no grass on moon
+  const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
+  const c1 = Math.min(level.width - 1, Math.ceil((cam.x + W) / TILE_PX));
+  for (let row = 0; row < level.height; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (tileAt(col, row) !== '#') continue;
+      if (isSolid(col, row - 1)) continue;
+      const h = tileHash(col * 41 + row * 23 + 4097);
+      if (h < 0.30) continue;                         // ~70% of grass-edge tiles get a clump
+      const U     = SPRITE_U;
+      const x     = Math.round(col * TILE_PX - cam.x);
+      const yBase = Math.round(row * TILE_PX);
+      const sway  = Math.round(Math.sin(t * 0.0009 + col * 0.13) * 1 * U);
+      // Two clumps per tile (left + right) for natural density variation.
+      drawLeafClump(x + Math.round(TILE_PX * 0.20) + sway, yBase, h, U);
+      if (h > 0.55) {
+        const h2 = tileHash(col * 41 + row * 23 + 9133);
+        drawLeafClump(x + Math.round(TILE_PX * 0.65) + sway, yBase, h2, U);
+      }
+    }
+  }
+}
+
+// One organic foliage clump — wide low silhouette made from 4-6 overlapping
+// "leaf bumps" at different heights and tones, with a darker shadow base
+// and bright tip highlights. NOT a tall comb. Hash picks one of three
+// silhouette styles (squat dome / asymmetric lean / split twin lobes) so
+// no two adjacent clumps look identical. Anchored so the BOTTOM sits at
+// (cx, yBase).
+function drawLeafClump(cx, yBase, h, U) {
+  // Three palette tones (dark → mid → light) + a near-black shadow.
+  const SHADOW = '#052e16';
+  const DARK   = '#14532d';
+  const MID    = '#15803d';
+  const LIGHT  = '#16a34a';
+  const TIP    = '#4ade80';
+
+  // Style bucket — wider variety than just one shape.
+  const style = Math.floor(h * 3);   // 0, 1, 2
+
+  // Common: a wide low shadow base under the whole clump.
+  ctx.fillStyle = SHADOW;
+  const baseW = (10 + Math.floor(h * 6)) * U;          // 10–15 design-px wide
+  ctx.fillRect(cx - Math.floor(baseW / 2), yBase - U, baseW, U);
+
+  // Each style is a set of leaf bumps in (dx, dy, w, h, tone) units.
+  // dy is in design-px ABOVE yBase. All bumps overlap horizontally so the
+  // silhouette reads as a single rounded mat, not stacked rectangles.
+  let bumps;
+  if (style === 0) {
+    // Squat dome — wide centre, flanked by lower bumps.
+    bumps = [
+      [-6, 0,  4, 2, DARK],
+      [-3, 1,  5, 3, MID ],
+      [ 0, 2,  4, 4, LIGHT],
+      [ 3, 1,  5, 3, MID ],
+      [ 6, 0,  3, 2, DARK],
+    ];
+  } else if (style === 1) {
+    // Asymmetric — leans right, taller right shoulder.
+    bumps = [
+      [-5, 0,  4, 2, DARK],
+      [-2, 1,  4, 3, MID ],
+      [ 2, 2,  4, 3, MID ],
+      [ 4, 3,  4, 4, LIGHT],
+      [ 7, 1,  3, 2, MID ],
+    ];
+  } else {
+    // Split twin lobes — two distinct domes with a low gap between.
+    bumps = [
+      [-7, 0,  4, 2, DARK],
+      [-5, 1,  4, 3, MID ],
+      [-3, 2,  3, 3, LIGHT],
+      [ 0, 0,  2, 1, DARK],   // low connector
+      [ 1, 1,  3, 2, MID ],
+      [ 3, 2,  4, 3, LIGHT],
+      [ 6, 1,  3, 2, MID ],
+    ];
+  }
+  for (let i = 0; i < bumps.length; i++) {
+    const [dx, dy, w, hh, c] = bumps[i];
+    ctx.fillStyle = c;
+    ctx.fillRect(cx + dx * U, yBase - U - dy * U - hh * U, w * U, hh * U);
+  }
+
+  // Lit tip highlights — 2–3 bright pixels scattered on top.
+  ctx.fillStyle = TIP;
+  if (style === 0) {
+    ctx.fillRect(cx + 0 * U, yBase - 7 * U, U, U);
+    if (h > 0.5)  ctx.fillRect(cx - 3 * U, yBase - 5 * U, U, U);
+    if (h > 0.7)  ctx.fillRect(cx + 3 * U, yBase - 5 * U, U, U);
+  } else if (style === 1) {
+    ctx.fillRect(cx + 5 * U, yBase - 8 * U, U, U);
+    if (h > 0.5)  ctx.fillRect(cx + 2 * U, yBase - 6 * U, U, U);
+    if (h > 0.7)  ctx.fillRect(cx + 7 * U, yBase - 4 * U, U, U);
+  } else {
+    ctx.fillRect(cx - 4 * U, yBase - 6 * U, U, U);
+    ctx.fillRect(cx + 4 * U, yBase - 6 * U, U, U);
+    if (h > 0.7)  ctx.fillRect(cx - 2 * U, yBase - 5 * U, U, U);
+  }
+}
+
+// Platform drapes — moss / vine hanging from the underside of platforms.
+// For each solid tile with empty space below it (i.e., a platform you can
+// pass under), draw a downward drape from the bottom edge. Hash-stable so
+// the same tile always grows the same drape.
+function drawPlatformDrapes() {
+  if (level.biome !== 'earth') return;              // moss/vines are earth-only
+  const c0 = Math.max(0, Math.floor(cam.x / TILE_PX));
+  const c1 = Math.min(level.width - 1, Math.ceil((cam.x + W) / TILE_PX));
+  const U  = SPRITE_U;
+  for (let row = 0; row < level.height; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (!isSolid(col, row)) continue;
+      if (isSolid(col, row + 1)) continue;            // need empty space below
+      if (row + 1 >= level.height) continue;          // skip if no tile below at all
+      const h = tileHash(col * 53 + row * 19 + 7351);
+      if (h < 0.45) continue;                         // ~55% of platform-underside tiles
+      const x     = Math.round(col * TILE_PX - cam.x);
+      const yTop  = Math.round((row + 1) * TILE_PX);  // y of the platform's bottom edge
+      // Anchor a few px in from the tile edge so the drape doesn't collide
+      // with the tile's inner shadow.
+      const ax    = x + 3 * U + Math.floor(h * (TILE_PX - 8 * U));
+      const len   = (5 + Math.floor(h * 8)) * U;       // 5–12 design-px tall
+      // Vine body — darker green, single column.
+      ctx.fillStyle = '#0c4a26';
+      ctx.fillRect(ax, yTop, U, len);
+      // Mid stripe — slightly brighter on the right edge of the vine.
+      ctx.fillStyle = '#166534';
+      ctx.fillRect(ax + U, yTop, U, Math.floor(len * 0.7));
+      // Leaf at the tip — a small 2-tone leaf dangling at the bottom.
+      ctx.fillStyle = '#15803d';
+      ctx.fillRect(ax - U, yTop + len - 2 * U, 3 * U, 2 * U);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(ax,     yTop + len - 2 * U, U, U);
+      // Occasional second short tendril offset to the right.
+      if (h > 0.7) {
+        const ax2  = ax + 4 * U;
+        const len2 = Math.round(len * 0.55);
+        ctx.fillStyle = '#0c4a26';
+        ctx.fillRect(ax2, yTop, U, len2);
+        ctx.fillStyle = '#15803d';
+        ctx.fillRect(ax2 - U, yTop + len2 - U, 2 * U, U);
+      }
+    }
+  }
+}
+
+// Owl — flies across the upper sky every ~25s in a sine arc, flapping.
+// Sits in a different cycle from the UFO so they don't overlap.
+function drawOwl(t) {
+  const CYCLE = 27000;
+  const VISIBLE = 9000;
+  const phase = (t + 4200) % CYCLE;          // offset to desync from UFO
+  if (phase >= VISIBLE) return;
+  const p   = phase / VISIBLE;
+  const ox  = Math.round(-30 + p * (W + 60));
+  const oy  = Math.round(70 - Math.sin(p * Math.PI) * 24);
+  const flap = Math.floor(t / 220) % 2;
+  const U = SPRITE_U;
+  // Body (dark)
+  ctx.fillStyle = '#1a0e2c';
+  ctx.fillRect(ox,         oy,         10*U, 5*U);
+  ctx.fillRect(ox + 2*U,   oy - 2*U,   6*U,  2*U);
+  // Wings — alternate up/down
+  if (flap === 0) {
+    ctx.fillRect(ox - 4*U,  oy,         4*U, 2*U);
+    ctx.fillRect(ox + 10*U, oy,         4*U, 2*U);
+  } else {
+    ctx.fillRect(ox - 3*U,  oy + 3*U,   3*U, 1*U);
+    ctx.fillRect(ox + 10*U, oy + 3*U,   3*U, 1*U);
+  }
+  // Glowing yellow eyes
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(ox + 3*U, oy - 1*U, 1*U, 1*U);
+  ctx.fillRect(ox + 6*U, oy - 1*U, 1*U, 1*U);
+}
+
+// Bird flock — V-formation of 5 birds drifting across the upper sky. Each
+// bird is a 3-px chevron with a flap phase. Longer cycle than the owl.
+function drawBirdFlock(t) {
+  const CYCLE = 52000;
+  const VISIBLE = 20000;
+  const phase = (t + 18000) % CYCLE;         // offset to desync
+  if (phase >= VISIBLE) return;
+  const p = phase / VISIBLE;
+  const fx = Math.round(-50 + p * (W + 100));
+  const fy = Math.round(120 + Math.sin(p * 3) * 6);
+  const U = SPRITE_U;
+  // V-formation offsets scale with SPRITE_U so the formation widens on big
+  // screens. Each bird sprite is also scaled.
+  const positions = [[0,0],[-9*U,3*U],[9*U,3*U],[-18*U,6*U],[18*U,6*U]];
+  ctx.fillStyle = '#0c0820';
+  const flap = Math.floor(t / 260) % 2;
+  for (let i = 0; i < positions.length; i++) {
+    const bx = fx + positions[i][0];
+    const by = fy + positions[i][1];
+    if (flap === 0) {
+      ctx.fillRect(bx - 2*U, by,         2*U, 1*U);
+      ctx.fillRect(bx + 1*U, by,         2*U, 1*U);
+      ctx.fillRect(bx,       by + 1*U,   1*U, 1*U);
+    } else {
+      ctx.fillRect(bx - 2*U, by + 1*U,   2*U, 1*U);
+      ctx.fillRect(bx + 1*U, by + 1*U,   2*U, 1*U);
+      ctx.fillRect(bx,       by,         1*U, 1*U);
+    }
+  }
+}
+
+// Fireflies — small drifting blinking points in the foreground band so the
+// playfield feels alive. Stable per-index world positions; sine drift adds
+// the gentle wandering; phase-offset blink keeps them from pulsing in sync.
+// Parallaxed at 0.7 so they move with the world but not the player exactly.
+function drawFireflies(t) {
+  const N        = 18;
+  const worldW   = level.width * TILE_PX;
+  const bandTop  = Math.round(H * 0.52);
+  const bandH    = Math.max(40, Math.round(H * 0.28));
+  const U        = SPRITE_U;
+  for (let i = 0; i < N; i++) {
+    const baseX = (i * 197) % worldW;
+    const baseY = bandTop + ((i * 71) % bandH);
+    const dx    = Math.sin(t * 0.0007 + i * 1.7) * 22 * U;
+    const dy    = Math.cos(t * 0.0009 + i * 1.3) * 12 * U;
+    const sx    = baseX + dx - cam.x * 0.7;
+    if (sx < -6 * U || sx > W + 6 * U) continue;
+    const phase = (Math.sin(t * 0.0033 + i * 2.31) + 1) * 0.5;
+    const a     = 0.18 + phase * 0.7;
+    const fx    = Math.round(sx);
+    const fy    = Math.round(baseY + dy);
+    if (phase > 0.85) {
+      ctx.fillStyle = 'rgba(255, 234, 120, 0.18)';
+      ctx.fillRect(fx - 1*U, fy - 1*U, 4*U, 4*U);
+    }
+    ctx.fillStyle = 'rgba(255, 234, 120, ' + a.toFixed(2) + ')';
+    ctx.fillRect(fx, fy, 2*U, 2*U);
+  }
 }
 
 function draw() {
@@ -1743,10 +2575,17 @@ function draw() {
   ctx.fillStyle = '#2a1840';
   ctx.fillRect(0, Math.round(H * 0.80), W, H - Math.round(H * 0.80));
 
-  // ---- Moon — cached offscreen canvas, blitted via drawImage. ----
+  // ---- Moon — cached offscreen canvas, blitted via drawImage. A few
+  // concentric translucent squares behind it form a cheap soft halo. ----
   const moonImg = getMoonCanvas();
   const moonCx  = level.width * TILE_PX - 110 - cam.x * 0.05;
   const moonCy  = Math.round(H * 0.16);
+  const moonR   = moonImg.width / 2;
+  for (let r = 6; r >= 1; r--) {
+    const sz = moonR + r * 7 * SPRITE_U;
+    ctx.fillStyle = 'rgba(255, 246, 200, ' + (0.025 * r).toFixed(3) + ')';
+    ctx.fillRect(Math.round(moonCx - sz), Math.round(moonCy - sz), sz * 2, sz * 2);
+  }
   ctx.drawImage(moonImg, Math.round(moonCx - moonImg.width / 2), Math.round(moonCy - moonImg.height / 2));
 
   // ---- Distant star field — small static dots far away. ----
@@ -1795,12 +2634,13 @@ function draw() {
       const p = phase / dur;
       const sx0 = -40 + p * (W + 80);
       const sy0 = 40 + p * 60;
+      const U   = SPRITE_U;
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.fillRect(sx0,     sy0,     2, 2);
+      ctx.fillRect(sx0,        sy0,        2*U, 2*U);
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillRect(sx0 - 4, sy0 - 1, 3, 1);
+      ctx.fillRect(sx0 - 4*U,  sy0 - 1*U,  3*U, 1*U);
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      ctx.fillRect(sx0 - 9, sy0 - 2, 5, 1);
+      ctx.fillRect(sx0 - 9*U,  sy0 - 2*U,  5*U, 1*U);
     }
   }
 
@@ -1818,6 +2658,21 @@ function draw() {
   ctx.fillStyle = '#251238';
   drawMountainRange(Math.round(H * 0.55), 0.6);
 
+  // ---- Owl + bird flock — drift through the upper sky on their own
+  // cycles. Owl arcs near the moon; flock holds a V-formation.
+  drawOwl(t);
+  drawBirdFlock(t);
+
+  // ---- Background fauna in the treeline — deer at parallax 0.65 so they
+  // feel mid-distant. Drawn BEFORE pines so the pines occlude them slightly.
+  drawDeer(t, Math.round(H * 0.78), 0.65);
+
+  // ---- Skystrider — single tall mech silhouette mid-distance. Parallax
+  // 0.55 sits it between the mountains (0.6) and the deer (0.65). Drawn
+  // before pines so the foliage partially occludes the legs as the camera
+  // tracks past. Could be promoted to a boss in a later milestone.
+  drawSkystrider(t, Math.round(H * 0.78), 0.55);
+
   // ---- Foreground pines — fast parallax, sit between the mountains
   // and the playfield. Drawn behind the tiles so platforms occlude
   // them naturally. ----
@@ -1831,6 +2686,16 @@ function draw() {
       if (isSolid(col, row)) drawTile(col, row);
     }
   }
+
+  // Platform drapes — moss / vines hanging from the underside of platforms.
+  // Drawn right after tiles so vines dangle from the tile they grow from.
+  drawPlatformDrapes();
+
+  // Decorative props — between tiles and entities.
+  drawProps(t);
+
+  // Fireflies — small drifting blinking points in the foreground band.
+  drawFireflies(t);
 
   // Coins (skip collected)
   for (let i = 0; i < level.coins.length; i++) {
@@ -1965,6 +2830,10 @@ function draw() {
       ctx.fillRect(fX + Math.floor(fW / 2) - epx, fY + fH + epx, epx * 2, epx);
     }
   }
+
+  // Foreground grass — tall blades that the player walks BEHIND. Drawn
+  // after the player so it occludes the lower body and sells depth.
+  drawForegroundGrass(t);
 
   // HUD on top
   drawHUD();
