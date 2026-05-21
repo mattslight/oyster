@@ -59,6 +59,11 @@ export interface SessionRow {
   /** Last `stop_reason` reported by the assistant (e.g. "end_turn",
    *  "tool_use"). NULL until at least one assistant turn has stopped. */
   last_assistant_stop_reason: string | null;
+  /** ISO timestamp the user clicked the UI stop button (red square).
+   *  Set BEFORE the kill signal goes to the PTY so the eventual
+   *  signal-driven exit isn't misclassified as a crash. NULL when the
+   *  user never explicitly stopped the session. */
+  user_stop_requested_at: string | null;
 }
 
 export interface SessionEventRow {
@@ -189,6 +194,11 @@ export interface SessionStore {
   /** Flip explicit_exit_seen to 1. Idempotent — called by the watcher
    *  when it spots a `/exit` slash-command artefact. */
   markExplicitExitSeen(id: string): void;
+  /** Stamp `user_stop_requested_at` with the current time so the
+   *  imminent PTY signal exit is classified as an intentional shutdown
+   *  rather than a crash. Idempotent: the first stamp wins. Called by
+   *  the PTY manager right before sending the kill signal. */
+  markUserStopRequested(id: string): void;
   // session_events — bulk-friendly
   insertEvent(row: InsertSessionEvent): number;
   insertEvents(rows: InsertSessionEvent[]): void;
@@ -248,6 +258,7 @@ export class SqliteSessionStore implements SessionStore {
     recordExit: Database.Statement;
     setLastAssistantStopReason: Database.Statement;
     markExplicitExitSeen: Database.Statement;
+    markUserStopRequested: Database.Statement;
   };
 
   private insertEventsTxn: (rows: InsertSessionEvent[]) => void;
@@ -374,11 +385,18 @@ export class SqliteSessionStore implements SessionStore {
         "UPDATE sessions SET last_offset = ? WHERE id = ?"
       ),
       deleteSession: db.prepare("DELETE FROM sessions WHERE id = ?"),
+      // recordExit doubles as the canonical "session has ended" writer:
+      // ended_at gets stamped here so the column tracks the actual PTY
+      // exit time (vs. whenever a downstream consumer happens to notice).
+      // COALESCE keeps the original timestamp if recordExit is somehow
+      // re-invoked on the same session (defensive — the PTY exit handler
+      // is the only call site today).
       recordExit: db.prepare(`
         UPDATE sessions
         SET exit_code = @exit_code,
             exit_signal = @exit_signal,
-            clean_process_exit = @clean_process_exit
+            clean_process_exit = @clean_process_exit,
+            ended_at = COALESCE(ended_at, datetime('now'))
         WHERE id = @id
       `),
       setLastAssistantStopReason: db.prepare(
@@ -386,6 +404,11 @@ export class SqliteSessionStore implements SessionStore {
       ),
       markExplicitExitSeen: db.prepare(
         "UPDATE sessions SET explicit_exit_seen = 1 WHERE id = ?"
+      ),
+      // First stamp wins so a double-click on stop doesn't shift the
+      // recorded intent timestamp later than the actual user action.
+      markUserStopRequested: db.prepare(
+        "UPDATE sessions SET user_stop_requested_at = COALESCE(user_stop_requested_at, datetime('now')) WHERE id = ?"
       ),
     };
 
@@ -461,6 +484,10 @@ export class SqliteSessionStore implements SessionStore {
 
   markExplicitExitSeen(id: string): void {
     this.stmts.markExplicitExitSeen.run(id);
+  }
+
+  markUserStopRequested(id: string): void {
+    this.stmts.markUserStopRequested.run(id);
   }
 
   private static readonly UPDATABLE_SESSION_COLUMNS = new Set([

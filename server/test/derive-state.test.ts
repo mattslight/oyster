@@ -12,6 +12,7 @@ const base = {
   exitSignal: null as string | null,
   explicitExitSeen: false,
   cleanProcessExit: false,
+  userStopRequested: false,
   lastAssistantStopReason: null as string | null,
 };
 
@@ -68,6 +69,33 @@ describe("deriveState — evidence-first", () => {
 
   it("PTY exit with signal → disconnected", () => {
     expect(deriveState({ ...base, exitSignal: "SIGKILL", ageMs: 1 * MIN })).toBe("disconnected");
+  });
+
+  // User explicitly clicked the red-square stop button. The signal IS the
+  // shutdown mechanism, not evidence of a crash. The precedence guards
+  // against pre-exit races by ALSO requiring process-exit evidence.
+  it("user stop + SIGHUP exit → done (intentional kill, signal is the mechanism)", () => {
+    expect(deriveState({ ...base, userStopRequested: true, exitSignal: "SIGHUP", ageMs: 1 * MIN })).toBe("done");
+  });
+
+  it("user stop + non-zero exit code → done", () => {
+    expect(deriveState({ ...base, userStopRequested: true, exitCode: 143, ageMs: 1 * MIN })).toBe("done");
+  });
+
+  // The /exit-then-crash semantic stays exactly as today: no user_stop
+  // intent recorded, signal evidence wins.
+  it("/exit then external SIGKILL without user-stop intent → disconnected (crash mid-shutdown)", () => {
+    expect(deriveState({ ...base, explicitExitSeen: true, exitSignal: "SIGKILL", ageMs: 1 * MIN })).toBe("disconnected");
+  });
+
+  // Guards a pre-exit race: if the user-stop flag has been written but the
+  // PTY hasn't actually exited yet, deriveState must NOT report 'done'
+  // (the process is still alive on the other end of the terminal).
+  it("user stop without process exit evidence → falls through (process still alive)", () => {
+    // PTY still linked, recent activity → active
+    expect(deriveState({ ...base, userStopRequested: true, terminalId: "t1", ageMs: 5_000 })).toBe("active");
+    // No exit columns set yet but terminal already unlinked → existing fallthrough
+    expect(deriveState({ ...base, userStopRequested: true, ageMs: 5_000 })).toBe("active");
   });
 
   it("exit_code = 0 alone (cleanProcessExit flag missing) falls through to time/probe", () => {

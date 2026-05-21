@@ -359,6 +359,7 @@ export class ClaudeCodeWatcher {
       exitSignal: null,
       explicitExitSeen: false,
       cleanProcessExit: false,
+      userStopRequested: false,
       lastAssistantStopReason: null,
     });
 
@@ -915,6 +916,7 @@ export class ClaudeCodeWatcher {
         exitSignal: session.exit_signal ?? null,
         explicitExitSeen: !!session.explicit_exit_seen,
         cleanProcessExit: !!session.clean_process_exit,
+        userStopRequested: !!session.user_stop_requested_at,
         lastAssistantStopReason: session.last_assistant_stop_reason ?? null,
       });
 
@@ -981,13 +983,29 @@ export interface DeriveStateInput {
   exitSignal: string | null;
   explicitExitSeen: boolean;
   cleanProcessExit: boolean;
+  /** The user clicked the red-square stop button. Recorded *before* the
+   *  signal is sent so the eventual signal-driven PTY exit isn't
+   *  classified as a crash. Paired with process-exit evidence in
+   *  deriveState so a row can't briefly read 'done' while the PTY is
+   *  still alive (i.e., the intent flag has been written but the
+   *  process hasn't yet exited). */
+  userStopRequested: boolean;
   lastAssistantStopReason: string | null;
 }
 
 export function deriveState(input: DeriveStateInput): SessionState {
-  // Precedence: bad exit evidence beats any "clean" claim. A session that
-  // typed /exit and then got SIGKILLed mid-shutdown should read disconnected,
-  // not done.
+  // User-initiated stop, once the process has actually exited: the signal
+  // (typically SIGHUP from node-pty's default kill()) IS the shutdown
+  // mechanism, not evidence of a crash. Requires process-exit evidence so
+  // a pre-exit race (flag written, PTY not yet down) doesn't yield 'done'
+  // while the underlying process is still running.
+  const hasProcessExitEvidence =
+    input.exitCode != null || input.exitSignal != null || input.cleanProcessExit;
+  if (input.userStopRequested && hasProcessExitEvidence) return "done";
+
+  // Precedence: bad exit evidence beats any "clean" claim that lacks user
+  // intent. A session that typed /exit and then got SIGKILLed
+  // mid-shutdown should read disconnected, not done.
   if (input.exitSignal || (input.exitCode != null && input.exitCode !== 0)) {
     return "disconnected";
   }

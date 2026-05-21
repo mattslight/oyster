@@ -276,9 +276,23 @@ export class ClaudePtyManager {
     return true;
   }
 
-  kill(terminalId: string): boolean {
+  /**
+   * Kill the PTY child. `reason` distinguishes a user-driven stop (UI
+   * red-square click) from system-driven kills (e.g. disposeAll on
+   * server shutdown). When `'user_stop'`, the linked session's
+   * `user_stop_requested_at` is stamped *before* the signal is sent so
+   * the eventual signal-driven exit is classified as a clean
+   * shutdown, not a crash. The flag must precede the signal — once
+   * `proc.kill()` runs, the exit handler can race ahead and call
+   * `recordExit`, and by then `deriveState` must already see the
+   * intent.
+   */
+  kill(terminalId: string, opts: { reason?: "user_stop" | "system" } = {}): boolean {
     const entry = this.terminals.get(terminalId);
     if (!entry) return false;
+    if (opts.reason === "user_stop" && entry.linkedSessionId) {
+      this.sessionStore.markUserStopRequested(entry.linkedSessionId);
+    }
     try { entry.proc.kill(); } catch { /* best-effort */ }
     // proc.onExit fans out closeNote + schedules eviction. Drop the entry
     // immediately if the proc had already exited (defensive).

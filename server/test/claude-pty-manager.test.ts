@@ -40,6 +40,7 @@ const stubDeps = {
     clearTerminal: () => {},
     setAttachedClients: () => {},
     deleteSession: () => {},
+    markUserStopRequested: () => {},
   } as any,
   db: stubDb,
   broadcastUiEvent: () => {},
@@ -122,6 +123,67 @@ describe("ClaudePtyManager", () => {
     expect(mgr.kill(terminalId)).toBe(true);
     mgr.disposeAll();
     expect(mgr.list()).toHaveLength(0);
+  });
+
+  describe("kill(reason: 'user_stop') marks the linked session", () => {
+    // Tracks markUserStopRequested invocations so we can assert wiring
+    // without needing a full SqliteSessionStore.
+    function makeTrackingDeps() {
+      const calls: string[] = [];
+      const deps = {
+        ...stubDeps,
+        sessionStore: {
+          ...stubDeps.sessionStore,
+          markUserStopRequested: (id: string) => { calls.push(id); },
+        } as any,
+      };
+      return { deps, calls };
+    }
+
+    it("calls markUserStopRequested with the linked sessionId when reason is 'user_stop'", () => {
+      const { deps, calls } = makeTrackingDeps();
+      const m = new ClaudePtyManager(deps);
+      if (!m.isPtyAvailable()) return;
+      const { terminalId } = m.spawn({
+        kind: "claude_resume",
+        command: SLEEP, args: SLEEP_ARGS, cwd: tmpdir(),
+        env: { HOME: homedir(), PATH: process.env.PATH ?? "" },
+      });
+      m.setLinkedSession(terminalId, "session-A");
+      expect(m.kill(terminalId, { reason: "user_stop" })).toBe(true);
+      expect(calls).toEqual(["session-A"]);
+      m.disposeAll();
+    });
+
+    it("does NOT mark on a plain kill() (no reason → system shutdown / disposeAll path)", () => {
+      const { deps, calls } = makeTrackingDeps();
+      const m = new ClaudePtyManager(deps);
+      if (!m.isPtyAvailable()) return;
+      const { terminalId } = m.spawn({
+        kind: "claude_resume",
+        command: SLEEP, args: SLEEP_ARGS, cwd: tmpdir(),
+        env: { HOME: homedir(), PATH: process.env.PATH ?? "" },
+      });
+      m.setLinkedSession(terminalId, "session-B");
+      expect(m.kill(terminalId)).toBe(true);
+      expect(calls).toEqual([]);
+      m.disposeAll();
+    });
+
+    it("does NOT mark on a user-stop kill of an unlinked terminal", () => {
+      const { deps, calls } = makeTrackingDeps();
+      const m = new ClaudePtyManager(deps);
+      if (!m.isPtyAvailable()) return;
+      const { terminalId } = m.spawn({
+        kind: "claude_new",
+        command: SLEEP, args: SLEEP_ARGS, cwd: tmpdir(),
+        env: { HOME: homedir(), PATH: process.env.PATH ?? "" },
+      });
+      // No setLinkedSession — terminal has no session attached yet.
+      expect(m.kill(terminalId, { reason: "user_stop" })).toBe(true);
+      expect(calls).toEqual([]);
+      m.disposeAll();
+    });
   });
 
   it("reaps a zombie entry whose process has died on next spawn", async () => {

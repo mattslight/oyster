@@ -279,7 +279,14 @@ export function initDb(userlandDir: string): Database.Database {
       exit_signal                TEXT,
       explicit_exit_seen         INTEGER NOT NULL DEFAULT 0,
       clean_process_exit         INTEGER NOT NULL DEFAULT 0,
-      last_assistant_stop_reason TEXT
+      last_assistant_stop_reason TEXT,
+      -- Set when the user clicks the UI stop button, *before* the kill
+      -- signal goes to the PTY. Distinguishes "user intentionally
+      -- stopped this session" from "process died unexpectedly with a
+      -- signal" — both leave the same exit_signal evidence behind, but
+      -- only the former should resolve to 'done'. ISO timestamp for
+      -- audit-trail value vs. an opaque boolean.
+      user_stop_requested_at     TEXT
     );
     CREATE INDEX IF NOT EXISTS sessions_space_id ON sessions(space_id);
     CREATE INDEX IF NOT EXISTS sessions_state_last_event
@@ -449,6 +456,7 @@ export function initDb(userlandDir: string): Database.Database {
   try { db.exec("ALTER TABLE sessions ADD COLUMN explicit_exit_seen INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE sessions ADD COLUMN clean_process_exit INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE sessions ADD COLUMN last_assistant_stop_reason TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE sessions ADD COLUMN user_stop_requested_at TEXT"); } catch { /* already exists */ }
 
   // ─────────────────────────────────────────────────────────────────────────
   // projects + project_paths — the simplified identity model that supersedes
